@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>연이재한의원 통합 시스템</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'clinic-primary': '#1E3A8A',
+              'clinic-secondary': '#3B82F6',
+              'clinic-accent': '#10B981',
+              'clinic-background': '#F9FAFB',
+              'clinic-surface': '#FFFFFF',
+              'clinic-text-primary': '#1F2937',
+              'clinic-text-secondary': '#6B7280',
+            },
+            fontFamily: {
+              sans: ['"Noto Sans KR"', 'sans-serif'],
+            },
+          },
+        },
+      };
+    </script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+      .drag-over-indicator {
+        border-top: 3px solid #3B82F6;
+        margin-top: -3px;
+      }
+    </style>
+  </head>
+  <body class="bg-clinic-background font-sans">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
