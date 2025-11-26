@@ -8,9 +8,10 @@ interface PaymentCardProps {
   onPaymentClick: (payment: Payment) => void;
   onReservationClick: (payment: Payment) => void;
   onMoveToWaiting: (paymentId: number, destination: 'consultation' | 'treatment') => void;
+  onDelete: (paymentId: number) => void;
 }
 
-const PaymentCard: React.FC<PaymentCardProps> = ({ payment, onPaymentClick, onReservationClick, onMoveToWaiting }) => {
+const PaymentCard: React.FC<PaymentCardProps> = ({ payment, onPaymentClick, onReservationClick, onMoveToWaiting, onDelete }) => {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const hasReservation = payment.reservationDate && payment.reservationTime;
@@ -37,6 +38,13 @@ const PaymentCard: React.FC<PaymentCardProps> = ({ payment, onPaymentClick, onRe
 
     const handleMoveClick = (destination: 'consultation' | 'treatment') => {
         onMoveToWaiting(payment.id, destination);
+        setContextMenu(null);
+    };
+
+    const handleDeleteClick = () => {
+        if (window.confirm(`${payment.patientName}님을 수납 대기 목록에서 삭제하시겠습니까?`)) {
+            onDelete(payment.id);
+        }
         setContextMenu(null);
     };
 
@@ -117,6 +125,14 @@ const PaymentCard: React.FC<PaymentCardProps> = ({ payment, onPaymentClick, onRe
                                 치료대기
                             </button>
                         </li>
+                        <li className="border-t border-gray-200">
+                            <button
+                                onClick={handleDeleteClick}
+                                className="block w-full text-left px-4 py-2 text-red-600 hover:bg-red-50"
+                            >
+                                삭제
+                            </button>
+                        </li>
                     </ul>
                 </div>
             )}
@@ -129,20 +145,22 @@ interface PaymentStatusProps {
   onPaymentClick: (payment: Payment) => void;
   onReservationClick: (payment: Payment) => void;
   onMoveToWaiting: (paymentId: number, destination: 'consultation' | 'treatment') => void;
+  onDelete: (paymentId: number) => void;
 }
 
-const PaymentStatus: React.FC<PaymentStatusProps> = ({ payments, onPaymentClick, onReservationClick, onMoveToWaiting }) => {
+const PaymentStatus: React.FC<PaymentStatusProps> = ({ payments, onPaymentClick, onReservationClick, onMoveToWaiting, onDelete }) => {
   return (
     <Quadrant icon="fa-solid fa-credit-card" title="수납 및 예약" className="flex-1 min-h-0">
       <div className="space-y-2 p-2 h-full">
         {payments.length > 0 ? (
           payments.map((payment: Payment) => (
-            <PaymentCard 
-                key={payment.id} 
-                payment={payment} 
+            <PaymentCard
+                key={payment.id}
+                payment={payment}
                 onPaymentClick={onPaymentClick}
-                onReservationClick={onReservationClick} 
+                onReservationClick={onReservationClick}
                 onMoveToWaiting={onMoveToWaiting}
+                onDelete={onDelete}
             />
           ))
         ) : (

@@ -199,6 +199,23 @@ export const usePayments = (currentUser: any) => {
     return null;
   };
 
+  const deletePaymentFromWaiting = async (paymentId: number) => {
+    try {
+      // 로컬 상태 먼저 업데이트 (낙관적 업데이트)
+      setPaymentsWaiting(prev => prev.filter(p => p.id !== paymentId));
+
+      // DB에서 삭제
+      await api.deletePayment(paymentId);
+      console.log(`✅ 수납 대기 항목 삭제 완료 (id: ${paymentId})`);
+    } catch (error) {
+      console.error('❌ 수납 대기 삭제 오류:', error);
+      alert('수납 대기 삭제 중 오류가 발생했습니다.');
+      // 실패 시 데이터 다시 로드
+      const pendingPayments = await api.fetchPendingPayments();
+      setPaymentsWaiting(pendingPayments);
+    }
+  };
+
   return {
     paymentsWaiting,
     setPaymentsWaiting,
@@ -208,5 +225,6 @@ export const usePayments = (currentUser: any) => {
     updatePaymentReservationInfo,
     removePaymentReservationInfo,
     movePatientFromPaymentToWaiting,
+    deletePaymentFromWaiting,
   };
 };

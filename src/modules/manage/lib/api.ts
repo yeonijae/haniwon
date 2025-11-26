@@ -295,6 +295,21 @@ export async function restorePatient(patientId: number): Promise<void> {
   }
 }
 
+// 등록된 환자 수 조회 (삭제되지 않은 환자만)
+export async function fetchPatientCount(): Promise<number> {
+  const { count, error } = await supabase
+    .from('patients')
+    .select('*', { count: 'exact', head: true })
+    .is('deletion_date', null);
+
+  if (error) {
+    console.error('❌ 환자 수 조회 오류:', error);
+    throw error;
+  }
+
+  return count || 0;
+}
+
 /**
  * 환자 기본 치료 관련 API
  */
@@ -653,6 +668,19 @@ export async function completePayment(
 
   if (error) {
     console.error('❌ 결제 완료 처리 오류:', error);
+    throw error;
+  }
+}
+
+// 수납 대기 삭제
+export async function deletePayment(paymentId: number): Promise<void> {
+  const { error } = await supabase
+    .from('payments')
+    .delete()
+    .eq('id', paymentId);
+
+  if (error) {
+    console.error('❌ 결제 삭제 오류:', error);
     throw error;
   }
 }
@@ -1082,17 +1110,10 @@ export async function updateTreatmentRoom(roomId: number, room: Partial<Treatmen
     }
   }
 
-  // 2. session_treatments 업데이트 (별도 테이블)
+  // 2. session_treatments 업데이트 (별도 테이블) - UPSERT 사용
   if (room.sessionTreatments !== undefined && room.sessionId) {
-    // 기존 세션 치료 항목 삭제
-    await supabase
-      .from('session_treatments')
-      .delete()
-      .eq('room_id', roomId);
-
-    // 새 세션 치료 항목 추가
     if (room.sessionTreatments.length > 0) {
-      const treatmentsToInsert = room.sessionTreatments.map((st) => ({
+      const treatmentsToUpsert = room.sessionTreatments.map((st) => ({
         id: st.id,
         session_id: room.sessionId,
         room_id: roomId,
@@ -1104,13 +1125,14 @@ export async function updateTreatmentRoom(roomId: number, room: Partial<Treatmen
         memo: st.memo || null,
       }));
 
-      const { error: insertError } = await supabase
+      // UPSERT: 있으면 업데이트, 없으면 추가 (삭제 없이 처리)
+      const { error: upsertError } = await supabase
         .from('session_treatments')
-        .insert(treatmentsToInsert);
+        .upsert(treatmentsToUpsert, { onConflict: 'id' });
 
-      if (insertError) {
-        console.error('❌ 세션 치료 항목 추가 오류:', insertError);
-        throw insertError;
+      if (upsertError) {
+        console.error('❌ 세션 치료 항목 업서트 오류:', upsertError);
+        throw upsertError;
       }
     }
   }
@@ -1299,4 +1321,120 @@ export async function updateTreatmentItemsOrder(
     console.error('❌ 치료항목 순서 업데이트 오류:', errors);
     throw errors[0];
   }
+}
+
+/**
+ * 대기 목록 관리 API
+ * waiting_queue 테이블 사용
+ */
+
+export interface WaitingQueueItem {
+  id?: number;
+  patient_id: number;
+  queue_type: 'consultation' | 'treatment';
+  details: string;
+  position: number;
+  created_at?: string;
+}
+
+// 대기 목록 조회
+export async function fetchWaitingQueue(queueType: 'consultation' | 'treatment'): Promise<WaitingQueueItem[]> {
+  const { data, error } = await supabase
+    .from('waiting_queue')
+    .select('*')
+    .eq('queue_type', queueType)
+    .order('position', { ascending: true });
+
+  if (error) {
+    console.error(`❌ ${queueType} 대기 목록 조회 오류:`, error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+// 대기 목록에 환자 추가
+export async function addToWaitingQueue(item: Omit<WaitingQueueItem, 'id' | 'created_at'>): Promise<WaitingQueueItem> {
+  // 현재 최대 position 조회
+  const { data: maxData } = await supabase
+    .from('waiting_queue')
+    .select('position')
+    .eq('queue_type', item.queue_type)
+    .order('position', { ascending: false })
+    .limit(1);
+
+  const nextPosition = maxData && maxData.length > 0 ? maxData[0].position + 1 : 0;
+
+  const { data, error } = await supabase
+    .from('waiting_queue')
+    .insert({
+      patient_id: item.patient_id,
+      queue_type: item.queue_type,
+      details: item.details,
+      position: nextPosition,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ 대기 목록 추가 오류:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+// 대기 목록에서 환자 제거
+export async function removeFromWaitingQueue(patientId: number, queueType: 'consultation' | 'treatment'): Promise<void> {
+  const { error } = await supabase
+    .from('waiting_queue')
+    .delete()
+    .eq('patient_id', patientId)
+    .eq('queue_type', queueType);
+
+  if (error) {
+    console.error('❌ 대기 목록 제거 오류:', error);
+    throw error;
+  }
+}
+
+// 대기 목록 순서 업데이트
+export async function updateWaitingQueueOrder(
+  queueType: 'consultation' | 'treatment',
+  patientIds: number[]
+): Promise<void> {
+  const updatePromises = patientIds.map((patientId, index) =>
+    supabase
+      .from('waiting_queue')
+      .update({ position: index })
+      .eq('patient_id', patientId)
+      .eq('queue_type', queueType)
+  );
+
+  const results = await Promise.all(updatePromises);
+  const errors = results.filter((r) => r.error).map((r) => r.error);
+
+  if (errors.length > 0) {
+    console.error('❌ 대기 목록 순서 업데이트 오류:', errors);
+    throw errors[0];
+  }
+}
+
+// 대기 목록 간 환자 이동 (consultation <-> treatment)
+export async function movePatientBetweenQueues(
+  patientId: number,
+  fromQueue: 'consultation' | 'treatment',
+  toQueue: 'consultation' | 'treatment',
+  details: string
+): Promise<void> {
+  // 기존 대기열에서 제거
+  await removeFromWaitingQueue(patientId, fromQueue);
+
+  // 새 대기열에 추가
+  await addToWaitingQueue({
+    patient_id: patientId,
+    queue_type: toQueue,
+    details,
+    position: 0, // addToWaitingQueue에서 자동 계산됨
+  });
 }

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Patient, MedicalStaff, WorkPattern, Staff, StaffRank, StaffDepartment, UncoveredCategories, TreatmentItem } from '../types';
+import * as api from '../lib/api';
 
 // For sheetjs library loaded from CDN
 declare var XLSX: any;
@@ -1585,6 +1586,21 @@ const Settings: React.FC<SettingsProps> = ({
     const [error, setError] = useState('');
     const [currentView, setCurrentView] = useState<'main' | 'patient' | 'staff' | 'uncovered' | 'patientDelete' | 'treatmentRoom' | 'staffMedical' | 'staffRegular'>('main');
     const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, message: '' });
+    const [patientCount, setPatientCount] = useState<number | null>(null);
+
+    // DB에서 환자 수 조회
+    useEffect(() => {
+        const loadPatientCount = async () => {
+            try {
+                const count = await api.fetchPatientCount();
+                setPatientCount(count);
+            } catch (error) {
+                console.error('❌ 환자 수 조회 오류:', error);
+                setPatientCount(0);
+            }
+        };
+        loadPatientCount();
+    }, [currentView]);
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -1851,7 +1867,7 @@ const Settings: React.FC<SettingsProps> = ({
                     description="시스템에 저장된 모든 활성 환자의 총 인원입니다."
                 >
                     <div className="text-3xl font-bold text-clinic-primary mt-2">
-                        {allPatients.length} <span className="text-lg font-medium text-clinic-text-secondary">명</span>
+                        {patientCount !== null ? patientCount : <span className="text-gray-400">로딩중...</span>} <span className="text-lg font-medium text-clinic-text-secondary">명</span>
                     </div>
                 </SettingsItem>
 

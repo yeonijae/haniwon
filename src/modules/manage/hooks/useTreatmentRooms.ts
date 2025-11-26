@@ -1,10 +1,15 @@
-import { useState, useEffect } from 'react';
-import { TreatmentRoom, RoomStatus } from '../types';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { TreatmentRoom } from '../types';
 import * as api from '../lib/api';
 import { supabase } from '@shared/lib/supabase';
 
 export const useTreatmentRooms = (currentUser: any) => {
   const [treatmentRooms, setTreatmentRooms] = useState<TreatmentRoom[]>([]);
+  // 개별 룸 업데이트를 위한 ref (배열 전체를 갱신하지 않고 특정 룸만 업데이트)
+  const roomsRef = useRef<Map<number, TreatmentRoom>>(new Map());
+  // 자신의 변경을 무시하기 위한 타임스탬프 (로컬 변경 후 일정 시간 내 구독 이벤트 무시)
+  const lastLocalUpdateRef = useRef<number>(0);
+  const IGNORE_SUBSCRIPTION_MS = 2000; // 2초 내 구독 이벤트 무시 (네트워크 지연 고려)
 
   // 초기 치료실 데이터 로드
   useEffect(() => {
@@ -13,6 +18,10 @@ export const useTreatmentRooms = (currentUser: any) => {
     const loadTreatmentRooms = async () => {
       try {
         const roomsData = await api.fetchTreatmentRooms();
+
+        // Map에 저장
+        roomsRef.current.clear();
+        roomsData.forEach(room => roomsRef.current.set(room.id, room));
 
         // DB의 startTime을 그대로 사용하여 모든 클라이언트가 동일한 시간 기준으로 계산
         setTreatmentRooms(roomsData);
@@ -29,8 +38,20 @@ export const useTreatmentRooms = (currentUser: any) => {
     if (!currentUser) return;
 
     const reloadRooms = async () => {
+      // 자신의 변경 직후라면 구독 이벤트 무시 (낙관적 업데이트 유지)
+      const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
+      if (timeSinceLastUpdate < IGNORE_SUBSCRIPTION_MS) {
+        console.log(`[useTreatmentRooms] 구독 이벤트 무시 (${timeSinceLastUpdate}ms 전 로컬 변경)`);
+        return;
+      }
+
+      console.log('[useTreatmentRooms] 외부 변경 감지, 데이터 리로드');
       try {
         const roomsData = await api.fetchTreatmentRooms();
+
+        // Map 업데이트
+        roomsRef.current.clear();
+        roomsData.forEach(room => roomsRef.current.set(room.id, room));
 
         // DB 데이터를 그대로 사용하여 모든 클라이언트가 동일한 시간 기준으로 동기화
         setTreatmentRooms(roomsData);
@@ -63,61 +84,67 @@ export const useTreatmentRooms = (currentUser: any) => {
     };
   }, [currentUser]);
 
-  // 치료 타이머 관리
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTreatmentRooms(currentRooms => {
-        let hasChanged = false;
-        const updatedRooms = currentRooms.map(room => {
-          if (room.status !== RoomStatus.IN_USE) return room;
+  // ❌ 제거: 매초 전체 배열을 갱신하던 타이머
+  // 타이머 UI 업데이트는 TreatmentProgressItem 내부의 useTimer 훅에서 처리
+  // 이렇게 하면 개별 치료 아이템만 리렌더링되고 다른 카드는 영향받지 않음
+  //
+  // 기존 코드 문제점:
+  // 1. 매초 setTreatmentRooms 호출 → 새 배열 생성
+  // 2. 새 배열이 TreatmentView에 전달됨
+  // 3. 모든 TreatmentBedCard가 리렌더링됨 (memo가 있어도 배열 참조가 변경)
+  // 4. 모든 TreatmentProgressItem이 리렌더링됨
 
-          const newTreatments = room.sessionTreatments.map(tx => {
-            if (tx.status === 'running' && tx.startTime) {
-              // 타이머가 running일 때만 경과 시간 계산
-              // 이렇게 하면 UI가 매초 업데이트됨
-              hasChanged = true;
+  // 개별 룸 업데이트 함수 (특정 룸만 업데이트하여 불필요한 리렌더링 방지)
+  const updateSingleRoom = useCallback((roomId: number, updateFn: (room: TreatmentRoom) => TreatmentRoom) => {
+    // 로컬 변경 타임스탬프 기록 (구독 이벤트 무시용)
+    lastLocalUpdateRef.current = Date.now();
 
-              const elapsed = (Date.now() - new Date(tx.startTime).getTime()) / 1000 + (tx.elapsedSeconds || 0);
+    setTreatmentRooms(prev => {
+      const roomIndex = prev.findIndex(r => r.id === roomId);
+      if (roomIndex === -1) return prev;
 
-              // 시간이 지나도 자동으로 completed로 변경하지 않음
-              // UI에서 "완료" 표시만 하고, 사용자가 수동으로 완료 처리
-              return tx;
-            }
-            return tx;
-          });
+      const updatedRoom = updateFn(prev[roomIndex]);
+      // 변경된 룸만 새 객체로 대체, 나머지는 기존 참조 유지
+      const newRooms = [...prev];
+      newRooms[roomIndex] = updatedRoom;
 
-          if (hasChanged) {
-            return { ...room, sessionTreatments: newTreatments };
-          }
-          return room;
-        });
+      // Map도 업데이트
+      roomsRef.current.set(roomId, updatedRoom);
 
-        return hasChanged ? updatedRooms : currentRooms;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
+      return newRooms;
+    });
   }, []);
 
-  const handleUpdateTreatmentRooms = async (updatedRooms: TreatmentRoom[]) => {
-    // 로컬 상태만 업데이트 (타이머 클릭 등)
-    setTreatmentRooms(updatedRooms);
-  };
+  const handleUpdateTreatmentRooms = useCallback(async (updatedRooms: TreatmentRoom[]) => {
+    // 로컬 변경 타임스탬프 기록 (구독 이벤트 무시용)
+    lastLocalUpdateRef.current = Date.now();
 
-  const saveTreatmentRoomToDB = async (roomId: number, room: TreatmentRoom) => {
+    // Map 업데이트
+    roomsRef.current.clear();
+    updatedRooms.forEach(room => roomsRef.current.set(room.id, room));
+
+    // 로컬 상태 업데이트
+    setTreatmentRooms(updatedRooms);
+  }, []);
+
+  const saveTreatmentRoomToDB = useCallback(async (roomId: number, room: TreatmentRoom) => {
+    // 로컬 변경 타임스탬프 기록 (구독 이벤트 무시용)
+    lastLocalUpdateRef.current = Date.now();
+
     // 중요한 변경사항만 DB에 저장 (환자 입실/퇴실, 치료 완료 등)
-    const startTime = Date.now();
     try {
       await api.updateTreatmentRoom(roomId, room);
     } catch (error) {
       console.error('❌ 치료실 DB 저장 오류:', error);
     }
-  };
+  }, []);
 
   return {
     treatmentRooms,
     setTreatmentRooms,
     handleUpdateTreatmentRooms,
     saveTreatmentRoomToDB,
+    updateSingleRoom,
+    roomsRef,
   };
 };

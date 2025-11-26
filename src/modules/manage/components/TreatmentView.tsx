@@ -105,9 +105,7 @@ interface TreatmentProgressItemProps {
 }
 
 const TreatmentProgressItem: React.FC<TreatmentProgressItemProps> = memo(({ treatment, roomId, onTreatmentAction, onTimeChange, onDelete, isBeingDragged, draggedTreatmentRoomId, onDragStart, onDragEnd, onDrop }) => {
-    // 디버깅: 리렌더링 추적
-    console.log(`🔄 TreatmentProgressItem 렌더링: ${treatment.name} (ID: ${treatment.id}, Room: ${roomId}, Status: ${treatment.status})`);
-
+    console.log(`[TreatmentProgressItem] Room ${roomId} - ${treatment.name} (${treatment.status})`);
     const { remainingSeconds, progress } = useTimer(treatment);
     const [isDragOver, setIsDragOver] = useState(false);
 
@@ -285,9 +283,7 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
     onFinishSession, onReturnToWaiting, onClean, onFinishCleaning, onDrop, onAddTreatment, onOpenInfoModal, treatmentItems,
     draggedTreatment, onTreatmentDragStart, onTreatmentDragEnd, onTreatmentDrop
 }) => {
-    // 디버깅: 리렌더링 추적
-    console.log(`🏥 TreatmentBedCard 렌더링: Room ${room.id} (${room.name}), Patient: ${room.patientName || 'N/A'}, Treatments: ${room.sessionTreatments.length}개`);
-
+    console.log(`[TreatmentBedCard] Room ${room.id} (${room.name}) - ${room.patientName || 'empty'}`);
     const roomId = room.id;
     const [isDragOver, setIsDragOver] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -528,6 +524,8 @@ interface TreatmentViewProps {
     onUpdateRooms: (rooms: TreatmentRoom[]) => void;
     onSaveRoomToDB: (roomId: number, room: TreatmentRoom) => void;
     onUpdateWaitingList: (patients: Patient[]) => void;
+    onRemoveFromWaitingList: (patientId: number) => void;
+    onAddToWaitingList: (patient: Patient) => void;
     onMovePatientToPayment: (patientId: number) => void;
     allPatients: Patient[];
     onUpdatePatientDefaultTreatments: (patientId: number, treatments: DefaultTreatment[]) => void;
@@ -535,16 +533,24 @@ interface TreatmentViewProps {
 }
 
 const TreatmentView: React.FC<TreatmentViewProps> = ({
-    treatmentRooms, waitingList, onNavigateBack, onUpdateRooms, onSaveRoomToDB, onUpdateWaitingList, onMovePatientToPayment, allPatients, onUpdatePatientDefaultTreatments, treatmentItems
+    treatmentRooms, waitingList, onNavigateBack, onUpdateRooms, onSaveRoomToDB, onUpdateWaitingList, onRemoveFromWaitingList, onAddToWaitingList, onMovePatientToPayment, allPatients, onUpdatePatientDefaultTreatments, treatmentItems
 }) => {
-    // 디버깅: TreatmentView 리렌더링 추적
-    console.log(`📋 TreatmentView 렌더링: Rooms=${treatmentRooms.length}, WaitingList=${waitingList.length}`);
-
+    console.log(`[TreatmentView] Rooms: ${treatmentRooms.length}, Waiting: ${waitingList.length}`);
     const [draggedTreatment, setDraggedTreatment] = useState<{ roomId: number; treatmentId: string } | null>(null);
     const [infoModalRoom, setInfoModalRoom] = useState<TreatmentRoom | null>(null);
     const [hoveredPatient, setHoveredPatient] = useState<Patient | null>(null);
     const [popoverPosition, setPopoverPosition] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
     const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
+
+    // stale closure 문제 방지를 위한 refs
+    const treatmentRoomsRef = useRef(treatmentRooms);
+    const waitingListRef = useRef(waitingList);
+    const allPatientsRef = useRef(allPatients);
+
+    // 매 렌더링마다 최신 값으로 업데이트
+    treatmentRoomsRef.current = treatmentRooms;
+    waitingListRef.current = waitingList;
+    allPatientsRef.current = allPatients;
 
     const handlePatientMouseEnter = (e: React.MouseEvent<HTMLLIElement>, patient: Patient) => {
         if (patient.defaultTreatments && patient.defaultTreatments.length > 0) {
@@ -563,15 +569,28 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
     };
     
     const handlePatientDropOnBed = useCallback((patientId: number, roomId: number) => {
+        console.log(`[handlePatientDropOnBed] 시작 - patientId: ${patientId}, roomId: ${roomId}`);
+        const currentWaitingList = waitingListRef.current;
+        const currentAllPatients = allPatientsRef.current;
+        const currentTreatmentRooms = treatmentRoomsRef.current;
+        console.log(`[handlePatientDropOnBed] waitingList: ${currentWaitingList.length}명, allPatients: ${currentAllPatients.length}명`);
+
         // 먼저 waitingList에서 찾고, 없으면 allPatients에서 찾기
-        let patient = waitingList.find(p => p.id === patientId);
+        let patient = currentWaitingList.find(p => p.id === patientId);
+        console.log(`[handlePatientDropOnBed] waitingList에서 환자 찾기: ${patient ? patient.name : '못찾음'}`);
+
         if (!patient) {
-            patient = allPatients.find(p => p.id === patientId);
+            patient = currentAllPatients.find(p => p.id === patientId);
+            console.log(`[handlePatientDropOnBed] allPatients에서 환자 찾기: ${patient ? patient.name : '못찾음'}`);
         }
-        if (!patient) return;
+        if (!patient) {
+            console.error(`[handlePatientDropOnBed] 환자를 찾을 수 없음! patientId: ${patientId}`);
+            return;
+        }
+        console.log(`[handlePatientDropOnBed] 환자 찾음: ${patient.name} (id: ${patient.id})`);
 
         let updatedRoom: TreatmentRoom | null = null;
-        const newRooms = treatmentRooms.map(room => {
+        const newRooms = currentTreatmentRooms.map(room => {
             if (room.id === roomId) {
                 const treatmentsToApply =
                     (patient.defaultTreatments && patient.defaultTreatments.length > 0)
@@ -603,28 +622,31 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             return room;
         });
 
+        console.log(`[handlePatientDropOnBed] 룸 업데이트 전 - treatmentRooms: ${currentTreatmentRooms.length}개`);
         onUpdateRooms(newRooms);
-        onUpdateWaitingList(waitingList.filter(p => p.id !== patientId));
+
+        // 대기 목록에서 제거 (DB 연동)
+        console.log(`[handlePatientDropOnBed] 대기 목록에서 제거 - patientId: ${patientId}`);
+        onRemoveFromWaitingList(patientId);
+
         // 환자 입실 - DB에 저장
         if (updatedRoom) {
+            console.log(`[handlePatientDropOnBed] DB 저장 시작 - roomId: ${roomId}, patient: ${updatedRoom.patientName}`);
             onSaveRoomToDB(roomId, updatedRoom);
         }
-    }, [waitingList, allPatients, treatmentRooms, treatmentItems, onUpdateRooms, onUpdateWaitingList, onSaveRoomToDB]);
+    }, [treatmentItems, onUpdateRooms, onRemoveFromWaitingList, onSaveRoomToDB]);
 
-    const updateRoom = (roomId: number, updateFn: (room: TreatmentRoom) => TreatmentRoom, shouldSaveToDB = false) => {
-        // 디버깅: updateRoom 호출 추적
-        console.log(`🔧 updateRoom 호출: Room ${roomId}, SaveToDB: ${shouldSaveToDB}`);
+    // updateRoom을 useCallback으로 감싸지 않고, 각 핸들러에서 직접 treatmentRooms를 사용하도록 변경
+    // 대신, 핸들러에서 함수형 업데이트 패턴을 사용하여 최신 상태를 보장
+    const updateRoomRef = useRef<(roomId: number, updateFn: (room: TreatmentRoom) => TreatmentRoom, shouldSaveToDB?: boolean) => void>();
 
+    updateRoomRef.current = (roomId: number, updateFn: (room: TreatmentRoom) => TreatmentRoom, shouldSaveToDB = false) => {
         let updatedRoom: TreatmentRoom | null = null;
         const newRooms = treatmentRooms.map(r => {
             if (r.id === roomId) {
                 updatedRoom = updateFn(r);
-                // 디버깅: 변경된 방만 새 객체 생성 확인
-                console.log(`  ↳ Room ${r.id}: 새 객체 생성됨`);
                 return updatedRoom;
             }
-            // 디버깅: 변경되지 않은 방은 기존 객체 유지
-            console.log(`  ↳ Room ${r.id}: 기존 객체 유지`);
             return r;
         });
         onUpdateRooms(newRooms);
@@ -634,10 +656,11 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
         }
     };
 
-    const handleTreatmentAction = useCallback((roomId: number, treatmentId: string, action: 'start' | 'pause' | 'complete' | 'reset') => {
-        // 디버깅: 액션 호출 추적
-        console.log(`⚡ handleTreatmentAction 호출: Room ${roomId}, Treatment ${treatmentId}, Action: ${action}`);
+    const updateRoom = useCallback((roomId: number, updateFn: (room: TreatmentRoom) => TreatmentRoom, shouldSaveToDB = false) => {
+        updateRoomRef.current?.(roomId, updateFn, shouldSaveToDB);
+    }, []);
 
+    const handleTreatmentAction = useCallback((roomId: number, treatmentId: string, action: 'start' | 'pause' | 'complete' | 'reset') => {
         // 타이머 시작, 정지, 완료 시 DB에 저장 (reset은 로컬만)
         const shouldSave = action === 'start' || action === 'pause' || action === 'complete';
 
@@ -679,38 +702,40 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             });
             return { ...room, sessionTreatments: newTreatments };
         }, shouldSave);
-    }, []);
+    }, [updateRoom]);
 
     const handleTimeChange = useCallback((roomId: number, treatmentId: string, minutes: number) => {
+        // 타이머 시간 변경도 DB에 저장
         updateRoom(roomId, room => ({
             ...room,
             sessionTreatments: room.sessionTreatments.map(tx =>
                 tx.id === treatmentId ? { ...tx, duration: Math.max(1, tx.duration + minutes) } : tx
             )
-        }));
-    }, []);
+        }), true);
+    }, [updateRoom]);
 
     const handleDeleteTreatment = useCallback((roomId: number, treatmentId: string) => {
         updateRoom(roomId, room => ({
             ...room,
             sessionTreatments: room.sessionTreatments.filter(tx => tx.id !== treatmentId),
         }));
-    }, []);
+    }, [updateRoom]);
 
     const handleFinishSession = useCallback((roomId: number) => {
-        const room = treatmentRooms.find(r => r.id === roomId);
+        const room = treatmentRoomsRef.current.find(r => r.id === roomId);
         if (room && room.patientId) {
             onMovePatientToPayment(room.patientId);
             // 세션 완료 - DB에 저장
             updateRoom(roomId, r => ({ ...r, status: RoomStatus.NEED_CLEAN }), true);
         }
-    }, [treatmentRooms, onMovePatientToPayment]);
-    
+    }, [onMovePatientToPayment, updateRoom]);
+
     const handleReturnToWaiting = useCallback(async (roomId: number) => {
-        const room = treatmentRooms.find(r => r.id === roomId);
-        const patient = allPatients.find(p => p.id === room?.patientId);
+        const room = treatmentRoomsRef.current.find(r => r.id === roomId);
+        const patient = allPatientsRef.current.find(p => p.id === room?.patientId);
         if (room && patient) {
-            onUpdateWaitingList([ ...waitingList, patient]);
+            // 대기 목록에 추가 (DB 연동)
+            onAddToWaitingList(patient);
 
             // DB에서 세션 치료 항목 먼저 삭제 (sessionId가 있는 경우)
             if (room.sessionId) {
@@ -734,15 +759,15 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                 sessionTreatments: []
             }), false); // DB는 이미 clearTreatmentRoom으로 처리했으므로 false
         }
-    }, [treatmentRooms, allPatients, waitingList, onUpdateWaitingList]);
+    }, [onAddToWaitingList, updateRoom]);
 
     const handleClean = useCallback((roomId: number) => {
         // 청소 시작 - DB에 저장
         updateRoom(roomId, r => ({...r, status: RoomStatus.CLEANING}), true);
-    }, []);
+    }, [updateRoom]);
 
     const handleFinishCleaning = useCallback(async (roomId: number) => {
-        const room = treatmentRooms.find(r => r.id === roomId);
+        const room = treatmentRoomsRef.current.find(r => r.id === roomId);
 
         // DB에서 세션 치료 항목 먼저 삭제 (sessionId가 있는 경우)
         if (room?.sessionId) {
@@ -765,7 +790,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             inTime: undefined,
             sessionTreatments: []
         }), false); // DB는 이미 clearTreatmentRoom으로 처리했으므로 false
-    }, [treatmentRooms]);
+    }, [updateRoom]);
 
     const handlePatientDragStart = useCallback((e: React.DragEvent<HTMLLIElement>, patientId: number) => {
         e.dataTransfer.setData('patientId', patientId.toString());
@@ -799,7 +824,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             }
             return { ...room, sessionTreatments: treatments };
         });
-    }, [draggedTreatment]);
+    }, [draggedTreatment, updateRoom]);
 
     const handleAddTreatment = useCallback((roomId: number, treatment: { name: string; duration: number; }) => {
         updateRoom(roomId, room => {
@@ -815,7 +840,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                 sessionTreatments: [...room.sessionTreatments, newTreatment]
             };
         });
-    }, []);
+    }, [updateRoom]);
 
     const handleOpenInfoModal = useCallback((room: TreatmentRoom) => {
         setInfoModalRoom(room);

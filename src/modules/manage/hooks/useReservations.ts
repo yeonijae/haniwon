@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ReservationsState, Reservation, Patient, Acting, ActingType, TreatmentDetailItem } from '../types';
 import { NewReservationData } from '../components/NewReservationForm';
 import { findAvailableSlot } from '../utils/reservationUtils';
@@ -8,8 +8,11 @@ import { DOCTORS } from '../constants';
 
 export const useReservations = (currentUser: any, allPatients: Patient[]) => {
   const [reservations, setReservations] = useState<ReservationsState>({});
+  // allPatients를 ref로 저장하여 useEffect 의존성에서 제외
+  const allPatientsRef = useRef<Patient[]>(allPatients);
+  allPatientsRef.current = allPatients;
 
-  // 초기 예약 데이터 로드
+  // 초기 예약 데이터 로드 (currentUser가 변경될 때만 실행)
   useEffect(() => {
     if (!currentUser) return;
 
@@ -35,7 +38,8 @@ export const useReservations = (currentUser: any, allPatients: Patient[]) => {
           const dateKey = `${year}-${month}-${day}`;
           const timeKey = res.reservation_time;
 
-          const patient = allPatients.find(p => p.id === res.patient_id);
+          // ref를 통해 최신 allPatients 참조 (의존성 배열에서 제외)
+          const patient = allPatientsRef.current.find(p => p.id === res.patient_id);
 
           const totalActing = treatments.reduce((sum, t) => sum + t.acting, 0);
           const slots = findAvailableSlot(dateKey, timeKey, totalActing, reservationsNested, res.doctor);
@@ -45,8 +49,8 @@ export const useReservations = (currentUser: any, allPatients: Patient[]) => {
               id: res.id,
               partId: `${res.id}-${slot.date}-${slot.time}`,
               patientId: res.patient_id,
-              patientName: patient?.name || '알 수 없음',
-              patientChartNumber: patient?.chartNumber || '',
+              patientName: patient?.name || res.patientName || '알 수 없음',
+              patientChartNumber: patient?.chartNumber || res.patientChartNumber || '',
               doctor: res.doctor,
               date: slot.date,
               time: slot.time,
@@ -73,9 +77,9 @@ export const useReservations = (currentUser: any, allPatients: Patient[]) => {
     };
 
     loadReservationData();
-  }, [currentUser, allPatients]);
+  }, [currentUser]); // allPatients 의존성 제거
 
-  // 실시간 구독
+  // 실시간 구독 (currentUser가 변경될 때만 재구독)
   useEffect(() => {
     if (!currentUser) return;
 
@@ -104,7 +108,8 @@ export const useReservations = (currentUser: any, allPatients: Patient[]) => {
               const dateKey = `${year}-${month}-${day}`;
               const timeKey = res.reservation_time;
 
-              const patient = allPatients.find(p => p.id === res.patient_id);
+              // ref를 통해 최신 allPatients 참조 (의존성 배열에서 제외)
+              const patient = allPatientsRef.current.find(p => p.id === res.patient_id);
               const totalActing = treatments.reduce((sum, t) => sum + t.acting, 0);
               const slots = findAvailableSlot(dateKey, timeKey, totalActing, reservationsNested, res.doctor);
 
@@ -113,8 +118,8 @@ export const useReservations = (currentUser: any, allPatients: Patient[]) => {
                   id: res.id,
                   partId: `${res.id}-${slot.date}-${slot.time}`,
                   patientId: res.patient_id,
-                  patientName: patient?.name || '알 수 없음',
-                  patientChartNumber: patient?.chartNumber || '',
+                  patientName: patient?.name || res.patientName || '알 수 없음',
+                  patientChartNumber: patient?.chartNumber || res.patientChartNumber || '',
                   doctor: res.doctor,
                   date: slot.date,
                   time: slot.time,
@@ -144,7 +149,7 @@ export const useReservations = (currentUser: any, allPatients: Patient[]) => {
     return () => {
       supabase.removeChannel(reservationsSubscription);
     };
-  }, [currentUser, allPatients]);
+  }, [currentUser]); // allPatients 의존성 제거
 
   const addNewReservation = async (data: NewReservationData, onAddActings: (doctor: string, actings: Acting[]) => void) => {
     const { patient, doctor, date, time, treatments, memo } = data;

@@ -6,6 +6,10 @@ import * as api from '../lib/api';
 import { supabase } from '@shared/lib/supabase';
 import { DOCTORS } from '../constants';
 
+// 자신의 변경을 무시하기 위한 타임스탬프 (구독 이벤트 무시용)
+let lastLocalWaitingQueueUpdate = 0;
+const IGNORE_SUBSCRIPTION_MS = 2000;
+
 interface BulkAddFailure {
   name: string;
   chartNumber?: string;
@@ -17,14 +21,188 @@ export const usePatients = (currentUser: any) => {
   const [patientCache, setPatientCache] = useState<Map<number, Patient>>(new Map());
   const [consultationWaitingList, setConsultationWaitingList] = useState<Patient[]>([]);
   const [treatmentWaitingList, setTreatmentWaitingList] = useState<Patient[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState('대기 목록 로드 중...');
 
   // 더 이상 초기에 전체 환자를 로드하지 않음
   // 검색은 서버사이드로, 개별 환자 조회는 캐시 또는 API로 처리
 
   // allPatients는 캐시된 환자 목록으로 대체 (하위 호환성 유지)
   const allPatients = useMemo(() => Array.from(patientCache.values()), [patientCache]);
+
+  // 초기 대기 목록 로드
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const loadWaitingQueues = async () => {
+      try {
+        setIsLoading(true);
+        setLoadingMessage('대기 목록 로드 중...');
+
+        // 진료 대기 목록 로드
+        const consultationQueue = await api.fetchWaitingQueue('consultation');
+        // 치료 대기 목록 로드
+        const treatmentQueue = await api.fetchWaitingQueue('treatment');
+
+        // 환자 ID 수집
+        const patientIds = [
+          ...consultationQueue.map(q => q.patient_id),
+          ...treatmentQueue.map(q => q.patient_id),
+        ];
+
+        // 환자 정보 로드 및 캐시
+        const patientMap = new Map<number, Patient>();
+        for (const patientId of patientIds) {
+          const patient = await api.fetchPatientById(patientId);
+          if (patient) {
+            // 기본 치료 정보도 로드
+            const treatments = await api.fetchPatientDefaultTreatments(patientId);
+            patient.defaultTreatments = treatments;
+            patientMap.set(patientId, patient);
+          }
+        }
+
+        // 캐시 업데이트
+        setPatientCache(prev => {
+          const newMap = new Map(prev);
+          patientMap.forEach((patient, id) => newMap.set(id, patient));
+          return newMap;
+        });
+
+        // 진료 대기 목록 구성
+        const consultationPatients: Patient[] = consultationQueue
+          .map(q => {
+            const patient = patientMap.get(q.patient_id);
+            if (!patient) return null;
+            return {
+              ...patient,
+              status: PatientStatus.WAITING_CONSULTATION,
+              time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+              details: q.details,
+            };
+          })
+          .filter((p): p is Patient => p !== null);
+
+        // 치료 대기 목록 구성
+        const treatmentPatients: Patient[] = treatmentQueue
+          .map(q => {
+            const patient = patientMap.get(q.patient_id);
+            if (!patient) return null;
+            return {
+              ...patient,
+              status: PatientStatus.WAITING_TREATMENT,
+              time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+              details: q.details,
+            };
+          })
+          .filter((p): p is Patient => p !== null);
+
+        setConsultationWaitingList(consultationPatients);
+        setTreatmentWaitingList(treatmentPatients);
+
+        console.log(`✅ 대기 목록 로드 완료 - 진료: ${consultationPatients.length}명, 치료: ${treatmentPatients.length}명`);
+      } catch (error) {
+        console.error('❌ 대기 목록 로드 오류:', error);
+      } finally {
+        setIsLoading(false);
+        setLoadingMessage('');
+      }
+    };
+
+    loadWaitingQueues();
+  }, [currentUser]);
+
+  // 대기 목록 실시간 구독
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const reloadWaitingQueues = async () => {
+      // 자신의 변경 직후라면 구독 이벤트 무시
+      const timeSinceLastUpdate = Date.now() - lastLocalWaitingQueueUpdate;
+      if (timeSinceLastUpdate < IGNORE_SUBSCRIPTION_MS) {
+        console.log(`[usePatients] 대기 목록 구독 이벤트 무시 (${timeSinceLastUpdate}ms 전 로컬 변경)`);
+        return;
+      }
+
+      console.log('[usePatients] 대기 목록 외부 변경 감지, 데이터 리로드');
+
+      try {
+        const consultationQueue = await api.fetchWaitingQueue('consultation');
+        const treatmentQueue = await api.fetchWaitingQueue('treatment');
+
+        const patientIds = [
+          ...consultationQueue.map(q => q.patient_id),
+          ...treatmentQueue.map(q => q.patient_id),
+        ];
+
+        const patientMap = new Map<number, Patient>();
+        for (const patientId of patientIds) {
+          // 캐시 확인
+          let patient = patientCache.get(patientId);
+          if (!patient) {
+            patient = await api.fetchPatientById(patientId) || undefined;
+            if (patient) {
+              const treatments = await api.fetchPatientDefaultTreatments(patientId);
+              patient.defaultTreatments = treatments;
+            }
+          }
+          if (patient) {
+            patientMap.set(patientId, patient);
+          }
+        }
+
+        // 캐시 업데이트
+        setPatientCache(prev => {
+          const newMap = new Map(prev);
+          patientMap.forEach((patient, id) => newMap.set(id, patient));
+          return newMap;
+        });
+
+        const consultationPatients: Patient[] = consultationQueue
+          .map(q => {
+            const patient = patientMap.get(q.patient_id);
+            if (!patient) return null;
+            return {
+              ...patient,
+              status: PatientStatus.WAITING_CONSULTATION,
+              time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+              details: q.details,
+            };
+          })
+          .filter((p): p is Patient => p !== null);
+
+        const treatmentPatients: Patient[] = treatmentQueue
+          .map(q => {
+            const patient = patientMap.get(q.patient_id);
+            if (!patient) return null;
+            return {
+              ...patient,
+              status: PatientStatus.WAITING_TREATMENT,
+              time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+              details: q.details,
+            };
+          })
+          .filter((p): p is Patient => p !== null);
+
+        setConsultationWaitingList(consultationPatients);
+        setTreatmentWaitingList(treatmentPatients);
+      } catch (error) {
+        console.error('❌ 대기 목록 실시간 로드 오류:', error);
+      }
+    };
+
+    const waitingQueueSubscription = supabase
+      .channel('waiting-queue-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'waiting_queue' },
+        reloadWaitingQueues
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(waitingQueueSubscription);
+    };
+  }, [currentUser, patientCache]);
 
   // 개별 환자 조회 (캐시 우선, 없으면 API 호출)
   const getPatientById = useCallback(async (patientId: number): Promise<Patient | null> => {
@@ -447,68 +625,94 @@ export const usePatients = (currentUser: any) => {
     }
   }, []);
 
-  // 대기 목록 추가
-  const addPatientToConsultation = useCallback((patient: Patient) => {
-    let alreadyExists = false;
-
-    setConsultationWaitingList(prevList => {
-      if (prevList.some(p => p.id === patient.id)) {
-        alreadyExists = true;
-        return prevList;
-      }
-
-      const newPatient: Patient = {
-        ...patient,
-        status: PatientStatus.WAITING_CONSULTATION,
-        time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
-        details: '검색 추가',
-      };
-
-      return [...prevList, newPatient];
-    });
-
+  // 대기 목록 추가 (DB 연동)
+  const addPatientToConsultation = useCallback(async (patient: Patient, details: string = '검색 추가') => {
+    // 이미 대기 목록에 있는지 확인
+    const alreadyExists = consultationWaitingList.some(p => p.id === patient.id);
     if (alreadyExists) {
       alert(`${patient.name}님은 이미 진료 대기 목록에 있습니다.`);
       return false;
     }
 
+    // 로컬 상태 먼저 업데이트 (낙관적 업데이트)
+    lastLocalWaitingQueueUpdate = Date.now();
+    const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const newPatient: Patient = {
+      ...patient,
+      status: PatientStatus.WAITING_CONSULTATION,
+      time: currentTime,
+      details,
+    };
+    setConsultationWaitingList(prev => [...prev, newPatient]);
+
+    // DB에 저장
+    try {
+      await api.addToWaitingQueue({
+        patient_id: patient.id,
+        queue_type: 'consultation',
+        details,
+        position: 0,
+      });
+      console.log(`✅ ${patient.name}님을 진료 대기 목록에 추가 (DB 저장 완료)`);
+    } catch (error) {
+      console.error('❌ 진료 대기 목록 DB 저장 오류:', error);
+      // 실패 시 롤백
+      setConsultationWaitingList(prev => prev.filter(p => p.id !== patient.id));
+      alert('대기 목록 추가 중 오류가 발생했습니다.');
+      return false;
+    }
+
     alert(`${patient.name}님을 진료 대기 목록에 추가했습니다.`);
     return true;
-  }, []);
+  }, [consultationWaitingList]);
 
-  const addPatientToTreatment = useCallback((patient: Patient) => {
-    let alreadyExists = false;
-
-    setTreatmentWaitingList(prevList => {
-      if (prevList.some(p => p.id === patient.id)) {
-        alreadyExists = true;
-        return prevList;
-      }
-
-      const newPatient: Patient = {
-        ...patient,
-        status: PatientStatus.WAITING_TREATMENT,
-        time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
-        details: '검색 추가',
-      };
-
-      return [...prevList, newPatient];
-    });
-
+  const addPatientToTreatment = useCallback(async (patient: Patient, details: string = '검색 추가') => {
+    // 이미 대기 목록에 있는지 확인
+    const alreadyExists = treatmentWaitingList.some(p => p.id === patient.id);
     if (alreadyExists) {
       alert(`${patient.name}님은 이미 치료 대기 목록에 있습니다.`);
       return false;
     }
 
+    // 로컬 상태 먼저 업데이트 (낙관적 업데이트)
+    lastLocalWaitingQueueUpdate = Date.now();
+    const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const newPatient: Patient = {
+      ...patient,
+      status: PatientStatus.WAITING_TREATMENT,
+      time: currentTime,
+      details,
+    };
+    setTreatmentWaitingList(prev => [...prev, newPatient]);
+
+    // DB에 저장
+    try {
+      await api.addToWaitingQueue({
+        patient_id: patient.id,
+        queue_type: 'treatment',
+        details,
+        position: 0,
+      });
+      console.log(`✅ ${patient.name}님을 치료 대기 목록에 추가 (DB 저장 완료)`);
+    } catch (error) {
+      console.error('❌ 치료 대기 목록 DB 저장 오류:', error);
+      // 실패 시 롤백
+      setTreatmentWaitingList(prev => prev.filter(p => p.id !== patient.id));
+      alert('대기 목록 추가 중 오류가 발생했습니다.');
+      return false;
+    }
+
     alert(`${patient.name}님을 치료 대기 목록에 추가했습니다.`);
     return true;
-  }, []);
+  }, [treatmentWaitingList]);
 
-  // 환자 이동
-  const movePatient = useCallback((patientToMove: Patient) => {
+  // 환자 이동 (DB 연동)
+  const movePatient = useCallback(async (patientToMove: Patient) => {
     const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    lastLocalWaitingQueueUpdate = Date.now();
 
     if (patientToMove.status === PatientStatus.WAITING_CONSULTATION) {
+      // 로컬 상태 업데이트
       setConsultationWaitingList(prev => prev.filter(p => p.id !== patientToMove.id));
       const updatedPatient = {
         ...patientToMove,
@@ -517,7 +721,15 @@ export const usePatients = (currentUser: any) => {
         details: '진료완료',
       };
       setTreatmentWaitingList(prev => [...prev, updatedPatient]);
+
+      // DB 업데이트
+      try {
+        await api.movePatientBetweenQueues(patientToMove.id, 'consultation', 'treatment', '진료완료');
+      } catch (error) {
+        console.error('❌ 대기 목록 이동 DB 오류:', error);
+      }
     } else if (patientToMove.status === PatientStatus.WAITING_TREATMENT) {
+      // 로컬 상태 업데이트
       setTreatmentWaitingList(prev => prev.filter(p => p.id !== patientToMove.id));
       const updatedPatient = {
         ...patientToMove,
@@ -526,6 +738,13 @@ export const usePatients = (currentUser: any) => {
         details: '재진료요청',
       };
       setConsultationWaitingList(prev => [...prev, updatedPatient]);
+
+      // DB 업데이트
+      try {
+        await api.movePatientBetweenQueues(patientToMove.id, 'treatment', 'consultation', '재진료요청');
+      } catch (error) {
+        console.error('❌ 대기 목록 이동 DB 오류:', error);
+      }
     }
   }, []);
 
@@ -554,17 +773,32 @@ export const usePatients = (currentUser: any) => {
     });
   }, []);
 
-  // 환자를 대기 목록에서 제거
-  const removeFromConsultationList = useCallback((patientId: number) => {
+  // 환자를 대기 목록에서 제거 (DB 연동)
+  const removeFromConsultationList = useCallback(async (patientId: number) => {
+    lastLocalWaitingQueueUpdate = Date.now();
     setConsultationWaitingList(prev => prev.filter(p => p.id !== patientId));
+
+    try {
+      await api.removeFromWaitingQueue(patientId, 'consultation');
+    } catch (error) {
+      console.error('❌ 진료 대기 목록 제거 DB 오류:', error);
+    }
   }, []);
 
-  const removeFromTreatmentList = useCallback((patientId: number) => {
+  const removeFromTreatmentList = useCallback(async (patientId: number) => {
+    lastLocalWaitingQueueUpdate = Date.now();
     setTreatmentWaitingList(prev => prev.filter(p => p.id !== patientId));
+
+    try {
+      await api.removeFromWaitingQueue(patientId, 'treatment');
+    } catch (error) {
+      console.error('❌ 치료 대기 목록 제거 DB 오류:', error);
+    }
   }, []);
 
-  // 환자를 특정 대기 목록에 추가
-  const addToConsultationList = useCallback((patient: Patient, details: string) => {
+  // 환자를 특정 대기 목록에 추가 (DB 연동)
+  const addToConsultationList = useCallback(async (patient: Patient, details: string) => {
+    lastLocalWaitingQueueUpdate = Date.now();
     const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
     const patientForList: Patient = {
       ...patient,
@@ -573,9 +807,21 @@ export const usePatients = (currentUser: any) => {
       details,
     };
     setConsultationWaitingList(prev => [...prev, patientForList]);
+
+    try {
+      await api.addToWaitingQueue({
+        patient_id: patient.id,
+        queue_type: 'consultation',
+        details,
+        position: 0,
+      });
+    } catch (error) {
+      console.error('❌ 진료 대기 목록 추가 DB 오류:', error);
+    }
   }, []);
 
-  const addToTreatmentList = useCallback((patient: Patient, details: string) => {
+  const addToTreatmentList = useCallback(async (patient: Patient, details: string) => {
+    lastLocalWaitingQueueUpdate = Date.now();
     const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
     const patientForList: Patient = {
       ...patient,
@@ -584,6 +830,17 @@ export const usePatients = (currentUser: any) => {
       details,
     };
     setTreatmentWaitingList(prev => [...prev, patientForList]);
+
+    try {
+      await api.addToWaitingQueue({
+        patient_id: patient.id,
+        queue_type: 'treatment',
+        details,
+        position: 0,
+      });
+    } catch (error) {
+      console.error('❌ 치료 대기 목록 추가 DB 오류:', error);
+    }
   }, []);
 
   return useMemo(() => ({

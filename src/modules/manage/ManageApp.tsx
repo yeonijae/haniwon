@@ -7,7 +7,7 @@ import WaitingList from './components/WaitingList';
 import TreatmentRoomStatus from './components/TreatmentRoomStatus';
 import PaymentStatus from './components/PaymentStatus';
 import Modal from './components/Modal';
-import { Patient, Reservation, Payment, PaymentMethod, TreatmentDetailItem, Acting, User } from './types';
+import { Patient, PatientStatus, Reservation, Payment, PaymentMethod, TreatmentDetailItem, Acting, User } from './types';
 import NewPatientForm from './components/NewPatientForm';
 import { NewReservationData } from './components/NewReservationForm';
 import ReservationModal from './components/ReservationModal';
@@ -332,7 +332,22 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
       patientToMove = patients.treatmentWaitingList.find(p => p.id === patientId);
       if (patientToMove) patients.removeFromTreatmentList(patientId);
     } else {
+      // treatment_room에서 올 때: 캐시에서 먼저 찾고, 없으면 치료실 정보에서 가져옴
       patientToMove = patients.allPatients.find(p => p.id === patientId);
+
+      if (!patientToMove) {
+        // 치료실에서 환자 정보 찾기
+        const room = treatmentRoomsHook.treatmentRooms.find(r => r.patientId === patientId);
+        if (room && room.patientName) {
+          patientToMove = {
+            id: patientId,
+            name: room.patientName,
+            chartNumber: room.patientChartNumber || '',
+            status: PatientStatus.COMPLETED,
+            time: '',
+          };
+        }
+      }
     }
 
     if (!patientToMove) {
@@ -554,6 +569,7 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
                 onPaymentClick={handleOpenPaymentModal}
                 onReservationClick={handleOpenReservationForPatient}
                 onMoveToWaiting={handleMovePatientFromPaymentToWaiting}
+                onDelete={paymentsHook.deletePaymentFromWaiting}
               />
             </div>
           </main>
@@ -567,6 +583,8 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
             onUpdateRooms={treatmentRoomsHook.handleUpdateTreatmentRooms}
             onSaveRoomToDB={treatmentRoomsHook.saveTreatmentRoomToDB}
             onUpdateWaitingList={patients.setTreatmentWaitingList}
+            onRemoveFromWaitingList={patients.removeFromTreatmentList}
+            onAddToWaitingList={(patient) => patients.addToTreatmentList(patient, '대기실 복귀')}
             onMovePatientToPayment={(id) => handleMovePatientToPayment(id, 'treatment_room')}
             allPatients={patients.allPatients}
             onUpdatePatientDefaultTreatments={patients.updatePatientDefaultTreatments}
