@@ -12,6 +12,7 @@ export default defineConfig({
       '@manage': path.resolve(__dirname, './src/modules/manage'),
       '@chart': path.resolve(__dirname, './src/modules/chart'),
       '@inventory': path.resolve(__dirname, './src/modules/inventory'),
+      '@treatment': path.resolve(__dirname, './src/modules/treatment'),
     },
   },
   server: {

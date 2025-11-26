@@ -22,7 +22,8 @@
       "@portal/*": ["src/modules/portal/*"],
       "@manage/*": ["src/modules/manage/*"],
       "@chart/*": ["src/modules/chart/*"],
-      "@inventory/*": ["src/modules/inventory/*"]
+      "@inventory/*": ["src/modules/inventory/*"],
+      "@treatment/*": ["src/modules/treatment/*"]
     }
   },
   "include": ["src"],

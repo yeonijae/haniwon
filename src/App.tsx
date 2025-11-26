@@ -12,6 +12,7 @@ import AdminPage from '@portal/pages/AdminPage';
 import ManageApp from '@manage/ManageApp';
 import ChartApp from '@chart/ChartApp';
 import InventoryApp from '@inventory/InventoryApp';
+import TreatmentApp from '@treatment/TreatmentApp';
 
 // Loading component
 function LoadingScreen() {
@@ -93,6 +94,12 @@ function App() {
       <Route
         path="/inventory/*"
         element={user ? <InventoryApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Treatment Module Routes */}
+      <Route
+        path="/treatment/*"
+        element={user ? <TreatmentApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Fallback */}

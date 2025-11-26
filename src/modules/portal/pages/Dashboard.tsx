@@ -42,6 +42,14 @@ const APPS: AppInfo[] = [
     icon: '📦',
     color: '#f59e0b',
   },
+  {
+    id: 'treatment',
+    name: '치료관리',
+    description: '치료실 및 액팅을 관리합니다. 치료실 배정, 타이머, 원장별 액팅 대기열을 확인할 수 있습니다.',
+    path: '/treatment',
+    icon: '🏥',
+    color: '#06b6d4',
+  },
 ];
 
 function Dashboard({ user, onLogout }: DashboardProps) {
