@@ -357,3 +357,35 @@ export async function removeFromWaitingQueue(patientId: number, queueType: 'cons
     throw error;
   }
 }
+
+/**
+ * 결제(수납) 관련 API
+ */
+
+// 수납 대기 생성
+export async function createPayment(patientId: number): Promise<number> {
+  console.log('🔍 수납 대기 생성 시도 - patientId:', patientId);
+
+  const { data, error } = await supabase
+    .from('payments')
+    .insert({
+      patient_id: patientId,
+      reservation_id: null,
+      total_amount: 0,
+      paid_amount: 0,
+      remaining_amount: 0,
+      payment_methods: [],
+      treatment_items: [],
+      is_completed: false,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ 수납 대기 생성 오류:', error);
+    throw error;
+  }
+
+  console.log('✅ 수납 대기 생성 성공, ID:', data.id);
+  return data.id;
+}

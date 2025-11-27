@@ -9,6 +9,7 @@ import { useActingQueues } from './hooks/useActingQueues';
 import TreatmentView from './components/TreatmentView';
 import ActingManagementView from './components/ActingManagementView';
 import * as api from './lib/api';
+import { useTreatmentRecord } from '@shared/hooks/useTreatmentRecord';
 
 interface TreatmentAppProps {
   user: PortalUser;
@@ -37,6 +38,9 @@ function TreatmentApp({ user }: TreatmentAppProps) {
     deleteActing,
     updateActing,
   } = useActingQueues();
+
+  // Treatment Record (진료내역 타임라인)
+  const treatmentRecordHook = useTreatmentRecord();
 
   // Waiting list state
   const [waitingList, setWaitingList] = useState<Patient[]>([]);
@@ -141,10 +145,19 @@ function TreatmentApp({ user }: TreatmentAppProps) {
     }
   }, [waitingList.length]);
 
-  const handleMovePatientToPayment = useCallback((patientId: number) => {
-    // In treatment module, this is a no-op or could be extended
-    console.log(`Patient ${patientId} moved to payment`);
-  }, []);
+  const handleMovePatientToPayment = useCallback(async (patientId: number) => {
+    try {
+      // 진료내역: 치료 종료 + 수납 대기 시작
+      await treatmentRecordHook.endTreatment(patientId);
+      await treatmentRecordHook.startWaitingPayment(patientId);
+
+      await api.createPayment(patientId);
+      console.log(`✅ 환자 ${patientId} 수납 대기 추가 완료`);
+    } catch (error) {
+      console.error('❌ 수납 대기 추가 오류:', error);
+      alert('수납 대기 추가 중 오류가 발생했습니다.');
+    }
+  }, [treatmentRecordHook]);
 
   const handleUpdatePatientDefaultTreatments = useCallback(async (patientId: number, treatments: DefaultTreatment[]) => {
     try {
@@ -173,6 +186,11 @@ function TreatmentApp({ user }: TreatmentAppProps) {
 
     updateActing(doctorId, acting.id, { patientName, duration, memo });
   }, [updateActing]);
+
+  // 치료 시작 이벤트 핸들러
+  const handleTreatmentStart = useCallback(async (patientId: number, roomName: string) => {
+    await treatmentRecordHook.startTreatment(patientId, { location: roomName });
+  }, [treatmentRecordHook]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -230,6 +248,7 @@ function TreatmentApp({ user }: TreatmentAppProps) {
             allPatients={allPatients}
             onUpdatePatientDefaultTreatments={handleUpdatePatientDefaultTreatments}
             treatmentItems={treatmentItems}
+            onTreatmentStart={handleTreatmentStart}
           />
         ) : (
           <ActingManagementView

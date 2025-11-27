@@ -13,6 +13,8 @@ export default defineConfig({
       '@chart': path.resolve(__dirname, './src/modules/chart'),
       '@inventory': path.resolve(__dirname, './src/modules/inventory'),
       '@treatment': path.resolve(__dirname, './src/modules/treatment'),
+      '@funnel': path.resolve(__dirname, './src/modules/funnel'),
+      '@content': path.resolve(__dirname, './src/modules/content'),
     },
   },
   server: {

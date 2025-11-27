@@ -13,6 +13,9 @@ import ManageApp from '@manage/ManageApp';
 import ChartApp from '@chart/ChartApp';
 import InventoryApp from '@inventory/InventoryApp';
 import TreatmentApp from '@treatment/TreatmentApp';
+import PatientCareApp from './modules/patient-care/PatientCareApp';
+import FunnelApp from './modules/funnel/FunnelApp';
+import ContentApp from './modules/content/ContentApp';
 
 // Loading component
 function LoadingScreen() {
@@ -100,6 +103,24 @@ function App() {
       <Route
         path="/treatment/*"
         element={user ? <TreatmentApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Patient Care Module Routes */}
+      <Route
+        path="/patient-care/*"
+        element={user ? <PatientCareApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Funnel Module Routes */}
+      <Route
+        path="/funnel/*"
+        element={user ? <FunnelApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Content Module Routes */}
+      <Route
+        path="/content/*"
+        element={user ? <ContentApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Fallback */}

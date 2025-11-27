@@ -1,8 +1,8 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { User } from '../types';
 
-export type ModalType = 'newPatient' | 'reservation' | 'patientSearch' | 'stats' | 'settings' | 'payment' | 'dailyPayments' | 'editActing';
+export type ModalType = 'newPatient' | 'reservation' | 'patientSearch' | 'stats' | 'settings' | 'payment' | 'dailyPayments';
 
 interface HeaderProps {
   onOpenModal: (type: ModalType, title: string, wide?: boolean) => void;
@@ -21,7 +21,6 @@ const Header: React.FC<HeaderProps> = ({
     onOpenModal,
     currentUser,
 }) => {
-  const location = useLocation();
   const buttons: ButtonConfig[] = [
     { 
       icon: 'fa-solid fa-user-plus', 
@@ -78,42 +77,6 @@ const Header: React.FC<HeaderProps> = ({
       </Link>
       <div className="flex items-center space-x-4">
         <nav className="flex items-center space-x-2">
-          <Link
-            to="/manage"
-            className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
-              location.pathname === '/manage' || location.pathname === '/manage/'
-                ? 'bg-clinic-primary text-white'
-                : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
-            }`}
-          >
-            <i className='fa-solid fa-house text-xl mb-1'></i>
-            <span>대시보드</span>
-          </Link>
-
-          <Link
-            to="/manage/treatment"
-            className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
-              location.pathname === '/manage/treatment'
-                ? 'bg-clinic-primary text-white'
-                : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
-            }`}
-          >
-            <i className='fa-solid fa-bed-pulse text-xl mb-1'></i>
-            <span>치료실</span>
-          </Link>
-
-          <Link
-            to="/manage/acting"
-            className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
-              location.pathname === '/manage/acting'
-                ? 'bg-clinic-primary text-white'
-                : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
-            }`}
-          >
-            <i className='fa-solid fa-person-running text-xl mb-1'></i>
-            <span>액팅관리</span>
-          </Link>
-
           {buttons.map((btn) => (
             <button
               key={btn.label}

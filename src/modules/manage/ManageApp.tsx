@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import Header, { ModalType } from './components/Header';
 import ReservationStatus from './components/ReservationStatus';
 import ConsultationStatus from './components/ConsultationStatus';
@@ -7,7 +7,7 @@ import WaitingList from './components/WaitingList';
 import TreatmentRoomStatus from './components/TreatmentRoomStatus';
 import PaymentStatus from './components/PaymentStatus';
 import Modal from './components/Modal';
-import { Patient, PatientStatus, Reservation, Payment, PaymentMethod, TreatmentDetailItem, Acting, User } from './types';
+import { Patient, PatientStatus, Reservation, Payment, PaymentMethod, TreatmentDetailItem, User } from './types';
 import NewPatientForm from './components/NewPatientForm';
 import { NewReservationData } from './components/NewReservationForm';
 import ReservationModal from './components/ReservationModal';
@@ -15,9 +15,6 @@ import PatientSearch from './components/PatientSearch';
 import PaymentModal from './components/PaymentModal';
 import DailyPaymentSummary from './components/DailyPaymentSummary';
 import Settings from './components/Settings';
-import TreatmentView from './components/TreatmentView';
-import ActingManagementView from './components/ActingManagementView';
-import EditActingForm from './components/EditActingForm';
 
 // Custom Hooks
 import { usePatients } from './hooks/usePatients';
@@ -30,6 +27,7 @@ import { useTreatmentItems } from './hooks/useTreatmentItems';
 import { useConsultationRooms } from './hooks/useConsultationRooms';
 
 import type { PortalUser } from '@shared/types';
+import { useTreatmentRecord } from '@shared/hooks/useTreatmentRecord';
 
 // Types
 type PaymentItem = { id: number; method: PaymentMethod; amount: string; };
@@ -86,8 +84,8 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
   // Consultation Rooms
   const consultationRoomsHook = useConsultationRooms({ medicalStaff: staffHook.medicalStaff });
 
-  // Navigation
-  const navigate = useNavigate();
+  // Treatment Record (진료내역 타임라인)
+  const treatmentRecord = useTreatmentRecord();
 
   // Modal State
   const [modalType, setModalType] = useState<ModalType | null>(null);
@@ -98,7 +96,6 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
   const [bulkAddResult, setBulkAddResult] = useState<{ new: number; updated: number; failures: BulkAddFailure[] } | null>(null);
   const [patientIdToDelete, setPatientIdToDelete] = useState<number | null>(null);
   const [patientForNewReservation, setPatientForNewReservation] = useState<Patient | null>(null);
-  const [actingToEdit, setActingToEdit] = useState<{ doctorId: string; acting: Acting } | null>(null);
 
   // Memoized patient to delete info
   const patientToDeleteInfo = useMemo(() => {
@@ -120,7 +117,6 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
     setEditingReservation(null);
     setSelectedPayment(null);
     setPatientForNewReservation(null);
-    setActingToEdit(null);
   };
 
   const handleEditReservation = (reservationToEdit: Reservation) => {
@@ -165,8 +161,22 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
     paymentsHook.removePaymentReservationInfo(reservationId);
   };
 
-  const handlePatientArrival = (reservation: Reservation, destination: 'consultation' | 'treatment') => {
+  const handlePatientArrival = async (reservation: Reservation, destination: 'consultation' | 'treatment') => {
     const patient = patients.allPatients.find(p => p.id === reservation.patientId);
+
+    // 진료내역: 체크인 + 대기 시작
+    await treatmentRecord.checkIn(reservation.patientId, {
+      doctorName: reservation.doctor,
+      visitType: 'follow_up',
+      reservationId: reservation.id,
+    });
+
+    if (destination === 'consultation') {
+      await treatmentRecord.startWaitingConsultation(reservation.patientId);
+    } else {
+      await treatmentRecord.startWaitingTreatment(reservation.patientId);
+    }
+
     reservationHook.handlePatientArrival(
       reservation,
       destination,
@@ -271,6 +281,10 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
       treatmentItems: TreatmentDetailItem[];
     }
   ) => {
+    // 진료내역: 수납 완료 + 체크아웃
+    await treatmentRecord.completePayment(originalPayment.patientId, originalPayment.id);
+    await treatmentRecord.checkOut(originalPayment.patientId);
+
     await paymentsHook.handleCompletePayment(originalPayment, details);
     closeModal();
   };
@@ -283,17 +297,24 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
       return;
     }
 
+    // 진료내역: 진료 종료
+    await treatmentRecord.endConsultation(patientId);
+
     consultationRoomsHook.handleFinishConsultation(patientId, () => {}, () => {});
     patients.removeFromConsultationList(patientId);
 
     if (destination === 'treatment') {
+      // 진료내역: 치료 대기 시작
+      await treatmentRecord.startWaitingTreatment(patientId);
       patients.addToTreatmentList(patient, '진료완료');
     } else {
+      // 진료내역: 수납 대기 시작
+      await treatmentRecord.startWaitingPayment(patientId);
       await paymentsHook.createPayment(patient, '진료비');
     }
   };
 
-  const handleAssignPatientToConsultationRoom = (patientId: number, roomId: number, sourceListType: 'consultation' | 'treatment') => {
+  const handleAssignPatientToConsultationRoom = async (patientId: number, roomId: number, sourceListType: 'consultation' | 'treatment') => {
     const sourceList = sourceListType === 'consultation' ? patients.consultationWaitingList : patients.treatmentWaitingList;
     const patientToAssign = sourceList.find(p => p.id === patientId);
 
@@ -312,6 +333,13 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
     }
 
     const room = consultationRoomsHook.consultationRooms.find(r => r.id === roomId);
+
+    // 진료내역: 진료 시작
+    await treatmentRecord.startConsultation(patientId, {
+      location: room?.roomName,
+      staffName: room?.doctorName,
+    });
+
     consultationRoomsHook.assignPatientToRoom(
       roomId,
       patientToAssign.id,
@@ -379,21 +407,6 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
     }
   };
 
-  // Acting Handlers
-  const handleCompleteActing = (doctorId: string, actingId: string) => {
-    actingQueuesHook.handleCompleteActing(
-      doctorId,
-      actingId,
-      treatmentRoomsHook.treatmentRooms,
-      treatmentRoomsHook.handleUpdateTreatmentRooms
-    );
-  };
-
-  const handleEditActing = (doctorId: string, acting: Acting) => {
-    setActingToEdit({ doctorId, acting });
-    openModal('editActing', '액팅 편집');
-  };
-
   // Render Modal Content
   const renderModalContent = () => {
     switch (modalType) {
@@ -454,15 +467,6 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
           deleteTreatmentItem={treatmentItemsHook.deleteTreatmentItem}
           reorderTreatmentItems={treatmentItemsHook.reorderTreatmentItems}
         />;
-      case 'editActing':
-        return actingToEdit ? (
-          <EditActingForm
-            acting={actingToEdit.acting}
-            doctorId={actingToEdit.doctorId}
-            onUpdate={actingQueuesHook.updateActing}
-            onClose={closeModal}
-          />
-        ) : null;
       default:
         return null;
     }
@@ -573,37 +577,6 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
               />
             </div>
           </main>
-        } />
-
-        <Route path="/treatment" element={
-          <TreatmentView
-            treatmentRooms={treatmentRoomsHook.treatmentRooms}
-            waitingList={patients.treatmentWaitingList}
-            onNavigateBack={() => navigate('/manage')}
-            onUpdateRooms={treatmentRoomsHook.handleUpdateTreatmentRooms}
-            onSaveRoomToDB={treatmentRoomsHook.saveTreatmentRoomToDB}
-            onUpdateWaitingList={patients.setTreatmentWaitingList}
-            onRemoveFromWaitingList={patients.removeFromTreatmentList}
-            onAddToWaitingList={(patient) => patients.addToTreatmentList(patient, '대기실 복귀')}
-            onMovePatientToPayment={(id) => handleMovePatientToPayment(id, 'treatment_room')}
-            allPatients={patients.allPatients}
-            onUpdatePatientDefaultTreatments={patients.updatePatientDefaultTreatments}
-            treatmentItems={treatmentItemsHook.treatmentItems}
-          />
-        } />
-
-        <Route path="/acting" element={
-          <ActingManagementView
-            actingQueues={actingQueuesHook.actingQueues}
-            onQueueUpdate={actingQueuesHook.setActingQueues}
-            onNavigateBack={() => navigate('/manage')}
-            treatmentRooms={treatmentRoomsHook.treatmentRooms}
-            allPatients={patients.allPatients}
-            onCompleteActing={handleCompleteActing}
-            onAddActing={actingQueuesHook.addActing}
-            onDeleteActing={actingQueuesHook.deleteActing}
-            onEditActing={handleEditActing}
-          />
         } />
       </Routes>
 

@@ -1,4 +1,4 @@
-export type AppType = 'manage' | 'chart' | 'inventory' | 'treatment';
+export type AppType = 'manage' | 'chart' | 'inventory' | 'treatment' | 'patient_care' | 'funnel' | 'content';
 
 export type UserRole = 'super_admin' | 'medical_staff' | 'desk' | 'counseling' | 'treatment' | 'decoction';
 
@@ -36,3 +36,9 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   treatment: '치료실',
   decoction: '탕전실',
 };
+
+// 진료내역 타입 re-export
+export * from './treatmentRecord';
+
+// 할일 타입 re-export
+export * from './task';

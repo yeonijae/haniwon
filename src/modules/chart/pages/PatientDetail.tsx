@@ -7,6 +7,8 @@ import DiagnosisListView from '../components/DiagnosisListView';
 import ProgressNoteView from '../components/ProgressNoteView';
 import MedicalRecordList from '../components/MedicalRecordList';
 import MedicalRecordDetail from '../components/MedicalRecordDetail';
+import PatientTreatmentStatusCard from '@shared/components/PatientTreatmentStatusCard';
+import TreatmentRecordList from '@shared/components/TreatmentRecordList';
 
 const PatientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -16,6 +18,7 @@ const PatientDetail: React.FC = () => {
   const [chartView, setChartView] = useState<'initial' | 'diagnosis' | 'progress' | null>(null);
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0); // 목록 새로고침용
+  const [showTreatmentHistory, setShowTreatmentHistory] = useState(false); // 진료내역 모달
 
   useEffect(() => {
     if (id) {
@@ -87,37 +90,55 @@ const PatientDetail: React.FC = () => {
         </button>
       </div>
 
-        {/* 환자 기본 정보 */}
-        <div className="mb-4 text-clinic-text-primary flex-shrink-0">
-        <div className="text-base leading-relaxed">
-          <p className="mb-2">
-            <span className="font-semibold">차트번호:</span> {patient.chart_number || '-'}
-            <span className="mx-3">|</span>
-            <span className="font-semibold">이름:</span> {patient.name}
-            <span className="mx-3">|</span>
-            <span className="font-semibold">생년월일:</span> {patient.dob ? `${patient.dob} (${calculateAge(patient.dob)}세)` : '-'}
-            <span className="mx-3">|</span>
-            <span className="font-semibold">성별:</span> {patient.gender === 'male' ? '남성' : patient.gender === 'female' ? '여성' : '-'}
-          </p>
-          <p>
-            <span className="font-semibold">전화번호:</span> {patient.phone || '-'}
-            <span className="mx-3">|</span>
-            <span className="font-semibold">주소:</span> {patient.address || '-'}
-            {patient.registration_date && (
-              <>
+        {/* 환자 기본 정보 + 치료 상태 */}
+        <div className="mb-4 flex-shrink-0 flex gap-4">
+          {/* 기본 정보 */}
+          <div className="flex-1 text-clinic-text-primary">
+            <div className="text-base leading-relaxed">
+              <p className="mb-2">
+                <span className="font-semibold">차트번호:</span> {patient.chart_number || '-'}
                 <span className="mx-3">|</span>
-                <span className="font-semibold">등록일:</span> {new Date(patient.registration_date).toLocaleDateString('ko-KR')}
-              </>
-            )}
-            {patient.referral_path && (
-              <>
+                <span className="font-semibold">이름:</span> {patient.name}
                 <span className="mx-3">|</span>
-                <span className="font-semibold">내원경로:</span> {patient.referral_path}
-              </>
-            )}
-          </p>
+                <span className="font-semibold">생년월일:</span> {patient.dob ? `${patient.dob} (${calculateAge(patient.dob)}세)` : '-'}
+                <span className="mx-3">|</span>
+                <span className="font-semibold">성별:</span> {patient.gender === 'male' ? '남성' : patient.gender === 'female' ? '여성' : '-'}
+              </p>
+              <p>
+                <span className="font-semibold">전화번호:</span> {patient.phone || '-'}
+                <span className="mx-3">|</span>
+                <span className="font-semibold">주소:</span> {patient.address || '-'}
+                {patient.registration_date && (
+                  <>
+                    <span className="mx-3">|</span>
+                    <span className="font-semibold">등록일:</span> {new Date(patient.registration_date).toLocaleDateString('ko-KR')}
+                  </>
+                )}
+                {patient.referral_path && (
+                  <>
+                    <span className="mx-3">|</span>
+                    <span className="font-semibold">내원경로:</span> {patient.referral_path}
+                  </>
+                )}
+              </p>
+            </div>
+            {/* 진료내역 버튼 */}
+            <button
+              onClick={() => setShowTreatmentHistory(true)}
+              className="mt-2 px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+            >
+              <i className="fas fa-history mr-2"></i>진료내역 보기
+            </button>
+          </div>
+
+          {/* 치료 상태 카드 */}
+          <div className="w-72 flex-shrink-0">
+            <PatientTreatmentStatusCard
+              patientId={patient.id}
+              patientName={patient.name}
+            />
+          </div>
         </div>
-      </div>
 
         {/* 진료 관리 */}
         <div className="bg-white rounded-lg shadow-sm p-4 flex-1 flex flex-col overflow-hidden">
@@ -189,6 +210,36 @@ const PatientDetail: React.FC = () => {
             setRefreshKey(prev => prev + 1); // 목록 새로고침
           }}
         />
+      )}
+
+      {/* 진료내역 모달 */}
+      {showTreatmentHistory && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="px-4 py-3 border-b flex items-center justify-between flex-shrink-0">
+              <h3 className="font-medium text-gray-900">
+                {patient.name} 진료내역
+              </h3>
+              <button
+                onClick={() => setShowTreatmentHistory(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <TreatmentRecordList patientId={patient.id} />
+            </div>
+            <div className="px-4 py-3 border-t bg-gray-50 flex-shrink-0">
+              <button
+                onClick={() => setShowTreatmentHistory(false)}
+                className="w-full py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       </div>
     </div>

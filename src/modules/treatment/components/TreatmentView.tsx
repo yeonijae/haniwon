@@ -502,10 +502,11 @@ interface TreatmentViewProps {
     allPatients: Patient[];
     onUpdatePatientDefaultTreatments: (patientId: number, treatments: DefaultTreatment[]) => void;
     treatmentItems: TreatmentItem[];
+    onTreatmentStart?: (patientId: number, roomName: string) => void;
 }
 
 const TreatmentView: React.FC<TreatmentViewProps> = ({
-    treatmentRooms, waitingList, onNavigateBack, onUpdateRooms, onSaveRoomToDB, onUpdateWaitingList, onRemoveFromWaitingList, onAddToWaitingList, onMovePatientToPayment, allPatients, onUpdatePatientDefaultTreatments, treatmentItems
+    treatmentRooms, waitingList, onNavigateBack, onUpdateRooms, onSaveRoomToDB, onUpdateWaitingList, onRemoveFromWaitingList, onAddToWaitingList, onMovePatientToPayment, allPatients, onUpdatePatientDefaultTreatments, treatmentItems, onTreatmentStart
 }) => {
     const [draggedTreatment, setDraggedTreatment] = useState<{ roomId: number; treatmentId: string } | null>(null);
     const [infoModalRoom, setInfoModalRoom] = useState<TreatmentRoom | null>(null);
@@ -590,8 +591,10 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
 
         if (updatedRoom) {
             onSaveRoomToDB(roomId, updatedRoom);
+            // 진료내역: 치료 시작 이벤트
+            onTreatmentStart?.(patientId, updatedRoom.name);
         }
-    }, [treatmentItems, onUpdateRooms, onRemoveFromWaitingList, onSaveRoomToDB]);
+    }, [treatmentItems, onUpdateRooms, onRemoveFromWaitingList, onSaveRoomToDB, onTreatmentStart]);
 
     const updateRoomRef = useRef<(roomId: number, updateFn: (room: TreatmentRoom) => TreatmentRoom, shouldSaveToDB?: boolean) => void>();
 

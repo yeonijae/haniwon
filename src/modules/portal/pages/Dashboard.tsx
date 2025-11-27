@@ -50,6 +50,30 @@ const APPS: AppInfo[] = [
     icon: '🏥',
     color: '#06b6d4',
   },
+  {
+    id: 'patient_care',
+    name: '환자관리',
+    description: '환자 관리 업무를 처리합니다. 해피콜, 치료 종결, 정기 관리 메시지 등을 관리할 수 있습니다.',
+    path: '/patient-care',
+    icon: '📞',
+    color: '#f97316',
+  },
+  {
+    id: 'funnel',
+    name: '퍼널관리',
+    description: '환자 유입 퍼널을 관리합니다. 리드 관리, 리타겟팅, DM발송 등을 할 수 있습니다.',
+    path: '/funnel',
+    icon: '🎯',
+    color: '#8b5cf6',
+  },
+  {
+    id: 'content',
+    name: '컨텐츠관리',
+    description: '블로그, 안내페이지, 랜딩페이지, 이벤트DM 등 컨텐츠를 관리합니다.',
+    path: '/content',
+    icon: '📝',
+    color: '#f43f5e',
+  },
 ];
 
 function Dashboard({ user, onLogout }: DashboardProps) {
