@@ -900,7 +900,7 @@ const DosageInstructionCreator: React.FC = () => {
         <div className="flex items-center justify-between mb-4 flex-shrink-0">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => navigate(prescriptionId ? '/prescriptions' : '/dosage-instructions')}
+              onClick={() => navigate(prescriptionId ? '/chart/prescriptions' : '/chart/dosage-instructions')}
               className="text-clinic-text-secondary hover:text-clinic-primary transition-colors"
             >
               <i className="fas fa-arrow-left text-xl"></i>
@@ -1499,7 +1499,7 @@ const DosageInstructionCreator: React.FC = () => {
             {/* 버튼 */}
             <div className="flex gap-3 sticky bottom-0 bg-clinic-background py-2">
               <button
-                onClick={() => navigate('/dosage-instructions')}
+                onClick={() => navigate('/chart/dosage-instructions')}
                 className="flex-1 px-4 py-3 border border-gray-300 bg-white rounded-lg text-clinic-text-secondary hover:bg-gray-50 transition-colors"
               >
                 취소

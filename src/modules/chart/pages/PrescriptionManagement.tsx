@@ -616,7 +616,7 @@ const PrescriptionManagement: React.FC = () => {
 
   // 복용법 작성 페이지로 이동
   const goToDosageInstruction = (prescription: Prescription) => {
-    navigate('/dosage-instructions/create', {
+    navigate('/chart/dosage-instructions/create', {
       state: {
         prescriptionId: prescription.id,
         patientName: prescription.patient_name,

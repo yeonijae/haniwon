@@ -15,6 +15,7 @@ export default defineConfig({
       '@treatment': path.resolve(__dirname, './src/modules/treatment'),
       '@funnel': path.resolve(__dirname, './src/modules/funnel'),
       '@content': path.resolve(__dirname, './src/modules/content'),
+      '@blog': path.resolve(__dirname, './src/modules/blog'),
     },
   },
   server: {

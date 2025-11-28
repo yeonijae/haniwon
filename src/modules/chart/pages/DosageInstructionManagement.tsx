@@ -159,7 +159,7 @@ const DosageInstructionManagement: React.FC = () => {
 
   // 복용법 수정 페이지로 이동
   const goToEditInstruction = (prescription: Prescription) => {
-    navigate('/dosage-instructions/create', {
+    navigate('/chart/dosage-instructions/create', {
       state: {
         prescriptionId: prescription.id,
         patientName: prescription.patient_name,
@@ -493,7 +493,7 @@ const DosageInstructionManagement: React.FC = () => {
             복용법
           </h1>
           <button
-            onClick={() => navigate('/dosage-instructions/create')}
+            onClick={() => navigate('/chart/dosage-instructions/create')}
             className="px-4 py-2 bg-clinic-primary text-white rounded-lg hover:bg-opacity-90 transition-colors flex items-center gap-2"
           >
             <i className="fas fa-plus"></i>

@@ -536,7 +536,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
       setShowPrescriptionInputModal(false);
       setPrescriptionSourceId(null);
       onClose(); // 진료기록 상세 모달 닫기
-      navigate('/prescriptions'); // 처방관리로 이동
+      navigate('/chart/prescriptions'); // 처방관리로 이동
     } catch (error: any) {
       console.error('처방전 발급 실패:', error);
       alert('처방전 발급에 실패했습니다: ' + error.message);
@@ -1005,7 +1005,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
                               <button
                                 onClick={() => {
                                   onClose();
-                                  navigate('/prescriptions');
+                                  navigate('/chart/prescriptions');
                                 }}
                                 className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold hover:bg-green-200 transition-colors cursor-pointer"
                                 title="처방 목록 보기"
@@ -1239,7 +1239,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
                             <button
                               onClick={() => {
                                 onClose();
-                                navigate('/prescriptions');
+                                navigate('/chart/prescriptions');
                               }}
                               className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold hover:bg-green-200 transition-colors cursor-pointer"
                               title="처방 목록 보기"

@@ -17,6 +17,17 @@ import PatientCareApp from './modules/patient-care/PatientCareApp';
 import FunnelApp from './modules/funnel/FunnelApp';
 import ContentApp from './modules/content/ContentApp';
 
+// Public Blog Pages (공개 - 로그인 불필요)
+import BlogListPage from './modules/blog/pages/BlogListPage';
+import BlogPostPage from './modules/blog/pages/BlogPostPage';
+import SubscribePage from './modules/blog/pages/SubscribePage';
+
+// Public Guide Pages (공개 - 로그인 불필요)
+import GuideViewPage from './modules/content/pages/GuideViewPage';
+
+// Public Landing Pages (공개 - 로그인 불필요)
+import LandingViewPage from './modules/content/pages/LandingViewPage';
+
 // Loading component
 function LoadingScreen() {
   return (
@@ -122,6 +133,31 @@ function App() {
         path="/content/*"
         element={user ? <ContentApp user={user} /> : <Navigate to="/login" replace />}
       />
+
+      {/* Blog Management Routes (레거시 - /content/blog로 리다이렉트) */}
+      <Route
+        path="/blog/manage"
+        element={<Navigate to="/content/blog" replace />}
+      />
+      <Route
+        path="/blog/manage/new"
+        element={<Navigate to="/content/blog/new" replace />}
+      />
+      <Route
+        path="/blog/manage/edit/:id"
+        element={<Navigate to="/content/blog/edit/:id" replace />}
+      />
+
+      {/* Public Blog Routes (로그인 불필요) */}
+      <Route path="/blog" element={<BlogListPage />} />
+      <Route path="/blog/subscribe" element={<SubscribePage />} />
+      <Route path="/blog/:slug" element={<BlogPostPage />} />
+
+      {/* Public Guide Routes (로그인 불필요) */}
+      <Route path="/g/:slug" element={<GuideViewPage />} />
+
+      {/* Public Landing Routes (로그인 불필요) */}
+      <Route path="/l/:slug" element={<LandingViewPage />} />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />

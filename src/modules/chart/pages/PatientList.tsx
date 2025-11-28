@@ -315,7 +315,7 @@ const PatientList: React.FC = () => {
               {needsChartingPatients.map((patient) => (
                 <div
                   key={patient.id}
-                  onClick={() => navigate(`/patients/${patient.id}`)}
+                  onClick={() => navigate(`/chart/patients/${patient.id}`)}
                   className="bg-white border-2 border-orange-400 rounded-lg p-3 hover:bg-orange-50 cursor-pointer transition-colors"
                 >
                   <div className="flex items-start justify-between">
@@ -364,7 +364,7 @@ const PatientList: React.FC = () => {
                 {displayPatients.map((patient) => (
                   <tr
                     key={patient.id}
-                    onClick={() => navigate(`/patients/${patient.id}`)}
+                    onClick={() => navigate(`/chart/patients/${patient.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-clinic-text-secondary">{patient.chart_number || '-'}</td>

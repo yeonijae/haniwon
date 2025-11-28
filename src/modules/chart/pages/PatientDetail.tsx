@@ -40,7 +40,7 @@ const PatientDetail: React.FC = () => {
     } catch (error) {
       console.error('환자 정보 로드 실패:', error);
       alert('환자 정보를 불러오는데 실패했습니다');
-      navigate('/');
+      navigate('/chart/patients');
     } finally {
       setLoading(false);
     }
@@ -83,7 +83,7 @@ const PatientDetail: React.FC = () => {
         <div className="flex justify-between items-center mb-4 flex-shrink-0">
         <h1 className="text-2xl font-bold text-clinic-text-primary">차트 관리</h1>
         <button
-          onClick={() => navigate('/patients')}
+          onClick={() => navigate('/chart/patients')}
           className="px-3 py-1.5 bg-clinic-text-secondary text-white rounded-lg hover:bg-gray-600 transition-colors font-medium text-sm"
         >
           <i className="fas fa-arrow-left mr-2"></i>목록으로
