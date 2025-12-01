@@ -3,7 +3,7 @@
  * Supabase 직접 연결
  */
 
-import { Patient, Reservation, Payment, DefaultTreatment, Acting, CompletedPayment, MedicalStaff, Staff, UncoveredCategories, TreatmentRoom, SessionTreatment, TreatmentItem } from '../types';
+import { Patient, Reservation, Payment, DefaultTreatment, Acting, CompletedPayment, MedicalStaff, Staff, UncoveredCategories, TreatmentRoom, SessionTreatment, TreatmentItem, ConsultationItem, ConsultationSubItem } from '../types';
 import { supabase } from '@shared/lib/supabase';
 
 /**
@@ -1046,6 +1046,8 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
     patientId: room.patient_id,
     patientName: room.patient_name,
     patientChartNumber: room.patient_chart_number,
+    patientGender: room.patient_gender,
+    patientDob: room.patient_dob,
     doctorName: room.doctor_name,
     inTime: room.in_time,
     sessionTreatments: (room.session_treatments || []).map((st: any) => ({
@@ -1095,6 +1097,8 @@ export async function updateTreatmentRoom(roomId: number, room: Partial<Treatmen
   if (room.patientId !== undefined) updateData.patient_id = room.patientId;
   if (room.patientName !== undefined) updateData.patient_name = room.patientName;
   if (room.patientChartNumber !== undefined) updateData.patient_chart_number = room.patientChartNumber;
+  if (room.patientGender !== undefined) updateData.patient_gender = room.patientGender;
+  if (room.patientDob !== undefined) updateData.patient_dob = room.patientDob;
   if (room.doctorName !== undefined) updateData.doctor_name = room.doctorName;
   if (room.inTime !== undefined) updateData.in_time = room.inTime;
 
@@ -1355,6 +1359,13 @@ export async function fetchWaitingQueue(queueType: 'consultation' | 'treatment')
 
 // 대기 목록에 환자 추가
 export async function addToWaitingQueue(item: Omit<WaitingQueueItem, 'id' | 'created_at'>): Promise<WaitingQueueItem> {
+  // 먼저 같은 큐에 이미 있는지 확인하고 있으면 삭제
+  await supabase
+    .from('waiting_queue')
+    .delete()
+    .eq('patient_id', item.patient_id)
+    .eq('queue_type', item.queue_type);
+
   // 현재 최대 position 조회
   const { data: maxData } = await supabase
     .from('waiting_queue')
@@ -1437,4 +1448,181 @@ export async function movePatientBetweenQueues(
     details,
     position: 0, // addToWaitingQueue에서 자동 계산됨
   });
+}
+
+/**
+ * 진료항목 관리 API
+ * consultation_items, consultation_sub_items 테이블 사용
+ */
+
+// 진료항목 전체 조회 (세부항목 포함)
+export async function fetchConsultationItems(): Promise<ConsultationItem[]> {
+  const { data, error } = await supabase
+    .from('consultation_items')
+    .select(`
+      *,
+      consultation_sub_items (*)
+    `)
+    .order('display_order', { ascending: true });
+
+  if (error) {
+    console.error('❌ 진료항목 조회 오류:', error);
+    throw error;
+  }
+
+  return (data || []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    displayOrder: item.display_order ?? 0,
+    subItems: (item.consultation_sub_items || [])
+      .sort((a: any, b: any) => (a.display_order ?? 0) - (b.display_order ?? 0))
+      .map((sub: any) => ({
+        id: sub.id,
+        name: sub.name,
+        displayOrder: sub.display_order ?? 0,
+      })),
+  }));
+}
+
+// 진료항목 생성
+export async function createConsultationItem(item: Omit<ConsultationItem, 'id' | 'subItems'>): Promise<ConsultationItem> {
+  const { data, error } = await supabase
+    .from('consultation_items')
+    .insert({
+      name: item.name,
+      display_order: item.displayOrder,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ 진료항목 생성 오류:', error);
+    throw error;
+  }
+
+  return {
+    id: data.id,
+    name: data.name,
+    displayOrder: data.display_order ?? 0,
+    subItems: [],
+  };
+}
+
+// 진료항목 수정
+export async function updateConsultationItem(id: number, item: { name: string; displayOrder: number }): Promise<void> {
+  const { error } = await supabase
+    .from('consultation_items')
+    .update({
+      name: item.name,
+      display_order: item.displayOrder,
+    })
+    .eq('id', id);
+
+  if (error) {
+    console.error('❌ 진료항목 수정 오류:', error);
+    throw error;
+  }
+}
+
+// 진료항목 삭제 (세부항목도 함께 삭제됨 - CASCADE)
+export async function deleteConsultationItem(id: number): Promise<void> {
+  const { error } = await supabase
+    .from('consultation_items')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('❌ 진료항목 삭제 오류:', error);
+    throw error;
+  }
+}
+
+// 진료항목 순서 일괄 업데이트
+export async function updateConsultationItemsOrder(
+  items: Array<{ id: number; displayOrder: number }>
+): Promise<void> {
+  const updatePromises = items.map((item) =>
+    supabase.from('consultation_items').update({ display_order: item.displayOrder }).eq('id', item.id)
+  );
+
+  const results = await Promise.all(updatePromises);
+  const errors = results.filter((r) => r.error).map((r) => r.error);
+
+  if (errors.length > 0) {
+    console.error('❌ 진료항목 순서 업데이트 오류:', errors);
+    throw new Error('진료항목 순서 업데이트 중 오류가 발생했습니다.');
+  }
+}
+
+// 세부항목 생성
+export async function createConsultationSubItem(
+  parentId: number,
+  subItem: Omit<ConsultationSubItem, 'id'>
+): Promise<ConsultationSubItem> {
+  const { data, error } = await supabase
+    .from('consultation_sub_items')
+    .insert({
+      parent_id: parentId,
+      name: subItem.name,
+      display_order: subItem.displayOrder,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ 세부항목 생성 오류:', error);
+    throw error;
+  }
+
+  return {
+    id: data.id,
+    name: data.name,
+    displayOrder: data.display_order ?? 0,
+  };
+}
+
+// 세부항목 수정
+export async function updateConsultationSubItem(id: number, subItem: { name: string; displayOrder: number }): Promise<void> {
+  const { error } = await supabase
+    .from('consultation_sub_items')
+    .update({
+      name: subItem.name,
+      display_order: subItem.displayOrder,
+    })
+    .eq('id', id);
+
+  if (error) {
+    console.error('❌ 세부항목 수정 오류:', error);
+    throw error;
+  }
+}
+
+// 세부항목 삭제
+export async function deleteConsultationSubItem(id: number): Promise<void> {
+  const { error } = await supabase
+    .from('consultation_sub_items')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('❌ 세부항목 삭제 오류:', error);
+    throw error;
+  }
+}
+
+// 세부항목 순서 일괄 업데이트
+export async function updateConsultationSubItemsOrder(
+  items: Array<{ id: number; displayOrder: number }>
+): Promise<void> {
+  const updatePromises = items.map((item) =>
+    supabase.from('consultation_sub_items').update({ display_order: item.displayOrder }).eq('id', item.id)
+  );
+
+  const results = await Promise.all(updatePromises);
+  const errors = results.filter((r) => r.error).map((r) => r.error);
+
+  if (errors.length > 0) {
+    console.error('❌ 세부항목 순서 업데이트 오류:', errors);
+    throw new Error('세부항목 순서 업데이트 중 오류가 발생했습니다.');
+  }
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, memo, useCallback } from 'react';
-import { TreatmentRoom, RoomStatus, Patient, SessionTreatment, DefaultTreatment, TreatmentItem } from '../types';
+import { TreatmentRoom, RoomStatus, Patient, PatientStatus, SessionTreatment, DefaultTreatment, TreatmentItem } from '../types';
 import TreatmentInfoModal from './TreatmentInfoModal';
 import DefaultTreatmentEditModal from './DefaultTreatmentEditModal';
 import * as api from '../lib/api';
@@ -577,6 +577,8 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                     patientId: patient.id,
                     patientName: patient.name,
                     patientChartNumber: patient.chartNumber,
+                    patientGender: patient.gender,
+                    patientDob: patient.dob,
                     doctorName: '김원장',
                     inTime: new Date().toISOString(),
                     sessionTreatments,
@@ -682,30 +684,53 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
 
     const handleReturnToWaiting = useCallback(async (roomId: number) => {
         const room = treatmentRoomsRef.current.find(r => r.id === roomId);
-        const patient = allPatientsRef.current.find(p => p.id === room?.patientId);
-        if (room && patient) {
-            onAddToWaitingList(patient);
-
-            if (room.sessionId) {
-                try {
-                    await api.clearTreatmentRoom(roomId);
-                } catch (error) {
-                    console.error('치료실 정리 오류:', error);
-                }
-            }
-
-            updateRoom(roomId, r => ({
-                ...r,
-                status: RoomStatus.AVAILABLE,
-                sessionId: undefined,
-                patientId: undefined,
-                patientName: undefined,
-                patientChartNumber: undefined,
-                doctorName: undefined,
-                inTime: undefined,
-                sessionTreatments: []
-            }), false);
+        if (!room || !room.patientId) {
+            console.error('❌ [handleReturnToWaiting] 룸 또는 환자 ID를 찾을 수 없음');
+            return;
         }
+
+        // allPatients에서 먼저 찾고, 없으면 room 정보로 Patient 객체 생성
+        let patient = allPatientsRef.current.find(p => p.id === room.patientId);
+        if (!patient) {
+            console.log('[handleReturnToWaiting] allPatients에서 환자를 찾을 수 없어 room 정보로 생성');
+            patient = {
+                id: room.patientId,
+                name: room.patientName || '알 수 없음',
+                chartNumber: room.patientChartNumber,
+                status: PatientStatus.WAITING_TREATMENT,
+                time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                details: '치료실→대기',
+                gender: room.patientGender,
+                dob: room.patientDob,
+            };
+        }
+
+        // 대기 목록에 추가
+        onAddToWaitingList(patient);
+
+        // DB에서 세션 치료 항목 삭제
+        if (room.sessionId) {
+            try {
+                await api.clearTreatmentRoom(roomId);
+            } catch (error) {
+                console.error('❌ 치료실 정리 오류:', error);
+            }
+        }
+
+        // 로컬 상태 업데이트
+        updateRoom(roomId, r => ({
+            ...r,
+            status: RoomStatus.AVAILABLE,
+            sessionId: undefined,
+            patientId: undefined,
+            patientName: undefined,
+            patientChartNumber: undefined,
+            patientGender: undefined,
+            patientDob: undefined,
+            doctorName: undefined,
+            inTime: undefined,
+            sessionTreatments: []
+        }), false);
     }, [onAddToWaitingList, updateRoom]);
 
     const handleClean = useCallback((roomId: number) => {
@@ -730,6 +755,8 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             patientId: undefined,
             patientName: undefined,
             patientChartNumber: undefined,
+            patientGender: undefined,
+            patientDob: undefined,
             doctorName: undefined,
             inTime: undefined,
             sessionTreatments: []

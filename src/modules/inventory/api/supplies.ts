@@ -1,27 +1,8 @@
 /**
- * 소모품 요청 API - hani-api-server 통합
+ * 구입 요청 API - Supabase 직접 연결
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
-  }
-
-  return response.json();
-}
+import { supabase } from '@shared/lib/supabase';
 
 export interface SupplyRequest {
   id: number;
@@ -35,40 +16,87 @@ export interface SupplyRequest {
 }
 
 export const suppliesApi = {
-  getAll: async () => {
-    return fetchAPI<SupplyRequest[]>('/api/materials/supply-requests');
+  getAll: async (): Promise<SupplyRequest[]> => {
+    const { data, error } = await supabase
+      .from('supply_requests')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data || [];
   },
 
-  create: async (data: Partial<SupplyRequest>) => {
-    return fetchAPI<SupplyRequest>('/api/materials/supply-requests', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  create: async (data: Partial<SupplyRequest>): Promise<SupplyRequest> => {
+    const { data: result, error } = await supabase
+      .from('supply_requests')
+      .insert({
+        item_name: data.item_name,
+        quantity: data.quantity,
+        requested_by: data.requested_by || '관리자',
+        status: 'pending',
+        note: data.note,
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return result;
   },
 
-  update: async (id: number, data: Partial<SupplyRequest>) => {
-    return fetchAPI<SupplyRequest>(`/api/materials/supply-requests/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+  update: async (id: number, data: Partial<SupplyRequest>): Promise<SupplyRequest> => {
+    const { data: result, error } = await supabase
+      .from('supply_requests')
+      .update({
+        item_name: data.item_name,
+        quantity: data.quantity,
+        status: data.status,
+        note: data.note,
+        completed_at: data.completed_at
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return result;
   },
 
-  toggleComplete: async (id: number, currentStatus: string) => {
+  toggleComplete: async (id: number, currentStatus: string): Promise<SupplyRequest> => {
     const newStatus = currentStatus === 'pending' ? 'completed' : 'pending';
-    return fetchAPI<SupplyRequest>(`/api/materials/supply-requests/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({
+    const { data: result, error } = await supabase
+      .from('supply_requests')
+      .update({
         status: newStatus,
-        completed_at: newStatus === 'completed' ? new Date().toISOString() : null,
-      }),
-    });
+        completed_at: newStatus === 'completed' ? new Date().toISOString() : null
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return result;
   },
 
-  delete: async (id: number) => {
-    return fetchAPI(`/api/materials/supply-requests/${id}`, { method: 'DELETE' });
+  delete: async (id: number): Promise<void> => {
+    const { error } = await supabase
+      .from('supply_requests')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw new Error(error.message);
   },
 
-  getStats: async () => {
-    return fetchAPI<{ pending: number; completed: number }>('/api/materials/supply-requests/stats');
+  getStats: async (): Promise<{ pending: number; completed: number }> => {
+    const { data, error } = await supabase
+      .from('supply_requests')
+      .select('status');
+
+    if (error) throw new Error(error.message);
+
+    const pending = data?.filter(item => item.status === 'pending').length || 0;
+    const completed = data?.filter(item => item.status === 'completed').length || 0;
+
+    return { pending, completed };
   }
 };

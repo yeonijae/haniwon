@@ -2,7 +2,6 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Header, { ModalType } from './components/Header';
 import ReservationStatus from './components/ReservationStatus';
-import ConsultationStatus from './components/ConsultationStatus';
 import WaitingList from './components/WaitingList';
 import TreatmentRoomStatus from './components/TreatmentRoomStatus';
 import PaymentStatus from './components/PaymentStatus';
@@ -15,6 +14,7 @@ import PatientSearch from './components/PatientSearch';
 import PaymentModal from './components/PaymentModal';
 import DailyPaymentSummary from './components/DailyPaymentSummary';
 import Settings from './components/Settings';
+import ConsultationInfoModal from './components/ConsultationInfoModal';
 
 // Custom Hooks
 import { usePatients } from './hooks/usePatients';
@@ -23,8 +23,8 @@ import { usePayments } from './hooks/usePayments';
 import { useTreatmentRooms } from './hooks/useTreatmentRooms';
 import { useActingQueues } from './hooks/useActingQueues';
 import { useStaff } from './hooks/useStaff';
-import { useTreatmentItems } from './hooks/useTreatmentItems';
 import { useConsultationRooms } from './hooks/useConsultationRooms';
+import { useConsultationItems } from './hooks/useConsultationItems';
 
 import type { PortalUser } from '@shared/types';
 import { useTreatmentRecord } from '@shared/hooks/useTreatmentRecord';
@@ -79,13 +79,33 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
 
   // Staff
   const staffHook = useStaff(currentUser);
-  const treatmentItemsHook = useTreatmentItems(currentUser);
 
   // Consultation Rooms
   const consultationRoomsHook = useConsultationRooms({ medicalStaff: staffHook.medicalStaff });
 
+  // Consultation Items (진료항목)
+  const consultationItemsHook = useConsultationItems(currentUser);
+
   // Treatment Record (진료내역 타임라인)
   const treatmentRecord = useTreatmentRecord();
+
+  // 치료실에 있는 환자들의 정보를 캐시에 로드
+  useEffect(() => {
+    const loadTreatmentRoomPatients = async () => {
+      const patientIds = treatmentRoomsHook.treatmentRooms
+        .filter(room => room.patientId)
+        .map(room => room.patientId!);
+
+      for (const patientId of patientIds) {
+        // 캐시에 없으면 로드
+        if (!patients.allPatients.find(p => p.id === patientId)) {
+          await patients.getPatientById(patientId);
+        }
+      }
+    };
+
+    loadTreatmentRoomPatients();
+  }, [treatmentRoomsHook.treatmentRooms, patients.getPatientById, patients.allPatients]);
 
   // Modal State
   const [modalType, setModalType] = useState<ModalType | null>(null);
@@ -96,6 +116,7 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
   const [bulkAddResult, setBulkAddResult] = useState<{ new: number; updated: number; failures: BulkAddFailure[] } | null>(null);
   const [patientIdToDelete, setPatientIdToDelete] = useState<number | null>(null);
   const [patientForNewReservation, setPatientForNewReservation] = useState<Patient | null>(null);
+  const [patientForConsultationInfo, setPatientForConsultationInfo] = useState<Patient | null>(null);
 
   // Memoized patient to delete info
   const patientToDeleteInfo = useMemo(() => {
@@ -104,16 +125,20 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
   }, [patientIdToDelete, patients.allPatients]);
 
   // Modal Handlers
-  const openModal = (type: ModalType, title: string, wide?: boolean) => {
+  const [isModalFullHeight, setIsModalFullHeight] = useState<boolean>(false);
+
+  const openModal = (type: ModalType, title: string, wide?: boolean, fullHeight?: boolean) => {
     setModalType(type);
     setModalTitle(title);
     setIsModalWide(wide || false);
+    setIsModalFullHeight(fullHeight || false);
   };
 
   const closeModal = () => {
     setModalType(null);
     setModalTitle('');
     setIsModalWide(false);
+    setIsModalFullHeight(false);
     setEditingReservation(null);
     setSelectedPayment(null);
     setPatientForNewReservation(null);
@@ -235,17 +260,64 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
 
   const handlePatientDrop = (
     draggedPatientId: number,
-    sourceListType: 'consultation' | 'treatment',
+    sourceListType: 'consultation' | 'treatment' | 'consultation_room',
     destinationListType: 'consultation' | 'treatment',
     targetPatientId: number | null
   ) => {
+    console.log('🔄 handlePatientDrop 호출:', { draggedPatientId, sourceListType, destinationListType, targetPatientId });
+
+    // 진료실에서 드래그한 경우
+    if (sourceListType === 'consultation_room') {
+      console.log('📍 진료실에서 드래그 감지');
+      const room = consultationRoomsHook.consultationRooms.find(r => r.patientId === draggedPatientId);
+      console.log('📍 찾은 진료실:', room);
+
+      if (room) {
+        // 진료실에서 환자 정보 가져오기 (allPatients 캐시에서 먼저 찾기)
+        let patientInfo = patients.allPatients.find(p => p.id === draggedPatientId);
+        console.log('📍 캐시에서 찾은 환자:', patientInfo);
+
+        if (!patientInfo) {
+          // 캐시에 없는 경우 진료실 정보로 생성
+          console.warn(`환자 ID ${draggedPatientId}가 캐시에 없습니다. 진료실 정보로 대체합니다.`);
+          patientInfo = {
+            id: draggedPatientId,
+            name: room.patientName || '알 수 없음',
+            chartNumber: '',
+            status: PatientStatus.WAITING_TREATMENT,
+            time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+            details: room.patientDetails || '',
+          };
+        }
+
+        // 진료실 비우기
+        console.log('📍 진료실 비우기:', room.id);
+        consultationRoomsHook.clearConsultationRoom(room.id);
+
+        // 대상 목록에 추가
+        if (destinationListType === 'treatment') {
+          console.log('📍 치료대기 목록에 추가');
+          patients.addToTreatmentList(patientInfo, room.patientDetails || '진료완료');
+        } else {
+          console.log('📍 진료대기 목록에 추가');
+          patients.addToConsultationList(patientInfo, room.patientDetails || '재진료대기');
+        }
+      } else {
+        console.error('❌ 진료실을 찾을 수 없음. patientId:', draggedPatientId);
+        console.log('📍 현재 진료실 목록:', consultationRoomsHook.consultationRooms);
+      }
+      return;
+    }
+
+    // 기존 대기목록 간 이동
+    console.log('📍 대기목록 간 이동 호출');
     patients.handlePatientDrop(draggedPatientId, sourceListType, destinationListType, targetPatientId);
   };
 
   // Payment Handlers
   const handleOpenPaymentModal = (payment: Payment) => {
     setSelectedPayment(payment);
-    openModal('payment', `${payment.patientName}님 수납 처리`);
+    openModal('payment', `${payment.patientName}님 수납 처리`, true, true);
   };
 
   const handleOpenReservationForPatient = (payment: Payment) => {
@@ -314,40 +386,109 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
     }
   };
 
-  const handleAssignPatientToConsultationRoom = async (patientId: number, roomId: number, sourceListType: 'consultation' | 'treatment') => {
-    const sourceList = sourceListType === 'consultation' ? patients.consultationWaitingList : patients.treatmentWaitingList;
-    const patientToAssign = sourceList.find(p => p.id === patientId);
+  const handleAssignPatientToConsultationRoom = async (
+    patientId: number,
+    roomId: number,
+    sourceListType: 'consultation' | 'treatment' | 'consultation_room',
+    sourceRoomId?: number
+  ) => {
+    let patientToAssign: Patient | undefined;
+    let patientDetails = '';
 
-    if (!patientToAssign) {
-      alert('대기 목록에서 환자를 찾을 수 없습니다.');
-      return;
+    if (sourceListType === 'consultation_room') {
+      // 다른 진료실에서 이동하는 경우
+      const sourceRoom = consultationRoomsHook.consultationRooms.find(r => r.id === sourceRoomId);
+      if (!sourceRoom || sourceRoom.patientId !== patientId) {
+        console.error('원본 진료실을 찾을 수 없습니다.');
+        return;
+      }
+
+      // 환자 정보 가져오기
+      patientToAssign = patients.allPatients.find(p => p.id === patientId);
+      if (!patientToAssign) {
+        patientToAssign = {
+          id: patientId,
+          name: sourceRoom.patientName || '알 수 없음',
+          chartNumber: '',
+          status: PatientStatus.IN_CONSULTATION,
+          time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        };
+      }
+      patientDetails = sourceRoom.patientDetails || '진료실 이동';
+
+      // 원본 진료실 비우기
+      consultationRoomsHook.clearConsultationRoom(sourceRoomId!);
+    } else {
+      // 대기 목록에서 이동하는 경우
+      const sourceList = sourceListType === 'consultation' ? patients.consultationWaitingList : patients.treatmentWaitingList;
+      patientToAssign = sourceList.find(p => p.id === patientId);
+
+      if (!patientToAssign) {
+        alert('대기 목록에서 환자를 찾을 수 없습니다.');
+        return;
+      }
+
+      patientDetails = sourceListType === 'treatment' ? '치료실->재진료' : (patientToAssign.details || '');
+
+      // 대기 목록에서 제거
+      if (sourceListType === 'consultation') {
+        patients.removeFromConsultationList(patientId);
+      } else {
+        patients.removeFromTreatmentList(patientId);
+      }
     }
 
     const canAssign = consultationRoomsHook.handleAssignPatientToRoom(patientId, roomId);
     if (!canAssign) return;
 
-    if (sourceListType === 'consultation') {
-      patients.removeFromConsultationList(patientId);
-    } else {
-      patients.removeFromTreatmentList(patientId);
-    }
-
     const room = consultationRoomsHook.consultationRooms.find(r => r.id === roomId);
 
-    // 진료내역: 진료 시작
-    await treatmentRecord.startConsultation(patientId, {
-      location: room?.roomName,
-      staffName: room?.doctorName,
-    });
+    // 진료내역: 진료 시작 (진료실 간 이동이 아닌 경우에만)
+    if (sourceListType !== 'consultation_room') {
+      await treatmentRecord.startConsultation(patientId, {
+        location: room?.roomName,
+        staffName: room?.doctorName,
+      });
+    }
 
     consultationRoomsHook.assignPatientToRoom(
       roomId,
       patientToAssign.id,
       patientToAssign.name,
-      sourceListType === 'treatment' ? '치료실->재진료' : patientToAssign.details
+      patientDetails
     );
+  };
 
-    alert(`${patientToAssign.name}님을 ${room?.roomName}에 배정했습니다.`);
+  // 접수 취소 (진료대기, 치료대기, 진료실에서 환자를 완전히 제거)
+  const handleCancelRegistration = async (patientId: number) => {
+    const confirmCancel = window.confirm('정말로 접수를 취소하시겠습니까?');
+    if (!confirmCancel) return;
+
+    // 진료 대기 목록에서 제거
+    const inConsultation = patients.consultationWaitingList.find(p => p.id === patientId);
+    if (inConsultation) {
+      patients.removeFromConsultationList(patientId);
+      alert(`${inConsultation.name}님의 접수가 취소되었습니다.`);
+      return;
+    }
+
+    // 치료 대기 목록에서 제거
+    const inTreatment = patients.treatmentWaitingList.find(p => p.id === patientId);
+    if (inTreatment) {
+      patients.removeFromTreatmentList(patientId);
+      alert(`${inTreatment.name}님의 접수가 취소되었습니다.`);
+      return;
+    }
+
+    // 진료실에서 제거
+    const room = consultationRoomsHook.consultationRooms.find(r => r.patientId === patientId);
+    if (room) {
+      consultationRoomsHook.clearConsultationRoom(room.id);
+      alert(`${room.patientName}님의 접수가 취소되었습니다.`);
+      return;
+    }
+
+    alert('환자를 찾을 수 없습니다.');
   };
 
   const handleMovePatientToPayment = async (patientId: number, sourceList: 'consultation' | 'treatment' | 'treatment_room') => {
@@ -432,6 +573,12 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
           addPatientToTreatment={patients.addPatientToTreatment}
           updatePatientInfo={updatePatientInfo}
           deletePatient={handleRequestDeletePatient}
+          onClose={closeModal}
+          consultationItems={consultationItemsHook.consultationItems}
+          onReservation={(patient) => {
+            setPatientForNewReservation(patient);
+            setActiveModal('reservation');
+          }}
         />;
       case 'payment':
         return <PaymentModal
@@ -439,9 +586,21 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
           onClose={closeModal}
           onComplete={handleCompletePayment}
           uncoveredCategories={staffHook.uncoveredCategories}
+          completedPayments={paymentsHook.completedPayments}
         />;
       case 'dailyPayments':
         return <DailyPaymentSummary completedPayments={paymentsHook.completedPayments} />;
+      case 'consultationInfo':
+        return patientForConsultationInfo ? (
+          <ConsultationInfoModal
+            patient={patientForConsultationInfo}
+            consultationItems={consultationItemsHook.consultationItems}
+            onSave={(patientId, details) => {
+              patients.updatePatientDetails(patientId, details);
+            }}
+            onClose={closeModal}
+          />
+        ) : null;
       case 'stats':
         return <p>통계 정보가 여기에 표시됩니다.</p>;
       case 'settings':
@@ -461,11 +620,15 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
           deleteStaff={staffHook.deleteStaff}
           uncoveredCategories={staffHook.uncoveredCategories}
           updateUncoveredCategories={staffHook.updateUncoveredCategories}
-          treatmentItems={treatmentItemsHook.treatmentItems}
-          addTreatmentItem={treatmentItemsHook.addTreatmentItem}
-          updateTreatmentItem={treatmentItemsHook.updateTreatmentItem}
-          deleteTreatmentItem={treatmentItemsHook.deleteTreatmentItem}
-          reorderTreatmentItems={treatmentItemsHook.reorderTreatmentItems}
+          consultationItems={consultationItemsHook.consultationItems}
+          addConsultationItem={consultationItemsHook.addConsultationItem}
+          updateConsultationItem={consultationItemsHook.updateConsultationItem}
+          deleteConsultationItem={consultationItemsHook.deleteConsultationItem}
+          reorderConsultationItems={consultationItemsHook.reorderConsultationItems}
+          addSubItem={consultationItemsHook.addSubItem}
+          updateSubItem={consultationItemsHook.updateSubItem}
+          deleteSubItem={consultationItemsHook.deleteSubItem}
+          reorderSubItems={consultationItemsHook.reorderSubItems}
         />;
       default:
         return null;
@@ -520,9 +683,9 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
 
       <Routes>
         <Route path="/" element={
-          <main className="flex-grow p-4 lg:p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 lg:gap-6 min-h-0">
-            {/* 1. 예약현황 */}
-            <div className="xl:col-span-1 flex flex-col min-h-0">
+          <main className="flex-grow p-4 lg:p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-10 gap-4 lg:gap-6 min-h-0">
+            {/* 1. 예약현황 (20% - 2/10) */}
+            <div className="xl:col-span-2 flex flex-col min-h-0">
               <ReservationStatus
                 reservations={reservationHook.reservations}
                 onEditReservation={handleEditReservation}
@@ -530,13 +693,8 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
               />
             </div>
 
-            {/* 2. 진료실현황, 진료대기 */}
-            <div className="xl:col-span-1 flex flex-col gap-4 lg:gap-6">
-              <ConsultationStatus
-                rooms={consultationRoomsHook.consultationRooms}
-                onFinishConsultation={handleFinishConsultation}
-                onAssignPatient={handleAssignPatientToConsultationRoom}
-              />
+            {/* 2. 대기실 (30% - 3/10) */}
+            <div className="xl:col-span-3 flex flex-col gap-4 lg:gap-6 min-h-0">
               <WaitingList
                 title="진료 대기"
                 icon="fa-solid fa-user-doctor"
@@ -545,11 +703,12 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
                 onPatientClick={movePatient}
                 onPatientDrop={handlePatientDrop}
                 onMoveToPayment={(id) => handleMovePatientToPayment(id, 'consultation')}
+                onCancelRegistration={handleCancelRegistration}
+                onEditConsultationInfo={(patient) => {
+                  setPatientForConsultationInfo(patient);
+                  openModal('consultationInfo', `${patient.name}님 진료정보`);
+                }}
               />
-            </div>
-
-            {/* 3. 치료대기 */}
-            <div className="xl:col-span-1 flex flex-col min-h-0">
               <WaitingList
                 title="치료 대기"
                 icon="fa-solid fa-bed-pulse"
@@ -558,16 +717,21 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
                 onPatientClick={movePatient}
                 onPatientDrop={handlePatientDrop}
                 onMoveToPayment={(id) => handleMovePatientToPayment(id, 'treatment')}
+                onCancelRegistration={handleCancelRegistration}
+                onEditConsultationInfo={(patient) => {
+                  setPatientForConsultationInfo(patient);
+                  openModal('consultationInfo', `${patient.name}님 진료정보`);
+                }}
               />
             </div>
 
-            {/* 4. 치료실 현황 */}
-            <div className="xl:col-span-1 flex flex-col min-h-0">
-              <TreatmentRoomStatus treatmentRooms={treatmentRoomsHook.treatmentRooms} />
+            {/* 3. 치료실 현황 (30% - 3/10) */}
+            <div className="xl:col-span-3 flex flex-col min-h-0">
+              <TreatmentRoomStatus treatmentRooms={treatmentRoomsHook.treatmentRooms} allPatients={patients.allPatients} />
             </div>
 
-            {/* 5. 수납및예약 */}
-            <div className="xl:col-span-1 flex flex-col min-h-0">
+            {/* 4. 수납 (20% - 2/10) */}
+            <div className="xl:col-span-2 flex flex-col min-h-0">
               <PaymentStatus
                 payments={paymentsHook.paymentsWaiting}
                 onPaymentClick={handleOpenPaymentModal}
@@ -580,7 +744,7 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
         } />
       </Routes>
 
-      <Modal isOpen={modalType !== null} onClose={closeModal} title={modalTitle} wide={isModalWide}>
+      <Modal isOpen={modalType !== null} onClose={closeModal} title={modalTitle} wide={isModalWide} fullHeight={isModalFullHeight}>
         {renderModalContent()}
       </Modal>
 

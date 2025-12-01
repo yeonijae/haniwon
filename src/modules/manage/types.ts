@@ -66,6 +66,8 @@ export interface TreatmentRoom {
   patientId?: number;
   patientName?: string;
   patientChartNumber?: string;
+  patientGender?: 'male' | 'female';
+  patientDob?: string; // YYYY-MM-DD
   doctorName?: string;
   inTime?: string; // ISO string for when patient was assigned
   sessionTreatments: SessionTreatment[];
@@ -160,9 +162,15 @@ export interface MedicalStaffPermissions {
   statistics: boolean;
 }
 
+export interface DayWorkHours {
+  startTime: string; // HH:mm
+  endTime: string; // HH:mm
+}
+
 export interface WorkPattern {
   id: string;
   days: boolean[]; // index 0 = Monday, ..., 6 = Sunday
+  dayWorkHours: (DayWorkHours | null)[]; // 각 요일별 근무시간, null이면 해당 요일 근무 안함
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
 }
@@ -211,6 +219,20 @@ export type UncoveredCategories = {
 };
 
 export type ActingType = '침' | '추나' | '초진' | '약상담' | '초음파' | '대기' | '기타' | '향기' | '습부';
+
+// 진료항목 (접수 시 선택하는 항목)
+export interface ConsultationSubItem {
+  id: number;
+  name: string;
+  displayOrder: number;
+}
+
+export interface ConsultationItem {
+  id: number;
+  name: string;
+  displayOrder: number;
+  subItems: ConsultationSubItem[];
+}
 
 export interface Acting {
   id: string;

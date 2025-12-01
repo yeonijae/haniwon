@@ -384,60 +384,76 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
             >
               {room.status === RoomStatus.IN_USE ? (
                 <>
-                  {/* Patient Info Header */}
-                  <div className="relative flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3">
-                    <h4
-                        className="font-extrabold text-2xl text-clinic-text-primary cursor-pointer hover:text-clinic-secondary transition-colors"
+                  {/* Patient Info Header - Compact Layout */}
+                  <div className="relative px-2 py-1">
+                    {/* 첫째 줄: 환자이름(큰폰트) + 성별/나이 + 차트번호 */}
+                    <div className="flex items-baseline gap-1.5 flex-wrap">
+                      <span
+                        className="font-bold text-xl text-clinic-text-primary cursor-pointer hover:underline leading-tight"
+                        title={`${room.patientName}님 치료정보 수정 (우클릭)`}
+                        onContextMenu={handlePatientNameRightClick}
+                      >
+                        {room.patientName}
+                      </span>
+                      {(room.patientGender || room.patientDob) && (
+                        <span className="text-xs text-gray-500">
+                          {room.patientGender === 'male' ? 'M' : room.patientGender === 'female' ? 'F' : ''}
+                          {room.patientDob && `/${new Date().getFullYear() - new Date(room.patientDob).getFullYear()}`}
+                        </span>
+                      )}
+                      {room.patientChartNumber && (
+                        <span className="text-xs text-gray-400">#{room.patientChartNumber}</span>
+                      )}
+                    </div>
+                    {/* 둘째 줄: 베드번호 + 담당의 + 입실시간 */}
+                    <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500">
+                      <span
+                        className="font-semibold text-clinic-primary cursor-pointer hover:text-clinic-secondary"
                         onClick={(e) => { e.stopPropagation(); setIsAddMenuOpen(prev => !prev); }}
                         role="button"
                         aria-expanded={isAddMenuOpen}
                         aria-haspopup="true"
                         aria-label={`${room.name} 치료 추가`}
-                    >
+                      >
                         {room.name}
-                    </h4>
-                     {isAddMenuOpen && (
-                        <div ref={addMenuRef} className="absolute top-full left-0 mt-2 w-52 bg-white rounded-lg shadow-lg border z-20 max-h-48 overflow-y-auto">
-                            <ul className="py-1">
-                                {availableTreatmentsToAdd.length > 0 ? (
-                                    availableTreatmentsToAdd.map(t => (
-                                        <li key={t.name}>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onAddTreatment(room.id, t);
-                                                    setIsAddMenuOpen(false);
-                                                }}
-                                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex justify-between"
-                                            >
-                                                <span>{t.name}</span>
-                                                <span className="text-gray-500">{t.duration}분</span>
-                                            </button>
-                                        </li>
-                                    ))
-                                ) : (
-                                    <li className="px-4 py-2 text-sm text-center text-gray-500">
-                                        추가할 치료 항목이 없습니다.
-                                    </li>
-                                )}
-                            </ul>
-                        </div>
-                    )}
-                    <p 
-                      className="font-bold text-lg text-clinic-text-primary cursor-pointer hover:underline" 
-                      title={`${room.patientName}님 치료정보 수정 (우클릭)`}
-                      onContextMenu={handlePatientNameRightClick}
-                    >
-                        {room.patientName}
-                    </p>
-                    <p className="text-sm text-clinic-text-secondary">
-                        {room.doctorName?.replace(' 원장', '')}
-                    </p>
-                    {room.inTime && (
-                        <p className="text-sm text-gray-500 flex items-center">
-                            <i className="fa-regular fa-clock mr-1"></i>
-                            {new Date(room.inTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                        </p>
+                      </span>
+                      {room.doctorName && (
+                        <span>{room.doctorName.replace(' 원장', '')}</span>
+                      )}
+                      {room.inTime && (
+                        <span className="flex items-center">
+                          <i className="fa-regular fa-clock mr-0.5"></i>
+                          {new Date(room.inTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                        </span>
+                      )}
+                    </div>
+                    {/* 치료 추가 메뉴 */}
+                    {isAddMenuOpen && (
+                      <div ref={addMenuRef} className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-lg border z-20 max-h-48 overflow-y-auto">
+                        <ul className="py-1">
+                          {availableTreatmentsToAdd.length > 0 ? (
+                            availableTreatmentsToAdd.map(t => (
+                              <li key={t.name}>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onAddTreatment(room.id, t);
+                                    setIsAddMenuOpen(false);
+                                  }}
+                                  className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 flex justify-between"
+                                >
+                                  <span>{t.name}</span>
+                                  <span className="text-gray-500">{t.duration}분</span>
+                                </button>
+                              </li>
+                            ))
+                          ) : (
+                            <li className="px-3 py-1.5 text-sm text-center text-gray-500">
+                              추가할 치료 항목이 없습니다.
+                            </li>
+                          )}
+                        </ul>
+                      </div>
                     )}
                   </div>
 
@@ -588,6 +604,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             return;
         }
         console.log(`[handlePatientDropOnBed] 환자 찾음: ${patient.name} (id: ${patient.id})`);
+        console.log(`[handlePatientDropOnBed] 환자 gender: ${patient.gender}, dob: ${patient.dob}`);
 
         let updatedRoom: TreatmentRoom | null = null;
         const newRooms = currentTreatmentRooms.map(room => {
@@ -613,6 +630,8 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                     patientId: patient.id,
                     patientName: patient.name,
                     patientChartNumber: patient.chartNumber,
+                    patientGender: patient.gender,
+                    patientDob: patient.dob,
                     doctorName: '김원장', // Placeholder
                     inTime: new Date().toISOString(),
                     sessionTreatments,
@@ -754,6 +773,8 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                 patientId: undefined,
                 patientName: undefined,
                 patientChartNumber: undefined,
+                patientGender: undefined,
+                patientDob: undefined,
                 doctorName: undefined,
                 inTime: undefined,
                 sessionTreatments: []
@@ -786,6 +807,8 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             patientId: undefined,
             patientName: undefined,
             patientChartNumber: undefined,
+            patientGender: undefined,
+            patientDob: undefined,
             doctorName: undefined,
             inTime: undefined,
             sessionTreatments: []

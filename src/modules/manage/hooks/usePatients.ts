@@ -662,7 +662,6 @@ export const usePatients = (currentUser: any) => {
       return false;
     }
 
-    alert(`${patient.name}님을 진료 대기 목록에 추가했습니다.`);
     return true;
   }, [consultationWaitingList]);
 
@@ -702,7 +701,6 @@ export const usePatients = (currentUser: any) => {
       return false;
     }
 
-    alert(`${patient.name}님을 치료 대기 목록에 추가했습니다.`);
     return true;
   }, [treatmentWaitingList]);
 
@@ -748,6 +746,116 @@ export const usePatients = (currentUser: any) => {
     }
   }, []);
 
+  // 다른 목록으로 환자 이동 (진료대기 <-> 치료대기)
+  const movePatientBetweenLists = useCallback((
+    draggedPatientId: number,
+    sourceListType: 'consultation' | 'treatment',
+    destinationListType: 'consultation' | 'treatment',
+    targetPatientId: number | null
+  ) => {
+    console.log('🔀 movePatientBetweenLists 호출:', { draggedPatientId, sourceListType, destinationListType, targetPatientId });
+    lastLocalWaitingQueueUpdate = Date.now();
+
+    const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const newDetails = sourceListType === 'consultation' ? '진료대기->치료' : '치료대기->진료';
+    const newStatus = destinationListType === 'consultation' ? PatientStatus.WAITING_CONSULTATION : PatientStatus.WAITING_TREATMENT;
+
+    // 원본과 대상 모두 동시에 업데이트
+    if (sourceListType === 'consultation') {
+      // 진료대기 -> 치료대기
+      console.log('🔀 진료대기 -> 치료대기');
+      setConsultationWaitingList(prev => {
+        console.log('🔀 진료대기 목록 현재 상태:', prev);
+        const patient = prev.find(p => p.id === draggedPatientId);
+        console.log('🔀 찾은 환자:', patient);
+        if (patient) {
+          // 대상 목록에 추가
+          const patientForList: Patient = {
+            ...patient,
+            status: newStatus,
+            time: currentTime,
+            details: newDetails,
+          };
+          setTreatmentWaitingList(destPrev => {
+            // 이미 있으면 추가하지 않음
+            if (destPrev.some(p => p.id === patientForList.id)) {
+              console.log('🔀 이미 치료대기에 있는 환자, 추가 스킵:', patientForList.id);
+              return destPrev;
+            }
+            const list = [...destPrev];
+            const targetIndex = targetPatientId !== null ? list.findIndex(p => p.id === targetPatientId) : list.length;
+            list.splice(targetIndex === -1 ? list.length : targetIndex, 0, patientForList);
+            return list;
+          });
+
+          // DB 업데이트
+          (async () => {
+            try {
+              await api.removeFromWaitingQueue(draggedPatientId, 'consultation');
+              lastLocalWaitingQueueUpdate = Date.now(); // DB 작업 중간에도 갱신
+              await api.addToWaitingQueue({
+                patient_id: draggedPatientId,
+                queue_type: 'treatment',
+                details: newDetails,
+                position: 0,
+              });
+              lastLocalWaitingQueueUpdate = Date.now(); // DB 작업 완료 후에도 갱신
+            } catch (error) {
+              console.error('❌ 대기 목록 이동 DB 오류:', error);
+            }
+          })();
+        }
+        return prev.filter(p => p.id !== draggedPatientId);
+      });
+    } else {
+      // 치료대기 -> 진료대기
+      console.log('🔀 치료대기 -> 진료대기');
+      setTreatmentWaitingList(prev => {
+        console.log('🔀 치료대기 목록 현재 상태:', prev);
+        const patient = prev.find(p => p.id === draggedPatientId);
+        console.log('🔀 찾은 환자:', patient);
+        if (patient) {
+          // 대상 목록에 추가
+          const patientForList: Patient = {
+            ...patient,
+            status: newStatus,
+            time: currentTime,
+            details: newDetails,
+          };
+          setConsultationWaitingList(destPrev => {
+            // 이미 있으면 추가하지 않음
+            if (destPrev.some(p => p.id === patientForList.id)) {
+              console.log('🔀 이미 진료대기에 있는 환자, 추가 스킵:', patientForList.id);
+              return destPrev;
+            }
+            const list = [...destPrev];
+            const targetIndex = targetPatientId !== null ? list.findIndex(p => p.id === targetPatientId) : list.length;
+            list.splice(targetIndex === -1 ? list.length : targetIndex, 0, patientForList);
+            return list;
+          });
+
+          // DB 업데이트
+          (async () => {
+            try {
+              await api.removeFromWaitingQueue(draggedPatientId, 'treatment');
+              lastLocalWaitingQueueUpdate = Date.now(); // DB 작업 중간에도 갱신
+              await api.addToWaitingQueue({
+                patient_id: draggedPatientId,
+                queue_type: 'consultation',
+                details: newDetails,
+                position: 0,
+              });
+              lastLocalWaitingQueueUpdate = Date.now(); // DB 작업 완료 후에도 갱신
+            } catch (error) {
+              console.error('❌ 대기 목록 이동 DB 오류:', error);
+            }
+          })();
+        }
+        return prev.filter(p => p.id !== draggedPatientId);
+      });
+    }
+  }, []);
+
   // 드래그 앤 드롭
   const handlePatientDrop = useCallback((
     draggedPatientId: number,
@@ -755,23 +863,28 @@ export const usePatients = (currentUser: any) => {
     destinationListType: 'consultation' | 'treatment',
     targetPatientId: number | null
   ) => {
-    if (sourceListType !== destinationListType) return;
+    // 같은 목록 내 순서 변경
+    if (sourceListType === destinationListType) {
+      const setSourceList = sourceListType === 'consultation' ? setConsultationWaitingList : setTreatmentWaitingList;
 
-    const setSourceList = sourceListType === 'consultation' ? setConsultationWaitingList : setTreatmentWaitingList;
+      setSourceList(prevList => {
+        const draggedPatient = prevList.find(p => p.id === draggedPatientId);
+        if (!draggedPatient) return prevList;
 
-    setSourceList(prevList => {
-      const draggedPatient = prevList.find(p => p.id === draggedPatientId);
-      if (!draggedPatient) return prevList;
+        const list = [...prevList];
+        const draggedIndex = list.findIndex(p => p.id === draggedPatientId);
+        list.splice(draggedIndex, 1);
+        const targetIndex = targetPatientId !== null ? list.findIndex(p => p.id === targetPatientId) : list.length;
+        list.splice(targetIndex, 0, draggedPatient);
 
-      const list = [...prevList];
-      const draggedIndex = list.findIndex(p => p.id === draggedPatientId);
-      list.splice(draggedIndex, 1);
-      const targetIndex = targetPatientId !== null ? list.findIndex(p => p.id === targetPatientId) : list.length;
-      list.splice(targetIndex, 0, draggedPatient);
+        return list;
+      });
+      return;
+    }
 
-      return list;
-    });
-  }, []);
+    // 다른 목록으로 이동
+    movePatientBetweenLists(draggedPatientId, sourceListType, destinationListType, targetPatientId);
+  }, [movePatientBetweenLists]);
 
   // 환자를 대기 목록에서 제거 (DB 연동)
   const removeFromConsultationList = useCallback(async (patientId: number) => {
@@ -843,6 +956,48 @@ export const usePatients = (currentUser: any) => {
     }
   }, []);
 
+  // 대기 목록에서 환자의 진료정보(details) 업데이트
+  const updatePatientDetails = useCallback(async (patientId: number, details: string) => {
+    lastLocalWaitingQueueUpdate = Date.now();
+
+    // 진료 대기 목록에서 찾기
+    const inConsultation = consultationWaitingList.find(p => p.id === patientId);
+    if (inConsultation) {
+      setConsultationWaitingList(prev =>
+        prev.map(p => p.id === patientId ? { ...p, details } : p)
+      );
+      // DB 업데이트
+      try {
+        await supabase
+          .from('waiting_queue')
+          .update({ details })
+          .eq('patient_id', patientId)
+          .eq('queue_type', 'consultation');
+      } catch (error) {
+        console.error('❌ 진료정보 업데이트 DB 오류:', error);
+      }
+      return;
+    }
+
+    // 치료 대기 목록에서 찾기
+    const inTreatment = treatmentWaitingList.find(p => p.id === patientId);
+    if (inTreatment) {
+      setTreatmentWaitingList(prev =>
+        prev.map(p => p.id === patientId ? { ...p, details } : p)
+      );
+      // DB 업데이트
+      try {
+        await supabase
+          .from('waiting_queue')
+          .update({ details })
+          .eq('patient_id', patientId)
+          .eq('queue_type', 'treatment');
+      } catch (error) {
+        console.error('❌ 진료정보 업데이트 DB 오류:', error);
+      }
+    }
+  }, [consultationWaitingList, treatmentWaitingList]);
+
   return useMemo(() => ({
     allPatients,
     activePatients,
@@ -867,6 +1022,7 @@ export const usePatients = (currentUser: any) => {
     removeFromTreatmentList,
     addToConsultationList,
     addToTreatmentList,
+    updatePatientDetails,
     // 캐시 기반 환자 조회 함수
     getPatientById,
     addToCache,
@@ -892,6 +1048,7 @@ export const usePatients = (currentUser: any) => {
     removeFromTreatmentList,
     addToConsultationList,
     addToTreatmentList,
+    updatePatientDetails,
     getPatientById,
     addToCache,
   ]);

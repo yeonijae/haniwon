@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { User } from '../types';
 
-export type ModalType = 'newPatient' | 'reservation' | 'patientSearch' | 'stats' | 'settings' | 'payment' | 'dailyPayments';
+export type ModalType = 'newPatient' | 'reservation' | 'patientSearch' | 'stats' | 'settings' | 'payment' | 'dailyPayments' | 'consultationInfo';
 
 interface HeaderProps {
   onOpenModal: (type: ModalType, title: string, wide?: boolean) => void;

@@ -34,7 +34,7 @@ const InventoryApp: React.FC<InventoryAppProps> = ({ user }) => {
     { id: 'decoctions' as ViewType, icon: 'fa-solid fa-fire-burner', label: '탕전관리' },
     { id: 'medicines' as ViewType, icon: 'fa-solid fa-pills', label: '상비약' },
     { id: 'materials' as ViewType, icon: 'fa-solid fa-box', label: '자재관리' },
-    { id: 'supplies' as ViewType, icon: 'fa-solid fa-clipboard-list', label: '물품관리' },
+    { id: 'supplies' as ViewType, icon: 'fa-solid fa-clipboard-list', label: '구입요청' },
     { id: 'deliveries' as ViewType, icon: 'fa-solid fa-truck', label: '배송관리' },
   ];
 

@@ -9,80 +9,91 @@ interface NewMedicineFormProps {
 function NewMedicineForm({ onSuccess }: NewMedicineFormProps) {
   const queryClient = useQueryClient()
   const [formData, setFormData] = useState({
-    code: '',
     name: '',
-    manufacturer: '',
     category: '',
-    unit: 'box',
     current_stock: '0',
-    min_stock: '0',
-    unit_cost: '0',
-    selling_price: '0',
-    expiry_date: '',
-    storage_location: '',
-    description: ''
+    accumulated_usage: '0',
+    is_active: true,
+    last_decoction_date: '',
+    decoction_doses: '',
+    decoction_packs: ''
   })
 
   const createMutation = useMutation({
     mutationFn: (data: any) => medicinesApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['medicines'] })
+      queryClient.invalidateQueries({ queryKey: ['ready-medicines'] })
       alert('상비약이 등록되었습니다.')
       onSuccess()
     },
     onError: (error: any) => {
-      alert(error.response?.data?.error || '상비약 등록에 실패했습니다.')
+      alert(error.message || '상비약 등록에 실패했습니다.')
     }
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.code || !formData.name) {
-      alert('상비약 코드와 이름은 필수 입력 항목입니다.')
+    if (!formData.name) {
+      alert('상비약 이름은 필수 입력 항목입니다.')
       return
     }
 
+    // 코드 자동 생성
+    const code = `M${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`
+
+    // description에 탕전 관련 정보 저장
+    const descriptionParts: string[] = []
+    if (formData.decoction_doses) {
+      descriptionParts.push(`탕전시 첩수: ${formData.decoction_doses}첩`)
+    }
+    if (formData.decoction_packs) {
+      descriptionParts.push(`탕전시 팩수: ${formData.decoction_packs}팩`)
+    }
+    if (formData.last_decoction_date) {
+      descriptionParts.push(`최근탕전일: ${formData.last_decoction_date}`)
+    }
+    if (formData.accumulated_usage && parseFloat(formData.accumulated_usage) > 0) {
+      descriptionParts.push(`누적사용량: ${formData.accumulated_usage}`)
+    }
+
     createMutation.mutate({
-      ...formData,
+      code,
+      name: formData.name,
+      category: formData.category || '',
+      unit: '개',
       current_stock: parseFloat(formData.current_stock) || 0,
-      min_stock: parseFloat(formData.min_stock) || 0,
-      unit_cost: parseFloat(formData.unit_cost) || 0,
-      selling_price: parseFloat(formData.selling_price) || 0,
-      expiry_date: formData.expiry_date || null
+      min_stock: 0,
+      unit_cost: 0,
+      selling_price: 0,
+      is_active: formData.is_active,
+      description: descriptionParts.join(' / ')
     })
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    })
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target
+
+    if (type === 'checkbox') {
+      setFormData({
+        ...formData,
+        [name]: (e.target as HTMLInputElement).checked
+      })
+    } else {
+      setFormData({
+        ...formData,
+        [name]: value
+      })
+    }
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid grid-cols-2 gap-6">
-        {/* 상비약 코드 */}
+        {/* 상비약 이름 */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            상비약 코드 <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            name="code"
-            value={formData.code}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
-            placeholder="예: M001"
-            required
-          />
-        </div>
-
-        {/* 상비약명 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            상비약명 <span className="text-red-500">*</span>
+            상비약 이름 <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
@@ -90,21 +101,8 @@ function NewMedicineForm({ onSuccess }: NewMedicineFormProps) {
             value={formData.name}
             onChange={handleChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
-            placeholder="예: 경옥고"
+            placeholder="예: 쌍화탕"
             required
-          />
-        </div>
-
-        {/* 제조사 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">제조사</label>
-          <input
-            type="text"
-            name="manufacturer"
-            value={formData.manufacturer}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
-            placeholder="예: OO제약"
           />
         </div>
 
@@ -117,115 +115,118 @@ function NewMedicineForm({ onSuccess }: NewMedicineFormProps) {
             value={formData.category}
             onChange={handleChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
-            placeholder="예: 환제, 액상제 등"
+            placeholder="예: 탕전약, 환제 등"
           />
-        </div>
-
-        {/* 단위 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">단위</label>
-          <select
-            name="unit"
-            value={formData.unit}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
-          >
-            <option value="box">box (박스)</option>
-            <option value="bottle">bottle (병)</option>
-            <option value="pack">pack (팩)</option>
-            <option value="ea">ea (개)</option>
-          </select>
         </div>
 
         {/* 현재 재고 */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">현재 재고</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">현재재고</label>
           <input
             type="number"
             name="current_stock"
             value={formData.current_stock}
             onChange={handleChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
-            step="0.01"
+            min="0"
           />
         </div>
 
-        {/* 최소 재고 */}
+        {/* 누적사용량 */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">최소 재고</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">누적사용량</label>
           <input
             type="number"
-            name="min_stock"
-            value={formData.min_stock}
+            name="accumulated_usage"
+            value={formData.accumulated_usage}
             onChange={handleChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
-            step="0.01"
+            min="0"
           />
         </div>
 
-        {/* 유효기간 */}
+        {/* 사용여부 */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">유효기간</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">사용여부</label>
+          <div className="flex items-center space-x-4 h-[42px]">
+            <label className="inline-flex items-center cursor-pointer">
+              <input
+                type="radio"
+                name="is_active"
+                checked={formData.is_active === true}
+                onChange={() => setFormData({ ...formData, is_active: true })}
+                className="w-4 h-4 text-clinic-primary border-gray-300 focus:ring-clinic-secondary"
+              />
+              <span className="ml-2 text-sm text-gray-700">사용</span>
+            </label>
+            <label className="inline-flex items-center cursor-pointer">
+              <input
+                type="radio"
+                name="is_active"
+                checked={formData.is_active === false}
+                onChange={() => setFormData({ ...formData, is_active: false })}
+                className="w-4 h-4 text-clinic-primary border-gray-300 focus:ring-clinic-secondary"
+              />
+              <span className="ml-2 text-sm text-gray-700">미사용</span>
+            </label>
+          </div>
+        </div>
+
+        {/* 최근탕전일자 */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">최근탕전일자</label>
           <input
             type="date"
-            name="expiry_date"
-            value={formData.expiry_date}
+            name="last_decoction_date"
+            value={formData.last_decoction_date}
             onChange={handleChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
           />
         </div>
 
-        {/* 단가 */}
+        {/* 탕전시-첩수 */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">단가 (입고가)</label>
-          <input
-            type="number"
-            name="unit_cost"
-            value={formData.unit_cost}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
-            step="0.01"
-          />
+          <label className="block text-sm font-medium text-gray-700 mb-2">탕전시-첩수</label>
+          <div className="relative">
+            <input
+              type="number"
+              name="decoction_doses"
+              value={formData.decoction_doses}
+              onChange={handleChange}
+              className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
+              placeholder="예: 10"
+              min="0"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">첩</span>
+          </div>
         </div>
 
-        {/* 판매가 */}
+        {/* 탕전시-팩수 */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">판매가</label>
-          <input
-            type="number"
-            name="selling_price"
-            value={formData.selling_price}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
-            step="0.01"
-          />
-        </div>
-
-        {/* 보관 위치 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">보관 위치</label>
-          <input
-            type="text"
-            name="storage_location"
-            value={formData.storage_location}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
-            placeholder="예: 냉장고 A"
-          />
+          <label className="block text-sm font-medium text-gray-700 mb-2">탕전시-팩수</label>
+          <div className="relative">
+            <input
+              type="number"
+              name="decoction_packs"
+              value={formData.decoction_packs}
+              onChange={handleChange}
+              className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
+              placeholder="예: 30"
+              min="0"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">팩</span>
+          </div>
         </div>
       </div>
 
-      {/* 설명 */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">설명</label>
-        <textarea
-          name="description"
-          value={formData.description}
-          onChange={handleChange}
-          rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
-          placeholder="상비약에 대한 추가 설명을 입력하세요"
-        />
+      {/* 안내 문구 */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <div className="flex items-start">
+          <i className="fa-solid fa-circle-info text-gray-400 mr-2 mt-0.5"></i>
+          <p className="text-sm text-gray-600">
+            상비약 코드는 자동으로 생성됩니다. 탕전 관련 정보는 상비약 설명에 자동 저장됩니다.
+          </p>
+        </div>
       </div>
 
       {/* 버튼 */}

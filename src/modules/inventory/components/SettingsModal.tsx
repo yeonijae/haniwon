@@ -2,6 +2,7 @@ import { useState } from 'react'
 import NewHerbForm from './NewHerbForm'
 import NewMedicineForm from './NewMedicineForm'
 import BulkHerbUpload from './BulkHerbUpload'
+import BulkMedicineUpload from './BulkMedicineUpload'
 import NewPrescriptionForm from './NewPrescriptionForm'
 import PrescriptionDefinitionList from './PrescriptionDefinitionList'
 import BulkPrescriptionUpload from './BulkPrescriptionUpload'
@@ -184,10 +185,7 @@ function SettingsModal({ onClose }: SettingsModalProps) {
               <NewMedicineForm onSuccess={onClose} />
             )}
             {activeSection === 'medicines' && medicineTab === 'bulk' && (
-              <div className="bg-white rounded-lg p-6 text-center">
-                <i className="fa-solid fa-file-excel text-4xl text-gray-400 mb-4"></i>
-                <p className="text-gray-600">상비약 일괄 등록 기능 (준비중)</p>
-              </div>
+              <BulkMedicineUpload onSuccess={onClose} />
             )}
 
             {/* 처방전 설정 */}

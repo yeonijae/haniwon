@@ -108,7 +108,7 @@ function SupplyList() {
     <div className="h-full overflow-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-clinic-text-primary mb-2">물품 관리</h2>
+          <h2 className="text-2xl font-bold text-clinic-text-primary mb-2">구입 요청</h2>
           <p className="text-clinic-text-secondary">필요한 물품을 요청하고 처리 상태를 관리합니다</p>
         </div>
         <button
@@ -116,16 +116,16 @@ function SupplyList() {
           className="px-4 py-2 bg-clinic-primary text-white rounded-lg hover:bg-blue-900 transition-colors"
         >
           <i className="fa-solid fa-plus mr-2"></i>
-          물품 요청
+          구입 요청
         </button>
       </div>
 
-      {/* 물품 요청 폼 */}
+      {/* 구입 요청 폼 */}
       {showAddForm && (
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h3 className="text-lg font-semibold text-clinic-text-primary mb-4">새 물품 요청</h3>
-          <form onSubmit={handleSubmit} className="flex items-end space-x-3">
-            <div className="flex-1">
+          <h3 className="text-lg font-semibold text-clinic-text-primary mb-4">새 구입 요청</h3>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 내용 <span className="text-red-500">*</span>
               </label>
@@ -134,25 +134,31 @@ function SupplyList() {
                 value={itemName}
                 onChange={(e) => setItemName(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-secondary focus:border-transparent"
-                placeholder="예: A4 용지 10박스"
+                placeholder="예: 경근약침/현10바이알/11월27일(금)까지"
                 autoFocus
                 required
               />
+              <p className="mt-2 text-xs text-gray-500">
+                <i className="fa-solid fa-circle-info mr-1"></i>
+                입력 형식: 물품명/규격/현재재고/요청수량/데드라인
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowAddForm(false)}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              취소
-            </button>
-            <button
-              type="submit"
-              disabled={createMutation.isPending}
-              className="px-6 py-2 bg-clinic-primary text-white rounded-lg hover:bg-blue-900 transition-colors disabled:opacity-50"
-            >
-              {createMutation.isPending ? '등록 중...' : '등록'}
-            </button>
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setShowAddForm(false)}
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="submit"
+                disabled={createMutation.isPending}
+                className="px-6 py-2 bg-clinic-primary text-white rounded-lg hover:bg-blue-900 transition-colors disabled:opacity-50"
+              >
+                {createMutation.isPending ? '등록 중...' : '등록'}
+              </button>
+            </div>
           </form>
         </div>
       )}

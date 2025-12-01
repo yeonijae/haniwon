@@ -1,8 +1,9 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { Patient, MedicalStaff, WorkPattern, Staff, StaffRank, StaffDepartment, UncoveredCategories, TreatmentItem } from '../types';
+import { Patient, MedicalStaff, WorkPattern, Staff, StaffRank, StaffDepartment, UncoveredCategories, ConsultationItem, ConsultationSubItem } from '../types';
 import * as api from '../lib/api';
+import ConsultationItemsManagement from './ConsultationItemsManagement';
 
 // For sheetjs library loaded from CDN
 declare var XLSX: any;
@@ -37,11 +38,16 @@ interface SettingsProps {
     deleteStaff: (staffId: number) => void;
     uncoveredCategories: UncoveredCategories;
     updateUncoveredCategories: (categories: UncoveredCategories) => void;
-    treatmentItems: TreatmentItem[];
-    addTreatmentItem: (item: Omit<TreatmentItem, 'id'>) => void;
-    updateTreatmentItem: (id: number, item: Omit<TreatmentItem, 'id'>) => void;
-    deleteTreatmentItem: (id: number) => void;
-    reorderTreatmentItems: (items: TreatmentItem[]) => void;
+    // 진료항목 관리
+    consultationItems: ConsultationItem[];
+    addConsultationItem: (name: string) => void;
+    updateConsultationItem: (id: number, name: string) => void;
+    deleteConsultationItem: (id: number) => void;
+    reorderConsultationItems: (items: ConsultationItem[]) => void;
+    addSubItem: (parentId: number, name: string) => void;
+    updateSubItem: (parentId: number, subItemId: number, name: string) => void;
+    deleteSubItem: (parentId: number, subItemId: number) => void;
+    reorderSubItems: (parentId: number, subItems: ConsultationSubItem[]) => void;
 }
 
 const DetailItem: React.FC<{ label: string; value?: string }> = ({ label, value }) => (
@@ -251,6 +257,7 @@ const MedicalStaffManagement: React.FC<{
     });
     const [newPattern, setNewPattern] = useState({
         days: [false, false, false, false, false, false, false], // Mon to Sun
+        dayWorkHours: [null, null, null, null, null, null, null] as ({ startTime: string; endTime: string } | null)[],
         startDate: '',
         endDate: '',
     });
@@ -308,10 +315,30 @@ const MedicalStaffManagement: React.FC<{
 
     const handleNewPatternDayChange = (index: number) => {
         const updatedDays = [...newPattern.days];
+        const updatedDayWorkHours = [...newPattern.dayWorkHours];
         updatedDays[index] = !updatedDays[index];
-        setNewPattern(prev => ({ ...prev, days: updatedDays }));
+
+        // 요일 선택 시 기본 근무시간 설정, 해제 시 null
+        if (updatedDays[index]) {
+            updatedDayWorkHours[index] = { startTime: '09:00', endTime: '18:00' };
+        } else {
+            updatedDayWorkHours[index] = null;
+        }
+
+        setNewPattern(prev => ({ ...prev, days: updatedDays, dayWorkHours: updatedDayWorkHours }));
     };
-    
+
+    const handleDayWorkHoursChange = (dayIndex: number, field: 'startTime' | 'endTime', value: string) => {
+        const updatedDayWorkHours = [...newPattern.dayWorkHours];
+        if (updatedDayWorkHours[dayIndex]) {
+            updatedDayWorkHours[dayIndex] = {
+                ...updatedDayWorkHours[dayIndex]!,
+                [field]: value
+            };
+        }
+        setNewPattern(prev => ({ ...prev, dayWorkHours: updatedDayWorkHours }));
+    };
+
     const handleNewPatternDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setNewPattern(prev => ({ ...prev, [name]: value }));
@@ -344,6 +371,7 @@ const MedicalStaffManagement: React.FC<{
         // Reset new pattern form
         setNewPattern({
             days: [false, false, false, false, false, false, false],
+            dayWorkHours: [null, null, null, null, null, null, null],
             startDate: '',
             endDate: '',
         });
@@ -354,6 +382,60 @@ const MedicalStaffManagement: React.FC<{
             ...prev,
             workPatterns: prev.workPatterns.filter(p => p.id !== patternId)
         }));
+    };
+
+    const [editingPatternId, setEditingPatternId] = useState<string | null>(null);
+
+    const handleEditPattern = (pattern: WorkPattern) => {
+        setEditingPatternId(pattern.id);
+        setNewPattern({
+            days: [...pattern.days],
+            dayWorkHours: pattern.dayWorkHours ? [...pattern.dayWorkHours] : [null, null, null, null, null, null, null],
+            startDate: pattern.startDate,
+            endDate: pattern.endDate,
+        });
+    };
+
+    const handleCancelEditPattern = () => {
+        setEditingPatternId(null);
+        setNewPattern({
+            days: [false, false, false, false, false, false, false],
+            dayWorkHours: [null, null, null, null, null, null, null],
+            startDate: '',
+            endDate: '',
+        });
+    };
+
+    const handleUpdatePattern = () => {
+        if (!newPattern.startDate || !newPattern.endDate) {
+            alert('적용일과 종료일을 모두 입력해주세요.');
+            return;
+        }
+        if (new Date(newPattern.startDate) > new Date(newPattern.endDate)) {
+            alert('종료일은 적용일보다 빠를 수 없습니다.');
+            return;
+        }
+        if (!newPattern.days.some(day => day)) {
+            alert('근무 요일을 하나 이상 선택해주세요.');
+            return;
+        }
+
+        setFormData(prev => ({
+            ...prev,
+            workPatterns: prev.workPatterns.map(p =>
+                p.id === editingPatternId
+                    ? { ...p, ...newPattern }
+                    : p
+            ).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
+        }));
+
+        setEditingPatternId(null);
+        setNewPattern({
+            days: [false, false, false, false, false, false, false],
+            dayWorkHours: [null, null, null, null, null, null, null],
+            startDate: '',
+            endDate: '',
+        });
     };
     
     const handleSubmit = (e: React.FormEvent) => {
@@ -468,76 +550,142 @@ const MedicalStaffManagement: React.FC<{
 
                     <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700">근무패턴 관리</label>
-                        
+
                         <div className="mt-2 space-y-3 p-4 border-2 border-dashed rounded-lg">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <div className="md:col-span-4">
-                                    <p className="text-xs font-semibold text-gray-600 mb-2">근무 요일</p>
-                                    <div className="flex flex-wrap gap-2">
+                                    <p className="text-xs font-semibold text-gray-600 mb-2">근무 요일 및 시간</p>
+                                    <div className="space-y-2">
                                         {weekDays.map((day, index) => (
-                                            <label key={day} className="flex items-center px-3 py-1.5 border rounded-md cursor-pointer has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={newPattern.days[index]}
-                                                    onChange={() => handleNewPatternDayChange(index)}
-                                                    className="h-4 w-4 rounded border-gray-300 text-clinic-secondary focus:ring-clinic-secondary"
-                                                />
-                                                <span className="ml-2 text-sm text-gray-700">{day}</span>
-                                            </label>
+                                            <div key={day} className={`flex items-center gap-3 p-2 border rounded-md ${newPattern.days[index] ? 'bg-blue-50 border-blue-400' : 'bg-white'}`}>
+                                                <label className="flex items-center min-w-[60px] cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={newPattern.days[index]}
+                                                        onChange={() => handleNewPatternDayChange(index)}
+                                                        className="h-4 w-4 rounded border-gray-300 text-clinic-secondary focus:ring-clinic-secondary"
+                                                    />
+                                                    <span className="ml-2 text-sm font-medium text-gray-700">{day}</span>
+                                                </label>
+                                                {newPattern.days[index] && newPattern.dayWorkHours[index] && (
+                                                    <div className="flex items-center gap-2 flex-1">
+                                                        <input
+                                                            type="time"
+                                                            value={newPattern.dayWorkHours[index]?.startTime || '09:00'}
+                                                            onChange={(e) => handleDayWorkHoursChange(index, 'startTime', e.target.value)}
+                                                            className="px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary"
+                                                        />
+                                                        <span className="text-gray-500">~</span>
+                                                        <input
+                                                            type="time"
+                                                            value={newPattern.dayWorkHours[index]?.endTime || '18:00'}
+                                                            onChange={(e) => handleDayWorkHoursChange(index, 'endTime', e.target.value)}
+                                                            className="px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
                                         ))}
                                     </div>
                                 </div>
                                 <div>
                                     <label htmlFor="newPatternStartDate" className="block text-xs font-semibold text-gray-600">적용일</label>
-                                    <input 
-                                        type="date" 
-                                        id="newPatternStartDate" 
+                                    <input
+                                        type="date"
+                                        id="newPatternStartDate"
                                         name="startDate"
                                         value={newPattern.startDate}
                                         onChange={handleNewPatternDateChange}
-                                        className="mt-1 block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary" 
+                                        className="mt-1 block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary"
                                     />
                                 </div>
                                  <div>
                                     <label htmlFor="newPatternEndDate" className="block text-xs font-semibold text-gray-600">종료일</label>
-                                    <input 
-                                        type="date" 
-                                        id="newPatternEndDate" 
+                                    <input
+                                        type="date"
+                                        id="newPatternEndDate"
                                         name="endDate"
                                         value={newPattern.endDate}
                                         onChange={handleNewPatternDateChange}
-                                        className="mt-1 block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary" 
+                                        className="mt-1 block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary"
                                     />
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <button
-                                    type="button"
-                                    onClick={handleAddPattern}
-                                    className="px-4 py-2 bg-clinic-accent text-white text-sm font-semibold rounded-md hover:bg-green-700 transition-colors"
-                                >
-                                    <i className="fa-solid fa-plus mr-2"></i>패턴 추가
-                                </button>
+                            <div className="flex justify-end gap-2">
+                                {editingPatternId ? (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={handleCancelEditPattern}
+                                            className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-semibold rounded-md hover:bg-gray-300 transition-colors"
+                                        >
+                                            취소
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleUpdatePattern}
+                                            className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors"
+                                        >
+                                            <i className="fa-solid fa-check mr-2"></i>수정 완료
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={handleAddPattern}
+                                        className="px-4 py-2 bg-clinic-accent text-white text-sm font-semibold rounded-md hover:bg-green-700 transition-colors"
+                                    >
+                                        <i className="fa-solid fa-plus mr-2"></i>패턴 추가
+                                    </button>
+                                )}
                             </div>
                         </div>
                         
-                        <div className="mt-4 space-y-2 max-h-48 overflow-y-auto">
+                        <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
                             {formData.workPatterns.map(pattern => {
-                                const patternDays = weekDays.filter((_, index) => pattern.days[index]).join(', ');
+                                const isEditing = editingPatternId === pattern.id;
                                 return (
-                                    <div key={pattern.id} className="flex items-center justify-between p-3 bg-white rounded-md border">
-                                        <div>
-                                            <p className="font-semibold text-clinic-text-primary">{patternDays}</p>
-                                            <p className="text-xs text-gray-500 mt-1">{pattern.startDate} ~ {pattern.endDate}</p>
+                                    <div key={pattern.id} className={`p-3 rounded-md border ${isEditing ? 'bg-blue-50 border-blue-400' : 'bg-white'}`}>
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex-1">
+                                                <p className="text-xs text-gray-500 mb-2">{pattern.startDate} ~ {pattern.endDate}</p>
+                                                <div className="space-y-1">
+                                                    {weekDays.map((day, index) => {
+                                                        if (!pattern.days[index]) return null;
+                                                        const hours = pattern.dayWorkHours?.[index];
+                                                        return (
+                                                            <div key={day} className="flex items-center gap-2 text-sm">
+                                                                <span className="font-medium text-clinic-text-primary w-6">{day}</span>
+                                                                {hours ? (
+                                                                    <span className="text-gray-600">{hours.startTime} ~ {hours.endTime}</span>
+                                                                ) : (
+                                                                    <span className="text-gray-400">시간 미설정</span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleEditPattern(pattern)}
+                                                    className={`px-2 ${isEditing ? 'text-blue-600' : 'text-gray-400 hover:text-blue-500'}`}
+                                                    aria-label="근무 패턴 수정"
+                                                    disabled={isEditing}
+                                                >
+                                                    <i className="fa-solid fa-pen"></i>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeletePattern(pattern.id)}
+                                                    className="text-gray-400 hover:text-red-500 px-2"
+                                                    aria-label="근무 패턴 삭제"
+                                                >
+                                                    <i className="fa-solid fa-trash-can"></i>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDeletePattern(pattern.id)}
-                                            className="text-gray-400 hover:text-red-500 px-2"
-                                            aria-label="근무 패턴 삭제"
-                                        >
-                                            <i className="fa-solid fa-trash-can"></i>
-                                        </button>
                                     </div>
                                 );
                             })}
@@ -895,283 +1043,6 @@ const StaffManagement: React.FC<{
                 )}
             </div>
          </div>
-    );
-};
-
-const TreatmentItemsManagement: React.FC<{
-    treatmentItems: TreatmentItem[];
-    addTreatmentItem: (item: Omit<TreatmentItem, 'id'>) => void;
-    updateTreatmentItem: (id: number, item: Omit<TreatmentItem, 'id'>) => void;
-    deleteTreatmentItem: (id: number) => void;
-    reorderTreatmentItems: (items: TreatmentItem[]) => void;
-}> = ({ treatmentItems, addTreatmentItem, updateTreatmentItem, deleteTreatmentItem, reorderTreatmentItems }) => {
-    const [editingItem, setEditingItem] = useState<TreatmentItem | null>(null);
-    const [showAddModal, setShowAddModal] = useState(false);
-    const [formData, setFormData] = useState({ name: '', defaultDuration: 30 });
-    const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-
-    const handleAdd = () => {
-        if (!formData.name.trim()) {
-            alert('치료항목 이름을 입력해주세요.');
-            return;
-        }
-        if (formData.defaultDuration <= 0) {
-            alert('기본시간은 0보다 커야 합니다.');
-            return;
-        }
-        addTreatmentItem({
-            name: formData.name,
-            defaultDuration: formData.defaultDuration
-        });
-        setFormData({ name: '', defaultDuration: 30 });
-        setShowAddModal(false);
-    };
-
-    const handleEdit = () => {
-        if (!editingItem) return;
-        if (!formData.name.trim()) {
-            alert('치료항목 이름을 입력해주세요.');
-            return;
-        }
-        if (formData.defaultDuration <= 0) {
-            alert('기본시간은 0보다 커야 합니다.');
-            return;
-        }
-        updateTreatmentItem(editingItem.id, {
-            name: formData.name,
-            defaultDuration: formData.defaultDuration,
-            displayOrder: editingItem.displayOrder
-        });
-        setEditingItem(null);
-        setFormData({ name: '', defaultDuration: 30 });
-    };
-
-    // 드래그앤드롭 핸들러
-    const handleDragStart = (index: number) => {
-        setDraggedIndex(index);
-    };
-
-    const handleDragOver = (e: React.DragEvent, index: number) => {
-        e.preventDefault();
-    };
-
-    const handleDrop = (e: React.DragEvent, dropIndex: number) => {
-        e.preventDefault();
-        if (draggedIndex === null || draggedIndex === dropIndex) {
-            setDraggedIndex(null);
-            return;
-        }
-
-        const reorderedItems = [...treatmentItems];
-        const [draggedItem] = reorderedItems.splice(draggedIndex, 1);
-        reorderedItems.splice(dropIndex, 0, draggedItem);
-
-        reorderTreatmentItems(reorderedItems);
-        setDraggedIndex(null);
-    };
-
-    const handleDragEnd = () => {
-        setDraggedIndex(null);
-    };
-
-    const handleDelete = (id: number) => {
-        if (window.confirm('이 치료항목을 삭제하시겠습니까?')) {
-            deleteTreatmentItem(id);
-        }
-    };
-
-    const openEditModal = (item: TreatmentItem) => {
-        setEditingItem(item);
-        setFormData({ name: item.name, defaultDuration: item.defaultDuration });
-    };
-
-    const closeModal = () => {
-        setEditingItem(null);
-        setShowAddModal(false);
-        setFormData({ name: '', defaultDuration: 30 });
-    };
-
-    return (
-        <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold mb-2">치료항목 관리</h3>
-                <p className="text-sm text-gray-600 mb-4">치료 시 사용할 수 있는 치료항목과 기본시간을 설정합니다.</p>
-
-                <button
-                    onClick={() => setShowAddModal(true)}
-                    className="mb-4 px-4 py-2 bg-clinic-primary text-white rounded-md hover:bg-opacity-90 transition-colors"
-                >
-                    <i className="fa-solid fa-plus mr-2"></i>
-                    치료항목 추가
-                </button>
-
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-10">
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    치료항목명
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    기본시간 (분)
-                                </th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    작업
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {treatmentItems.length === 0 ? (
-                                <tr>
-                                    <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
-                                        등록된 치료항목이 없습니다.
-                                    </td>
-                                </tr>
-                            ) : (
-                                treatmentItems.map((item, index) => (
-                                    <tr
-                                        key={item.id}
-                                        draggable
-                                        onDragStart={() => handleDragStart(index)}
-                                        onDragOver={(e) => handleDragOver(e, index)}
-                                        onDrop={(e) => handleDrop(e, index)}
-                                        onDragEnd={handleDragEnd}
-                                        className={`cursor-move transition-colors ${
-                                            draggedIndex === index ? 'opacity-50 bg-gray-100' : 'hover:bg-gray-50'
-                                        }`}
-                                    >
-                                        <td className="px-2 py-4 text-center text-gray-400">
-                                            <i className="fa-solid fa-grip-vertical"></i>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                            {item.name}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {item.defaultDuration}분
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <button
-                                                onClick={() => openEditModal(item)}
-                                                className="text-clinic-secondary hover:text-clinic-secondary-dark mr-3"
-                                            >
-                                                <i className="fa-solid fa-edit"></i> 수정
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(item.id)}
-                                                className="text-red-600 hover:text-red-900"
-                                            >
-                                                <i className="fa-solid fa-trash"></i> 삭제
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            {/* Add Modal */}
-            {showAddModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-                        <h3 className="text-xl font-semibold mb-4">치료항목 추가</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    치료항목명
-                                </label>
-                                <input
-                                    type="text"
-                                    value={formData.name}
-                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary"
-                                    placeholder="예: 침, 뜸, 부항"
-                                    autoFocus
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    기본시간 (분)
-                                </label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    value={formData.defaultDuration}
-                                    onChange={(e) => setFormData({ ...formData, defaultDuration: parseInt(e.target.value) || 0 })}
-                                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex justify-end space-x-2 mt-6">
-                            <button
-                                onClick={closeModal}
-                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-                            >
-                                취소
-                            </button>
-                            <button
-                                onClick={handleAdd}
-                                className="px-4 py-2 bg-clinic-primary text-white rounded-md hover:bg-opacity-90 transition-colors"
-                            >
-                                추가
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Edit Modal */}
-            {editingItem && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-                        <h3 className="text-xl font-semibold mb-4">치료항목 수정</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    치료항목명
-                                </label>
-                                <input
-                                    type="text"
-                                    value={formData.name}
-                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary"
-                                    autoFocus
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    기본시간 (분)
-                                </label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    value={formData.defaultDuration}
-                                    onChange={(e) => setFormData({ ...formData, defaultDuration: parseInt(e.target.value) || 0 })}
-                                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex justify-end space-x-2 mt-6">
-                            <button
-                                onClick={closeModal}
-                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-                            >
-                                취소
-                            </button>
-                            <button
-                                onClick={handleEdit}
-                                className="px-4 py-2 bg-clinic-primary text-white rounded-md hover:bg-opacity-90 transition-colors"
-                            >
-                                수정
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
     );
 };
 
@@ -1580,11 +1451,12 @@ const Settings: React.FC<SettingsProps> = ({
     medicalStaff, updateMedicalStaff, addMedicalStaff, deleteMedicalStaff,
     staff, updateStaff, addStaff, deleteStaff,
     uncoveredCategories, updateUncoveredCategories,
-    treatmentItems, addTreatmentItem, updateTreatmentItem, deleteTreatmentItem, reorderTreatmentItems
+    consultationItems, addConsultationItem, updateConsultationItem, deleteConsultationItem,
+    reorderConsultationItems, addSubItem, updateSubItem, deleteSubItem, reorderSubItems
 }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
-    const [currentView, setCurrentView] = useState<'main' | 'patient' | 'staff' | 'uncovered' | 'patientDelete' | 'treatmentRoom' | 'staffMedical' | 'staffRegular'>('main');
+    const [currentView, setCurrentView] = useState<'main' | 'patient' | 'staff' | 'uncovered' | 'patientDelete' | 'staffMedical' | 'staffRegular' | 'consultationItems'>('main');
     const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, message: '' });
     const [patientCount, setPatientCount] = useState<number | null>(null);
 
@@ -1985,23 +1857,27 @@ const Settings: React.FC<SettingsProps> = ({
     if (currentView === 'uncovered') {
         return (
             <SettingsPage title="비급여 관리" onBack={() => setCurrentView('main')}>
-                <UncoveredManagement 
-                    categories={uncoveredCategories} 
-                    onUpdate={updateUncoveredCategories} 
+                <UncoveredManagement
+                    categories={uncoveredCategories}
+                    onUpdate={updateUncoveredCategories}
                 />
             </SettingsPage>
         );
     }
-    
-    if (currentView === 'treatmentRoom') {
+
+    if (currentView === 'consultationItems') {
         return (
-            <SettingsPage title="치료실 관리" onBack={() => setCurrentView('main')}>
-                <TreatmentItemsManagement
-                    treatmentItems={treatmentItems}
-                    addTreatmentItem={addTreatmentItem}
-                    updateTreatmentItem={updateTreatmentItem}
-                    deleteTreatmentItem={deleteTreatmentItem}
-                    reorderTreatmentItems={reorderTreatmentItems}
+            <SettingsPage title="진료항목 관리" onBack={() => setCurrentView('main')}>
+                <ConsultationItemsManagement
+                    consultationItems={consultationItems}
+                    addConsultationItem={addConsultationItem}
+                    updateConsultationItem={updateConsultationItem}
+                    deleteConsultationItem={deleteConsultationItem}
+                    reorderConsultationItems={reorderConsultationItems}
+                    addSubItem={addSubItem}
+                    updateSubItem={updateSubItem}
+                    deleteSubItem={deleteSubItem}
+                    reorderSubItems={reorderSubItems}
                 />
             </SettingsPage>
         );
@@ -2016,23 +1892,23 @@ const Settings: React.FC<SettingsProps> = ({
                 description="환자 일괄 등록, 정보 삭제 등 환자 관련 설정을 관리합니다."
                 onClick={() => setCurrentView('patient')}
             />
-            <MenuButton 
+            <MenuButton
                 icon="fa-user-nurse"
                 title="직원 관리"
                 description="의료진, 스탭 등 직원 정보를 관리합니다."
                 onClick={() => setCurrentView('staff')}
             />
-            <MenuButton 
-                icon="fa-person-shelter"
-                title="치료실 관리"
-                description="치료실의 목록과 순서 등을 관리합니다."
-                onClick={() => setCurrentView('treatmentRoom')}
-            />
-             <MenuButton 
+            <MenuButton
                 icon="fa-file-invoice-dollar"
                 title="비급여 관리"
                 description="비급여 항목의 분류를 추가, 변경, 삭제하고 금액을 수정합니다."
                 onClick={() => setCurrentView('uncovered')}
+            />
+            <MenuButton
+                icon="fa-stethoscope"
+                title="진료항목 관리"
+                description="환자 접수 시 선택할 수 있는 진료항목과 세부항목을 관리합니다."
+                onClick={() => setCurrentView('consultationItems')}
             />
         </div>
     );

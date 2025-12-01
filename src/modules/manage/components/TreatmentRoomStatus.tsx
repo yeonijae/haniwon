@@ -1,150 +1,315 @@
 
-import React from 'react';
+import React, { useMemo, useState, useEffect, memo } from 'react';
 import Quadrant from './Quadrant';
-import { TreatmentRoom, RoomStatus } from '../types';
+import { TreatmentRoom, RoomStatus, SessionTreatment, Patient } from '../types';
 
-const getStatusClasses = (status: RoomStatus): string => {
-  switch (status) {
-    case RoomStatus.IN_USE:
-      return 'bg-red-50 border-red-500';
-    case RoomStatus.AVAILABLE:
-      return 'bg-green-50 border-green-500';
-    case RoomStatus.NEED_CLEAN:
-      return 'bg-blue-50 border-blue-500';
-    case RoomStatus.CLEANING:
-      return 'bg-yellow-50 border-yellow-500';
-    default:
-      return 'bg-gray-100 border-gray-500';
-  }
-};
-
-const getStatusBadgeBgColor = (status: RoomStatus): string => {
-    switch (status) {
-      case RoomStatus.IN_USE:
-        return 'bg-red-500';
-      case RoomStatus.AVAILABLE:
-        return 'bg-green-500';
-      case RoomStatus.NEED_CLEAN:
-        return 'bg-blue-500';
-      case RoomStatus.CLEANING:
-        return 'bg-yellow-500';
-      default:
-        return 'bg-gray-500';
-    }
+interface PatientTreatmentInfo {
+  sessionId: string;
+  patientId: number;
+  patientName: string;
+  patientChartNumber: string;
+  patientGender?: 'male' | 'female';
+  patientDob?: string;
+  doctorName: string;
+  roomName: string;
+  inTime: Date;
+  sessionTreatments: SessionTreatment[];
 }
 
-const RoomCard: React.FC<{ room: TreatmentRoom }> = ({ room }) => {
-  const statusClasses = getStatusClasses(room.status);
-  const badgeBgColor = getStatusBadgeBgColor(room.status);
-  
-  const getDoctorInitial = (name?: string) => {
-    if (!name) return '?';
-    const parts = name.split(' ');
-    return parts[0].charAt(0);
-  };
+// 현재 진행중인 치료 찾기
+const findCurrentTreatment = (treatments: SessionTreatment[]): SessionTreatment | null => {
+  // running 상태 우선
+  const running = treatments.find(t => t.status === 'running');
+  if (running) return running;
 
-  const { totalRemainingTime, currentTreatmentName } = React.useMemo(() => {
-    if (room.status !== RoomStatus.IN_USE) {
-      return { totalRemainingTime: 0, currentTreatmentName: '' };
+  // paused 상태
+  const paused = treatments.find(t => t.status === 'paused');
+  if (paused) return paused;
+
+  // pending 상태
+  const pending = treatments.find(t => t.status === 'pending');
+  if (pending) return pending;
+
+  return null;
+};
+
+// 시간을 mm:ss 형식으로 포맷
+const formatTime = (seconds: number): string => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+// 안내 시간을 HH:MM 형식으로 포맷
+const formatInTime = (date: Date): string => {
+  return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+};
+
+// 실시간 타이머 훅 - 타이머만 리렌더링
+const useTimer = (treatment: SessionTreatment | null) => {
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!treatment) {
+      setRemainingSeconds(0);
+      return;
     }
 
-    let remainingTime = 0;
-    let currentTreatment = null;
+    const calculateRemaining = () => {
+      const totalSeconds = treatment.duration * 60;
 
-    for (const treat of room.sessionTreatments) {
-      if (treat.status === 'running') {
-        currentTreatment = treat;
-        const elapsed = (Date.now() - new Date(treat.startTime!).getTime()) / 1000;
-        remainingTime += Math.max(0, treat.duration * 60 - elapsed);
-      } else if (treat.status === 'paused') {
-        if (!currentTreatment) currentTreatment = treat;
-        remainingTime += Math.max(0, treat.duration * 60 - treat.elapsedSeconds);
-      } else if (treat.status === 'pending') {
-         if (!currentTreatment) currentTreatment = treat;
-        remainingTime += treat.duration * 60;
+      if (treatment.status === 'completed') {
+        return 0;
+      } else if (treatment.status === 'running' && treatment.startTime) {
+        const now = Date.now();
+        const start = new Date(treatment.startTime).getTime();
+        const elapsed = (now - start) / 1000 + (treatment.elapsedSeconds || 0);
+        return Math.max(0, totalSeconds - elapsed);
+      } else if (treatment.status === 'paused') {
+        return Math.max(0, totalSeconds - (treatment.elapsedSeconds || 0));
+      } else {
+        // pending
+        return totalSeconds;
       }
-    }
-    return { 
-      totalRemainingTime: Math.ceil(remainingTime / 60), 
-      currentTreatmentName: currentTreatment?.name || ''
     };
-  }, [room]);
 
+    setRemainingSeconds(calculateRemaining());
 
-  const renderTreatments = () => {
-    if (room.status !== RoomStatus.IN_USE) return null;
-    
-    const treatmentElements = room.sessionTreatments.map(t => {
-      if(t.status === 'completed') return <s key={t.id}>{t.name}</s>;
-      if(t.status === 'running') return <span key={t.id} className="font-bold text-clinic-secondary">{t.name}</span>;
-      return <span key={t.id}>{t.name}</span>
-    });
-    
-    if (treatmentElements.length === 0) return <div className="h-[17px]">&nbsp;</div>;
+    // running 상태일 때만 매초 업데이트
+    if (treatment.status === 'running') {
+      const interval = setInterval(() => {
+        setRemainingSeconds(calculateRemaining());
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [treatment?.id, treatment?.status, treatment?.startTime, treatment?.elapsedSeconds, treatment?.duration]);
 
-    return (
-        <div className="flex flex-nowrap items-center gap-x-1 text-[11px] text-clinic-text-secondary truncate">
-            {treatmentElements.map((treatment, index) => (
-                <React.Fragment key={index}>
-                    {treatment}
-                    {index < treatmentElements.length - 1 && <i className="fa-solid fa-angle-right text-gray-300 scale-50 mx-0.5"></i>}
-                </React.Fragment>
-            ))}
-        </div>
-    );
-  };
+  return remainingSeconds;
+};
+
+// 타이머 컴포넌트 - 분리하여 타이머만 리렌더링되도록 함
+interface TimerDisplayProps {
+  treatment: SessionTreatment | null;
+}
+
+const TimerDisplay = memo<TimerDisplayProps>(({ treatment }) => {
+  const remainingSeconds = useTimer(treatment);
+  const isRunning = treatment?.status === 'running';
+  const isPaused = treatment?.status === 'paused';
+
+  if (!treatment) {
+    return <span className="text-gray-400 text-xs">-</span>;
+  }
 
   return (
-    <div className={`p-1.5 rounded-lg border-l-4 ${statusClasses} flex flex-col justify-center h-full`}>
-      {room.status === RoomStatus.IN_USE ? (
-        <>
-          {/* Line 1: Bed, Doctor, Patient, Chart# */}
-          <div className="flex items-center space-x-1.5 min-w-0">
-            <h4 className="font-bold text-sm text-clinic-text-primary flex-shrink-0">{room.name}</h4>
-            <span className="flex-shrink-0 flex items-center justify-center w-4 h-4 bg-gray-200 text-clinic-text-primary text-[10px] font-bold rounded-full" title={room.doctorName}>
-              {getDoctorInitial(room.doctorName)}
-            </span>
-            <p className="font-semibold text-xs text-clinic-text-primary truncate" title={room.patientName}>
-              {room.patientName}
-              <span className="text-[10px] font-normal text-clinic-text-secondary ml-1">({room.patientChartNumber})</span>
-            </p>
-          </div>
+    <span className={`font-mono text-xs font-bold ${
+      isRunning ? 'text-red-600' : isPaused ? 'text-yellow-600' : 'text-gray-500'
+    }`}>
+      {formatTime(remainingSeconds)}
+    </span>
+  );
+});
 
-          {/* Line 2: Treatments and Remaining Time */}
-          <div className="flex justify-between items-center mt-1 min-w-0">
-            <div className="truncate">
-              {renderTreatments()}
-            </div>
-            {totalRemainingTime > 0 && (
-              <div className="flex items-baseline flex-shrink-0 ml-2">
-                <p className="text-base font-bold text-red-600 leading-none">{totalRemainingTime}</p>
-                <p className="text-[10px] text-red-500 font-medium leading-none ml-0.5">분</p>
-              </div>
-            )}
-          </div>
-        </>
-      ) : (
-        // Available / Cleaning Card Layout
-        <div className="flex justify-between items-center h-full">
-          <h4 className="font-bold text-base text-clinic-text-primary">{room.name}</h4>
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full text-white ${badgeBgColor}`}>{room.status}</span>
-        </div>
-      )}
+TimerDisplay.displayName = 'TimerDisplay';
+
+// 치료 상태 컴포넌트 - 분리하여 독립적으로 리렌더링
+interface TreatmentStatusProps {
+  treatment: SessionTreatment | null;
+}
+
+const TreatmentStatus = memo<TreatmentStatusProps>(({ treatment }) => {
+  const isRunning = treatment?.status === 'running';
+  const isPaused = treatment?.status === 'paused';
+
+  if (!treatment) {
+    return <span className="text-green-600 font-medium text-xs">완료</span>;
+  }
+
+  return (
+    <span
+      className={`font-medium text-xs ${isRunning ? 'text-clinic-secondary' : isPaused ? 'text-yellow-600' : 'text-gray-600'}`}
+      title={treatment.name}
+    >
+      {treatment.name.slice(0, 3)}
+      {isPaused && <i className="fa-solid fa-pause text-[9px] text-yellow-500 ml-0.5"></i>}
+    </span>
+  );
+});
+
+TreatmentStatus.displayName = 'TreatmentStatus';
+
+// 환자 정보 컴포넌트 - 분리하여 정보가 변경될 때만 리렌더링
+interface PatientInfoProps {
+  patient: PatientTreatmentInfo;
+}
+
+const PatientInfo = memo<PatientInfoProps>(({ patient }) => {
+  // 차트번호 앞의 0 제거
+  const formatChartNumber = (chartNumber?: string) => {
+    if (!chartNumber) return '';
+    return chartNumber.replace(/^0+/, '') || '0';
+  };
+
+  // 나이 계산
+  const getAge = (dob?: string) => {
+    if (!dob) return '';
+    const birthYear = new Date(dob).getFullYear();
+    const currentYear = new Date().getFullYear();
+    return currentYear - birthYear;
+  };
+
+  // 성별 표시
+  const getGenderDisplay = (gender?: 'male' | 'female') => {
+    if (!gender) return '';
+    return gender === 'male' ? '남' : '여';
+  };
+
+  // 담당의 이니셜
+  const getDoctorInitial = (name: string) => {
+    if (!name) return '?';
+    return name.charAt(0);
+  };
+
+  const gender = getGenderDisplay(patient.patientGender);
+  const age = getAge(patient.patientDob);
+  const genderAge = gender || age ? `${gender}${gender && age ? '/' : ''}${age}` : '';
+  const fullInfo = `${patient.patientName}(${patient.patientChartNumber || ''})${genderAge ? '/' + genderAge : ''}`;
+
+  return (
+    <>
+      {/* 환자이름(차트번호)/성별/나이 */}
+      <div className="truncate flex items-baseline gap-1" title={fullInfo}>
+        <span className="font-bold text-clinic-text-primary text-base">{patient.patientName}</span>
+        {patient.patientChartNumber && (
+          <span className="text-gray-400 text-sm">{formatChartNumber(patient.patientChartNumber)}</span>
+        )}
+        {genderAge && (
+          <span className="text-gray-500 text-sm">{genderAge}</span>
+        )}
+      </div>
+
+      {/* 베드번호 */}
+      <div className="text-center">
+        <span className="px-1.5 py-0.5 bg-gray-200 text-gray-700 text-xs font-medium rounded">
+          {patient.roomName}
+        </span>
+      </div>
+
+      {/* 담당의 */}
+      <div className="flex items-center justify-center">
+        <span
+          className="flex items-center justify-center w-5 h-5 bg-clinic-primary/10 text-clinic-primary text-[11px] font-bold rounded-full"
+          title={patient.doctorName}
+        >
+          {getDoctorInitial(patient.doctorName)}
+        </span>
+      </div>
+
+      {/* 입실시간 */}
+      <div className="text-clinic-text-secondary text-xs text-center">
+        {formatInTime(patient.inTime)}
+      </div>
+    </>
+  );
+});
+
+PatientInfo.displayName = 'PatientInfo';
+
+interface PatientRowProps {
+  patient: PatientTreatmentInfo;
+  index: number;
+}
+
+const PatientRow = memo<PatientRowProps>(({ patient, index }) => {
+  const currentTreatment = useMemo(
+    () => findCurrentTreatment(patient.sessionTreatments),
+    [patient.sessionTreatments]
+  );
+
+  return (
+    <div
+      className={`grid grid-cols-[1fr_2.5rem_1.5rem_3rem_2.5rem_3rem] gap-1 items-center px-2 py-1.5 text-base ${
+        index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+      } border-b border-gray-100 hover:bg-blue-50 transition-colors`}
+    >
+      <PatientInfo patient={patient} />
+
+      {/* 현재 상태 */}
+      <div className="flex items-center min-w-0">
+        <TreatmentStatus treatment={currentTreatment} />
+      </div>
+
+      {/* 타이머 */}
+      <div className="text-right">
+        <TimerDisplay treatment={currentTreatment} />
+      </div>
     </div>
   );
-};
+});
+
+PatientRow.displayName = 'PatientRow';
 
 interface TreatmentRoomStatusProps {
   treatmentRooms: TreatmentRoom[];
+  allPatients: Patient[];
 }
 
-const TreatmentRoomStatus: React.FC<TreatmentRoomStatusProps> = ({ treatmentRooms }) => {
+const TreatmentRoomStatus: React.FC<TreatmentRoomStatusProps> = ({ treatmentRooms, allPatients }) => {
+  // 사용 중인 방만 필터링하고 안내 시간순으로 정렬
+  const patients = useMemo(() => {
+    const inUseRooms = treatmentRooms.filter(
+      room => room.status === RoomStatus.IN_USE && room.patientId && room.sessionId
+    );
+
+    const patientList: PatientTreatmentInfo[] = inUseRooms.map(room => {
+      // 환자 정보 DB에서 성별/나이 가져오기
+      const patientInfo = allPatients.find(p => p.id === room.patientId);
+
+      return {
+        sessionId: room.sessionId!,
+        patientId: room.patientId!,
+        patientName: room.patientName || '이름없음',
+        patientChartNumber: room.patientChartNumber || '',
+        // 환자 DB에서 가져온 정보 우선 사용, 없으면 room 정보 사용
+        patientGender: patientInfo?.gender || room.patientGender,
+        patientDob: patientInfo?.dob || room.patientDob,
+        doctorName: room.doctorName || '',
+        roomName: room.name,
+        inTime: room.inTime ? new Date(room.inTime) : new Date(),
+        sessionTreatments: room.sessionTreatments,
+      };
+    });
+
+    // 안내 시간순으로 정렬 (먼저 온 환자가 위)
+    patientList.sort((a, b) => a.inTime.getTime() - b.inTime.getTime());
+
+    return patientList;
+  }, [treatmentRooms, allPatients]);
+
+  const titleWithCount = (
+    <>
+      치료실 현황
+      <span className="ml-2 px-2 py-0.5 bg-clinic-primary text-white text-sm font-bold rounded-full">
+        {patients.length}명
+      </span>
+    </>
+  );
+
   return (
-    <Quadrant icon="fa-solid fa-bed" title="치료실 현황" className="flex-1">
-      <div className="grid grid-cols-2 grid-rows-9 gap-1.5 h-full">
-        {treatmentRooms.map((room) => (
-          <RoomCard key={room.id} room={room} />
-        ))}
+    <Quadrant icon="fa-solid fa-user-nurse" title={titleWithCount} className="flex-1">
+      <div className="flex flex-col h-full">
+        {/* 환자 목록 - 최대 17명 */}
+        <div className="flex-1 overflow-y-auto">
+          {patients.length > 0 ? (
+            patients.slice(0, 17).map((patient, index) => (
+              <PatientRow key={patient.sessionId} patient={patient} index={index} />
+            ))
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+              현재 치료 중인 환자가 없습니다
+            </div>
+          )}
+        </div>
       </div>
     </Quadrant>
   );

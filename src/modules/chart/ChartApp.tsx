@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import PatientList from './pages/PatientList';
 import PatientDetail from './pages/PatientDetail';
 import PrescriptionManagement from './pages/PrescriptionManagement';
+import PrescriptionDefinitions from './pages/PrescriptionDefinitions';
 import DosageInstructionManagement from './pages/DosageInstructionManagement';
 import DosageInstructionCreator from './pages/DosageInstructionCreator';
 
@@ -120,6 +121,18 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
             </button>
 
             <button
+              onClick={() => navigateTo('/prescription-definitions')}
+              className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
+                isActive('/prescription-definitions')
+                  ? 'bg-clinic-primary text-white'
+                  : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
+              }`}
+            >
+              <i className="fas fa-book-medical text-xl mb-1"></i>
+              <span>처방정의</span>
+            </button>
+
+            <button
               onClick={() => navigateTo('/dosage-instructions')}
               className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
                 isActive('/dosage-instructions')
@@ -168,6 +181,7 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
           <Route path="/patients" element={<PatientList />} />
           <Route path="/patients/:id" element={<PatientDetail />} />
           <Route path="/prescriptions" element={<PrescriptionManagement />} />
+          <Route path="/prescription-definitions" element={<PrescriptionDefinitions />} />
           <Route path="/dosage-instructions" element={<DosageInstructionManagement />} />
           <Route path="/dosage-instructions/create" element={<DosageInstructionCreator />} />
         </Routes>

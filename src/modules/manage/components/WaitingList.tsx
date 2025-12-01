@@ -11,20 +11,24 @@ interface WaitingListProps {
   onPatientClick: (patient: Patient) => void;
   onPatientDrop: (
     draggedPatientId: number,
-    sourceListType: 'consultation' | 'treatment',
+    sourceListType: 'consultation' | 'treatment' | 'consultation_room',
     destinationListType: 'consultation' | 'treatment',
     targetPatientId: number | null
   ) => void;
   onMoveToPayment?: (patientId: number, sourceList: 'consultation' | 'treatment') => void;
+  onCancelRegistration?: (patientId: number) => void;
+  onEditConsultationInfo?: (patient: Patient) => void;
 }
 
-const WaitingListItem: React.FC<{ 
-    patient: Patient; 
-    onClick: (patient: Patient) => void; 
+const WaitingListItem: React.FC<{
+    patient: Patient;
+    onClick: (patient: Patient) => void;
     listType: 'consultation' | 'treatment';
     onPatientDrop: WaitingListProps['onPatientDrop'];
     onMoveToPayment?: WaitingListProps['onMoveToPayment'];
-}> = ({ patient, onClick, listType, onPatientDrop, onMoveToPayment }) => {
+    onCancelRegistration?: WaitingListProps['onCancelRegistration'];
+    onEditConsultationInfo?: WaitingListProps['onEditConsultationInfo'];
+}> = ({ patient, onClick, listType, onPatientDrop, onMoveToPayment, onCancelRegistration, onEditConsultationInfo }) => {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -40,7 +44,7 @@ const WaitingListItem: React.FC<{
         (e.target as HTMLLIElement).style.opacity = '1';
         document.querySelectorAll('.drag-over-indicator').forEach(el => el.classList.remove('drag-over-indicator'));
     };
-    
+
     const handleDragOver = (e: React.DragEvent<HTMLLIElement>) => {
         e.preventDefault();
         if (!e.currentTarget.classList.contains('drag-over-indicator')) {
@@ -51,36 +55,45 @@ const WaitingListItem: React.FC<{
     const handleDragLeave = (e: React.DragEvent<HTMLLIElement>) => {
         e.currentTarget.classList.remove('drag-over-indicator');
     };
-    
+
     const handleDrop = (e: React.DragEvent<HTMLLIElement>) => {
         e.preventDefault();
         e.stopPropagation();
         e.currentTarget.classList.remove('drag-over-indicator');
         const draggedPatientId = parseInt(e.dataTransfer.getData('patientId'), 10);
-        const sourceListType = e.dataTransfer.getData('sourceListType') as 'consultation' | 'treatment';
-        
+        const sourceListType = e.dataTransfer.getData('sourceListType') as 'consultation' | 'treatment' | 'consultation_room';
+
+        console.log('📥 WaitingListItem 드롭:', { draggedPatientId, sourceListType, listType, targetPatientId: patient.id });
+
         if (draggedPatientId !== patient.id) {
             onPatientDrop(draggedPatientId, sourceListType, listType, patient.id);
         }
     };
 
-    const handleNameClick = (event: React.MouseEvent) => {
-        if (!onMoveToPayment) return;
-
+    // 우클릭 메뉴
+    const handleContextMenu = (event: React.MouseEvent) => {
         event.preventDefault();
         event.stopPropagation();
-
-        // Toggle context menu on name click
-        if (contextMenu) {
-            setContextMenu(null);
-        } else {
-            setContextMenu({ x: event.clientX, y: event.clientY });
-        }
+        setContextMenu({ x: event.clientX, y: event.clientY });
     };
 
     const handleMoveToPaymentClick = () => {
         if (onMoveToPayment) {
             onMoveToPayment(patient.id, listType);
+        }
+        setContextMenu(null);
+    };
+
+    const handleCancelRegistrationClick = () => {
+        if (onCancelRegistration) {
+            onCancelRegistration(patient.id);
+        }
+        setContextMenu(null);
+    };
+
+    const handleEditConsultationInfoClick = () => {
+        if (onEditConsultationInfo) {
+            onEditConsultationInfo(patient);
         }
         setContextMenu(null);
     };
@@ -96,28 +109,72 @@ const WaitingListItem: React.FC<{
           document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
-    
+
+    // 차트번호 앞의 0 제거
+    const formatChartNumber = (chartNumber?: string) => {
+        if (!chartNumber) return '';
+        return chartNumber.replace(/^0+/, '') || '0';
+    };
+
+    // 나이 계산
+    const getAge = (dob?: string) => {
+        if (!dob) return '';
+        const birthYear = new Date(dob).getFullYear();
+        const currentYear = new Date().getFullYear();
+        return currentYear - birthYear;
+    };
+
+    // 성별 표시
+    const getGenderDisplay = (gender?: 'male' | 'female') => {
+        if (!gender) return '';
+        return gender === 'male' ? '남' : '여';
+    };
+
+    const gender = getGenderDisplay(patient.gender);
+    const age = getAge(patient.dob);
+    const genderAge = gender || age ? `${gender}${gender && age ? '/' : ''}${age}` : '';
+
     return (
         <>
             <li
-                className="flex justify-between items-center p-3 hover:bg-blue-50 rounded-md cursor-pointer transition-colors duration-150"
+                className="flex justify-between items-center p-2 hover:bg-blue-50 rounded-md cursor-grab transition-colors duration-150"
                 draggable="true"
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
+                onContextMenu={handleContextMenu}
             >
-                <div>
-                <span
-                    className="font-bold text-clinic-text-primary cursor-pointer hover:text-clinic-primary"
-                    onClick={handleNameClick}
-                >
-                    {patient.name}
-                </span>
-                <span className="text-sm text-clinic-text-secondary ml-2">{patient.details}</span>
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-1 flex-wrap">
+                        <span className="font-bold text-clinic-text-primary">
+                            {patient.name}
+                        </span>
+                        {patient.chartNumber && (
+                            <span className="text-xs text-gray-400">{formatChartNumber(patient.chartNumber)}</span>
+                        )}
+                        {genderAge && (
+                            <span className="text-xs text-gray-500">{genderAge}</span>
+                        )}
+                    </div>
+                    {patient.details && (() => {
+                        // 진료항목과 메모 분리 (| 로 구분)
+                        const [itemsPart, memoPart] = patient.details.split(' | ');
+                        return (
+                            <div className="text-sm font-medium truncate" title={patient.details}>
+                                {itemsPart && <span className="text-clinic-secondary">{itemsPart}</span>}
+                                {memoPart && (
+                                    <>
+                                        {itemsPart && <span className="text-gray-400 mx-1">|</span>}
+                                        <span className="text-red-500">{memoPart}</span>
+                                    </>
+                                )}
+                            </div>
+                        );
+                    })()}
                 </div>
-                <span className="text-sm text-gray-500">{patient.time}</span>
+                <span className="text-xs text-gray-400 ml-2 flex-shrink-0">{patient.time}</span>
             </li>
             {contextMenu && (
                 <div
@@ -127,11 +184,30 @@ const WaitingListItem: React.FC<{
                 >
                     <ul className="py-1">
                         <li>
-                            <button 
-                                onClick={handleMoveToPaymentClick} 
+                            <button
+                                onClick={handleEditConsultationInfoClick}
                                 className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100"
                             >
+                                <i className="fa-solid fa-clipboard-list mr-2 text-blue-600"></i>
+                                진료정보
+                            </button>
+                        </li>
+                        <li>
+                            <button
+                                onClick={handleMoveToPaymentClick}
+                                className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100"
+                            >
+                                <i className="fa-solid fa-credit-card mr-2 text-green-600"></i>
                                 수납
+                            </button>
+                        </li>
+                        <li>
+                            <button
+                                onClick={handleCancelRegistrationClick}
+                                className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100"
+                            >
+                                <i className="fa-solid fa-xmark mr-2 text-red-500"></i>
+                                접수취소
                             </button>
                         </li>
                     </ul>
@@ -141,12 +217,12 @@ const WaitingListItem: React.FC<{
     );
 };
 
-const WaitingList: React.FC<WaitingListProps> = ({ title, icon, list, listType, onPatientClick, onPatientDrop, onMoveToPayment }) => {
+const WaitingList: React.FC<WaitingListProps> = ({ title, icon, list, listType, onPatientClick, onPatientDrop, onMoveToPayment, onCancelRegistration, onEditConsultationInfo }) => {
     const handleDragOver = (e: React.DragEvent<HTMLUListElement>) => {
         e.preventDefault();
         e.currentTarget.classList.add('bg-blue-50');
     };
-    
+
     const handleDragLeave = (e: React.DragEvent<HTMLUListElement>) => {
         e.currentTarget.classList.remove('bg-blue-50');
     };
@@ -154,34 +230,43 @@ const WaitingList: React.FC<WaitingListProps> = ({ title, icon, list, listType, 
     const handleDrop = (e: React.DragEvent<HTMLUListElement>) => {
         e.preventDefault();
         e.currentTarget.classList.remove('bg-blue-50');
-        // This condition ensures drop event on UL fires only when dropping in empty space
-        if (e.target !== e.currentTarget) {
+
+        const draggedPatientId = parseInt(e.dataTransfer.getData('patientId'), 10);
+        const sourceListType = e.dataTransfer.getData('sourceListType') as 'consultation' | 'treatment' | 'consultation_room';
+
+        console.log('📥 WaitingList 드롭:', { draggedPatientId, sourceListType, listType });
+
+        // LI 요소(개별 환자 아이템) 위에 드롭된 경우는 WaitingListItem에서 처리
+        // 그 외의 경우(빈 공간, 빈 목록 메시지 영역 등)는 여기서 처리
+        const targetElement = e.target as HTMLElement;
+        if (targetElement.tagName === 'LI' || targetElement.closest('li')) {
+            console.log('📥 개별 아이템 위에 드롭 - WaitingListItem에서 처리');
             return;
         }
 
-        const draggedPatientId = parseInt(e.dataTransfer.getData('patientId'), 10);
-        const sourceListType = e.dataTransfer.getData('sourceListType') as 'consultation' | 'treatment';
-        
+        console.log('📥 빈 공간에 드롭 - 목록 끝에 추가');
         onPatientDrop(draggedPatientId, sourceListType, listType, null);
     };
 
     return (
       <Quadrant icon={icon} title={`${title} (${list.length})`} className="flex-1 min-h-0">
-        <ul 
+        <ul
             className="divide-y divide-gray-200 overflow-y-auto p-2 h-full transition-colors duration-150"
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
         >
           {list.length > 0 ? (
-            list.map(patient => (
-              <WaitingListItem 
-                key={`${patient.id}-${patient.name}`} 
-                patient={patient} 
-                onClick={onPatientClick} 
-                listType={listType} 
-                onPatientDrop={onPatientDrop} 
+            list.map((patient, index) => (
+              <WaitingListItem
+                key={`${listType}-${patient.id}-${index}`}
+                patient={patient}
+                onClick={onPatientClick}
+                listType={listType}
+                onPatientDrop={onPatientDrop}
                 onMoveToPayment={onMoveToPayment}
+                onCancelRegistration={onCancelRegistration}
+                onEditConsultationInfo={onEditConsultationInfo}
               />
             ))
            ) : (

@@ -12,12 +12,12 @@ interface ReservationStatusProps {
 
 const ReservationStatus: React.FC<ReservationStatusProps> = ({ reservations, onEditReservation, onPatientArrival }) => {
   const today = new Date();
-  const year = today.getFullYear();
+  const year = String(today.getFullYear()).slice(2); // 25
   const month = String(today.getMonth() + 1).padStart(2, '0');
   const day = String(today.getDate()).padStart(2, '0');
   const dayOfWeek = ['일', '월', '화', '수', '목', '금', '토'][today.getDay()];
-  const todayKey = `${year}-${month}-${day}`;
-  const formattedDate = `${year}년 ${month}월 ${day}일 (${dayOfWeek})`;
+  const todayKey = `${today.getFullYear()}-${month}-${day}`;
+  const formattedDate = `${year}/${month}/${day}(${dayOfWeek})`;
 
   const todaysReservations: Reservation[] = [];
 

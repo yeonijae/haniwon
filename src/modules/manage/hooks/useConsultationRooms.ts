@@ -111,11 +111,28 @@ export const useConsultationRooms = ({ medicalStaff }: UseConsultationRoomsProps
     }));
   };
 
+  // 진료실 비우기 (환자 제거)
+  const clearConsultationRoom = (roomId: number) => {
+    setConsultationRooms(prev => prev.map(room => {
+      if (room.id === roomId) {
+        return {
+          ...room,
+          status: 'available',
+          patientId: undefined,
+          patientName: undefined,
+          patientDetails: undefined,
+        };
+      }
+      return room;
+    }));
+  };
+
   return {
     consultationRooms,
     setConsultationRooms,
     handleFinishConsultation,
     handleAssignPatientToRoom,
     assignPatientToRoom,
+    clearConsultationRoom,
   };
 };

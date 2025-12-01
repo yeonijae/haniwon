@@ -22,18 +22,12 @@ const PaymentCard: React.FC<PaymentCardProps> = ({ payment, onPaymentClick, onRe
         return parts.length === 3 ? `${parts[1]}/${parts[2]}` : dateStr; // MM.DD
     };
     
-    const buttonBaseClasses = "w-16 h-10 text-white text-sm font-semibold rounded-md transition-colors flex items-center justify-center";
+    const buttonBaseClasses = "w-10 h-10 text-white text-lg rounded-md transition-colors flex items-center justify-center";
 
-    const handleNameClick = (event: React.MouseEvent) => {
+    const handleContextMenu = (event: React.MouseEvent) => {
         event.preventDefault();
         event.stopPropagation();
-
-        // Toggle context menu on name click
-        if (contextMenu) {
-            setContextMenu(null);
-        } else {
-            setContextMenu({ x: event.clientX, y: event.clientY });
-        }
+        setContextMenu({ x: event.clientX, y: event.clientY });
     };
 
     const handleMoveClick = (destination: 'consultation' | 'treatment') => {
@@ -65,11 +59,8 @@ const PaymentCard: React.FC<PaymentCardProps> = ({ payment, onPaymentClick, onRe
             <div
                 className="w-full text-left p-3 bg-white rounded-md mb-2 border border-gray-200 flex justify-between items-center"
             >
-                <div>
-                    <p
-                        className="font-bold text-base text-clinic-text-primary cursor-pointer hover:text-clinic-primary"
-                        onClick={handleNameClick}
-                    >
+                <div onContextMenu={handleContextMenu}>
+                    <p className="font-bold text-base text-clinic-text-primary">
                         {payment.patientName}
                     </p>
                     <p className="text-sm text-clinic-text-secondary">{payment.details}</p>
@@ -79,8 +70,9 @@ const PaymentCard: React.FC<PaymentCardProps> = ({ payment, onPaymentClick, onRe
                         onClick={(e) => { e.stopPropagation(); onPaymentClick(payment); }}
                         className={`${buttonBaseClasses} bg-clinic-secondary hover:bg-blue-700`}
                         aria-label={`${payment.patientName}님 수납 처리`}
+                        title="수납"
                     >
-                        수납
+                        <i className="fa-solid fa-credit-card"></i>
                     </button>
                     <button
                         onClick={(e) => { e.stopPropagation(); onReservationClick(payment); }}
@@ -90,14 +82,15 @@ const PaymentCard: React.FC<PaymentCardProps> = ({ payment, onPaymentClick, onRe
                                 : 'bg-clinic-accent hover:bg-green-700'
                         }`}
                         aria-label={`${payment.patientName}님 예약`}
+                        title={hasReservation ? `${formatReservationDate(payment.reservationDate)} ${payment.reservationTime}` : '예약'}
                     >
                         {hasReservation ? (
-                            <div className="text-center text-xs leading-tight">
+                            <div className="text-center text-[10px] leading-tight font-medium">
                                 <div>{formatReservationDate(payment.reservationDate)}</div>
-                                <div className="font-bold">{payment.reservationTime}</div>
+                                <div>{payment.reservationTime}</div>
                             </div>
                         ) : (
-                            '예약'
+                            <i className="fa-solid fa-calendar-plus"></i>
                         )}
                     </button>
                 </div>
@@ -149,8 +142,17 @@ interface PaymentStatusProps {
 }
 
 const PaymentStatus: React.FC<PaymentStatusProps> = ({ payments, onPaymentClick, onReservationClick, onMoveToWaiting, onDelete }) => {
+  const titleWithCount = (
+    <>
+      수납 및 예약
+      <span className="ml-2 px-2 py-0.5 bg-clinic-primary text-white text-sm font-bold rounded-full">
+        {payments.length}명
+      </span>
+    </>
+  );
+
   return (
-    <Quadrant icon="fa-solid fa-credit-card" title="수납 및 예약" className="flex-1 min-h-0">
+    <Quadrant icon="fa-solid fa-credit-card" title={titleWithCount} className="flex-1 min-h-0">
       <div className="space-y-2 p-2 h-full">
         {payments.length > 0 ? (
           payments.map((payment: Payment) => (

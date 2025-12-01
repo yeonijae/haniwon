@@ -1,13 +1,24 @@
 
 import React, { useState, useEffect } from 'react';
-import { Patient } from '../types';
+import { Patient, ConsultationItem } from '../types';
 import * as api from '../lib/api';
 
+// 선택된 진료항목 형식
+export interface SelectedConsultationItem {
+  itemId: number;
+  itemName: string;
+  subItemId?: number;
+  subItemName?: string;
+}
+
 interface PatientSearchProps {
-  addPatientToConsultation: (patient: Patient) => void;
+  addPatientToConsultation: (patient: Patient, details?: string) => void;
   addPatientToTreatment: (patient: Patient) => void;
   updatePatientInfo: (patient: Patient) => void;
   deletePatient: (patientId: number) => void;
+  onClose?: () => void;
+  consultationItems?: ConsultationItem[];
+  onReservation?: (patient: Patient) => void;
 }
 
 const DetailItem: React.FC<{ label: string; value?: string }> = ({ label, value }) => (
@@ -17,13 +28,16 @@ const DetailItem: React.FC<{ label: string; value?: string }> = ({ label, value 
     </div>
 );
 
-const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation, addPatientToTreatment, updatePatientInfo, deletePatient }) => {
+const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation, addPatientToTreatment, updatePatientInfo, deletePatient, onClose, consultationItems = [], onReservation }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<Patient[]>([]);
-  const [view, setView] = useState<'search' | 'detail' | 'edit'>('search');
+  const [view, setView] = useState<'search' | 'detail' | 'edit' | 'selectItems'>('search');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [editFormData, setEditFormData] = useState<Patient | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+
+  // 진료항목 선택 상태
+  const [selectedConsultationItems, setSelectedConsultationItems] = useState<SelectedConsultationItem[]>([]);
 
   // 서버사이드 검색 (디바운싱 적용)
   useEffect(() => {
@@ -211,20 +225,221 @@ const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation,
             </dl>
             
             <div className="flex justify-end space-x-2 pt-4 border-t mt-6">
-                <button 
-                    onClick={() => addPatientToConsultation(selectedPatient)}
+                <button
+                    onClick={() => {
+                        setSelectedConsultationItems([]);
+                        setView('selectItems');
+                    }}
                     className="px-4 py-2 bg-clinic-secondary text-white font-semibold rounded-md hover:bg-blue-700 transition-colors"
                 >
-                    <i className="fa-solid fa-user-doctor mr-2"></i>진료대기 추가
+                    <i className="fa-solid fa-user-doctor mr-2"></i>진료대기
                 </button>
                 <button
-                    onClick={() => addPatientToTreatment(selectedPatient)}
+                    onClick={() => {
+                        addPatientToTreatment(selectedPatient);
+                        onClose?.();
+                    }}
                     className="px-4 py-2 bg-clinic-accent text-white font-semibold rounded-md hover:bg-green-700 transition-colors"
                 >
-                    <i className="fa-solid fa-bed-pulse mr-2"></i>치료대기 추가
+                    <i className="fa-solid fa-bed-pulse mr-2"></i>치료대기
                 </button>
+                {onReservation && (
+                    <button
+                        onClick={() => {
+                            onReservation(selectedPatient);
+                            onClose?.();
+                        }}
+                        className="px-4 py-2 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors"
+                    >
+                        <i className="fa-solid fa-calendar-plus mr-2"></i>예약
+                    </button>
+                )}
             </div>
         </div>
+    );
+  }
+
+  // 진료항목 선택 뷰
+  if (view === 'selectItems' && selectedPatient) {
+    const toggleItem = (item: ConsultationItem) => {
+      const existing = selectedConsultationItems.find(s => s.itemId === item.id && !s.subItemId);
+      if (existing) {
+        // 이미 선택된 항목 제거 (해당 항목과 모든 세부항목 제거)
+        setSelectedConsultationItems(prev =>
+          prev.filter(s => s.itemId !== item.id)
+        );
+      } else {
+        // 새로 선택 추가 (세부항목이 없는 경우만 메인 항목으로 추가)
+        if (item.subItems.length === 0) {
+          setSelectedConsultationItems(prev => [
+            ...prev,
+            { itemId: item.id, itemName: item.name }
+          ]);
+        }
+      }
+    };
+
+    const toggleSubItem = (item: ConsultationItem, subItem: { id: number; name: string }) => {
+      const existing = selectedConsultationItems.find(
+        s => s.itemId === item.id && s.subItemId === subItem.id
+      );
+      if (existing) {
+        // 이미 선택된 세부항목 제거
+        setSelectedConsultationItems(prev =>
+          prev.filter(s => !(s.itemId === item.id && s.subItemId === subItem.id))
+        );
+      } else {
+        // 새로 선택 추가
+        setSelectedConsultationItems(prev => [
+          ...prev,
+          { itemId: item.id, itemName: item.name, subItemId: subItem.id, subItemName: subItem.name }
+        ]);
+      }
+    };
+
+    const isItemSelected = (itemId: number) => {
+      return selectedConsultationItems.some(s => s.itemId === itemId && !s.subItemId);
+    };
+
+    const isSubItemSelected = (itemId: number, subItemId: number) => {
+      return selectedConsultationItems.some(s => s.itemId === itemId && s.subItemId === subItemId);
+    };
+
+    const hasAnySubItemSelected = (itemId: number) => {
+      return selectedConsultationItems.some(s => s.itemId === itemId && s.subItemId);
+    };
+
+    const handleConfirmSelection = () => {
+      // 선택된 항목들을 문자열로 변환
+      const detailsText = selectedConsultationItems.length > 0
+        ? selectedConsultationItems.map(item => {
+            if (item.subItemName) {
+              return `${item.itemName}(${item.subItemName})`;
+            }
+            return item.itemName;
+          }).join(', ')
+        : '검색 추가';
+
+      addPatientToConsultation(selectedPatient, detailsText);
+      onClose?.();
+    };
+
+    return (
+      <div className="flex flex-col h-[60vh]">
+        <div className="flex items-center mb-4 -mt-2">
+          <button onClick={() => setView('detail')} className="flex items-center text-gray-600 hover:text-gray-900 font-semibold text-sm">
+            <i className="fa-solid fa-arrow-left mr-2"></i>
+            <span>환자 정보로 돌아가기</span>
+          </button>
+        </div>
+
+        <div className="bg-gray-50 p-3 rounded-lg mb-4">
+          <p className="font-bold text-clinic-primary">{selectedPatient.name}</p>
+          <p className="text-sm text-gray-600">오늘 받을 진료항목을 선택해주세요.</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto space-y-2">
+          {consultationItems.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <p>등록된 진료항목이 없습니다.</p>
+              <p className="text-sm mt-1">설정에서 진료항목을 추가해주세요.</p>
+            </div>
+          ) : (
+            consultationItems.map((item) => (
+              <div key={item.id} className="border rounded-lg bg-white">
+                {/* 메인 항목 */}
+                <div
+                  onClick={() => item.subItems.length === 0 && toggleItem(item)}
+                  className={`p-3 flex items-center justify-between ${
+                    item.subItems.length === 0 ? 'cursor-pointer hover:bg-gray-50' : ''
+                  } ${
+                    isItemSelected(item.id) ? 'bg-blue-50 border-blue-200' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    {item.subItems.length === 0 ? (
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center ${
+                        isItemSelected(item.id)
+                          ? 'bg-clinic-secondary border-clinic-secondary text-white'
+                          : 'border-gray-300'
+                      }`}>
+                        {isItemSelected(item.id) && <i className="fa-solid fa-check text-xs"></i>}
+                      </div>
+                    ) : (
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center ${
+                        hasAnySubItemSelected(item.id)
+                          ? 'bg-clinic-secondary border-clinic-secondary text-white'
+                          : 'border-gray-300 bg-gray-100'
+                      }`}>
+                        {hasAnySubItemSelected(item.id) && <i className="fa-solid fa-minus text-xs"></i>}
+                      </div>
+                    )}
+                    <span className="font-medium">{item.name}</span>
+                  </div>
+                  {item.subItems.length > 0 && (
+                    <span className="text-sm text-gray-500">{item.subItems.length}개 세부항목</span>
+                  )}
+                </div>
+
+                {/* 세부항목 */}
+                {item.subItems.length > 0 && (
+                  <div className="border-t bg-gray-50 p-2 grid grid-cols-2 gap-2">
+                    {item.subItems.map((subItem) => (
+                      <div
+                        key={subItem.id}
+                        onClick={() => toggleSubItem(item, subItem)}
+                        className={`p-2 rounded cursor-pointer flex items-center gap-2 ${
+                          isSubItemSelected(item.id, subItem.id)
+                            ? 'bg-blue-100 border border-blue-300'
+                            : 'bg-white border border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                          isSubItemSelected(item.id, subItem.id)
+                            ? 'bg-clinic-secondary border-clinic-secondary text-white'
+                            : 'border-gray-300'
+                        }`}>
+                          {isSubItemSelected(item.id, subItem.id) && <i className="fa-solid fa-check text-xs"></i>}
+                        </div>
+                        <span className="text-sm">{subItem.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* 선택된 항목 요약 및 버튼 */}
+        <div className="border-t pt-4 mt-4">
+          {selectedConsultationItems.length > 0 && (
+            <div className="mb-3 p-2 bg-blue-50 rounded text-sm">
+              <span className="font-medium text-blue-800">선택된 항목: </span>
+              <span className="text-blue-600">
+                {selectedConsultationItems.map(s =>
+                  s.subItemName ? `${s.itemName}(${s.subItemName})` : s.itemName
+                ).join(', ')}
+              </span>
+            </div>
+          )}
+          <div className="flex justify-end space-x-2">
+            <button
+              onClick={() => setView('detail')}
+              className="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-md hover:bg-gray-300 transition-colors"
+            >
+              취소
+            </button>
+            <button
+              onClick={handleConfirmSelection}
+              className="px-4 py-2 bg-clinic-secondary text-white font-semibold rounded-md hover:bg-blue-700 transition-colors"
+            >
+              <i className="fa-solid fa-user-doctor mr-2"></i>
+              접수하기 {selectedConsultationItems.length > 0 && `(${selectedConsultationItems.length})`}
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 

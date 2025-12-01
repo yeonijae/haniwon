@@ -165,6 +165,8 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
     patientId: room.patient_id,
     patientName: room.patient_name,
     patientChartNumber: room.patient_chart_number,
+    patientGender: room.patient_gender,
+    patientDob: room.patient_dob,
     doctorName: room.doctor_name,
     inTime: room.in_time,
     sessionTreatments: (room.session_treatments || []).map((st: any) => ({
@@ -188,6 +190,8 @@ export async function updateTreatmentRoom(roomId: number, room: Partial<Treatmen
   if (room.patientId !== undefined) updateData.patient_id = room.patientId;
   if (room.patientName !== undefined) updateData.patient_name = room.patientName;
   if (room.patientChartNumber !== undefined) updateData.patient_chart_number = room.patientChartNumber;
+  if (room.patientGender !== undefined) updateData.patient_gender = room.patientGender;
+  if (room.patientDob !== undefined) updateData.patient_dob = room.patientDob;
   if (room.doctorName !== undefined) updateData.doctor_name = room.doctorName;
   if (room.inTime !== undefined) updateData.in_time = room.inTime;
 
@@ -281,6 +285,88 @@ export async function fetchTreatmentItems(): Promise<TreatmentItem[]> {
     defaultDuration: item.default_duration,
     displayOrder: item.display_order ?? 0,
   }));
+}
+
+// 치료항목 생성
+export async function createTreatmentItem(item: Omit<TreatmentItem, 'id'>): Promise<TreatmentItem> {
+  const { data, error } = await supabase
+    .from('treatment_items')
+    .insert({
+      name: item.name,
+      default_duration: item.defaultDuration,
+      display_order: item.displayOrder,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ 치료항목 생성 오류:', error);
+    throw error;
+  }
+
+  return {
+    id: data.id,
+    name: data.name,
+    defaultDuration: data.default_duration,
+    displayOrder: data.display_order ?? 0,
+  };
+}
+
+// 치료항목 수정
+export async function updateTreatmentItem(id: number, item: Omit<TreatmentItem, 'id'>): Promise<TreatmentItem> {
+  const { data, error } = await supabase
+    .from('treatment_items')
+    .update({
+      name: item.name,
+      default_duration: item.defaultDuration,
+      display_order: item.displayOrder,
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ 치료항목 수정 오류:', error);
+    throw error;
+  }
+
+  return {
+    id: data.id,
+    name: data.name,
+    defaultDuration: data.default_duration,
+    displayOrder: data.display_order ?? 0,
+  };
+}
+
+// 치료항목 삭제
+export async function deleteTreatmentItem(id: number): Promise<void> {
+  const { data, error } = await supabase.from('treatment_items').delete().eq('id', id).select();
+
+  if (error) {
+    console.error('❌ 치료항목 삭제 오류:', error);
+    throw error;
+  }
+
+  if (!data || data.length === 0) {
+    throw new Error('치료항목 삭제 권한이 없거나 해당 항목이 존재하지 않습니다.');
+  }
+}
+
+// 치료항목 순서 일괄 업데이트
+export async function updateTreatmentItemsOrder(
+  items: Array<{ id: number; displayOrder: number }>
+): Promise<void> {
+  const updatePromises = items.map((item) =>
+    supabase.from('treatment_items').update({ display_order: item.displayOrder }).eq('id', item.id)
+  );
+
+  const results = await Promise.all(updatePromises);
+  const errors = results.filter((r) => r.error).map((r) => r.error);
+
+  if (errors.length > 0) {
+    console.error('❌ 치료항목 순서 업데이트 오류:', errors);
+    throw new Error('치료항목 순서 업데이트 중 오류가 발생했습니다.');
+  }
 }
 
 /**

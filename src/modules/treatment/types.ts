@@ -66,6 +66,8 @@ export interface TreatmentRoom {
   patientId?: number;
   patientName?: string;
   patientChartNumber?: string;
+  patientGender?: 'male' | 'female';
+  patientDob?: string; // YYYY-MM-DD
   doctorName?: string;
   inTime?: string; // ISO string for when patient was assigned
   sessionTreatments: SessionTreatment[];

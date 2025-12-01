@@ -5,10 +5,11 @@ import { ConsultationRoom } from '../types';
 interface ConsultationRoomPanelProps {
   room: ConsultationRoom;
   onFinishConsultation: (patientId: number, destination: 'treatment' | 'payment') => void;
-  onAssignPatient: (patientId: number, roomId: number, sourceListType: 'consultation' | 'treatment') => void;
+  onAssignPatient: (patientId: number, roomId: number, sourceListType: 'consultation' | 'treatment' | 'consultation_room', sourceRoomId?: number) => void;
+  onCancelRegistration?: (patientId: number) => void;
 }
 
-const ConsultationRoomPanel: React.FC<ConsultationRoomPanelProps> = ({ room, onFinishConsultation, onAssignPatient }) => {
+const ConsultationRoomPanel: React.FC<ConsultationRoomPanelProps> = ({ room, onFinishConsultation, onAssignPatient, onCancelRegistration }) => {
   const { roomName, doctorName, patientName, patientDetails, status, patientId } = room;
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -20,24 +21,37 @@ const ConsultationRoomPanel: React.FC<ConsultationRoomPanelProps> = ({ room, onF
     waiting: { text: '입실대기', color: 'text-yellow-600', bgColor: 'bg-yellow-100' },
   }[status];
 
-  const handleNameClick = (event: React.MouseEvent) => {
+  // 우클릭 메뉴
+  const handleContextMenu = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
     if (!patientId) return;
 
-    // Toggle context menu on name click
-    if (contextMenu) {
-      setContextMenu(null);
-    } else {
-      setContextMenu({ x: event.clientX, y: event.clientY });
-    }
+    setContextMenu({ x: event.clientX, y: event.clientY });
   };
 
-  const handleAction = (destination: 'treatment' | 'payment') => {
+  const handlePayment = () => {
     if (patientId) {
-      onFinishConsultation(patientId, destination);
+      onFinishConsultation(patientId, 'payment');
     }
     setContextMenu(null);
+  };
+
+  const handleCancelRegistration = () => {
+    if (patientId && onCancelRegistration) {
+      onCancelRegistration(patientId);
+    }
+    setContextMenu(null);
+  };
+
+  // 드래그 시작 (진료실에서 환자를 드래그)
+  const handleDragStart = (e: React.DragEvent) => {
+    console.log('🚀 진료실 드래그 시작:', { patientId, roomId: room.id, patientName });
+    if (!patientId) return;
+    e.dataTransfer.setData('patientId', patientId.toString());
+    e.dataTransfer.setData('sourceListType', 'consultation_room');
+    e.dataTransfer.setData('roomId', room.id.toString());
+    e.dataTransfer.effectAllowed = 'move';
   };
 
   useEffect(() => {
@@ -71,12 +85,27 @@ const ConsultationRoomPanel: React.FC<ConsultationRoomPanelProps> = ({ room, onF
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault();
     setIsDragOver(false);
-    
-    const sourceListType = event.dataTransfer.getData('sourceListType') as 'consultation' | 'treatment';
-    const droppedPatientId = parseInt(event.dataTransfer.getData('patientId'), 10);
 
-    if ((sourceListType === 'consultation' || sourceListType === 'treatment') && room.status === 'available' && droppedPatientId) {
-      onAssignPatient(droppedPatientId, room.id, sourceListType);
+    const sourceListType = event.dataTransfer.getData('sourceListType') as 'consultation' | 'treatment' | 'consultation_room';
+    const droppedPatientId = parseInt(event.dataTransfer.getData('patientId'), 10);
+    const sourceRoomId = event.dataTransfer.getData('roomId') ? parseInt(event.dataTransfer.getData('roomId'), 10) : undefined;
+
+    console.log('📥 진료실 드롭:', { droppedPatientId, sourceListType, sourceRoomId, targetRoomId: room.id, roomStatus: room.status });
+
+    // 같은 진료실로 드롭하면 무시
+    if (sourceListType === 'consultation_room' && sourceRoomId === room.id) {
+      console.log('📥 같은 진료실로 드롭 - 무시');
+      return;
+    }
+
+    // 빈 진료실에만 드롭 가능
+    if (room.status !== 'available') {
+      console.log('📥 진료실이 사용 중 - 드롭 불가');
+      return;
+    }
+
+    if (droppedPatientId) {
+      onAssignPatient(droppedPatientId, room.id, sourceListType, sourceRoomId);
     }
   };
 
@@ -94,13 +123,15 @@ const ConsultationRoomPanel: React.FC<ConsultationRoomPanelProps> = ({ room, onF
           <h3 className="text-sm font-bold text-clinic-primary">{roomName}</h3>
           <span className="text-xs text-clinic-text-secondary">{doctorName}</span>
         </div>
-        <div className={`rounded-md p-2 text-center flex flex-col justify-center ${statusInfo.bgColor}`}>
+        <div
+          className={`rounded-md p-2 text-center flex flex-col justify-center ${statusInfo.bgColor} ${patientId ? 'cursor-grab' : ''}`}
+          draggable={!!patientId}
+          onDragStart={handleDragStart}
+          onContextMenu={handleContextMenu}
+        >
           {patientName ? (
             <>
-              <p
-                className={`font-bold text-base truncate ${statusInfo.color} cursor-pointer hover:opacity-70`}
-                onClick={handleNameClick}
-              >
+              <p className={`font-bold text-base truncate ${statusInfo.color}`}>
                 {patientName}
               </p>
               <p className="text-xs text-gray-600 mt-0.5 truncate">{patientDetails}</p>
@@ -122,19 +153,21 @@ const ConsultationRoomPanel: React.FC<ConsultationRoomPanelProps> = ({ room, onF
         >
           <ul className="py-1">
             <li>
-              <button 
-                onClick={() => handleAction('treatment')} 
+              <button
+                onClick={handlePayment}
                 className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100"
               >
-                치료대기
+                <i className="fa-solid fa-credit-card mr-2 text-green-600"></i>
+                수납
               </button>
             </li>
             <li>
-              <button 
-                onClick={() => handleAction('payment')} 
+              <button
+                onClick={handleCancelRegistration}
                 className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100"
               >
-                수납
+                <i className="fa-solid fa-xmark mr-2 text-red-500"></i>
+                접수취소
               </button>
             </li>
           </ul>
@@ -147,10 +180,11 @@ const ConsultationRoomPanel: React.FC<ConsultationRoomPanelProps> = ({ room, onF
 interface ConsultationStatusProps {
   rooms: ConsultationRoom[];
   onFinishConsultation: (patientId: number, destination: 'treatment' | 'payment') => void;
-  onAssignPatient: (patientId: number, roomId: number, sourceListType: 'consultation' | 'treatment') => void;
+  onAssignPatient: (patientId: number, roomId: number, sourceListType: 'consultation' | 'treatment' | 'consultation_room', sourceRoomId?: number) => void;
+  onCancelRegistration?: (patientId: number) => void;
 }
 
-const ConsultationStatus: React.FC<ConsultationStatusProps> = ({ rooms, onFinishConsultation, onAssignPatient }) => {
+const ConsultationStatus: React.FC<ConsultationStatusProps> = ({ rooms, onFinishConsultation, onAssignPatient, onCancelRegistration }) => {
   const title = (
     <>
       <span>진료실 현황</span>
@@ -166,6 +200,7 @@ const ConsultationStatus: React.FC<ConsultationStatusProps> = ({ rooms, onFinish
             room={room}
             onFinishConsultation={onFinishConsultation}
             onAssignPatient={onAssignPatient}
+            onCancelRegistration={onCancelRegistration}
           />
         ))}
       </div>

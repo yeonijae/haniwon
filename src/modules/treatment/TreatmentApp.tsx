@@ -8,6 +8,7 @@ import { useTreatmentItems } from './hooks/useTreatmentItems';
 import { useActingQueues } from './hooks/useActingQueues';
 import TreatmentView from './components/TreatmentView';
 import ActingManagementView from './components/ActingManagementView';
+import TreatmentItemsManagement from './components/TreatmentItemsManagement';
 import * as api from './lib/api';
 import { useTreatmentRecord } from '@shared/hooks/useTreatmentRecord';
 
@@ -15,7 +16,7 @@ interface TreatmentAppProps {
   user: PortalUser;
 }
 
-type ViewType = 'treatment' | 'acting';
+type ViewType = 'treatment' | 'acting' | 'settings';
 
 function TreatmentApp({ user }: TreatmentAppProps) {
   const navigate = useNavigate();
@@ -28,7 +29,13 @@ function TreatmentApp({ user }: TreatmentAppProps) {
     saveTreatmentRoomToDB,
   } = useTreatmentRooms(user);
 
-  const { treatmentItems } = useTreatmentItems(user);
+  const {
+    treatmentItems,
+    addTreatmentItem,
+    updateTreatmentItem,
+    deleteTreatmentItem,
+    reorderTreatmentItems,
+  } = useTreatmentItems(user);
 
   const {
     actingQueues,
@@ -117,6 +124,10 @@ function TreatmentApp({ user }: TreatmentAppProps) {
 
   const handleNavigateToTreatment = useCallback(() => {
     setCurrentView('treatment');
+  }, []);
+
+  const handleNavigateToSettings = useCallback(() => {
+    setCurrentView('settings');
   }, []);
 
   // Waiting list handlers
@@ -219,6 +230,16 @@ function TreatmentApp({ user }: TreatmentAppProps) {
             >
               액팅관리
             </button>
+            <button
+              onClick={handleNavigateToSettings}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                currentView === 'settings'
+                  ? 'bg-clinic-primary text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              설정
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -233,8 +254,8 @@ function TreatmentApp({ user }: TreatmentAppProps) {
       </div>
 
       {/* Main content */}
-      <div className="h-[calc(100vh-60px)]">
-        {currentView === 'treatment' ? (
+      <div className="h-[calc(100vh-60px)] overflow-y-auto">
+        {currentView === 'treatment' && (
           <TreatmentView
             treatmentRooms={treatmentRooms}
             waitingList={waitingList}
@@ -250,7 +271,8 @@ function TreatmentApp({ user }: TreatmentAppProps) {
             treatmentItems={treatmentItems}
             onTreatmentStart={handleTreatmentStart}
           />
-        ) : (
+        )}
+        {currentView === 'acting' && (
           <ActingManagementView
             actingQueues={actingQueues}
             onQueueUpdate={setActingQueues}
@@ -261,6 +283,15 @@ function TreatmentApp({ user }: TreatmentAppProps) {
             onAddActing={addActing}
             onDeleteActing={deleteActing}
             onEditActing={handleEditActing}
+          />
+        )}
+        {currentView === 'settings' && (
+          <TreatmentItemsManagement
+            treatmentItems={treatmentItems}
+            addTreatmentItem={addTreatmentItem}
+            updateTreatmentItem={updateTreatmentItem}
+            deleteTreatmentItem={deleteTreatmentItem}
+            reorderTreatmentItems={reorderTreatmentItems}
           />
         )}
       </div>
