@@ -8,9 +8,10 @@ interface ModalProps {
   wide?: boolean;
   fullWidth?: boolean;
   fullHeight?: boolean;
+  maxWidth?: string; // 커스텀 최대 너비 (예: '1000px')
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, wide = false, fullWidth = false, fullHeight = false }) => {
+const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, wide = false, fullWidth = false, fullHeight = false, maxWidth }) => {
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -25,22 +26,25 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, wide = 
 
   if (!isOpen) return null;
 
-  const modalWidthClass = fullWidth
-    ? 'w-full max-w-[98vw]'
-    : wide
-      ? 'w-full max-w-[95vw]'
-      : 'w-full max-w-2xl';
+  const modalWidthClass = maxWidth
+    ? 'w-full'
+    : fullWidth
+      ? 'w-full max-w-[98vw]'
+      : wide
+        ? 'w-full max-w-[95vw]'
+        : 'w-full max-w-2xl';
+
+  const customMaxWidthStyle = maxWidth ? { maxWidth } : {};
 
   const modalHeightClass = fullHeight ? 'h-[95vh]' : 'max-h-[90vh]';
 
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center"
-      onClick={onClose}
     >
       <div
         className={`bg-white rounded-lg shadow-xl mx-4 ${modalWidthClass} ${modalHeightClass} flex flex-col`}
-        onClick={(e) => e.stopPropagation()}
+        style={customMaxWidthStyle}
       >
         <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
           <h3 className="text-xl font-semibold">{title}</h3>

@@ -22,42 +22,42 @@ const Header: React.FC<HeaderProps> = ({
     currentUser,
 }) => {
   const buttons: ButtonConfig[] = [
-    { 
-      icon: 'fa-solid fa-user-plus', 
-      label: '신규환자', 
-      modalTitle: '신규환자 등록', 
+    {
+      icon: 'fa-solid fa-magnifying-glass',
+      label: '환자검색',
+      modalTitle: '환자 검색',
+      modalType: 'patientSearch',
+    },
+    {
+      icon: 'fa-solid fa-user-plus',
+      label: '신규환자',
+      modalTitle: '신규환자 등록',
       modalType: 'newPatient'
     },
-    { 
-      icon: 'fa-solid fa-calendar-check', 
-      label: '예약하기', 
-      modalTitle: '예약 관리', 
+    {
+      icon: 'fa-solid fa-calendar-check',
+      label: '예약관리',
+      modalTitle: '예약 관리',
       modalType: 'reservation',
       wide: true,
     },
-    { 
-      icon: 'fa-solid fa-magnifying-glass', 
-      label: '환자검색', 
-      modalTitle: '환자 검색', 
-      modalType: 'patientSearch'
-    },
-    { 
-      icon: 'fa-solid fa-chart-line', 
-      label: '통계', 
-      modalTitle: '일일 통계', 
-      modalType: 'stats'
-    },
-    { 
-      icon: 'fa-solid fa-won-sign', 
-      label: '수납현황', 
-      modalTitle: '일일 수납 현황', 
+    {
+      icon: 'fa-solid fa-won-sign',
+      label: '수납현황',
+      modalTitle: '일일 수납 현황',
       modalType: 'dailyPayments',
       wide: true,
     },
-    { 
-      icon: 'fa-solid fa-gear', 
-      label: '설정', 
-      modalTitle: '환경 설정', 
+    {
+      icon: 'fa-solid fa-chart-line',
+      label: '통계',
+      modalTitle: '일일 통계',
+      modalType: 'stats'
+    },
+    {
+      icon: 'fa-solid fa-gear',
+      label: '설정',
+      modalTitle: '환경 설정',
       modalType: 'settings'
     },
   ];

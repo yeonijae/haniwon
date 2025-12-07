@@ -12,8 +12,8 @@ export interface SelectedConsultationItem {
 }
 
 interface PatientSearchProps {
-  addPatientToConsultation: (patient: Patient, details?: string) => void;
-  addPatientToTreatment: (patient: Patient) => void;
+  addPatientToConsultation: (patient: Patient, details?: string, memo?: string) => void;
+  addPatientToTreatment: (patient: Patient, details?: string, memo?: string) => void;
   updatePatientInfo: (patient: Patient) => void;
   deletePatient: (patientId: number) => void;
   onClose?: () => void;
@@ -31,13 +31,33 @@ const DetailItem: React.FC<{ label: string; value?: string }> = ({ label, value 
 const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation, addPatientToTreatment, updatePatientInfo, deletePatient, onClose, consultationItems = [], onReservation }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<Patient[]>([]);
-  const [view, setView] = useState<'search' | 'detail' | 'edit' | 'selectItems'>('search');
+  const [view, setView] = useState<'search' | 'detail' | 'edit' | 'selectItems' | 'selectTreatmentItems'>('search');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [editFormData, setEditFormData] = useState<Patient | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
   // 진료항목 선택 상태
   const [selectedConsultationItems, setSelectedConsultationItems] = useState<SelectedConsultationItem[]>([]);
+
+  // 새로운 진료 선택 상태
+  const [selectedCategory, setSelectedCategory] = useState<'acupuncture' | 'accident' | null>(null);
+  const [insuranceType, setInsuranceType] = useState<string>('건보');
+  const [selectedTreatments, setSelectedTreatments] = useState<string[]>([]);
+  const [includeHerbal, setIncludeHerbal] = useState<boolean>(false);
+  const [selectedHerbalType, setSelectedHerbalType] = useState<string>('');
+  const [customHerbalNote, setCustomHerbalNote] = useState<string>('');
+  const [receptionMemo, setReceptionMemo] = useState<string>('');
+
+  // 선택 초기화 함수
+  const resetSelections = () => {
+    setSelectedCategory(null);
+    setInsuranceType('건보');
+    setSelectedTreatments([]);
+    setIncludeHerbal(false);
+    setSelectedHerbalType('');
+    setCustomHerbalNote('');
+    setReceptionMemo('');
+  };
 
   // 서버사이드 검색 (디바운싱 적용)
   useEffect(() => {
@@ -105,6 +125,44 @@ const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation,
         updatePatientInfo(editFormData);
         setSelectedPatient(editFormData);
         setView('detail');
+    }
+  };
+
+  // 이전 진료정보 파싱 함수
+  const parseLastTreatmentInfo = async (patientId: number) => {
+    try {
+      // DB에서 마지막 진료정보 조회
+      const lastInfo = await api.getLastTreatmentInfo(patientId);
+      if (lastInfo) {
+        const details = lastInfo.details || '';
+
+        // 침치료 파싱
+        const acupunctureMatch = details.match(/침치료\(([^)]+)\)\s*-\s*([^,]+)/);
+        if (acupunctureMatch) {
+          setSelectedCategory('acupuncture');
+          setInsuranceType(acupunctureMatch[1]);
+          setSelectedTreatments(acupunctureMatch[2].split('+').map((t: string) => t.trim()));
+        }
+
+        // 자보 파싱
+        const accidentMatch = details.match(/자보\s*-\s*([^,]+)/);
+        if (accidentMatch && !acupunctureMatch) {
+          setSelectedCategory('accident');
+          setSelectedTreatments(accidentMatch[1].split('+').map((t: string) => t.trim()));
+        }
+
+        // 약상담 파싱
+        const herbalMatch = details.match(/약상담-([^,()\s]+)(?:\(([^)]+)\))?/);
+        if (herbalMatch) {
+          setIncludeHerbal(true);
+          setSelectedHerbalType(herbalMatch[1]);
+          if (herbalMatch[2]) {
+            setCustomHerbalNote(herbalMatch[2]);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('이전 진료정보 조회 오류:', error);
     }
   };
 
@@ -232,16 +290,17 @@ const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation,
                     }}
                     className="px-4 py-2 bg-clinic-secondary text-white font-semibold rounded-md hover:bg-blue-700 transition-colors"
                 >
-                    <i className="fa-solid fa-user-doctor mr-2"></i>진료대기
+                    <i className="fa-solid fa-user-doctor mr-2"></i>재초진 접수
                 </button>
                 <button
-                    onClick={() => {
-                        addPatientToTreatment(selectedPatient);
-                        onClose?.();
+                    onClick={async () => {
+                        resetSelections();
+                        await parseLastTreatmentInfo(selectedPatient.id);
+                        setView('selectTreatmentItems');
                     }}
                     className="px-4 py-2 bg-clinic-accent text-white font-semibold rounded-md hover:bg-green-700 transition-colors"
                 >
-                    <i className="fa-solid fa-bed-pulse mr-2"></i>치료대기
+                    <i className="fa-solid fa-bed-pulse mr-2"></i>재진 접수
                 </button>
                 {onReservation && (
                     <button
@@ -261,184 +320,682 @@ const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation,
 
   // 진료항목 선택 뷰
   if (view === 'selectItems' && selectedPatient) {
-    const toggleItem = (item: ConsultationItem) => {
-      const existing = selectedConsultationItems.find(s => s.itemId === item.id && !s.subItemId);
-      if (existing) {
-        // 이미 선택된 항목 제거 (해당 항목과 모든 세부항목 제거)
-        setSelectedConsultationItems(prev =>
-          prev.filter(s => s.itemId !== item.id)
-        );
-      } else {
-        // 새로 선택 추가 (세부항목이 없는 경우만 메인 항목으로 추가)
-        if (item.subItems.length === 0) {
-          setSelectedConsultationItems(prev => [
-            ...prev,
-            { itemId: item.id, itemName: item.name }
-          ]);
+    // 카테고리별 옵션 정의
+    const INSURANCE_TYPES = ['건보', '차상위', '1종', '2종', '임산부', '산정특례', '일반'];
+    const ACUPUNCTURE_TREATMENTS = ['침', '추나', '약침', '초음파'];
+    const ACCIDENT_TREATMENTS = ['침', '추나', '자보약'];
+    const HERBAL_TYPES = ['상비약', '감기약', '맞춤한약'];
+
+    const toggleTreatment = (treatment: string) => {
+      setSelectedTreatments(prev =>
+        prev.includes(treatment)
+          ? prev.filter(t => t !== treatment)
+          : [...prev, treatment]
+      );
+    };
+
+    const handleConfirmNewSelection = () => {
+      const parts: string[] = [];
+
+      // 침치료 또는 자보
+      if (selectedCategory === 'acupuncture' && selectedTreatments.length > 0) {
+        const treatments = selectedTreatments.join('+');
+        parts.push(`침치료(${insuranceType}) - ${treatments}`);
+      } else if (selectedCategory === 'accident' && selectedTreatments.length > 0) {
+        const treatments = selectedTreatments.join('+');
+        parts.push(`자보 - ${treatments}`);
+      }
+
+      // 약상담 (추가 선택)
+      if (includeHerbal && selectedHerbalType) {
+        if (selectedHerbalType === '맞춤한약') {
+          parts.push(`약상담-맞춤한약${customHerbalNote ? `(${customHerbalNote})` : ''}`);
+        } else {
+          parts.push(`약상담-${selectedHerbalType}`);
         }
       }
-    };
 
-    const toggleSubItem = (item: ConsultationItem, subItem: { id: number; name: string }) => {
-      const existing = selectedConsultationItems.find(
-        s => s.itemId === item.id && s.subItemId === subItem.id
-      );
-      if (existing) {
-        // 이미 선택된 세부항목 제거
-        setSelectedConsultationItems(prev =>
-          prev.filter(s => !(s.itemId === item.id && s.subItemId === subItem.id))
-        );
-      } else {
-        // 새로 선택 추가
-        setSelectedConsultationItems(prev => [
-          ...prev,
-          { itemId: item.id, itemName: item.name, subItemId: subItem.id, subItemName: subItem.name }
-        ]);
+      const detailsText = parts.join(', ');
+
+      if (detailsText) {
+        addPatientToConsultation(selectedPatient, detailsText, receptionMemo || undefined);
+        resetSelections();
+        onClose?.();
       }
     };
 
-    const isItemSelected = (itemId: number) => {
-      return selectedConsultationItems.some(s => s.itemId === itemId && !s.subItemId);
-    };
+    const canSubmit = () => {
+      // 침치료/자보가 선택된 경우: 치료 항목이 있어야 함
+      if (selectedCategory) {
+        if (selectedTreatments.length === 0) return false;
+      }
+      // 약상담만 선택한 경우: 약상담 유형이 있어야 함
+      if (!selectedCategory && includeHerbal) {
+        return selectedHerbalType !== '';
+      }
+      // 약상담이 추가로 선택된 경우: 약상담 유형이 있어야 함
+      if (includeHerbal && !selectedHerbalType) return false;
 
-    const isSubItemSelected = (itemId: number, subItemId: number) => {
-      return selectedConsultationItems.some(s => s.itemId === itemId && s.subItemId === subItemId);
-    };
-
-    const hasAnySubItemSelected = (itemId: number) => {
-      return selectedConsultationItems.some(s => s.itemId === itemId && s.subItemId);
-    };
-
-    const handleConfirmSelection = () => {
-      // 선택된 항목들을 문자열로 변환
-      const detailsText = selectedConsultationItems.length > 0
-        ? selectedConsultationItems.map(item => {
-            if (item.subItemName) {
-              return `${item.itemName}(${item.subItemName})`;
-            }
-            return item.itemName;
-          }).join(', ')
-        : '검색 추가';
-
-      addPatientToConsultation(selectedPatient, detailsText);
-      onClose?.();
+      // 최소 하나는 선택되어야 함
+      return selectedCategory !== null || (includeHerbal && selectedHerbalType !== '');
     };
 
     return (
-      <div className="flex flex-col h-[60vh]">
-        <div className="flex items-center mb-4 -mt-2">
-          <button onClick={() => setView('detail')} className="flex items-center text-gray-600 hover:text-gray-900 font-semibold text-sm">
-            <i className="fa-solid fa-arrow-left mr-2"></i>
-            <span>환자 정보로 돌아가기</span>
-          </button>
-        </div>
-
-        <div className="bg-gray-50 p-3 rounded-lg mb-4">
-          <p className="font-bold text-clinic-primary">{selectedPatient.name}</p>
-          <p className="text-sm text-gray-600">오늘 받을 진료항목을 선택해주세요.</p>
-        </div>
-
-        <div className="flex-1 overflow-y-auto space-y-2">
-          {consultationItems.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <p>등록된 진료항목이 없습니다.</p>
-              <p className="text-sm mt-1">설정에서 진료항목을 추가해주세요.</p>
-            </div>
-          ) : (
-            consultationItems.map((item) => (
-              <div key={item.id} className="border rounded-lg bg-white">
-                {/* 메인 항목 */}
-                <div
-                  onClick={() => item.subItems.length === 0 && toggleItem(item)}
-                  className={`p-3 flex items-center justify-between ${
-                    item.subItems.length === 0 ? 'cursor-pointer hover:bg-gray-50' : ''
-                  } ${
-                    isItemSelected(item.id) ? 'bg-blue-50 border-blue-200' : ''
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    {item.subItems.length === 0 ? (
-                      <div className={`w-5 h-5 rounded border flex items-center justify-center ${
-                        isItemSelected(item.id)
-                          ? 'bg-clinic-secondary border-clinic-secondary text-white'
-                          : 'border-gray-300'
-                      }`}>
-                        {isItemSelected(item.id) && <i className="fa-solid fa-check text-xs"></i>}
-                      </div>
-                    ) : (
-                      <div className={`w-5 h-5 rounded border flex items-center justify-center ${
-                        hasAnySubItemSelected(item.id)
-                          ? 'bg-clinic-secondary border-clinic-secondary text-white'
-                          : 'border-gray-300 bg-gray-100'
-                      }`}>
-                        {hasAnySubItemSelected(item.id) && <i className="fa-solid fa-minus text-xs"></i>}
-                      </div>
-                    )}
-                    <span className="font-medium">{item.name}</span>
-                  </div>
-                  {item.subItems.length > 0 && (
-                    <span className="text-sm text-gray-500">{item.subItems.length}개 세부항목</span>
-                  )}
-                </div>
-
-                {/* 세부항목 */}
-                {item.subItems.length > 0 && (
-                  <div className="border-t bg-gray-50 p-2 grid grid-cols-2 gap-2">
-                    {item.subItems.map((subItem) => (
-                      <div
-                        key={subItem.id}
-                        onClick={() => toggleSubItem(item, subItem)}
-                        className={`p-2 rounded cursor-pointer flex items-center gap-2 ${
-                          isSubItemSelected(item.id, subItem.id)
-                            ? 'bg-blue-100 border border-blue-300'
-                            : 'bg-white border border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                          isSubItemSelected(item.id, subItem.id)
-                            ? 'bg-clinic-secondary border-clinic-secondary text-white'
-                            : 'border-gray-300'
-                        }`}>
-                          {isSubItemSelected(item.id, subItem.id) && <i className="fa-solid fa-check text-xs"></i>}
-                        </div>
-                        <span className="text-sm">{subItem.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* 선택된 항목 요약 및 버튼 */}
-        <div className="border-t pt-4 mt-4">
-          {selectedConsultationItems.length > 0 && (
-            <div className="mb-3 p-2 bg-blue-50 rounded text-sm">
-              <span className="font-medium text-blue-800">선택된 항목: </span>
-              <span className="text-blue-600">
-                {selectedConsultationItems.map(s =>
-                  s.subItemName ? `${s.itemName}(${s.subItemName})` : s.itemName
-                ).join(', ')}
-              </span>
-            </div>
-          )}
-          <div className="flex justify-end space-x-2">
-            <button
-              onClick={() => setView('detail')}
-              className="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-md hover:bg-gray-300 transition-colors"
-            >
-              취소
-            </button>
-            <button
-              onClick={handleConfirmSelection}
-              className="px-4 py-2 bg-clinic-secondary text-white font-semibold rounded-md hover:bg-blue-700 transition-colors"
-            >
-              <i className="fa-solid fa-user-doctor mr-2"></i>
-              접수하기 {selectedConsultationItems.length > 0 && `(${selectedConsultationItems.length})`}
+      <div className="flex flex-col h-[75vh]">
+        {/* 상단: 뒤로가기 + 환자정보 + 접수메모 + 버튼 */}
+        <div className="flex-shrink-0">
+          <div className="flex items-center mb-2 -mt-2">
+            <button onClick={() => { resetSelections(); setView('detail'); }} className="flex items-center text-gray-600 hover:text-gray-900 font-semibold text-sm">
+              <i className="fa-solid fa-arrow-left mr-2"></i>
+              <span>환자 정보로 돌아가기</span>
             </button>
           </div>
+
+          <div className="bg-gray-50 p-3 rounded-lg mb-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex-shrink-0">
+                <p className="font-bold text-clinic-primary text-lg">{selectedPatient.name}</p>
+                <p className="text-xs text-gray-500">재초진 접수</p>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={receptionMemo}
+                  onChange={(e) => setReceptionMemo(e.target.value)}
+                  placeholder="접수 메모 (붉은글씨 표시)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-400 focus:border-red-400"
+                />
+              </div>
+              <div className="flex-shrink-0 flex items-center gap-2">
+                <button
+                  onClick={() => { resetSelections(); setView('detail'); }}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors text-sm"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleConfirmNewSelection}
+                  disabled={!canSubmit()}
+                  className={`px-4 py-2 font-semibold rounded-lg transition-all text-sm ${
+                    canSubmit()
+                      ? 'bg-clinic-secondary text-white hover:bg-blue-700 shadow-md'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  <i className="fa-solid fa-user-doctor mr-1"></i>
+                  접수
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
+
+        {/* 2단 레이아웃: 좌측 진료유형 / 우측 세부항목 */}
+        <div className="flex-1 overflow-y-auto min-h-0 mb-3">
+          <div className="grid grid-cols-2 gap-4 h-full">
+            {/* 좌측: 진료 유형 선택 */}
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-gray-700">진료 유형 선택</label>
+
+              {/* 침치료 */}
+              <button
+                onClick={() => { setSelectedCategory(selectedCategory === 'acupuncture' ? null : 'acupuncture'); setSelectedTreatments([]); }}
+                className={`w-full p-3 rounded-lg border-2 transition-all flex items-center gap-3 ${
+                  selectedCategory === 'acupuncture'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                  selectedCategory === 'acupuncture' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  <i className="fa-solid fa-hand-dots"></i>
+                </div>
+                <div className="text-left flex-1">
+                  <span className={`font-bold ${selectedCategory === 'acupuncture' ? 'text-blue-600' : 'text-gray-700'}`}>
+                    침치료
+                  </span>
+                  <p className="text-xs text-gray-500">건강보험</p>
+                </div>
+                {selectedCategory === 'acupuncture' && <i className="fa-solid fa-check text-blue-500"></i>}
+              </button>
+
+              {/* 자보 */}
+              <button
+                onClick={() => { setSelectedCategory(selectedCategory === 'accident' ? null : 'accident'); setSelectedTreatments([]); }}
+                className={`w-full p-3 rounded-lg border-2 transition-all flex items-center gap-3 ${
+                  selectedCategory === 'accident'
+                    ? 'border-red-500 bg-red-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                  selectedCategory === 'accident' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  <i className="fa-solid fa-car-burst"></i>
+                </div>
+                <div className="text-left flex-1">
+                  <span className={`font-bold ${selectedCategory === 'accident' ? 'text-red-600' : 'text-gray-700'}`}>
+                    자보
+                  </span>
+                  <p className="text-xs text-gray-500">자동차보험</p>
+                </div>
+                {selectedCategory === 'accident' && <i className="fa-solid fa-check text-red-500"></i>}
+              </button>
+
+              {/* 약상담 추가 */}
+              <div
+                onClick={() => { setIncludeHerbal(!includeHerbal); if (includeHerbal) { setSelectedHerbalType(''); setCustomHerbalNote(''); } }}
+                className={`w-full p-3 rounded-lg border-2 transition-all flex items-center gap-3 cursor-pointer ${
+                  includeHerbal
+                    ? 'border-green-500 bg-green-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                  includeHerbal ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  <i className="fa-solid fa-prescription-bottle-medical"></i>
+                </div>
+                <div className="text-left flex-1">
+                  <span className={`font-bold ${includeHerbal ? 'text-green-600' : 'text-gray-700'}`}>
+                    약상담
+                  </span>
+                  <p className="text-xs text-gray-500">한약 상담</p>
+                </div>
+                {includeHerbal && <i className="fa-solid fa-check text-green-500"></i>}
+              </div>
+            </div>
+
+            {/* 우측: 세부항목 선택 */}
+            <div className="border rounded-lg p-4 bg-white shadow-sm">
+              {!selectedCategory && !includeHerbal && (
+                <div className="h-full flex items-center justify-center text-gray-400">
+                  <div className="text-center">
+                    <i className="fa-solid fa-arrow-left text-3xl mb-2"></i>
+                    <p className="font-medium text-sm">좌측에서 진료 유형을 선택해주세요</p>
+                  </div>
+                </div>
+              )}
+
+              {/* 침치료 세부항목 */}
+              {selectedCategory === 'acupuncture' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <i className="fa-solid fa-id-card mr-1 text-blue-500"></i>종별
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {INSURANCE_TYPES.map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => setInsuranceType(type)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            insuranceType === type
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <i className="fa-solid fa-hand-holding-medical mr-1 text-blue-500"></i>치료 (복수선택)
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {ACUPUNCTURE_TREATMENTS.map((treatment) => (
+                        <button
+                          key={treatment}
+                          onClick={() => toggleTreatment(treatment)}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            selectedTreatments.includes(treatment)
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {selectedTreatments.includes(treatment) && <i className="fa-solid fa-check mr-1"></i>}
+                          {treatment}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 자보 세부항목 */}
+              {selectedCategory === 'accident' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <i className="fa-solid fa-hand-holding-medical mr-1 text-red-500"></i>치료 (복수선택)
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {ACCIDENT_TREATMENTS.map((treatment) => (
+                        <button
+                          key={treatment}
+                          onClick={() => toggleTreatment(treatment)}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            selectedTreatments.includes(treatment)
+                              ? 'bg-red-500 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {selectedTreatments.includes(treatment) && <i className="fa-solid fa-check mr-1"></i>}
+                          {treatment}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 약상담 세부항목 */}
+              {includeHerbal && (
+                <div className={`space-y-3 ${selectedCategory ? 'mt-3 pt-3 border-t' : ''}`}>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <i className="fa-solid fa-pills mr-1 text-green-500"></i>약상담 유형
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {HERBAL_TYPES.map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => setSelectedHerbalType(type)}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            selectedHerbalType === type
+                              ? 'bg-green-500 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {selectedHerbalType === type && <i className="fa-solid fa-check mr-1"></i>}
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {selectedHerbalType === '맞춤한약' && (
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">
+                        <i className="fa-solid fa-pen mr-1 text-green-500"></i>상담 내용
+                      </label>
+                      <input
+                        type="text"
+                        value={customHerbalNote}
+                        onChange={(e) => setCustomHerbalNote(e.target.value)}
+                        placeholder="예: 피로회복, 면역력 강화"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 하단: 선택항목 요약 (항상 보임) */}
+        {(selectedCategory || (includeHerbal && selectedHerbalType)) && (
+          <div className="flex-shrink-0 p-2.5 bg-blue-50 rounded-lg text-sm">
+            <span className="font-semibold text-blue-800">선택된 항목: </span>
+            <span className="text-blue-600 font-medium">
+              {(() => {
+                const parts: string[] = [];
+                if (selectedCategory === 'acupuncture' && selectedTreatments.length > 0) {
+                  parts.push(`침치료(${insuranceType}) - ${selectedTreatments.join('+')}`);
+                }
+                if (selectedCategory === 'accident' && selectedTreatments.length > 0) {
+                  parts.push(`자보 - ${selectedTreatments.join('+')}`);
+                }
+                if (includeHerbal && selectedHerbalType) {
+                  if (selectedHerbalType === '맞춤한약') {
+                    parts.push(`약상담-맞춤한약${customHerbalNote ? `(${customHerbalNote})` : ''}`);
+                  } else {
+                    parts.push(`약상담-${selectedHerbalType}`);
+                  }
+                }
+                return parts.join(', ');
+              })()}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // 재진 접수 - 진료항목 선택 뷰 (치료대기로 추가)
+  if (view === 'selectTreatmentItems' && selectedPatient) {
+    const INSURANCE_TYPES = ['건보', '차상위', '1종', '2종', '임산부', '산정특례', '일반'];
+    const ACUPUNCTURE_TREATMENTS = ['침', '추나', '약침', '초음파'];
+    const ACCIDENT_TREATMENTS = ['침', '추나', '자보약'];
+    const HERBAL_TYPES = ['상비약', '감기약', '맞춤한약'];
+
+    const toggleTreatment = (treatment: string) => {
+      setSelectedTreatments(prev =>
+        prev.includes(treatment)
+          ? prev.filter(t => t !== treatment)
+          : [...prev, treatment]
+      );
+    };
+
+    const handleConfirmTreatmentSelection = () => {
+      const parts: string[] = [];
+
+      if (selectedCategory === 'acupuncture' && selectedTreatments.length > 0) {
+        const treatments = selectedTreatments.join('+');
+        parts.push(`침치료(${insuranceType}) - ${treatments}`);
+      } else if (selectedCategory === 'accident' && selectedTreatments.length > 0) {
+        const treatments = selectedTreatments.join('+');
+        parts.push(`자보 - ${treatments}`);
+      }
+
+      if (includeHerbal && selectedHerbalType) {
+        if (selectedHerbalType === '맞춤한약') {
+          parts.push(`약상담-맞춤한약${customHerbalNote ? `(${customHerbalNote})` : ''}`);
+        } else {
+          parts.push(`약상담-${selectedHerbalType}`);
+        }
+      }
+
+      const detailsText = parts.join(', ');
+
+      if (detailsText) {
+        // 치료대기로 추가 (details와 memo 파라미터로 전달)
+        addPatientToTreatment(selectedPatient, detailsText, receptionMemo || undefined);
+        resetSelections();
+        onClose?.();
+      }
+    };
+
+    const canSubmit = () => {
+      if (selectedCategory) {
+        if (selectedTreatments.length === 0) return false;
+      }
+      if (!selectedCategory && includeHerbal) {
+        return selectedHerbalType !== '';
+      }
+      if (includeHerbal && !selectedHerbalType) return false;
+      return selectedCategory !== null || (includeHerbal && selectedHerbalType !== '');
+    };
+
+    return (
+      <div className="flex flex-col h-[75vh]">
+        {/* 상단: 뒤로가기 + 환자정보 + 접수메모 + 버튼 */}
+        <div className="flex-shrink-0">
+          <div className="flex items-center mb-2 -mt-2">
+            <button onClick={() => { resetSelections(); setView('detail'); }} className="flex items-center text-gray-600 hover:text-gray-900 font-semibold text-sm">
+              <i className="fa-solid fa-arrow-left mr-2"></i>
+              <span>환자 정보로 돌아가기</span>
+            </button>
+          </div>
+
+          <div className="bg-green-50 p-3 rounded-lg mb-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex-shrink-0">
+                <p className="font-bold text-clinic-accent text-lg">{selectedPatient.name}</p>
+                <p className="text-xs text-gray-500">재진 접수 (치료대기)</p>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={receptionMemo}
+                  onChange={(e) => setReceptionMemo(e.target.value)}
+                  placeholder="접수 메모 (붉은글씨 표시)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-400 focus:border-red-400"
+                />
+              </div>
+              <div className="flex-shrink-0 flex items-center gap-2">
+                <button
+                  onClick={() => { resetSelections(); setView('detail'); }}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors text-sm"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleConfirmTreatmentSelection}
+                  disabled={!canSubmit()}
+                  className={`px-4 py-2 font-semibold rounded-lg transition-all text-sm ${
+                    canSubmit()
+                      ? 'bg-clinic-accent text-white hover:bg-green-700 shadow-md'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  <i className="fa-solid fa-bed-pulse mr-1"></i>
+                  치료접수
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto min-h-0 mb-3">
+          <div className="grid grid-cols-2 gap-4 h-full">
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-gray-700">진료 유형 선택</label>
+
+              <button
+                onClick={() => { setSelectedCategory(selectedCategory === 'acupuncture' ? null : 'acupuncture'); setSelectedTreatments([]); }}
+                className={`w-full p-3 rounded-lg border-2 transition-all flex items-center gap-3 ${
+                  selectedCategory === 'acupuncture'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                  selectedCategory === 'acupuncture' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  <i className="fa-solid fa-hand-dots"></i>
+                </div>
+                <div className="text-left flex-1">
+                  <span className={`font-bold ${selectedCategory === 'acupuncture' ? 'text-blue-600' : 'text-gray-700'}`}>
+                    침치료
+                  </span>
+                  <p className="text-xs text-gray-500">건강보험</p>
+                </div>
+                {selectedCategory === 'acupuncture' && <i className="fa-solid fa-check text-blue-500"></i>}
+              </button>
+
+              <button
+                onClick={() => { setSelectedCategory(selectedCategory === 'accident' ? null : 'accident'); setSelectedTreatments([]); }}
+                className={`w-full p-3 rounded-lg border-2 transition-all flex items-center gap-3 ${
+                  selectedCategory === 'accident'
+                    ? 'border-red-500 bg-red-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                  selectedCategory === 'accident' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  <i className="fa-solid fa-car-burst"></i>
+                </div>
+                <div className="text-left flex-1">
+                  <span className={`font-bold ${selectedCategory === 'accident' ? 'text-red-600' : 'text-gray-700'}`}>
+                    자보
+                  </span>
+                  <p className="text-xs text-gray-500">자동차보험</p>
+                </div>
+                {selectedCategory === 'accident' && <i className="fa-solid fa-check text-red-500"></i>}
+              </button>
+
+              <div
+                onClick={() => { setIncludeHerbal(!includeHerbal); if (includeHerbal) { setSelectedHerbalType(''); setCustomHerbalNote(''); } }}
+                className={`w-full p-3 rounded-lg border-2 transition-all flex items-center gap-3 cursor-pointer ${
+                  includeHerbal
+                    ? 'border-green-500 bg-green-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                  includeHerbal ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  <i className="fa-solid fa-prescription-bottle-medical"></i>
+                </div>
+                <div className="text-left flex-1">
+                  <span className={`font-bold ${includeHerbal ? 'text-green-600' : 'text-gray-700'}`}>
+                    약상담
+                  </span>
+                  <p className="text-xs text-gray-500">한약 상담</p>
+                </div>
+                {includeHerbal && <i className="fa-solid fa-check text-green-500"></i>}
+              </div>
+            </div>
+
+            <div className="border rounded-lg p-4 bg-white shadow-sm">
+              {!selectedCategory && !includeHerbal && (
+                <div className="h-full flex items-center justify-center text-gray-400">
+                  <div className="text-center">
+                    <i className="fa-solid fa-arrow-left text-3xl mb-2"></i>
+                    <p className="font-medium text-sm">좌측에서 진료 유형을 선택해주세요</p>
+                  </div>
+                </div>
+              )}
+
+              {selectedCategory === 'acupuncture' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <i className="fa-solid fa-id-card mr-1 text-blue-500"></i>종별
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {INSURANCE_TYPES.map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => setInsuranceType(type)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            insuranceType === type
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <i className="fa-solid fa-hand-holding-medical mr-1 text-blue-500"></i>치료 (복수선택)
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {ACUPUNCTURE_TREATMENTS.map((treatment) => (
+                        <button
+                          key={treatment}
+                          onClick={() => toggleTreatment(treatment)}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            selectedTreatments.includes(treatment)
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {selectedTreatments.includes(treatment) && <i className="fa-solid fa-check mr-1"></i>}
+                          {treatment}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedCategory === 'accident' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <i className="fa-solid fa-hand-holding-medical mr-1 text-red-500"></i>치료 (복수선택)
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {ACCIDENT_TREATMENTS.map((treatment) => (
+                        <button
+                          key={treatment}
+                          onClick={() => toggleTreatment(treatment)}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            selectedTreatments.includes(treatment)
+                              ? 'bg-red-500 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {selectedTreatments.includes(treatment) && <i className="fa-solid fa-check mr-1"></i>}
+                          {treatment}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {includeHerbal && (
+                <div className={`space-y-3 ${selectedCategory ? 'mt-3 pt-3 border-t' : ''}`}>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <i className="fa-solid fa-pills mr-1 text-green-500"></i>약상담 유형
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {HERBAL_TYPES.map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => setSelectedHerbalType(type)}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            selectedHerbalType === type
+                              ? 'bg-green-500 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {selectedHerbalType === type && <i className="fa-solid fa-check mr-1"></i>}
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {selectedHerbalType === '맞춤한약' && (
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">
+                        <i className="fa-solid fa-pen mr-1 text-green-500"></i>상담 내용
+                      </label>
+                      <input
+                        type="text"
+                        value={customHerbalNote}
+                        onChange={(e) => setCustomHerbalNote(e.target.value)}
+                        placeholder="예: 피로회복, 면역력 강화"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 하단: 선택항목 요약 (항상 보임) */}
+        {(selectedCategory || (includeHerbal && selectedHerbalType)) && (
+          <div className="flex-shrink-0 p-2.5 bg-green-50 rounded-lg text-sm">
+            <span className="font-semibold text-green-800">선택된 항목: </span>
+            <span className="text-green-600 font-medium">
+              {(() => {
+                const parts: string[] = [];
+                if (selectedCategory === 'acupuncture' && selectedTreatments.length > 0) {
+                  parts.push(`침치료(${insuranceType}) - ${selectedTreatments.join('+')}`);
+                }
+                if (selectedCategory === 'accident' && selectedTreatments.length > 0) {
+                  parts.push(`자보 - ${selectedTreatments.join('+')}`);
+                }
+                if (includeHerbal && selectedHerbalType) {
+                  if (selectedHerbalType === '맞춤한약') {
+                    parts.push(`약상담-맞춤한약${customHerbalNote ? `(${customHerbalNote})` : ''}`);
+                  } else {
+                    parts.push(`약상담-${selectedHerbalType}`);
+                  }
+                }
+                return parts.join(', ');
+              })()}
+            </span>
+          </div>
+        )}
       </div>
     );
   }

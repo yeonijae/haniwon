@@ -158,21 +158,17 @@ const WaitingListItem: React.FC<{
                             <span className="text-xs text-gray-500">{genderAge}</span>
                         )}
                     </div>
-                    {patient.details && (() => {
-                        // 진료항목과 메모 분리 (| 로 구분)
-                        const [itemsPart, memoPart] = patient.details.split(' | ');
-                        return (
-                            <div className="text-sm font-medium truncate" title={patient.details}>
-                                {itemsPart && <span className="text-clinic-secondary">{itemsPart}</span>}
-                                {memoPart && (
-                                    <>
-                                        {itemsPart && <span className="text-gray-400 mx-1">|</span>}
-                                        <span className="text-red-500">{memoPart}</span>
-                                    </>
-                                )}
-                            </div>
-                        );
-                    })()}
+                    {(patient.details || patient.memo) && (
+                        <div className="text-sm font-medium truncate" title={`${patient.details || ''}${patient.memo ? ` | ${patient.memo}` : ''}`}>
+                            {patient.details && <span className="text-clinic-secondary">{patient.details}</span>}
+                            {patient.memo && (
+                                <>
+                                    {patient.details && <span className="text-gray-400 mx-1">|</span>}
+                                    <span className="text-red-500 font-semibold">{patient.memo}</span>
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
                 <span className="text-xs text-gray-400 ml-2 flex-shrink-0">{patient.time}</span>
             </li>

@@ -357,11 +357,11 @@ export const useReservations = (currentUser: any, allPatients: Patient[]) => {
     });
   };
 
-  const handlePatientArrival = (
+  const handlePatientArrival = async (
     reservation: Reservation,
     destination: 'consultation' | 'treatment',
-    onAddToConsultation: (patient: Patient) => boolean,
-    onAddToTreatment: (patient: Patient) => boolean,
+    onAddToConsultation: (patient: Patient, details?: string, memo?: string) => Promise<boolean>,
+    onAddToTreatment: (patient: Patient, details?: string, memo?: string) => Promise<boolean>,
     onAddActings: (doctor: string, actings: Acting[]) => void,
     patient: Patient | undefined
   ) => {
@@ -370,18 +370,13 @@ export const useReservations = (currentUser: any, allPatients: Patient[]) => {
       return;
     }
 
-    const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-    const patientToWait = {
-      ...patient,
-      time: currentTime,
-      details: '예약환자 내원',
-    };
+    const details = '예약환자 내원';
 
     let success = false;
     if (destination === 'consultation') {
-      success = onAddToConsultation(patientToWait);
+      success = await onAddToConsultation(patient, details);
     } else {
-      success = onAddToTreatment(patientToWait);
+      success = await onAddToTreatment(patient, details);
     }
 
     if (!success) return;

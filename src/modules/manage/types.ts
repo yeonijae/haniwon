@@ -30,6 +30,7 @@ export interface Patient {
   time: string; // e.g., "10:30"
   status: PatientStatus;
   details?: string; // e.g., '초진', '재진'
+  memo?: string; // 접수메모
   dob?: string;
   gender?: 'male' | 'female';
   phone?: string;

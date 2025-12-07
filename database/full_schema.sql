@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS waiting_queue (
   queue_order INTEGER DEFAULT 0,
   status VARCHAR(20) DEFAULT 'waiting',  -- waiting, in_progress, completed
   details TEXT,  -- 진료 항목 정보
+  memo TEXT,  -- 접수 메모 (특이사항)
   check_in_time TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()

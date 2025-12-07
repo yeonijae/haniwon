@@ -577,7 +577,7 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
           consultationItems={consultationItemsHook.consultationItems}
           onReservation={(patient) => {
             setPatientForNewReservation(patient);
-            setActiveModal('reservation');
+            openModal('reservation', `${patient.name}님 예약`, true);
           }}
         />;
       case 'payment':
@@ -594,9 +594,8 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
         return patientForConsultationInfo ? (
           <ConsultationInfoModal
             patient={patientForConsultationInfo}
-            consultationItems={consultationItemsHook.consultationItems}
-            onSave={(patientId, details) => {
-              patients.updatePatientDetails(patientId, details);
+            onSave={(patientId, details, memo) => {
+              patients.updatePatientDetails(patientId, details, memo);
             }}
             onClose={closeModal}
           />
@@ -744,7 +743,14 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
         } />
       </Routes>
 
-      <Modal isOpen={modalType !== null} onClose={closeModal} title={modalTitle} wide={isModalWide} fullHeight={isModalFullHeight}>
+      <Modal
+        isOpen={modalType !== null}
+        onClose={closeModal}
+        title={modalTitle}
+        wide={isModalWide}
+        fullHeight={isModalFullHeight}
+        maxWidth={modalType === 'patientSearch' || modalType === 'consultationInfo' ? '800px' : undefined}
+      >
         {renderModalContent()}
       </Modal>
 

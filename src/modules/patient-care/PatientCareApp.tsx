@@ -14,16 +14,17 @@ import PatientCareDashboard from './components/PatientCareDashboard';
 // 복약관리 페이지 (환자별 복약차트만)
 import MedicationChartPage from './components/MedicationChartPage';
 
-// 배송콜, 내원콜, 애프터콜 페이지
+// 배송콜, 내원콜, 애프터콜, 초진메세지 페이지
 import DeliveryCallPage from './components/DeliveryCallPage';
 import VisitCallPage from './components/VisitCallPage';
 import AfterCallPage from './components/AfterCallPage';
+import FirstVisitMessagePage from './components/FirstVisitMessagePage';
 
 interface PatientCareAppProps {
   user: PortalUser;
 }
 
-type ViewMode = 'dashboard' | 'medication' | 'delivery' | 'visit' | 'aftercall';
+type ViewMode = 'dashboard' | 'medication' | 'delivery' | 'visit' | 'aftercall' | 'firstvisit';
 
 const PatientCareApp: React.FC<PatientCareAppProps> = ({ user }) => {
   const navigate = useNavigate();
@@ -59,6 +60,17 @@ const PatientCareApp: React.FC<PatientCareAppProps> = ({ user }) => {
           >
             <i className="fas fa-chart-line text-xl mb-1"></i>
             <span>대시보드</span>
+          </button>
+          <button
+            onClick={() => setViewMode('firstvisit')}
+            className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
+              viewMode === 'firstvisit'
+                ? 'bg-orange-500 text-white'
+                : 'text-gray-500 hover:bg-gray-100 hover:text-orange-500'
+            }`}
+          >
+            <i className="fas fa-user-plus text-xl mb-1"></i>
+            <span>초진콜</span>
           </button>
           <button
             onClick={() => setViewMode('medication')}
@@ -145,6 +157,10 @@ const PatientCareApp: React.FC<PatientCareAppProps> = ({ user }) => {
 
         {viewMode === 'aftercall' && (
           <AfterCallPage />
+        )}
+
+        {viewMode === 'firstvisit' && (
+          <FirstVisitMessagePage />
         )}
       </div>
     </div>

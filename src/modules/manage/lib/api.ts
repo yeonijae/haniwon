@@ -1337,6 +1337,7 @@ export interface WaitingQueueItem {
   patient_id: number;
   queue_type: 'consultation' | 'treatment';
   details: string;
+  memo?: string;
   position: number;
   created_at?: string;
 }
@@ -1436,7 +1437,8 @@ export async function movePatientBetweenQueues(
   patientId: number,
   fromQueue: 'consultation' | 'treatment',
   toQueue: 'consultation' | 'treatment',
-  details: string
+  details: string,
+  memo?: string
 ): Promise<void> {
   // 기존 대기열에서 제거
   await removeFromWaitingQueue(patientId, fromQueue);
@@ -1446,8 +1448,38 @@ export async function movePatientBetweenQueues(
     patient_id: patientId,
     queue_type: toQueue,
     details,
+    memo,
     position: 0, // addToWaitingQueue에서 자동 계산됨
   });
+}
+
+// 환자의 마지막 진료정보 조회 (treatment_history 또는 waiting_queue에서)
+export async function getLastTreatmentInfo(patientId: number): Promise<{ details: string; memo?: string } | null> {
+  // 먼저 treatment_history 테이블에서 조회 시도
+  const { data: historyData, error: historyError } = await supabase
+    .from('treatment_history')
+    .select('details, memo')
+    .eq('patient_id', patientId)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (!historyError && historyData && historyData.length > 0) {
+    return historyData[0];
+  }
+
+  // treatment_history가 없으면 waiting_queue에서 마지막 기록 조회
+  const { data: queueData, error: queueError } = await supabase
+    .from('waiting_queue')
+    .select('details, memo')
+    .eq('patient_id', patientId)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (!queueError && queueData && queueData.length > 0) {
+    return queueData[0];
+  }
+
+  return null;
 }
 
 /**

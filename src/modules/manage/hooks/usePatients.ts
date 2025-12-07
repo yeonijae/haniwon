@@ -79,6 +79,7 @@ export const usePatients = (currentUser: any) => {
               status: PatientStatus.WAITING_CONSULTATION,
               time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
               details: q.details,
+              memo: q.memo,
             };
           })
           .filter((p): p is Patient => p !== null);
@@ -93,6 +94,7 @@ export const usePatients = (currentUser: any) => {
               status: PatientStatus.WAITING_TREATMENT,
               time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
               details: q.details,
+              memo: q.memo,
             };
           })
           .filter((p): p is Patient => p !== null);
@@ -167,6 +169,7 @@ export const usePatients = (currentUser: any) => {
               status: PatientStatus.WAITING_CONSULTATION,
               time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
               details: q.details,
+              memo: q.memo,
             };
           })
           .filter((p): p is Patient => p !== null);
@@ -180,6 +183,7 @@ export const usePatients = (currentUser: any) => {
               status: PatientStatus.WAITING_TREATMENT,
               time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
               details: q.details,
+              memo: q.memo,
             };
           })
           .filter((p): p is Patient => p !== null);
@@ -626,7 +630,7 @@ export const usePatients = (currentUser: any) => {
   }, []);
 
   // 대기 목록 추가 (DB 연동)
-  const addPatientToConsultation = useCallback(async (patient: Patient, details: string = '검색 추가') => {
+  const addPatientToConsultation = useCallback(async (patient: Patient, details: string = '검색 추가', memo?: string) => {
     // 이미 대기 목록에 있는지 확인
     const alreadyExists = consultationWaitingList.some(p => p.id === patient.id);
     if (alreadyExists) {
@@ -642,6 +646,7 @@ export const usePatients = (currentUser: any) => {
       status: PatientStatus.WAITING_CONSULTATION,
       time: currentTime,
       details,
+      memo,
     };
     setConsultationWaitingList(prev => [...prev, newPatient]);
 
@@ -651,6 +656,7 @@ export const usePatients = (currentUser: any) => {
         patient_id: patient.id,
         queue_type: 'consultation',
         details,
+        memo,
         position: 0,
       });
       console.log(`✅ ${patient.name}님을 진료 대기 목록에 추가 (DB 저장 완료)`);
@@ -665,7 +671,7 @@ export const usePatients = (currentUser: any) => {
     return true;
   }, [consultationWaitingList]);
 
-  const addPatientToTreatment = useCallback(async (patient: Patient, details: string = '검색 추가') => {
+  const addPatientToTreatment = useCallback(async (patient: Patient, details: string = '검색 추가', memo?: string) => {
     // 이미 대기 목록에 있는지 확인
     const alreadyExists = treatmentWaitingList.some(p => p.id === patient.id);
     if (alreadyExists) {
@@ -681,6 +687,7 @@ export const usePatients = (currentUser: any) => {
       status: PatientStatus.WAITING_TREATMENT,
       time: currentTime,
       details,
+      memo,
     };
     setTreatmentWaitingList(prev => [...prev, newPatient]);
 
@@ -690,6 +697,7 @@ export const usePatients = (currentUser: any) => {
         patient_id: patient.id,
         queue_type: 'treatment',
         details,
+        memo,
         position: 0,
       });
       console.log(`✅ ${patient.name}님을 치료 대기 목록에 추가 (DB 저장 완료)`);
@@ -704,42 +712,40 @@ export const usePatients = (currentUser: any) => {
     return true;
   }, [treatmentWaitingList]);
 
-  // 환자 이동 (DB 연동)
+  // 환자 이동 (DB 연동) - 기존 details와 memo 유지
   const movePatient = useCallback(async (patientToMove: Patient) => {
     const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
     lastLocalWaitingQueueUpdate = Date.now();
 
     if (patientToMove.status === PatientStatus.WAITING_CONSULTATION) {
-      // 로컬 상태 업데이트
+      // 로컬 상태 업데이트 (기존 details, memo 유지)
       setConsultationWaitingList(prev => prev.filter(p => p.id !== patientToMove.id));
       const updatedPatient = {
         ...patientToMove,
         status: PatientStatus.WAITING_TREATMENT,
         time: currentTime,
-        details: '진료완료',
       };
       setTreatmentWaitingList(prev => [...prev, updatedPatient]);
 
-      // DB 업데이트
+      // DB 업데이트 (기존 details, memo 유지)
       try {
-        await api.movePatientBetweenQueues(patientToMove.id, 'consultation', 'treatment', '진료완료');
+        await api.movePatientBetweenQueues(patientToMove.id, 'consultation', 'treatment', patientToMove.details || '', patientToMove.memo);
       } catch (error) {
         console.error('❌ 대기 목록 이동 DB 오류:', error);
       }
     } else if (patientToMove.status === PatientStatus.WAITING_TREATMENT) {
-      // 로컬 상태 업데이트
+      // 로컬 상태 업데이트 (기존 details, memo 유지)
       setTreatmentWaitingList(prev => prev.filter(p => p.id !== patientToMove.id));
       const updatedPatient = {
         ...patientToMove,
         status: PatientStatus.WAITING_CONSULTATION,
         time: currentTime,
-        details: '재진료요청',
       };
       setConsultationWaitingList(prev => [...prev, updatedPatient]);
 
-      // DB 업데이트
+      // DB 업데이트 (기존 details, memo 유지)
       try {
-        await api.movePatientBetweenQueues(patientToMove.id, 'treatment', 'consultation', '재진료요청');
+        await api.movePatientBetweenQueues(patientToMove.id, 'treatment', 'consultation', patientToMove.details || '', patientToMove.memo);
       } catch (error) {
         console.error('❌ 대기 목록 이동 DB 오류:', error);
       }
@@ -757,7 +763,6 @@ export const usePatients = (currentUser: any) => {
     lastLocalWaitingQueueUpdate = Date.now();
 
     const currentTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-    const newDetails = sourceListType === 'consultation' ? '진료대기->치료' : '치료대기->진료';
     const newStatus = destinationListType === 'consultation' ? PatientStatus.WAITING_CONSULTATION : PatientStatus.WAITING_TREATMENT;
 
     // 원본과 대상 모두 동시에 업데이트
@@ -769,12 +774,11 @@ export const usePatients = (currentUser: any) => {
         const patient = prev.find(p => p.id === draggedPatientId);
         console.log('🔀 찾은 환자:', patient);
         if (patient) {
-          // 대상 목록에 추가
+          // 대상 목록에 추가 (기존 details와 memo 유지)
           const patientForList: Patient = {
             ...patient,
             status: newStatus,
             time: currentTime,
-            details: newDetails,
           };
           setTreatmentWaitingList(destPrev => {
             // 이미 있으면 추가하지 않음
@@ -788,18 +792,19 @@ export const usePatients = (currentUser: any) => {
             return list;
           });
 
-          // DB 업데이트
+          // DB 업데이트 (기존 details와 memo 유지)
           (async () => {
             try {
               await api.removeFromWaitingQueue(draggedPatientId, 'consultation');
-              lastLocalWaitingQueueUpdate = Date.now(); // DB 작업 중간에도 갱신
+              lastLocalWaitingQueueUpdate = Date.now();
               await api.addToWaitingQueue({
                 patient_id: draggedPatientId,
                 queue_type: 'treatment',
-                details: newDetails,
+                details: patient.details || '',
+                memo: patient.memo,
                 position: 0,
               });
-              lastLocalWaitingQueueUpdate = Date.now(); // DB 작업 완료 후에도 갱신
+              lastLocalWaitingQueueUpdate = Date.now();
             } catch (error) {
               console.error('❌ 대기 목록 이동 DB 오류:', error);
             }
@@ -815,12 +820,11 @@ export const usePatients = (currentUser: any) => {
         const patient = prev.find(p => p.id === draggedPatientId);
         console.log('🔀 찾은 환자:', patient);
         if (patient) {
-          // 대상 목록에 추가
+          // 대상 목록에 추가 (기존 details와 memo 유지)
           const patientForList: Patient = {
             ...patient,
             status: newStatus,
             time: currentTime,
-            details: newDetails,
           };
           setConsultationWaitingList(destPrev => {
             // 이미 있으면 추가하지 않음
@@ -834,18 +838,19 @@ export const usePatients = (currentUser: any) => {
             return list;
           });
 
-          // DB 업데이트
+          // DB 업데이트 (기존 details와 memo 유지)
           (async () => {
             try {
               await api.removeFromWaitingQueue(draggedPatientId, 'treatment');
-              lastLocalWaitingQueueUpdate = Date.now(); // DB 작업 중간에도 갱신
+              lastLocalWaitingQueueUpdate = Date.now();
               await api.addToWaitingQueue({
                 patient_id: draggedPatientId,
                 queue_type: 'consultation',
-                details: newDetails,
+                details: patient.details || '',
+                memo: patient.memo,
                 position: 0,
               });
-              lastLocalWaitingQueueUpdate = Date.now(); // DB 작업 완료 후에도 갱신
+              lastLocalWaitingQueueUpdate = Date.now();
             } catch (error) {
               console.error('❌ 대기 목록 이동 DB 오류:', error);
             }
@@ -956,21 +961,26 @@ export const usePatients = (currentUser: any) => {
     }
   }, []);
 
-  // 대기 목록에서 환자의 진료정보(details) 업데이트
-  const updatePatientDetails = useCallback(async (patientId: number, details: string) => {
+  // 대기 목록에서 환자의 진료정보(details)와 메모(memo) 업데이트
+  const updatePatientDetails = useCallback(async (patientId: number, details: string, memo?: string) => {
     lastLocalWaitingQueueUpdate = Date.now();
+
+    const updateData: { details: string; memo?: string } = { details };
+    if (memo !== undefined) {
+      updateData.memo = memo;
+    }
 
     // 진료 대기 목록에서 찾기
     const inConsultation = consultationWaitingList.find(p => p.id === patientId);
     if (inConsultation) {
       setConsultationWaitingList(prev =>
-        prev.map(p => p.id === patientId ? { ...p, details } : p)
+        prev.map(p => p.id === patientId ? { ...p, details, memo: memo !== undefined ? memo : p.memo } : p)
       );
       // DB 업데이트
       try {
         await supabase
           .from('waiting_queue')
-          .update({ details })
+          .update(updateData)
           .eq('patient_id', patientId)
           .eq('queue_type', 'consultation');
       } catch (error) {
@@ -983,13 +993,13 @@ export const usePatients = (currentUser: any) => {
     const inTreatment = treatmentWaitingList.find(p => p.id === patientId);
     if (inTreatment) {
       setTreatmentWaitingList(prev =>
-        prev.map(p => p.id === patientId ? { ...p, details } : p)
+        prev.map(p => p.id === patientId ? { ...p, details, memo: memo !== undefined ? memo : p.memo } : p)
       );
       // DB 업데이트
       try {
         await supabase
           .from('waiting_queue')
-          .update({ details })
+          .update(updateData)
           .eq('patient_id', patientId)
           .eq('queue_type', 'treatment');
       } catch (error) {
