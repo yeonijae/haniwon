@@ -3,7 +3,7 @@
  * 읽기/쓰기 - 관리자용
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type {
   BlogPost,
   BlogPostSummary,
@@ -14,7 +14,14 @@ import type {
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Supabase 설정이 없으면 null 반환 (블로그 기능은 선택적)
+export const supabase: SupabaseClient | null =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null;
+
+// Supabase 사용 가능 여부 확인
+export const isSupabaseAvailable = (): boolean => supabase !== null;
 
 // ============ 포스트 관리 ============
 
@@ -22,6 +29,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
  * 모든 포스트 가져오기 (관리자용 - 모든 상태)
  */
 export async function getAllPosts(): Promise<BlogPostSummary[]> {
+  if (!supabase) {
+    console.warn('Supabase not configured');
+    return [];
+  }
   const { data, error } = await supabase
     .from('blog_posts')
     .select(`
@@ -71,6 +82,10 @@ export async function getAllPosts(): Promise<BlogPostSummary[]> {
  * ID로 포스트 가져오기
  */
 export async function getPostById(id: string): Promise<BlogPost | null> {
+  if (!supabase) {
+    console.warn('Supabase not configured');
+    return null;
+  }
   const { data, error } = await supabase
     .from('blog_posts')
     .select('*')
@@ -111,6 +126,7 @@ export async function getPostById(id: string): Promise<BlogPost | null> {
  * 포스트 생성
  */
 export async function createPost(post: Partial<BlogPost>): Promise<BlogPost> {
+  if (!supabase) throw new Error('Supabase not configured');
   const { data, error } = await supabase
     .from('blog_posts')
     .insert({
@@ -144,6 +160,7 @@ export async function createPost(post: Partial<BlogPost>): Promise<BlogPost> {
  * 포스트 수정
  */
 export async function updatePost(id: string, post: Partial<BlogPost>): Promise<BlogPost> {
+  if (!supabase) throw new Error('Supabase not configured');
   const updateData: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
@@ -184,6 +201,7 @@ export async function updatePost(id: string, post: Partial<BlogPost>): Promise<B
  * 포스트 발행
  */
 export async function publishPost(id: string): Promise<BlogPost> {
+  if (!supabase) throw new Error('Supabase not configured');
   const { data, error } = await supabase
     .from('blog_posts')
     .update({
@@ -207,6 +225,7 @@ export async function publishPost(id: string): Promise<BlogPost> {
  * 포스트 발행 취소 (임시저장으로)
  */
 export async function unpublishPost(id: string): Promise<BlogPost> {
+  if (!supabase) throw new Error('Supabase not configured');
   const { data, error } = await supabase
     .from('blog_posts')
     .update({
@@ -229,6 +248,7 @@ export async function unpublishPost(id: string): Promise<BlogPost> {
  * 포스트 삭제
  */
 export async function deletePost(id: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase not configured');
   const { error } = await supabase
     .from('blog_posts')
     .delete()
@@ -246,6 +266,7 @@ export async function deletePost(id: string): Promise<void> {
  * 모든 구독자 가져오기
  */
 export async function getAllSubscribers() {
+  if (!supabase) return [];
   const { data, error } = await supabase
     .from('blog_subscribers')
     .select('*')
@@ -263,6 +284,7 @@ export async function getAllSubscribers() {
  * 구독자 통계
  */
 export async function getSubscriberStats() {
+  if (!supabase) return { total: 0, active: 0, kakao: 0, email: 0 };
   const { data, error } = await supabase
     .from('blog_subscribers')
     .select('subscribe_type, is_active');
@@ -286,6 +308,17 @@ export async function getSubscriberStats() {
  * 대시보드 통계
  */
 export async function getDashboardStats() {
+  if (!supabase) {
+    return {
+      totalPosts: 0,
+      publishedPosts: 0,
+      draftPosts: 0,
+      totalViews: 0,
+      weeklyViews: 0,
+      totalSubscribers: 0,
+      activeSubscribers: 0,
+    };
+  }
   const [postsResult, viewsResult, subscribersResult] = await Promise.all([
     supabase.from('blog_posts').select('status, view_count'),
     supabase.from('blog_page_views').select('id').gte('viewed_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),

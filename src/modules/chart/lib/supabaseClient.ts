@@ -1,12 +1,13 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Supabase URL과 Anon Key가 설정되지 않았습니다. .env.local 파일을 확인하세요.'
-  );
-}
+// Supabase 설정이 없으면 null 반환 (차트 기능은 선택적)
+export const supabase: SupabaseClient | null =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Supabase 사용 가능 여부 확인
+export const isSupabaseAvailable = (): boolean => supabase !== null;
