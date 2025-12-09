@@ -34,8 +34,9 @@ export const usePayments = (currentUser: any) => {
         }));
         setCompletedPayments(formattedCompleted);
       } catch (error) {
-        console.error('❌ 결제 데이터 로드 오류:', error);
-        alert('결제 데이터를 불러오는 중 오류가 발생했습니다.');
+        console.error('❌ 결제 데이터 로드 오류 (Supabase):', error);
+        // 테이블이 없을 수 있으므로 alert 비활성화
+        // alert('결제 데이터를 불러오는 중 오류가 발생했습니다.');
       }
     };
 

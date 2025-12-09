@@ -16,6 +16,8 @@ import TreatmentApp from '@treatment/TreatmentApp';
 import PatientCareApp from './modules/patient-care/PatientCareApp';
 import FunnelApp from './modules/funnel/FunnelApp';
 import ContentApp from './modules/content/ContentApp';
+import ReservationApp from './modules/reservation/ReservationApp';
+import { DoctorPadApp } from './modules/doctor-pad';
 
 // Public Blog Pages (공개 - 로그인 불필요)
 import BlogListPage from './modules/blog/pages/BlogListPage';
@@ -134,6 +136,12 @@ function App() {
         element={user ? <ContentApp user={user} /> : <Navigate to="/login" replace />}
       />
 
+      {/* Reservation Module Routes */}
+      <Route
+        path="/reservation/*"
+        element={user ? <ReservationApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
       {/* Blog Management Routes (레거시 - /content/blog로 리다이렉트) */}
       <Route
         path="/blog/manage"
@@ -158,6 +166,12 @@ function App() {
 
       {/* Public Landing Routes (로그인 불필요) */}
       <Route path="/l/:slug" element={<LandingViewPage />} />
+
+      {/* Doctor Pad Routes (원장용 진료패드) */}
+      <Route
+        path="/doctor-pad/*"
+        element={user ? <DoctorPadApp user={user} /> : <Navigate to="/login" replace />}
+      />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />

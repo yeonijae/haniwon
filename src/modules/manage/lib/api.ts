@@ -8,7 +8,20 @@ import { supabase } from '@shared/lib/supabase';
 
 /**
  * 환자 관련 API
+ * Supabase에는 id, chart_number, name만 저장
+ * 상세정보(전화번호, 생년월일 등)는 MSSQL에서 실시간 조회
  */
+
+// DB 레코드를 Patient 객체로 변환하는 헬퍼 함수
+const mapDbToPatient = (p: any): Patient => ({
+  id: p.id,
+  name: p.name,
+  chartNumber: p.chart_number || '',
+  status: 'COMPLETED' as any,
+  time: '',
+  details: '',
+  deletionDate: p.deletion_date || undefined,
+});
 
 // 모든 환자 조회 (삭제되지 않은) - 1000명씩 페이지네이션
 export async function fetchPatients(
@@ -29,7 +42,7 @@ export async function fetchPatients(
 
     const { data, error } = await supabase
       .from('patients')
-      .select('*')
+      .select('id, name, chart_number, deletion_date')
       .is('deletion_date', null)
       .order('id', { ascending: true })
       .range(from, to);
@@ -40,21 +53,7 @@ export async function fetchPatients(
     }
 
     if (data && data.length > 0) {
-      const patients = data.map((p) => ({
-        id: p.id,
-        name: p.name,
-        chartNumber: p.chart_number || '',
-        status: 'COMPLETED' as any,
-        time: '',
-        details: '',
-        dob: p.dob || undefined,
-        gender: p.gender as 'male' | 'female' | undefined,
-        phone: p.phone || undefined,
-        address: p.address || undefined,
-        referralPath: p.referral_path || undefined,
-        registrationDate: p.registration_date || undefined,
-      }));
-
+      const patients = data.map(mapDbToPatient);
       allPatients.push(...patients);
       console.log(`✅ 페이지 ${page + 1} 완료: ${data.length}명 로드 (총 ${allPatients.length}명)`);
 
@@ -62,7 +61,6 @@ export async function fetchPatients(
         onProgress(allPatients.length, `환자 데이터 로드 중... (${allPatients.length}명)`);
       }
 
-      // 다음 페이지가 있는지 확인
       hasMore = data.length === PAGE_SIZE;
     } else {
       hasMore = false;
@@ -79,13 +77,12 @@ export async function fetchPatients(
 export async function fetchPatientById(patientId: number): Promise<Patient | null> {
   const { data, error } = await supabase
     .from('patients')
-    .select('*')
+    .select('id, name, chart_number, deletion_date')
     .eq('id', patientId)
     .single();
 
   if (error) {
     if (error.code === 'PGRST116') {
-      // No rows returned
       return null;
     }
     console.error('❌ 환자 조회 오류:', error);
@@ -93,22 +90,7 @@ export async function fetchPatientById(patientId: number): Promise<Patient | nul
   }
 
   if (!data) return null;
-
-  return {
-    id: data.id,
-    name: data.name,
-    chartNumber: data.chart_number || '',
-    status: 'COMPLETED' as any,
-    time: '',
-    details: '',
-    dob: data.dob || undefined,
-    gender: data.gender as 'male' | 'female' | undefined,
-    phone: data.phone || undefined,
-    address: data.address || undefined,
-    referralPath: data.referral_path || undefined,
-    registrationDate: data.registration_date || undefined,
-    deletionDate: data.deletion_date || undefined,
-  };
+  return mapDbToPatient(data);
 }
 
 // 차트번호로 여러 환자 조회
@@ -117,7 +99,7 @@ export async function fetchPatientsByChartNumbers(chartNumbers: string[]): Promi
 
   const { data, error } = await supabase
     .from('patients')
-    .select('*')
+    .select('id, name, chart_number, deletion_date')
     .in('chart_number', chartNumbers);
 
   if (error) {
@@ -125,66 +107,93 @@ export async function fetchPatientsByChartNumbers(chartNumbers: string[]): Promi
     throw error;
   }
 
-  return (data || []).map((p) => ({
-    id: p.id,
-    name: p.name,
-    chartNumber: p.chart_number || '',
-    status: 'COMPLETED' as any,
-    time: '',
-    details: '',
-    dob: p.dob || undefined,
-    gender: p.gender as 'male' | 'female' | undefined,
-    phone: p.phone || undefined,
-    address: p.address || undefined,
-    referralPath: p.referral_path || undefined,
-    registrationDate: p.registration_date || undefined,
-    deletionDate: p.deletion_date || undefined,
-  }));
+  return (data || []).map(mapDbToPatient);
 }
 
-// 환자 검색 (서버사이드)
+// MSSQL API 기본 URL
+const MSSQL_API_BASE_URL = 'http://localhost:3100';
+
+// MSSQL API 응답을 Patient 객체로 변환
+interface MssqlPatientResponse {
+  id: number;
+  chart_no: string;
+  name: string;
+  phone: string | null;
+  birth: string | null;
+  sex: string | null;  // 'M' or 'F'
+  address: string | null;
+  reg_date: string | null;
+  last_visit: string | null;
+  main_doctor: string | null;
+  treat_type: string | null;
+  nurse_memo: string | null;
+  referral_source: string | null;  // 조합된 유입경로
+  referral_type: string | null;    // 유입경로 분류
+  referral_detail: string | null;  // 상세 (검색키워드 또는 미등록 소개자)
+  referrer_info: string | null;    // 소개자 정보 (이름[차트번호])
+}
+
+const mapMssqlToPatient = (p: MssqlPatientResponse): Patient => ({
+  id: p.id,
+  name: p.name,
+  chartNumber: p.chart_no || '',
+  phone: p.phone || undefined,
+  dob: p.birth || undefined,
+  gender: p.sex === 'M' ? 'male' : p.sex === 'F' ? 'female' : undefined,
+  address: p.address || undefined,
+  registrationDate: p.reg_date || undefined,
+  referralPath: p.referral_source || undefined,
+  status: 'COMPLETED' as any,
+  time: '',
+  details: '',
+});
+
+// 환자 검색 (MSSQL API 사용)
 export async function searchPatients(searchTerm: string): Promise<Patient[]> {
   if (!searchTerm || searchTerm.trim().length === 0) {
     return [];
   }
 
-  console.log('🔍 환자 검색 시작:', searchTerm);
+  console.log('🔍 환자 검색 시작 (MSSQL):', searchTerm);
 
-  const { data, error } = await supabase
-    .from('patients')
-    .select('*')
-    .is('deletion_date', null)
-    .or(`name.ilike.%${searchTerm}%,chart_number.ilike.%${searchTerm}%`)
-    .order('id', { ascending: true });
+  try {
+    const response = await fetch(
+      `${MSSQL_API_BASE_URL}/api/patients/search?q=${encodeURIComponent(searchTerm)}`
+    );
 
-  if (error) {
-    console.error('❌ 환자 검색 오류:', error);
-    throw error;
+    if (!response.ok) {
+      throw new Error(`MSSQL API 오류: ${response.status}`);
+    }
+
+    const data: MssqlPatientResponse[] = await response.json();
+    console.log('✅ 검색 결과 (MSSQL):', data?.length || 0, '명');
+    return (data || []).map(mapMssqlToPatient);
+  } catch (error) {
+    console.error('❌ 환자 검색 오류 (MSSQL):', error);
+    // MSSQL API 실패 시 Supabase 폴백
+    console.log('⚠️ Supabase로 폴백 시도...');
+    const { data, error: supabaseError } = await supabase
+      .from('patients')
+      .select('id, name, chart_number, deletion_date')
+      .is('deletion_date', null)
+      .or(`name.ilike.%${searchTerm}%,chart_number.ilike.%${searchTerm}%`)
+      .order('id', { ascending: true });
+
+    if (supabaseError) {
+      console.error('❌ Supabase 폴백도 실패:', supabaseError);
+      throw supabaseError;
+    }
+
+    console.log('✅ Supabase 폴백 결과:', data?.length || 0, '명');
+    return (data || []).map(mapDbToPatient);
   }
-
-  console.log('✅ 검색 결과:', data?.length || 0, '명');
-
-  return (data || []).map((p) => ({
-    id: p.id,
-    name: p.name,
-    chartNumber: p.chart_number || '',
-    status: 'COMPLETED' as any,
-    time: '',
-    details: '',
-    dob: p.dob || undefined,
-    gender: p.gender as 'male' | 'female' | undefined,
-    phone: p.phone || undefined,
-    address: p.address || undefined,
-    referralPath: p.referral_path || undefined,
-    registrationDate: p.registration_date || undefined,
-  }));
 }
 
 // 삭제된 환자 조회
 export async function fetchDeletedPatients(): Promise<Patient[]> {
   const { data, error } = await supabase
     .from('patients')
-    .select('*')
+    .select('id, name, chart_number, deletion_date')
     .not('deletion_date', 'is', null)
     .order('deletion_date', { ascending: false });
 
@@ -193,38 +202,18 @@ export async function fetchDeletedPatients(): Promise<Patient[]> {
     throw error;
   }
 
-  return (data || []).map((p) => ({
-    id: p.id,
-    name: p.name,
-    chartNumber: p.chart_number || '',
-    status: 'COMPLETED' as any,
-    time: '',
-    details: '',
-    dob: p.dob || undefined,
-    gender: p.gender as 'male' | 'female' | undefined,
-    phone: p.phone || undefined,
-    address: p.address || undefined,
-    referralPath: p.referral_path || undefined,
-    registrationDate: p.registration_date || undefined,
-    deletionDate: p.deletion_date || undefined,
-  }));
+  return (data || []).map(mapDbToPatient);
 }
 
-// 환자 생성
+// 환자 생성 (chart_number, name만 저장)
 export async function createPatient(patient: Omit<Patient, 'id'>): Promise<Patient> {
   const { data, error } = await supabase
     .from('patients')
     .insert({
       name: patient.name,
       chart_number: patient.chartNumber || null,
-      dob: patient.dob || null,
-      gender: patient.gender || null,
-      phone: patient.phone || null,
-      address: patient.address || null,
-      referral_path: patient.referralPath || null,
-      registration_date: patient.registrationDate || new Date().toISOString().split('T')[0],
     })
-    .select()
+    .select('id, name, chart_number, deletion_date')
     .single();
 
   if (error) {
@@ -233,34 +222,24 @@ export async function createPatient(patient: Omit<Patient, 'id'>): Promise<Patie
   }
 
   return {
-    id: data.id,
-    name: data.name,
-    chartNumber: data.chart_number || '',
+    ...mapDbToPatient(data),
     status: patient.status,
     time: patient.time,
     details: patient.details,
-    dob: data.dob || undefined,
-    gender: data.gender as 'male' | 'female' | undefined,
-    phone: data.phone || undefined,
-    address: data.address || undefined,
-    referralPath: data.referral_path || undefined,
-    registrationDate: data.registration_date || undefined,
   };
 }
 
-// 환자 정보 수정
+// 환자 정보 수정 (name, chart_number만)
 export async function updatePatient(patientId: number, updates: Partial<Patient>): Promise<void> {
+  const updateData: any = {};
+  if (updates.name !== undefined) updateData.name = updates.name;
+  if (updates.chartNumber !== undefined) updateData.chart_number = updates.chartNumber || null;
+
+  if (Object.keys(updateData).length === 0) return;
+
   const { error } = await supabase
     .from('patients')
-    .update({
-      name: updates.name,
-      chart_number: updates.chartNumber || null,
-      dob: updates.dob || null,
-      gender: updates.gender || null,
-      phone: updates.phone || null,
-      address: updates.address || null,
-      referral_path: updates.referralPath || null,
-    })
+    .update(updateData)
     .eq('id', patientId);
 
   if (error) {

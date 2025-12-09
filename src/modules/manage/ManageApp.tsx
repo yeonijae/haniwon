@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import Header, { ModalType } from './components/Header';
 import ReservationStatus from './components/ReservationStatus';
 import WaitingList from './components/WaitingList';
+import MssqlWaitingList from './components/MssqlWaitingList';
 import TreatmentRoomStatus from './components/TreatmentRoomStatus';
 import PaymentStatus from './components/PaymentStatus';
 import Modal from './components/Modal';
@@ -25,6 +26,7 @@ import { useActingQueues } from './hooks/useActingQueues';
 import { useStaff } from './hooks/useStaff';
 import { useConsultationRooms } from './hooks/useConsultationRooms';
 import { useConsultationItems } from './hooks/useConsultationItems';
+import { useMssqlQueue } from './hooks/useMssqlQueue';
 
 import type { PortalUser } from '@shared/types';
 import { useTreatmentRecord } from '@shared/hooks/useTreatmentRecord';
@@ -88,6 +90,9 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
 
   // Treatment Record (진료내역 타임라인)
   const treatmentRecord = useTreatmentRecord();
+
+  // MSSQL Queue (차트 프로그램 대기/치료 현황)
+  const mssqlQueue = useMssqlQueue();
 
   // 치료실에 있는 환자들의 정보를 캐시에 로드
   useEffect(() => {
@@ -683,44 +688,35 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
       <Routes>
         <Route path="/" element={
           <main className="flex-grow p-4 lg:p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-10 gap-4 lg:gap-6 min-h-0">
-            {/* 1. 예약현황 (20% - 2/10) */}
+            {/* 1. 예약현황 (20% - 2/10) - MSSQL 데이터 표시 */}
             <div className="xl:col-span-2 flex flex-col min-h-0">
-              <ReservationStatus
-                reservations={reservationHook.reservations}
-                onEditReservation={handleEditReservation}
-                onPatientArrival={handlePatientArrival}
-              />
+              <ReservationStatus />
             </div>
 
-            {/* 2. 대기실 (30% - 3/10) */}
+            {/* 2. 대기실 (30% - 3/10) - MSSQL 데이터 표시 */}
             <div className="xl:col-span-3 flex flex-col gap-4 lg:gap-6 min-h-0">
-              <WaitingList
+              {/* MSSQL 연결 상태 표시 */}
+              {!mssqlQueue.isConnected && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-center text-sm text-yellow-700">
+                  <i className="fa-solid fa-plug-circle-xmark mr-2"></i>
+                  차트 프로그램 연결 대기 중...
+                </div>
+              )}
+              <MssqlWaitingList
                 title="진료 대기"
                 icon="fa-solid fa-user-doctor"
-                list={patients.consultationWaitingList}
-                listType="consultation"
-                onPatientClick={movePatient}
-                onPatientDrop={handlePatientDrop}
-                onMoveToPayment={(id) => handleMovePatientToPayment(id, 'consultation')}
-                onCancelRegistration={handleCancelRegistration}
-                onEditConsultationInfo={(patient) => {
-                  setPatientForConsultationInfo(patient);
-                  openModal('consultationInfo', `${patient.name}님 진료정보`);
-                }}
+                list={mssqlQueue.waiting}
+                listType="waiting"
+                formatWaitingTime={mssqlQueue.formatWaitingTime}
+                getWaitingMinutes={mssqlQueue.getWaitingMinutes}
               />
-              <WaitingList
+              <MssqlWaitingList
                 title="치료 대기"
                 icon="fa-solid fa-bed-pulse"
-                list={patients.treatmentWaitingList}
-                listType="treatment"
-                onPatientClick={movePatient}
-                onPatientDrop={handlePatientDrop}
-                onMoveToPayment={(id) => handleMovePatientToPayment(id, 'treatment')}
-                onCancelRegistration={handleCancelRegistration}
-                onEditConsultationInfo={(patient) => {
-                  setPatientForConsultationInfo(patient);
-                  openModal('consultationInfo', `${patient.name}님 진료정보`);
-                }}
+                list={mssqlQueue.treating}
+                listType="treating"
+                formatWaitingTime={mssqlQueue.formatWaitingTime}
+                getWaitingMinutes={mssqlQueue.getWaitingMinutes}
               />
             </div>
 

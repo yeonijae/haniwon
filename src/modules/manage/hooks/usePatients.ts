@@ -3,6 +3,7 @@ import { Patient, PatientStatus, DefaultTreatment, Acting } from '../types';
 import { NewPatientData } from '../components/NewPatientForm';
 import { BulkPatientData } from '../components/Settings';
 import * as api from '../lib/api';
+import * as actingApi from '@acting/api';
 import { supabase } from '@shared/lib/supabase';
 import { DOCTORS } from '../constants';
 
@@ -933,6 +934,36 @@ export const usePatients = (currentUser: any) => {
         details,
         position: 0,
       });
+
+      // 약상담이 포함된 경우 (약환자) - 담당 원장의 액팅 대기열에 약상담 추가
+      if (details.includes('약상담')) {
+        console.log(`[약상담 액팅 자동추가] 환자: ${patient.name} (ID: ${patient.id})`);
+
+        // 담당 원장 정보 조회 (MSSQL에서)
+        let doctorInfo = await actingApi.fetchPatientMainDoctor(patient.id);
+        if (!doctorInfo) {
+          console.warn('[약상담 액팅 자동추가] 담당 원장 정보 조회 실패, 기본값 사용');
+          doctorInfo = { doctorId: 1, doctorName: '김원장' };
+        }
+
+        console.log(`[약상담 액팅 자동추가] 담당 원장: ${doctorInfo.doctorName} (ID: ${doctorInfo.doctorId})`);
+
+        try {
+          await actingApi.addActing({
+            patientId: patient.id,
+            patientName: patient.name,
+            chartNo: patient.chartNo,
+            doctorId: doctorInfo.doctorId,
+            doctorName: doctorInfo.doctorName,
+            actingType: '약상담',
+            memo: '',
+            source: 'auto',
+          });
+          console.log(`[약상담 액팅 자동추가] ✅ 약상담 액팅 추가 완료`);
+        } catch (actingError) {
+          console.error('[약상담 액팅 자동추가] ❌ 액팅 추가 실패:', actingError);
+        }
+      }
     } catch (error) {
       console.error('❌ 진료 대기 목록 추가 DB 오류:', error);
     }

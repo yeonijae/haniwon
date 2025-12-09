@@ -19,6 +19,7 @@
     "paths": {
       "@/*": ["src/*"],
       "@shared/*": ["src/shared/*"],
+      "@modules/*": ["src/modules/*"],
       "@portal/*": ["src/modules/portal/*"],
       "@manage/*": ["src/modules/manage/*"],
       "@chart/*": ["src/modules/chart/*"],

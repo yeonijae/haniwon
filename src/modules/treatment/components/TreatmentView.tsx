@@ -3,6 +3,7 @@ import { TreatmentRoom, RoomStatus, Patient, PatientStatus, SessionTreatment, De
 import TreatmentInfoModal from './TreatmentInfoModal';
 import DefaultTreatmentEditModal from './DefaultTreatmentEditModal';
 import * as api from '../lib/api';
+import * as actingApi from '@acting/api';
 
 const getStatusClasses = (status: RoomStatus): { border: string, bg: string, text: string } => {
   switch (status) {
@@ -538,6 +539,62 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
         setEditingPatient(patient);
     };
 
+    // 베드 배정 시 액팅 항목 자동 추가 (침, 추나, 초음파, 향기요법)
+    // 약침은 침과 함께 진행되므로 별도 액팅 불필요
+    const ACTING_TREATMENT_NAMES = ['침', '추나', '초음파', '향기'];
+    const EXCLUDED_TREATMENTS = ['약침']; // 제외할 치료 항목
+
+    const addActingForTreatments = useCallback(async (
+        patientId: number,
+        patientName: string,
+        chartNo: string | undefined,
+        treatments: { name: string; duration: number; memo?: string }[]
+    ) => {
+        // 액팅 대상 치료 항목 필터링
+        // 1. 제외 항목이 포함된 경우 스킵 (예: 약침)
+        // 2. 액팅 대상 이름이 포함된 경우만 선택
+        const actingTreatments = treatments.filter(t => {
+            // 제외 항목 체크
+            if (EXCLUDED_TREATMENTS.some(excluded => t.name.includes(excluded))) {
+                return false;
+            }
+            // 액팅 대상 체크
+            return ACTING_TREATMENT_NAMES.some(actingName => t.name.includes(actingName));
+        });
+
+        if (actingTreatments.length === 0) return;
+
+        console.log('[액팅 자동추가] 대상 항목:', actingTreatments.map(t => t.name));
+
+        // 담당 원장 정보 조회 (MSSQL에서)
+        let doctorInfo = await actingApi.fetchPatientMainDoctor(patientId);
+        if (!doctorInfo) {
+            console.warn('[액팅 자동추가] 담당 원장 정보 조회 실패, 기본값 사용');
+            doctorInfo = { doctorId: 1, doctorName: '김원장' };
+        }
+
+        console.log(`[액팅 자동추가] 담당 원장: ${doctorInfo.doctorName} (ID: ${doctorInfo.doctorId})`);
+
+        // 각 액팅 항목을 대기열에 추가
+        for (const treatment of actingTreatments) {
+            try {
+                await actingApi.addActing({
+                    patientId,
+                    patientName,
+                    chartNo,
+                    doctorId: doctorInfo.doctorId,
+                    doctorName: doctorInfo.doctorName,
+                    actingType: treatment.name,
+                    memo: treatment.memo,
+                    source: 'manual',
+                });
+                console.log(`[액팅 자동추가] ${treatment.name} → ${doctorInfo.doctorName} 추가 완료`);
+            } catch (error) {
+                console.error(`[액팅 자동추가] ${treatment.name} 추가 실패:`, error);
+            }
+        }
+    }, []);
+
     const handlePatientDropOnBed = useCallback((patientId: number, roomId: number) => {
         const currentWaitingList = waitingListRef.current;
         const currentAllPatients = allPatientsRef.current;
@@ -583,6 +640,15 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                     inTime: new Date().toISOString(),
                     sessionTreatments,
                 };
+
+                // 액팅 자동 추가 (비동기로 실행 - 담당 원장은 MSSQL에서 조회)
+                addActingForTreatments(
+                    patient.id,
+                    patient.name,
+                    patient.chartNumber,
+                    treatmentsToApply
+                );
+
                 return updatedRoom;
             }
             return room;
@@ -596,7 +662,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             // 진료내역: 치료 시작 이벤트
             onTreatmentStart?.(patientId, updatedRoom.name);
         }
-    }, [treatmentItems, onUpdateRooms, onRemoveFromWaitingList, onSaveRoomToDB, onTreatmentStart]);
+    }, [treatmentItems, onUpdateRooms, onRemoveFromWaitingList, onSaveRoomToDB, onTreatmentStart, addActingForTreatments]);
 
     const updateRoomRef = useRef<(roomId: number, updateFn: (room: TreatmentRoom) => TreatmentRoom, shouldSaveToDB?: boolean) => void>();
 

@@ -74,6 +74,22 @@ const APPS: AppInfo[] = [
     icon: '📝',
     color: '#f43f5e',
   },
+  {
+    id: 'reservation',
+    name: '예약관리',
+    description: '환자 예약을 관리합니다. 캘린더 뷰, 의사별 일정, 외부예약 승인 등을 처리할 수 있습니다.',
+    path: '/reservation',
+    icon: '📅',
+    color: '#3b82f6',
+  },
+  {
+    id: 'doctor_pad',
+    name: '닥터패드',
+    description: '원장용 진료 화면입니다. 액팅 대기열 확인, 진료 시작/완료, 환자 정보를 확인할 수 있습니다.',
+    path: '/doctor-pad',
+    icon: '👨‍⚕️',
+    color: '#059669',
+  },
 ];
 
 function Dashboard({ user, onLogout }: DashboardProps) {

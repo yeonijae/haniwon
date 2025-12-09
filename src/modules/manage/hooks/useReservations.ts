@@ -71,8 +71,9 @@ export const useReservations = (currentUser: any, allPatients: Patient[]) => {
 
         setReservations(reservationsNested);
       } catch (error) {
-        console.error('❌ 예약 데이터 로드 오류:', error);
-        alert('예약 데이터를 불러오는 중 오류가 발생했습니다.');
+        console.error('❌ 예약 데이터 로드 오류 (Supabase - 비활성화됨):', error);
+        // MSSQL로 이전 중이므로 alert 비활성화
+        // alert('예약 데이터를 불러오는 중 오류가 발생했습니다.');
       }
     };
 

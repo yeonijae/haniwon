@@ -1,11 +1,10 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { supabase } from '@shared/lib/supabase';
-import { Patient, DefaultTreatment, TreatmentRoom, Acting, ActingQueueState } from './types';
+import { Patient, DefaultTreatment, TreatmentRoom } from './types';
 import { useTreatmentRooms } from './hooks/useTreatmentRooms';
 import { useTreatmentItems } from './hooks/useTreatmentItems';
-import { useActingQueues } from './hooks/useActingQueues';
 import TreatmentView from './components/TreatmentView';
 import ActingManagementView from './components/ActingManagementView';
 import TreatmentItemsManagement from './components/TreatmentItemsManagement';
@@ -36,15 +35,6 @@ function TreatmentApp({ user }: TreatmentAppProps) {
     deleteTreatmentItem,
     reorderTreatmentItems,
   } = useTreatmentItems(user);
-
-  const {
-    actingQueues,
-    setActingQueues,
-    handleCompleteActing,
-    addActing,
-    deleteActing,
-    updateActing,
-  } = useActingQueues();
 
   // Treatment Record (진료내역 타임라인)
   const treatmentRecordHook = useTreatmentRecord();
@@ -185,19 +175,6 @@ function TreatmentApp({ user }: TreatmentAppProps) {
     }
   }, []);
 
-  // Acting handlers
-  const handleCompleteActingWithRooms = useCallback((doctorId: string, actingId: string) => {
-    handleCompleteActing(doctorId, actingId, treatmentRooms, handleUpdateTreatmentRooms);
-  }, [handleCompleteActing, treatmentRooms, handleUpdateTreatmentRooms]);
-
-  const handleEditActing = useCallback((doctorId: string, acting: Acting) => {
-    const patientName = prompt('환자 이름:', acting.patientName) || acting.patientName;
-    const duration = parseInt(prompt('소요 시간(분):', String(acting.duration)) || String(acting.duration), 10);
-    const memo = prompt('메모:', acting.memo || '') || '';
-
-    updateActing(doctorId, acting.id, { patientName, duration, memo });
-  }, [updateActing]);
-
   // 치료 시작 이벤트 핸들러
   const handleTreatmentStart = useCallback(async (patientId: number, roomName: string) => {
     await treatmentRecordHook.startTreatment(patientId, { location: roomName });
@@ -274,15 +251,8 @@ function TreatmentApp({ user }: TreatmentAppProps) {
         )}
         {currentView === 'acting' && (
           <ActingManagementView
-            actingQueues={actingQueues}
-            onQueueUpdate={setActingQueues}
-            onNavigateBack={handleNavigateToTreatment}
             treatmentRooms={treatmentRooms}
             allPatients={allPatients}
-            onCompleteActing={handleCompleteActingWithRooms}
-            onAddActing={addActing}
-            onDeleteActing={deleteActing}
-            onEditActing={handleEditActing}
           />
         )}
         {currentView === 'settings' && (

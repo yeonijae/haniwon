@@ -1446,6 +1446,204 @@ const UncoveredManagement: React.FC<{
     );
 };
 
+// 환자 DB 동기화 컴포넌트
+const PatientDbSync: React.FC = () => {
+    const [syncStatus, setSyncStatus] = useState<{
+        mssqlCount: number;
+        supabaseCount: number;
+        isSynced: boolean;
+        difference: number;
+    } | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [lastChecked, setLastChecked] = useState<Date | null>(null);
+
+    const checkSyncStatus = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const response = await fetch('http://localhost:3100/api/sync/status');
+            if (!response.ok) throw new Error('동기화 상태 확인 실패');
+            const data = await response.json();
+            if (data.success) {
+                setSyncStatus({
+                    mssqlCount: data.mssqlCount,
+                    supabaseCount: data.supabaseCount,
+                    isSynced: data.isSynced,
+                    difference: data.difference
+                });
+                setLastChecked(new Date());
+            } else {
+                throw new Error(data.error || '알 수 없는 오류');
+            }
+        } catch (err: any) {
+            setError(err.message || '동기화 상태 확인 중 오류 발생');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const executeSync = async () => {
+        if (!window.confirm('차트DB(MSSQL)의 환자 데이터를 운영DB(Supabase)에 동기화하시겠습니까?')) {
+            return;
+        }
+        setIsSyncing(true);
+        setError(null);
+        try {
+            const response = await fetch('http://localhost:3100/api/sync/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (!response.ok) throw new Error('동기화 실행 실패');
+            const data = await response.json();
+            if (data.success) {
+                alert(data.message);
+                await checkSyncStatus();
+            } else {
+                throw new Error(data.error || '알 수 없는 오류');
+            }
+        } catch (err: any) {
+            setError(err.message || '동기화 실행 중 오류 발생');
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
+    useEffect(() => {
+        checkSyncStatus();
+    }, []);
+
+    return (
+        <div className="space-y-6">
+            {/* 동기화 상태 카드 */}
+            <div className="bg-gray-50 p-6 rounded-lg border">
+                <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-semibold text-gray-800 text-lg">DB 동기화 상태</h4>
+                    <button
+                        onClick={checkSyncStatus}
+                        disabled={isLoading}
+                        className="text-sm text-clinic-secondary hover:text-blue-700 flex items-center gap-1"
+                    >
+                        <i className={`fa-solid fa-rotate ${isLoading ? 'fa-spin' : ''}`}></i>
+                        새로고침
+                    </button>
+                </div>
+
+                {error && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+                        <i className="fa-solid fa-circle-exclamation mr-2"></i>
+                        {error}
+                    </div>
+                )}
+
+                {isLoading && !syncStatus ? (
+                    <div className="flex items-center justify-center py-8">
+                        <i className="fa-solid fa-spinner fa-spin text-2xl text-gray-400"></i>
+                    </div>
+                ) : syncStatus && (
+                    <>
+                        {/* 상태 표시 */}
+                        <div className={`mb-6 p-4 rounded-lg border-2 ${
+                            syncStatus.isSynced
+                                ? 'bg-green-50 border-green-300'
+                                : 'bg-yellow-50 border-yellow-300'
+                        }`}>
+                            <div className="flex items-center gap-3">
+                                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                                    syncStatus.isSynced ? 'bg-green-500' : 'bg-yellow-500'
+                                }`}>
+                                    <i className={`fa-solid ${syncStatus.isSynced ? 'fa-check' : 'fa-exclamation'} text-white text-xl`}></i>
+                                </div>
+                                <div>
+                                    <p className={`font-bold text-lg ${
+                                        syncStatus.isSynced ? 'text-green-700' : 'text-yellow-700'
+                                    }`}>
+                                        {syncStatus.isSynced ? '동기화 완료' : '동기화 필요'}
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                        {syncStatus.isSynced
+                                            ? '차트DB와 운영DB가 일치합니다.'
+                                            : `${syncStatus.difference}명의 환자가 동기화되지 않았습니다.`}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 상세 정보 */}
+                        <div className="grid grid-cols-2 gap-4 mb-6">
+                            <div className="bg-white p-4 rounded-lg border">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <i className="fa-solid fa-database text-blue-500"></i>
+                                    <span className="text-sm font-medium text-gray-600">차트DB (MSSQL)</span>
+                                </div>
+                                <p className="text-3xl font-bold text-gray-800">
+                                    {syncStatus.mssqlCount.toLocaleString()}
+                                    <span className="text-lg font-medium text-gray-500 ml-1">명</span>
+                                </p>
+                            </div>
+                            <div className="bg-white p-4 rounded-lg border">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <i className="fa-solid fa-cloud text-green-500"></i>
+                                    <span className="text-sm font-medium text-gray-600">운영DB (Supabase)</span>
+                                </div>
+                                <p className="text-3xl font-bold text-gray-800">
+                                    {syncStatus.supabaseCount.toLocaleString()}
+                                    <span className="text-lg font-medium text-gray-500 ml-1">명</span>
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* 동기화 버튼 */}
+                        {!syncStatus.isSynced && (
+                            <button
+                                onClick={executeSync}
+                                disabled={isSyncing}
+                                className={`w-full py-3 rounded-md font-semibold text-white transition-colors ${
+                                    isSyncing
+                                        ? 'bg-gray-400 cursor-not-allowed'
+                                        : 'bg-clinic-secondary hover:bg-blue-700'
+                                }`}
+                            >
+                                {isSyncing ? (
+                                    <>
+                                        <i className="fa-solid fa-spinner fa-spin mr-2"></i>
+                                        동기화 중...
+                                    </>
+                                ) : (
+                                    <>
+                                        <i className="fa-solid fa-arrows-rotate mr-2"></i>
+                                        지금 동기화하기
+                                    </>
+                                )}
+                            </button>
+                        )}
+
+                        {lastChecked && (
+                            <p className="text-xs text-gray-400 text-center mt-4">
+                                마지막 확인: {lastChecked.toLocaleString('ko-KR')}
+                            </p>
+                        )}
+                    </>
+                )}
+            </div>
+
+            {/* 안내 문구 */}
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <h5 className="font-medium text-blue-800 mb-2">
+                    <i className="fa-solid fa-circle-info mr-2"></i>
+                    동기화 안내
+                </h5>
+                <ul className="text-sm text-blue-700 space-y-1 list-disc list-inside">
+                    <li>차트DB(MSSQL)의 환자 데이터가 운영DB(Supabase)에 동기화됩니다.</li>
+                    <li>동기화는 차트번호 기준으로 새로운 환자만 추가됩니다.</li>
+                    <li>기존 환자 정보는 수정되지 않습니다.</li>
+                </ul>
+            </div>
+        </div>
+    );
+};
+
 const Settings: React.FC<SettingsProps> = ({
     addBulkPatients, allPatients, deletePatient, deletedPatients, restorePatient,
     medicalStaff, updateMedicalStaff, addMedicalStaff, deleteMedicalStaff,
@@ -1456,7 +1654,7 @@ const Settings: React.FC<SettingsProps> = ({
 }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
-    const [currentView, setCurrentView] = useState<'main' | 'patient' | 'staff' | 'uncovered' | 'patientDelete' | 'staffMedical' | 'staffRegular' | 'consultationItems'>('main');
+    const [currentView, setCurrentView] = useState<'main' | 'patient' | 'staff' | 'uncovered' | 'staffMedical' | 'staffRegular' | 'consultationItems'>('main');
     const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, message: '' });
     const [patientCount, setPatientCount] = useState<number | null>(null);
 
@@ -1718,95 +1916,10 @@ const Settings: React.FC<SettingsProps> = ({
         </button>
     );
 
-    if (currentView === 'patientDelete') {
-        return (
-            <SettingsPage title="환자 삭제 및 복구" onBack={() => setCurrentView('patient')}>
-                <PatientDeleteAndRecover 
-                  allPatients={allPatients} 
-                  deletePatient={deletePatient}
-                  deletedPatients={deletedPatients}
-                  restorePatient={restorePatient}
-                />
-            </SettingsPage>
-        );
-    }
-
     if (currentView === 'patient') {
         return (
-            <SettingsPage title="환자 관리" onBack={() => setCurrentView('main')}>
-                 <SettingsItem
-                    title="현재 등록된 환자 수"
-                    description="시스템에 저장된 모든 활성 환자의 총 인원입니다."
-                >
-                    <div className="text-3xl font-bold text-clinic-primary mt-2">
-                        {patientCount !== null ? patientCount : <span className="text-gray-400">로딩중...</span>} <span className="text-lg font-medium text-clinic-text-secondary">명</span>
-                    </div>
-                </SettingsItem>
-
-                <SettingsItem
-                    title="환자 일괄등록"
-                    description="지정된 형식의 엑셀 파일을 업로드하여 여러 환자를 한 번에 등록합니다. 예시 파일을 다운로드하여 형식을 확인하세요. 헤더 순서는 상관 없으나, '이름' 헤더는 필수입니다. (성별: True=남성, False=여성)"
-                >
-                    <div className="space-y-4">
-                        <div className="flex gap-3">
-                            <label className={`
-                                inline-flex items-center px-4 py-2 bg-clinic-secondary text-white font-semibold rounded-md transition-colors cursor-pointer
-                                ${isLoading ? 'bg-gray-400 cursor-not-allowed' : 'hover:bg-blue-700'}
-                            `}>
-                                <i className={`fa-solid ${isLoading ? 'fa-spinner fa-spin' : 'fa-file-excel'} mr-2`}></i>
-                                {isLoading ? '처리 중...' : '엑셀 파일 선택'}
-                                <input
-                                    type="file"
-                                    className="hidden"
-                                    accept=".xlsx, .xls, .csv"
-                                    onChange={handleFileChange}
-                                    disabled={isLoading}
-                                />
-                            </label>
-                            <button
-                                onClick={downloadExampleFile}
-                                className="inline-flex items-center px-4 py-2 bg-green-600 text-white font-semibold rounded-md hover:bg-green-700 transition-colors"
-                            >
-                                <i className="fa-solid fa-download mr-2"></i>
-                                예시 파일 다운로드
-                            </button>
-                        </div>
-
-                        {/* 프로그레스 바 */}
-                        {uploadProgress.total > 0 && (
-                            <div className="space-y-2">
-                                <div className="flex justify-between text-sm text-gray-700">
-                                    <span>{uploadProgress.message}</span>
-                                    <span className="font-semibold">{uploadProgress.current} / {uploadProgress.total}</span>
-                                </div>
-                                <div className="w-full bg-gray-200 rounded-full h-6 overflow-hidden shadow-inner">
-                                    <div
-                                        className="bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full transition-all duration-300 ease-out flex items-center justify-end pr-3"
-                                        style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
-                                    >
-                                        <span className="text-white text-xs font-bold drop-shadow">
-                                            {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
-                    </div>
-                </SettingsItem>
-                <SettingsItem 
-                    title="환자 정보 삭제 및 복구"
-                    description="환자 정보를 삭제 처리하거나, 이전에 삭제 처리된 환자 정보를 복구합니다."
-                >
-                    <button
-                        onClick={() => setCurrentView('patientDelete')}
-                        className="mt-2 px-4 py-2 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700 transition-colors"
-                    >
-                        <i className="fa-solid fa-user-slash mr-2"></i>
-                        환자 삭제 관리
-                    </button>
-                </SettingsItem>
+            <SettingsPage title="환자 DB 동기화" onBack={() => setCurrentView('main')}>
+                <PatientDbSync />
             </SettingsPage>
         );
     }
@@ -1886,10 +1999,10 @@ const Settings: React.FC<SettingsProps> = ({
     // Default: Main View
     return (
         <div className="space-y-4">
-            <MenuButton 
+            <MenuButton
                 icon="fa-users"
-                title="환자 관리"
-                description="환자 일괄 등록, 정보 삭제 등 환자 관련 설정을 관리합니다."
+                title="환자 DB 동기화"
+                description="차트DB(MSSQL)와 운영DB(Supabase)의 환자 데이터 동기화 상태를 확인하고 관리합니다."
                 onClick={() => setCurrentView('patient')}
             />
             <MenuButton
