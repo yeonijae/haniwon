@@ -2,10 +2,10 @@
  * 액팅 관리 API
  */
 
-import { supabase } from '@shared/lib/supabase';
+import { query, queryOne, execute, insert, escapeString, getCurrentDate, getCurrentTimestamp, toSqlValue } from '@shared/lib/sqlite';
 
 // MSSQL API 서버 URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3100';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://192.168.0.173:3100';
 
 import type {
   ActingType,
@@ -52,22 +52,18 @@ const mapDoctorStatus = (row: any): DoctorStatus => ({
 
 // 액팅 종류 목록 조회
 export async function fetchActingTypes(): Promise<ActingType[]> {
-  const { data, error } = await supabase
-    .from('acting_types')
-    .select('*')
-    .eq('is_active', true)
-    .order('display_order');
+  const data = await query<any>(`
+    SELECT * FROM acting_types WHERE is_active = 1 ORDER BY display_order
+  `);
 
-  if (error) throw error;
-
-  return (data || []).map(row => ({
+  return data.map(row => ({
     id: row.id,
     name: row.name,
     category: row.category,
     standardMin: row.standard_min,
     slotUsage: row.slot_usage,
     displayOrder: row.display_order,
-    isActive: row.is_active,
+    isActive: row.is_active === 1,
   }));
 }
 
@@ -75,77 +71,58 @@ export async function fetchActingTypes(): Promise<ActingType[]> {
 
 // 오늘 날짜의 대기열 조회
 export async function fetchTodayQueue(): Promise<ActingQueueItem[]> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
 
-  const { data, error } = await supabase
-    .from('acting_queue')
-    .select('*')
-    .eq('work_date', today)
-    .in('status', ['waiting', 'in_progress'])
-    .order('doctor_id')
-    .order('order_num');
+  const data = await query<any>(`
+    SELECT * FROM acting_queue
+    WHERE work_date = ${escapeString(today)}
+    AND status IN ('waiting', 'in_progress')
+    ORDER BY doctor_id, order_num
+  `);
 
-  if (error) throw error;
-
-  return (data || []).map(mapQueueItem);
+  return data.map(mapQueueItem);
 }
 
 // 특정 원장의 대기열 조회
 export async function fetchDoctorQueue(doctorId: number): Promise<ActingQueueItem[]> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
 
-  const { data, error } = await supabase
-    .from('acting_queue')
-    .select('*')
-    .eq('doctor_id', doctorId)
-    .eq('work_date', today)
-    .in('status', ['waiting', 'in_progress'])
-    .order('order_num');
+  const data = await query<any>(`
+    SELECT * FROM acting_queue
+    WHERE doctor_id = ${doctorId}
+    AND work_date = ${escapeString(today)}
+    AND status IN ('waiting', 'in_progress')
+    ORDER BY order_num
+  `);
 
-  if (error) throw error;
-
-  return (data || []).map(mapQueueItem);
+  return data.map(mapQueueItem);
 }
 
 // 액팅 추가
 export async function addActing(request: AddActingRequest): Promise<ActingQueueItem> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
 
   // orderNum이 없으면 맨 뒤로
   let orderNum = request.orderNum;
   if (orderNum === undefined) {
-    const { data: maxData } = await supabase
-      .from('acting_queue')
-      .select('order_num')
-      .eq('doctor_id', request.doctorId)
-      .eq('work_date', today)
-      .in('status', ['waiting', 'in_progress'])
-      .order('order_num', { ascending: false })
-      .limit(1);
-
-    orderNum = (maxData?.[0]?.order_num || 0) + 1;
+    const maxData = await queryOne<{ order_num: number }>(`
+      SELECT MAX(order_num) as order_num FROM acting_queue
+      WHERE doctor_id = ${request.doctorId}
+      AND work_date = ${escapeString(today)}
+      AND status IN ('waiting', 'in_progress')
+    `);
+    orderNum = (maxData?.order_num || 0) + 1;
   }
 
-  const { data, error } = await supabase
-    .from('acting_queue')
-    .insert({
-      patient_id: request.patientId,
-      patient_name: request.patientName,
-      chart_no: request.chartNo,
-      doctor_id: request.doctorId,
-      doctor_name: request.doctorName,
-      acting_type: request.actingType,
-      order_num: orderNum,
-      source: request.source || 'manual',
-      source_id: request.sourceId,
-      memo: request.memo,
-      work_date: today,
-    })
-    .select()
-    .single();
+  const id = await insert(`
+    INSERT INTO acting_queue (patient_id, patient_name, chart_no, doctor_id, doctor_name, acting_type, order_num, source, source_id, memo, work_date)
+    VALUES (${toSqlValue(request.patientId)}, ${escapeString(request.patientName)}, ${escapeString(request.chartNo || '')},
+            ${request.doctorId}, ${escapeString(request.doctorName)}, ${escapeString(request.actingType)},
+            ${orderNum}, ${escapeString(request.source || 'manual')}, ${toSqlValue(request.sourceId)},
+            ${escapeString(request.memo || '')}, ${escapeString(today)})
+  `);
 
-  if (error) throw error;
-
+  const data = await queryOne<any>(`SELECT * FROM acting_queue WHERE id = ${id}`);
   return mapQueueItem(data);
 }
 
@@ -156,19 +133,18 @@ export async function reorderActing(
   fromIndex: number,
   toIndex: number
 ): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
 
   // 해당 원장의 대기 중인 액팅 목록 조회
-  const { data: queue, error: fetchError } = await supabase
-    .from('acting_queue')
-    .select('id, order_num')
-    .eq('doctor_id', doctorId)
-    .eq('work_date', today)
-    .in('status', ['waiting', 'in_progress'])
-    .order('order_num', { ascending: true });
+  const queue = await query<{ id: number; order_num: number }>(`
+    SELECT id, order_num FROM acting_queue
+    WHERE doctor_id = ${doctorId}
+    AND work_date = ${escapeString(today)}
+    AND status IN ('waiting', 'in_progress')
+    ORDER BY order_num ASC
+  `);
 
-  if (fetchError) throw fetchError;
-  if (!queue || queue.length === 0) return;
+  if (queue.length === 0) return;
 
   // 순서 재배열
   const items = [...queue];
@@ -176,30 +152,14 @@ export async function reorderActing(
   items.splice(toIndex, 0, movedItem);
 
   // 새 순서로 업데이트
-  const updates = items.map((item, index) => ({
-    id: item.id,
-    order_num: index + 1,
-  }));
-
-  // 각 아이템 업데이트
-  for (const update of updates) {
-    const { error } = await supabase
-      .from('acting_queue')
-      .update({ order_num: update.order_num })
-      .eq('id', update.id);
-
-    if (error) throw error;
+  for (let i = 0; i < items.length; i++) {
+    await execute(`UPDATE acting_queue SET order_num = ${i + 1} WHERE id = ${items[i].id}`);
   }
 }
 
 // 액팅 삭제 (취소)
 export async function cancelActing(actingId: number): Promise<void> {
-  const { error } = await supabase
-    .from('acting_queue')
-    .update({ status: 'cancelled' })
-    .eq('id', actingId);
-
-  if (error) throw error;
+  await execute(`UPDATE acting_queue SET status = 'cancelled' WHERE id = ${actingId}`);
 }
 
 // 액팅 수정 (제목, 메모)
@@ -207,26 +167,21 @@ export async function updateActing(
   actingId: number,
   updates: { actingType?: string; patientName?: string; memo?: string }
 ): Promise<void> {
-  const updateData: Record<string, any> = {};
+  const updateParts: string[] = [];
 
   if (updates.actingType !== undefined) {
-    updateData.acting_type = updates.actingType;
+    updateParts.push(`acting_type = ${escapeString(updates.actingType)}`);
   }
   if (updates.patientName !== undefined) {
-    updateData.patient_name = updates.patientName;
+    updateParts.push(`patient_name = ${escapeString(updates.patientName)}`);
   }
   if (updates.memo !== undefined) {
-    updateData.memo = updates.memo;
+    updateParts.push(`memo = ${escapeString(updates.memo)}`);
   }
 
-  if (Object.keys(updateData).length === 0) return;
+  if (updateParts.length === 0) return;
 
-  const { error } = await supabase
-    .from('acting_queue')
-    .update(updateData)
-    .eq('id', actingId);
-
-  if (error) throw error;
+  await execute(`UPDATE acting_queue SET ${updateParts.join(', ')} WHERE id = ${actingId}`);
 }
 
 // 액팅을 다른 원장에게 이동
@@ -235,59 +190,37 @@ export async function moveActingToDoctor(
   newDoctorId: number,
   newDoctorName: string
 ): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
 
   // 새 원장의 맨 뒤 순서 조회
-  const { data: maxData } = await supabase
-    .from('acting_queue')
-    .select('order_num')
-    .eq('doctor_id', newDoctorId)
-    .eq('work_date', today)
-    .in('status', ['waiting', 'in_progress'])
-    .order('order_num', { ascending: false })
-    .limit(1);
+  const maxData = await queryOne<{ order_num: number }>(`
+    SELECT MAX(order_num) as order_num FROM acting_queue
+    WHERE doctor_id = ${newDoctorId}
+    AND work_date = ${escapeString(today)}
+    AND status IN ('waiting', 'in_progress')
+  `);
 
-  const newOrderNum = (maxData?.[0]?.order_num || 0) + 1;
+  const newOrderNum = (maxData?.order_num || 0) + 1;
 
-  const { error } = await supabase
-    .from('acting_queue')
-    .update({
-      doctor_id: newDoctorId,
-      doctor_name: newDoctorName,
-      order_num: newOrderNum,
-    })
-    .eq('id', actingId);
-
-  if (error) throw error;
+  await execute(`
+    UPDATE acting_queue
+    SET doctor_id = ${newDoctorId}, doctor_name = ${escapeString(newDoctorName)}, order_num = ${newOrderNum}
+    WHERE id = ${actingId}
+  `);
 }
 
 // ==================== 원장 상태 ====================
 
 // 모든 원장 상태 조회
 export async function fetchAllDoctorStatus(): Promise<DoctorStatus[]> {
-  const { data, error } = await supabase
-    .from('doctor_status')
-    .select('*')
-    .order('doctor_name');
-
-  if (error) throw error;
-
-  return (data || []).map(mapDoctorStatus);
+  const data = await query<any>(`SELECT * FROM doctor_status ORDER BY doctor_name`);
+  return data.map(mapDoctorStatus);
 }
 
 // 원장 상태 조회
 export async function fetchDoctorStatus(doctorId: number): Promise<DoctorStatus | null> {
-  const { data, error } = await supabase
-    .from('doctor_status')
-    .select('*')
-    .eq('doctor_id', doctorId)
-    .single();
-
-  if (error) {
-    if (error.code === 'PGRST116') return null; // not found
-    throw error;
-  }
-
+  const data = await queryOne<any>(`SELECT * FROM doctor_status WHERE doctor_id = ${doctorId}`);
+  if (!data) return null;
   return mapDoctorStatus(data);
 }
 
@@ -298,20 +231,28 @@ export async function upsertDoctorStatus(
   status: DoctorStatusType,
   currentActingId?: number
 ): Promise<DoctorStatus> {
-  const { data, error } = await supabase
-    .from('doctor_status')
-    .upsert({
-      doctor_id: doctorId,
-      doctor_name: doctorName,
-      status,
-      current_acting_id: currentActingId || null,
-      status_updated_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
+  const now = getCurrentTimestamp();
 
-  if (error) throw error;
+  // 먼저 존재 여부 확인
+  const existing = await queryOne<any>(`SELECT doctor_id FROM doctor_status WHERE doctor_id = ${doctorId}`);
 
+  if (existing) {
+    await execute(`
+      UPDATE doctor_status
+      SET doctor_name = ${escapeString(doctorName)},
+          status = ${escapeString(status)},
+          current_acting_id = ${toSqlValue(currentActingId)},
+          status_updated_at = ${escapeString(now)}
+      WHERE doctor_id = ${doctorId}
+    `);
+  } else {
+    await execute(`
+      INSERT INTO doctor_status (doctor_id, doctor_name, status, current_acting_id, status_updated_at)
+      VALUES (${doctorId}, ${escapeString(doctorName)}, ${escapeString(status)}, ${toSqlValue(currentActingId)}, ${escapeString(now)})
+    `);
+  }
+
+  const data = await queryOne<any>(`SELECT * FROM doctor_status WHERE doctor_id = ${doctorId}`);
   return mapDoctorStatus(data);
 }
 
@@ -319,39 +260,29 @@ export async function upsertDoctorStatus(
 
 // 진료 시작
 export async function startActing(actingId: number, doctorId: number, doctorName: string): Promise<ActingQueueItem> {
-  const now = new Date().toISOString();
+  const now = getCurrentTimestamp();
 
   // 1. 액팅 상태 업데이트
-  const { data, error } = await supabase
-    .from('acting_queue')
-    .update({
-      status: 'in_progress',
-      started_at: now,
-    })
-    .eq('id', actingId)
-    .select()
-    .single();
-
-  if (error) throw error;
+  await execute(`
+    UPDATE acting_queue
+    SET status = 'in_progress', started_at = ${escapeString(now)}
+    WHERE id = ${actingId}
+  `);
 
   // 2. 원장 상태 업데이트
   await upsertDoctorStatus(doctorId, doctorName, 'in_progress', actingId);
 
+  const data = await queryOne<any>(`SELECT * FROM acting_queue WHERE id = ${actingId}`);
   return mapQueueItem(data);
 }
 
 // 진료 완료
 export async function completeActing(actingId: number, doctorId: number, doctorName: string): Promise<ActingQueueItem> {
-  const now = new Date().toISOString();
+  const now = getCurrentTimestamp();
 
   // 1. 현재 액팅 조회
-  const { data: acting, error: fetchError } = await supabase
-    .from('acting_queue')
-    .select('*')
-    .eq('id', actingId)
-    .single();
-
-  if (fetchError) throw fetchError;
+  const acting = await queryOne<any>(`SELECT * FROM acting_queue WHERE id = ${actingId}`);
+  if (!acting) throw new Error('Acting not found');
 
   // 2. 소요시간 계산
   const startedAt = new Date(acting.started_at);
@@ -359,32 +290,19 @@ export async function completeActing(actingId: number, doctorId: number, doctorN
   const durationSec = Math.round((completedAt.getTime() - startedAt.getTime()) / 1000);
 
   // 3. 액팅 상태 업데이트
-  const { data, error } = await supabase
-    .from('acting_queue')
-    .update({
-      status: 'completed',
-      completed_at: now,
-      duration_sec: durationSec,
-    })
-    .eq('id', actingId)
-    .select()
-    .single();
-
-  if (error) throw error;
+  await execute(`
+    UPDATE acting_queue
+    SET status = 'completed', completed_at = ${escapeString(now)}, duration_sec = ${durationSec}
+    WHERE id = ${actingId}
+  `);
 
   // 4. 액팅 기록 저장 (통계용)
-  await supabase.from('acting_records').insert({
-    patient_id: acting.patient_id,
-    patient_name: acting.patient_name,
-    chart_no: acting.chart_no,
-    doctor_id: acting.doctor_id,
-    doctor_name: acting.doctor_name,
-    acting_type: acting.acting_type,
-    started_at: acting.started_at,
-    completed_at: now,
-    duration_sec: durationSec,
-    work_date: acting.work_date,
-  });
+  await execute(`
+    INSERT INTO acting_records (patient_id, patient_name, chart_no, doctor_id, doctor_name, acting_type, started_at, completed_at, duration_sec, work_date)
+    VALUES (${acting.patient_id}, ${escapeString(acting.patient_name)}, ${escapeString(acting.chart_no || '')},
+            ${acting.doctor_id}, ${escapeString(acting.doctor_name)}, ${escapeString(acting.acting_type)},
+            ${escapeString(acting.started_at)}, ${escapeString(now)}, ${durationSec}, ${escapeString(acting.work_date)})
+  `);
 
   // 5. 다음 대기 액팅 확인 후 원장 상태 업데이트
   const queue = await fetchDoctorQueue(doctorId);
@@ -396,6 +314,7 @@ export async function completeActing(actingId: number, doctorId: number, doctorN
     await upsertDoctorStatus(doctorId, doctorName, 'office');
   }
 
+  const data = await queryOne<any>(`SELECT * FROM acting_queue WHERE id = ${actingId}`);
   return mapQueueItem(data);
 }
 
@@ -408,17 +327,25 @@ export async function setDoctorOffice(doctorId: number, doctorName: string): Pro
 
 // 원장별 액팅 통계 조회
 export async function fetchDoctorStats(doctorId?: number): Promise<DoctorActingStats[]> {
-  let query = supabase.from('doctor_acting_stats').select('*');
+  let sql = `
+    SELECT doctor_id, doctor_name, acting_type,
+           COUNT(*) as total_count,
+           AVG(duration_sec) as avg_duration_sec,
+           AVG(duration_sec / 60.0) as avg_duration_min,
+           MIN(duration_sec) as min_duration_sec,
+           MAX(duration_sec) as max_duration_sec
+    FROM acting_records
+  `;
 
   if (doctorId) {
-    query = query.eq('doctor_id', doctorId);
+    sql += ` WHERE doctor_id = ${doctorId}`;
   }
 
-  const { data, error } = await query;
+  sql += ` GROUP BY doctor_id, doctor_name, acting_type`;
 
-  if (error) throw error;
+  const data = await query<any>(sql);
 
-  return (data || []).map(row => ({
+  return data.map(row => ({
     doctorId: row.doctor_id,
     doctorName: row.doctor_name,
     actingType: row.acting_type,
@@ -436,21 +363,25 @@ export async function fetchDailyStats(
   endDate: string,
   doctorId?: number
 ): Promise<DailyActingStats[]> {
-  let query = supabase
-    .from('daily_acting_stats')
-    .select('*')
-    .gte('work_date', startDate)
-    .lte('work_date', endDate);
+  let sql = `
+    SELECT work_date, doctor_id, doctor_name,
+           COUNT(*) as total_count,
+           SUM(duration_sec) as total_duration_sec,
+           SUM(duration_sec) / 60.0 as total_duration_min,
+           AVG(duration_sec) as avg_duration_sec
+    FROM acting_records
+    WHERE work_date >= ${escapeString(startDate)} AND work_date <= ${escapeString(endDate)}
+  `;
 
   if (doctorId) {
-    query = query.eq('doctor_id', doctorId);
+    sql += ` AND doctor_id = ${doctorId}`;
   }
 
-  const { data, error } = await query.order('work_date', { ascending: false });
+  sql += ` GROUP BY work_date, doctor_id, doctor_name ORDER BY work_date DESC`;
 
-  if (error) throw error;
+  const data = await query<any>(sql);
 
-  return (data || []).map(row => ({
+  return data.map(row => ({
     workDate: row.work_date,
     doctorId: row.doctor_id,
     doctorName: row.doctor_name,

@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Payment, CompletedPayment, PaymentMethod, TreatmentDetailItem, Patient } from '../types';
 import * as api from '../lib/api';
-import { supabase } from '@shared/lib/supabase';
 
 type PaymentItem = { id: number; method: PaymentMethod; amount: string; };
 
@@ -18,21 +17,8 @@ export const usePayments = (currentUser: any) => {
         const pendingPayments = await api.fetchPendingPayments();
         setPaymentsWaiting(pendingPayments);
 
-        const completed = await api.fetchCompletedPayments(100);
-        const formattedCompleted = completed.map(payment => ({
-          paymentId: payment.id,
-          patientId: payment.patientId,
-          patientName: payment.patientName,
-          patientChartNumber: payment.patientChartNumber,
-          totalAmount: payment.totalAmount || 0,
-          paidAmount: payment.paidAmount || 0,
-          remainingAmount: payment.remainingAmount || 0,
-          details: payment.details || '진료비',
-          paymentMethods: payment.paymentMethods || [],
-          completedDate: payment.completedAt ? new Date(payment.completedAt).toLocaleDateString('ko-KR') : '',
-          treatmentItems: payment.treatmentItems || []
-        }));
-        setCompletedPayments(formattedCompleted);
+        const completed = await api.fetchCompletedPayments();
+        setCompletedPayments(completed);
       } catch (error) {
         console.error('❌ 결제 데이터 로드 오류 (Supabase):', error);
         // 테이블이 없을 수 있으므로 alert 비활성화
@@ -43,57 +29,29 @@ export const usePayments = (currentUser: any) => {
     loadPaymentData();
   }, [currentUser]);
 
-  // 실시간 구독
+  // 결제 데이터 폴링 (5초마다)
+  const loadPaymentData = useCallback(async () => {
+    try {
+      const pendingPayments = await api.fetchPendingPayments();
+      setPaymentsWaiting(pendingPayments);
+
+      const completed = await api.fetchCompletedPayments();
+      setCompletedPayments(completed);
+    } catch (error) {
+      console.error('❌ 결제 데이터 로드 오류:', error);
+    }
+  }, []);
+
   useEffect(() => {
     if (!currentUser) return;
 
-    const paymentsSubscription = supabase
-      .channel('payments-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'payments' },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newPayment = payload.new as any;
-            if (!newPayment.isPaid) {
-              setPaymentsWaiting(prev => [...prev, newPayment]);
-            }
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedPayment = payload.new as any;
-
-            if (updatedPayment.isPaid) {
-              setPaymentsWaiting(prev => prev.filter(p => p.id !== updatedPayment.id));
-
-              const formattedCompleted = {
-                paymentId: updatedPayment.id,
-                patientId: updatedPayment.patientId,
-                patientName: updatedPayment.patientName,
-                patientChartNumber: updatedPayment.patientChartNumber,
-                totalAmount: updatedPayment.totalAmount || 0,
-                paidAmount: updatedPayment.paidAmount || 0,
-                remainingAmount: updatedPayment.remainingAmount || 0,
-                details: updatedPayment.details || '진료비',
-                paymentMethods: updatedPayment.paymentMethods || [],
-                completedDate: updatedPayment.completedAt ? new Date(updatedPayment.completedAt).toLocaleDateString('ko-KR') : '',
-                treatmentItems: updatedPayment.treatmentItems || []
-              };
-              setCompletedPayments(prev => [formattedCompleted, ...prev]);
-            } else {
-              setPaymentsWaiting(prev => prev.map(p =>
-                p.id === updatedPayment.id ? updatedPayment : p
-              ));
-            }
-          } else if (payload.eventType === 'DELETE') {
-            const deletedId = payload.old.id;
-            setPaymentsWaiting(prev => prev.filter(p => p.id !== deletedId));
-          }
-        }
-      )
-      .subscribe();
+    const POLLING_INTERVAL = 5000;
+    const intervalId = setInterval(loadPaymentData, POLLING_INTERVAL);
 
     return () => {
-      supabase.removeChannel(paymentsSubscription);
+      clearInterval(intervalId);
     };
-  }, [currentUser]);
+  }, [currentUser, loadPaymentData]);
 
   const createPayment = async (patient: Patient, details: string = '진료비') => {
     try {

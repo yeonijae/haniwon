@@ -1,10 +1,10 @@
 /**
  * 치료관리 모듈 - API 클라이언트
- * Supabase 직접 연결
+ * SQLite 직접 연결
  */
 
 import { Patient, TreatmentRoom, TreatmentItem, SessionTreatment, DefaultTreatment } from '../types';
-import { supabase } from '@shared/lib/supabase';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
 
 /**
  * 환자 관련 API
@@ -16,49 +16,32 @@ export async function searchPatients(searchTerm: string): Promise<Patient[]> {
     return [];
   }
 
-  const { data, error } = await supabase
-    .from('patients')
-    .select('*')
-    .is('deletion_date', null)
-    .or(`name.ilike.%${searchTerm}%,chart_number.ilike.%${searchTerm}%`)
-    .order('id', { ascending: true });
+  const term = searchTerm.trim();
+  const data = await query<any>(`
+    SELECT * FROM patients
+    WHERE name LIKE '%${term}%' OR chart_number LIKE '%${term}%'
+    ORDER BY id ASC
+  `);
 
-  if (error) {
-    console.error('❌ 환자 검색 오류:', error);
-    throw error;
-  }
-
-  return (data || []).map((p) => ({
+  return data.map((p) => ({
     id: p.id,
     name: p.name,
     chartNumber: p.chart_number || '',
     status: 'COMPLETED' as any,
     time: '',
     details: '',
-    dob: p.dob || undefined,
+    dob: p.birth_date || undefined,
     gender: p.gender as 'male' | 'female' | undefined,
     phone: p.phone || undefined,
-    address: p.address || undefined,
-    referralPath: p.referral_path || undefined,
-    registrationDate: p.registration_date || undefined,
+    address: undefined,
+    referralPath: undefined,
+    registrationDate: p.created_at || undefined,
   }));
 }
 
 // 개별 환자 조회 (ID로)
 export async function fetchPatientById(patientId: number): Promise<Patient | null> {
-  const { data, error } = await supabase
-    .from('patients')
-    .select('*')
-    .eq('id', patientId)
-    .single();
-
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return null;
-    }
-    console.error('❌ 환자 조회 오류:', error);
-    throw error;
-  }
+  const data = await queryOne<any>(`SELECT * FROM patients WHERE id = ${patientId}`);
 
   if (!data) return null;
 
@@ -69,12 +52,12 @@ export async function fetchPatientById(patientId: number): Promise<Patient | nul
     status: 'COMPLETED' as any,
     time: '',
     details: '',
-    dob: data.dob || undefined,
+    dob: data.birth_date || undefined,
     gender: data.gender as 'male' | 'female' | undefined,
     phone: data.phone || undefined,
-    address: data.address || undefined,
-    referralPath: data.referral_path || undefined,
-    registrationDate: data.registration_date || undefined,
+    address: undefined,
+    referralPath: undefined,
+    registrationDate: data.created_at || undefined,
   };
 }
 
@@ -84,21 +67,16 @@ export async function fetchPatientById(patientId: number): Promise<Patient | nul
 
 // 환자의 기본 치료 조회
 export async function fetchPatientDefaultTreatments(patientId: number): Promise<DefaultTreatment[]> {
-  const { data, error } = await supabase
-    .from('patient_default_treatments')
-    .select('*')
-    .eq('patient_id', patientId)
-    .order('id', { ascending: true });
+  const data = await query<any>(`
+    SELECT * FROM patient_default_treatments
+    WHERE patient_id = ${patientId}
+    ORDER BY id ASC
+  `);
 
-  if (error) {
-    console.error('❌ 기본 치료 조회 오류:', error);
-    throw error;
-  }
-
-  return (data || []).map((t) => ({
+  return data.map((t) => ({
     name: t.treatment_name,
     duration: t.duration,
-    memo: t.memo || '',
+    memo: '',
   }));
 }
 
@@ -108,33 +86,14 @@ export async function savePatientDefaultTreatments(
   treatments: DefaultTreatment[]
 ): Promise<void> {
   // 기존 치료 삭제
-  const { error: deleteError } = await supabase
-    .from('patient_default_treatments')
-    .delete()
-    .eq('patient_id', patientId);
-
-  if (deleteError) {
-    console.error('❌ 기본 치료 삭제 오류:', deleteError);
-    throw deleteError;
-  }
+  await execute(`DELETE FROM patient_default_treatments WHERE patient_id = ${patientId}`);
 
   // 새 치료 추가
-  if (treatments.length > 0) {
-    const { error: insertError } = await supabase
-      .from('patient_default_treatments')
-      .insert(
-        treatments.map((t) => ({
-          patient_id: patientId,
-          treatment_name: t.name,
-          duration: t.duration,
-          memo: t.memo || null,
-        }))
-      );
-
-    if (insertError) {
-      console.error('❌ 기본 치료 추가 오류:', insertError);
-      throw insertError;
-    }
+  for (const t of treatments) {
+    await execute(`
+      INSERT INTO patient_default_treatments (patient_id, treatment_name, duration)
+      VALUES (${patientId}, ${escapeString(t.name)}, ${t.duration})
+    `);
   }
 }
 
@@ -144,92 +103,76 @@ export async function savePatientDefaultTreatments(
 
 // 모든 치료실 조회 (session_treatments 별도 테이블에서 조인)
 export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
-  const { data, error } = await supabase
-    .from('treatment_rooms')
-    .select(`
-      *,
-      session_treatments (*)
-    `)
-    .order('id', { ascending: true });
+  const rooms = await query<any>(`
+    SELECT * FROM treatment_rooms ORDER BY display_order ASC, id ASC
+  `);
 
-  if (error) {
-    console.error('❌ 치료실 조회 오류:', error);
-    throw error;
+  // 각 room에 대해 session_treatments 조회
+  const result: TreatmentRoom[] = [];
+
+  for (const room of rooms) {
+    const sessionTreatments = await query<any>(`
+      SELECT * FROM session_treatments WHERE room_id = ${room.id} ORDER BY display_order ASC
+    `);
+
+    result.push({
+      id: room.id,
+      name: room.name,
+      status: room.status,
+      sessionId: room.session_id,
+      patientId: room.patient_id,
+      patientName: room.patient_name,
+      patientChartNumber: room.patient_chart_number,
+      patientGender: room.patient_gender,
+      patientDob: room.patient_dob,
+      doctorName: room.doctor_name,
+      inTime: room.in_time,
+      sessionTreatments: sessionTreatments.map((st: any) => ({
+        id: st.id,
+        name: st.treatment_name,
+        status: st.status,
+        duration: st.duration,
+        startTime: st.started_at ? st.started_at + 'Z' : null,
+        elapsedSeconds: st.elapsed_seconds || 0,
+        memo: st.memo,
+      })),
+    });
   }
 
-  return (data || []).map((room) => ({
-    id: room.id,
-    name: room.name,
-    status: room.status,
-    sessionId: room.session_id,
-    patientId: room.patient_id,
-    patientName: room.patient_name,
-    patientChartNumber: room.patient_chart_number,
-    patientGender: room.patient_gender,
-    patientDob: room.patient_dob,
-    doctorName: room.doctor_name,
-    inTime: room.in_time,
-    sessionTreatments: (room.session_treatments || []).map((st: any) => ({
-      id: st.id,
-      name: st.name,
-      status: st.status,
-      duration: st.duration,
-      startTime: st.start_time ? st.start_time + 'Z' : null,
-      elapsedSeconds: st.elapsed_seconds || 0,
-      memo: st.memo,
-    })),
-  }));
+  return result;
 }
 
 // 치료실 업데이트 (전체) - session_treatments는 별도 처리
 export async function updateTreatmentRoom(roomId: number, room: Partial<TreatmentRoom>): Promise<void> {
   // 1. 치료실 기본 정보 업데이트
-  const updateData: any = {};
-  if (room.status !== undefined) updateData.status = room.status;
-  if (room.sessionId !== undefined) updateData.session_id = room.sessionId;
-  if (room.patientId !== undefined) updateData.patient_id = room.patientId;
-  if (room.patientName !== undefined) updateData.patient_name = room.patientName;
-  if (room.patientChartNumber !== undefined) updateData.patient_chart_number = room.patientChartNumber;
-  if (room.patientGender !== undefined) updateData.patient_gender = room.patientGender;
-  if (room.patientDob !== undefined) updateData.patient_dob = room.patientDob;
-  if (room.doctorName !== undefined) updateData.doctor_name = room.doctorName;
-  if (room.inTime !== undefined) updateData.in_time = room.inTime;
+  const updateParts: string[] = [];
+  if (room.status !== undefined) updateParts.push(`status = ${escapeString(room.status)}`);
+  if (room.sessionId !== undefined) updateParts.push(`session_id = ${toSqlValue(room.sessionId)}`);
+  if (room.patientId !== undefined) updateParts.push(`patient_id = ${toSqlValue(room.patientId)}`);
+  if (room.patientName !== undefined) updateParts.push(`patient_name = ${escapeString(room.patientName || '')}`);
+  if (room.patientChartNumber !== undefined) updateParts.push(`patient_chart_number = ${escapeString(room.patientChartNumber || '')}`);
+  if (room.patientGender !== undefined) updateParts.push(`patient_gender = ${escapeString(room.patientGender || '')}`);
+  if (room.patientDob !== undefined) updateParts.push(`patient_dob = ${escapeString(room.patientDob || '')}`);
+  if (room.doctorName !== undefined) updateParts.push(`doctor_name = ${escapeString(room.doctorName || '')}`);
+  if (room.inTime !== undefined) updateParts.push(`in_time = ${escapeString(room.inTime || '')}`);
+  updateParts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
 
-  if (Object.keys(updateData).length > 0) {
-    const { error } = await supabase
-      .from('treatment_rooms')
-      .update(updateData)
-      .eq('id', roomId);
-
-    if (error) {
-      console.error('❌ 치료실 업데이트 오류:', error);
-      throw error;
-    }
+  if (updateParts.length > 0) {
+    await execute(`UPDATE treatment_rooms SET ${updateParts.join(', ')} WHERE id = ${roomId}`);
   }
 
-  // 2. session_treatments 업데이트 (별도 테이블) - UPSERT 사용
-  if (room.sessionTreatments !== undefined && room.sessionId) {
-    if (room.sessionTreatments.length > 0) {
-      const treatmentsToUpsert = room.sessionTreatments.map((st) => ({
-        id: st.id,
-        session_id: room.sessionId,
-        room_id: roomId,
-        name: st.name,
-        status: st.status,
-        duration: st.duration,
-        start_time: st.startTime || null,
-        elapsed_seconds: st.elapsedSeconds || 0,
-        memo: st.memo || null,
-      }));
+  // 2. session_treatments 업데이트 (별도 테이블)
+  if (room.sessionTreatments !== undefined) {
+    // 기존 것 삭제하고 새로 추가 (간단한 방식)
+    await execute(`DELETE FROM session_treatments WHERE room_id = ${roomId}`);
 
-      const { error: upsertError } = await supabase
-        .from('session_treatments')
-        .upsert(treatmentsToUpsert, { onConflict: 'id' });
-
-      if (upsertError) {
-        console.error('❌ 세션 치료 항목 업서트 오류:', upsertError);
-        throw upsertError;
-      }
+    for (let i = 0; i < room.sessionTreatments.length; i++) {
+      const st = room.sessionTreatments[i];
+      await execute(`
+        INSERT INTO session_treatments (room_id, treatment_name, duration, status, started_at, completed_at, display_order)
+        VALUES (${roomId}, ${escapeString(st.name)}, ${st.duration}, ${escapeString(st.status)},
+                ${st.startTime ? escapeString(st.startTime) : 'NULL'}, NULL, ${i})
+      `);
     }
   }
 }
@@ -237,29 +180,21 @@ export async function updateTreatmentRoom(roomId: number, room: Partial<Treatmen
 // 치료실 초기화 (환자 배정 해제)
 export async function clearTreatmentRoom(roomId: number): Promise<void> {
   // 세션 치료 항목 먼저 삭제
-  await supabase
-    .from('session_treatments')
-    .delete()
-    .eq('room_id', roomId);
+  await execute(`DELETE FROM session_treatments WHERE room_id = ${roomId}`);
 
   // 치료실 초기화
-  const { error } = await supabase
-    .from('treatment_rooms')
-    .update({
-      status: '사용가능',
-      session_id: null,
-      patient_id: null,
-      patient_name: null,
-      patient_chart_number: null,
-      doctor_name: null,
-      in_time: null,
-    })
-    .eq('id', roomId);
-
-  if (error) {
-    console.error('❌ 치료실 초기화 오류:', error);
-    throw error;
-  }
+  await execute(`
+    UPDATE treatment_rooms SET
+      status = '사용가능',
+      session_id = NULL,
+      patient_id = NULL,
+      patient_name = NULL,
+      patient_chart_number = NULL,
+      doctor_name = NULL,
+      in_time = NULL,
+      updated_at = ${escapeString(getCurrentTimestamp())}
+    WHERE id = ${roomId}
+  `);
 }
 
 /**
@@ -268,18 +203,11 @@ export async function clearTreatmentRoom(roomId: number): Promise<void> {
 
 // 치료항목 조회
 export async function fetchTreatmentItems(): Promise<TreatmentItem[]> {
-  const { data, error } = await supabase
-    .from('treatment_items')
-    .select('*')
-    .order('display_order', { ascending: true })
-    .order('id', { ascending: true });
+  const data = await query<any>(`
+    SELECT * FROM treatment_items WHERE is_active = 1 ORDER BY display_order ASC, id ASC
+  `);
 
-  if (error) {
-    console.error('치료항목 조회 오류:', error);
-    throw error;
-  }
-
-  return (data || []).map((item) => ({
+  return data.map((item) => ({
     id: item.id,
     name: item.name,
     defaultDuration: item.default_duration,
@@ -289,20 +217,12 @@ export async function fetchTreatmentItems(): Promise<TreatmentItem[]> {
 
 // 치료항목 생성
 export async function createTreatmentItem(item: Omit<TreatmentItem, 'id'>): Promise<TreatmentItem> {
-  const { data, error } = await supabase
-    .from('treatment_items')
-    .insert({
-      name: item.name,
-      default_duration: item.defaultDuration,
-      display_order: item.displayOrder,
-    })
-    .select()
-    .single();
+  const id = await insert(`
+    INSERT INTO treatment_items (name, default_duration, display_order, is_active)
+    VALUES (${escapeString(item.name)}, ${item.defaultDuration}, ${item.displayOrder || 0}, 1)
+  `);
 
-  if (error) {
-    console.error('❌ 치료항목 생성 오류:', error);
-    throw error;
-  }
+  const data = await queryOne<any>(`SELECT * FROM treatment_items WHERE id = ${id}`);
 
   return {
     id: data.id,
@@ -314,21 +234,15 @@ export async function createTreatmentItem(item: Omit<TreatmentItem, 'id'>): Prom
 
 // 치료항목 수정
 export async function updateTreatmentItem(id: number, item: Omit<TreatmentItem, 'id'>): Promise<TreatmentItem> {
-  const { data, error } = await supabase
-    .from('treatment_items')
-    .update({
-      name: item.name,
-      default_duration: item.defaultDuration,
-      display_order: item.displayOrder,
-    })
-    .eq('id', id)
-    .select()
-    .single();
+  await execute(`
+    UPDATE treatment_items SET
+      name = ${escapeString(item.name)},
+      default_duration = ${item.defaultDuration},
+      display_order = ${item.displayOrder || 0}
+    WHERE id = ${id}
+  `);
 
-  if (error) {
-    console.error('❌ 치료항목 수정 오류:', error);
-    throw error;
-  }
+  const data = await queryOne<any>(`SELECT * FROM treatment_items WHERE id = ${id}`);
 
   return {
     id: data.id,
@@ -340,32 +254,15 @@ export async function updateTreatmentItem(id: number, item: Omit<TreatmentItem, 
 
 // 치료항목 삭제
 export async function deleteTreatmentItem(id: number): Promise<void> {
-  const { data, error } = await supabase.from('treatment_items').delete().eq('id', id).select();
-
-  if (error) {
-    console.error('❌ 치료항목 삭제 오류:', error);
-    throw error;
-  }
-
-  if (!data || data.length === 0) {
-    throw new Error('치료항목 삭제 권한이 없거나 해당 항목이 존재하지 않습니다.');
-  }
+  await execute(`UPDATE treatment_items SET is_active = 0 WHERE id = ${id}`);
 }
 
 // 치료항목 순서 일괄 업데이트
 export async function updateTreatmentItemsOrder(
   items: Array<{ id: number; displayOrder: number }>
 ): Promise<void> {
-  const updatePromises = items.map((item) =>
-    supabase.from('treatment_items').update({ display_order: item.displayOrder }).eq('id', item.id)
-  );
-
-  const results = await Promise.all(updatePromises);
-  const errors = results.filter((r) => r.error).map((r) => r.error);
-
-  if (errors.length > 0) {
-    console.error('❌ 치료항목 순서 업데이트 오류:', errors);
-    throw new Error('치료항목 순서 업데이트 중 오류가 발생했습니다.');
+  for (const item of items) {
+    await execute(`UPDATE treatment_items SET display_order = ${item.displayOrder} WHERE id = ${item.id}`);
   }
 }
 
@@ -385,63 +282,39 @@ export interface WaitingQueueItem {
 
 // 대기 목록 조회
 export async function fetchWaitingQueue(queueType: 'consultation' | 'treatment'): Promise<WaitingQueueItem[]> {
-  const { data, error } = await supabase
-    .from('waiting_queue')
-    .select('*')
-    .eq('queue_type', queueType)
-    .order('position', { ascending: true });
+  const data = await query<any>(`
+    SELECT * FROM waiting_queue
+    WHERE queue_type = ${escapeString(queueType)}
+    ORDER BY position ASC
+  `);
 
-  if (error) {
-    console.error(`❌ ${queueType} 대기 목록 조회 오류:`, error);
-    throw error;
-  }
-
-  return data || [];
+  return data;
 }
 
 // 대기 목록에 환자 추가
 export async function addToWaitingQueue(item: Omit<WaitingQueueItem, 'id' | 'created_at'>): Promise<WaitingQueueItem> {
   // 현재 최대 position 조회
-  const { data: maxData } = await supabase
-    .from('waiting_queue')
-    .select('position')
-    .eq('queue_type', item.queue_type)
-    .order('position', { ascending: false })
-    .limit(1);
+  const maxData = await queryOne<{ position: number }>(`
+    SELECT MAX(position) as position FROM waiting_queue WHERE queue_type = ${escapeString(item.queue_type)}
+  `);
 
-  const nextPosition = maxData && maxData.length > 0 ? maxData[0].position + 1 : 0;
+  const nextPosition = (maxData?.position ?? -1) + 1;
 
-  const { data, error } = await supabase
-    .from('waiting_queue')
-    .insert({
-      patient_id: item.patient_id,
-      queue_type: item.queue_type,
-      details: item.details,
-      position: nextPosition,
-    })
-    .select()
-    .single();
+  const id = await insert(`
+    INSERT INTO waiting_queue (patient_id, queue_type, details, position)
+    VALUES (${item.patient_id}, ${escapeString(item.queue_type)}, ${escapeString(item.details)}, ${nextPosition})
+  `);
 
-  if (error) {
-    console.error('❌ 대기 목록 추가 오류:', error);
-    throw error;
-  }
-
+  const data = await queryOne<any>(`SELECT * FROM waiting_queue WHERE id = ${id}`);
   return data;
 }
 
 // 대기 목록에서 환자 제거
 export async function removeFromWaitingQueue(patientId: number, queueType: 'consultation' | 'treatment'): Promise<void> {
-  const { error } = await supabase
-    .from('waiting_queue')
-    .delete()
-    .eq('patient_id', patientId)
-    .eq('queue_type', queueType);
-
-  if (error) {
-    console.error('❌ 대기 목록 제거 오류:', error);
-    throw error;
-  }
+  await execute(`
+    DELETE FROM waiting_queue
+    WHERE patient_id = ${patientId} AND queue_type = ${escapeString(queueType)}
+  `);
 }
 
 /**
@@ -452,26 +325,8 @@ export async function removeFromWaitingQueue(patientId: number, queueType: 'cons
 export async function createPayment(patientId: number): Promise<number> {
   console.log('🔍 수납 대기 생성 시도 - patientId:', patientId);
 
-  const { data, error } = await supabase
-    .from('payments')
-    .insert({
-      patient_id: patientId,
-      reservation_id: null,
-      total_amount: 0,
-      paid_amount: 0,
-      remaining_amount: 0,
-      payment_methods: [],
-      treatment_items: [],
-      is_completed: false,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('❌ 수납 대기 생성 오류:', error);
-    throw error;
-  }
-
-  console.log('✅ 수납 대기 생성 성공, ID:', data.id);
-  return data.id;
+  // payments 테이블이 아직 스키마에 없으므로 로그만 남김
+  // 추후 payments 테이블 추가시 구현
+  console.log('⚠️ payments 테이블 미구현, 임시 ID 반환');
+  return 0;
 }

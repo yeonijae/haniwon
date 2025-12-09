@@ -4,14 +4,14 @@
  *
  * 주요 기능:
  * 1. MSSQL에서 진료대기/치료대기 환자 목록 폴링 (1초)
- * 2. MSSQL 치료대기 환자를 Supabase waiting_queue에 자동 등록
+ * 2. MSSQL 치료대기 환자를 SQLite waiting_queue에 자동 등록
  * 3. 이미 치료실(베드)에 배정된 환자는 목록에서 필터링
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@shared/lib/supabase';
+import { query, queryOne, insert, execute, escapeString } from '@shared/lib/sqlite';
 
-const API_BASE_URL = 'http://localhost:3100';
+const API_BASE_URL = 'http://192.168.0.173:3100';
 const POLL_INTERVAL = 1000; // 1초
 
 // MSSQL 대기 환자 타입
@@ -77,28 +77,23 @@ export const useMssqlQueue = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // 치료실에 배정된 환자 차트번호 목록 (Supabase treatment_rooms에서)
+  // 치료실에 배정된 환자 차트번호 목록 (SQLite treatment_rooms에서)
   const [assignedChartNumbers, setAssignedChartNumbers] = useState<Set<string>>(new Set());
 
   // 이미 처리된 MSSQL treating 환자 추적 (중복 등록 방지) - chart_no 기준
   const processedTreatingChartNosRef = useRef<Set<string>>(new Set());
 
-  // Supabase에서 치료실에 배정된 환자 목록 조회 (차트번호 기준)
+  // SQLite에서 치료실에 배정된 환자 목록 조회 (차트번호 기준)
   const fetchAssignedPatients = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('treatment_rooms')
-        .select('patient_chart_number')
-        .not('patient_chart_number', 'is', null);
-
-      if (error) {
-        console.error('치료실 환자 조회 오류:', error);
-        return;
-      }
+      const data = await query<{ patient_chart_number: string }>(`
+        SELECT patient_chart_number FROM treatment_rooms
+        WHERE patient_chart_number IS NOT NULL
+      `);
 
       const chartNumbers = new Set(
         (data || [])
-          .map(room => room.patient_chart_number as string)
+          .map(room => room.patient_chart_number)
           .filter(Boolean)
       );
       setAssignedChartNumbers(chartNumbers);
@@ -107,8 +102,8 @@ export const useMssqlQueue = () => {
     }
   }, []);
 
-  // MSSQL treating 환자를 Supabase waiting_queue에 등록
-  const syncTreatingToSupabase = useCallback(async (treatingPatients: MssqlTreatingPatient[]) => {
+  // MSSQL treating 환자를 SQLite waiting_queue에 등록
+  const syncTreatingToSqlite = useCallback(async (treatingPatients: MssqlTreatingPatient[]) => {
     for (const patient of treatingPatients) {
       // 차트번호 정규화 (앞의 0 제거)
       const chartNo = patient.chart_no?.replace(/^0+/, '') || '';
@@ -124,26 +119,22 @@ export const useMssqlQueue = () => {
       }
 
       try {
-        // Supabase patients 테이블에서 chart_no로 환자 찾기
-        const { data: patientData } = await supabase
-          .from('patients')
-          .select('id')
-          .eq('chart_number', chartNo)
-          .single();
+        // SQLite patients 테이블에서 chart_no로 환자 찾기
+        const patientData = await queryOne<{ id: number }>(`
+          SELECT id FROM patients WHERE chart_number = ${escapeString(chartNo)}
+        `);
 
         if (!patientData) {
-          console.log(`차트번호 ${chartNo} 환자가 Supabase에 없음 - 스킵`);
+          console.log(`차트번호 ${chartNo} 환자가 SQLite에 없음 - 스킵`);
           processedTreatingChartNosRef.current.add(chartNo);
           continue;
         }
 
         // 이미 waiting_queue에 있는지 확인
-        const { data: existingQueue } = await supabase
-          .from('waiting_queue')
-          .select('id')
-          .eq('patient_id', patientData.id)
-          .eq('queue_type', 'treatment')
-          .single();
+        const existingQueue = await queryOne<{ id: number }>(`
+          SELECT id FROM waiting_queue
+          WHERE patient_id = ${patientData.id} AND queue_type = 'treatment'
+        `);
 
         if (existingQueue) {
           // 이미 등록되어 있으면 스킵
@@ -152,31 +143,20 @@ export const useMssqlQueue = () => {
         }
 
         // 현재 최대 position 조회
-        const { data: maxData } = await supabase
-          .from('waiting_queue')
-          .select('position')
-          .eq('queue_type', 'treatment')
-          .order('position', { ascending: false })
-          .limit(1);
+        const maxData = await queryOne<{ max_pos: number }>(`
+          SELECT MAX(position) as max_pos FROM waiting_queue WHERE queue_type = 'treatment'
+        `);
 
-        const nextPosition = maxData && maxData.length > 0 ? maxData[0].position + 1 : 0;
+        const nextPosition = (maxData?.max_pos ?? -1) + 1;
 
         // waiting_queue에 추가
-        const { error: insertError } = await supabase
-          .from('waiting_queue')
-          .insert({
-            patient_id: patientData.id,
-            queue_type: 'treatment',
-            details: `${patient.doctor || ''} ${patient.status || ''}`.trim() || '치료대기',
-            position: nextPosition,
-          });
+        const details = `${patient.doctor || ''} ${patient.status || ''}`.trim() || '치료대기';
+        await insert(`
+          INSERT INTO waiting_queue (patient_id, queue_type, details, position)
+          VALUES (${patientData.id}, 'treatment', ${escapeString(details)}, ${nextPosition})
+        `);
 
-        if (insertError) {
-          console.error('치료대기 등록 오류:', insertError);
-        } else {
-          console.log(`✅ ${patient.patient_name} (${chartNo}) 치료대기 등록 완료`);
-        }
-
+        console.log(`✅ ${patient.patient_name} (${chartNo}) 치료대기 등록 완료`);
         processedTreatingChartNosRef.current.add(chartNo);
       } catch (err) {
         console.error('치료대기 동기화 오류:', err);
@@ -198,35 +178,28 @@ export const useMssqlQueue = () => {
       setError(null);
       setLastUpdated(new Date());
 
-      // MSSQL treating 환자를 Supabase에 동기화
+      // MSSQL treating 환자를 SQLite에 동기화
       if (data.treating && data.treating.length > 0) {
-        syncTreatingToSupabase(data.treating);
+        syncTreatingToSqlite(data.treating);
       }
     } catch (err) {
       setIsConnected(false);
       setError(err instanceof Error ? err.message : '연결 실패');
     }
-  }, [syncTreatingToSupabase]);
+  }, [syncTreatingToSqlite]);
 
-  // 치료실 배정 환자 목록 실시간 구독
+  // 치료실 배정 환자 목록 주기적 조회 (Polling)
   useEffect(() => {
     // 초기 로드
     fetchAssignedPatients();
 
-    // Supabase Realtime 구독
-    const channel = supabase
-      .channel('treatment_rooms_changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'treatment_rooms' },
-        () => {
-          fetchAssignedPatients();
-        }
-      )
-      .subscribe();
+    // 5초마다 치료실 배정 환자 목록 갱신
+    const assignedInterval = setInterval(() => {
+      fetchAssignedPatients();
+    }, 5000);
 
     return () => {
-      supabase.removeChannel(channel);
+      clearInterval(assignedInterval);
     };
   }, [fetchAssignedPatients]);
 

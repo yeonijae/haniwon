@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ReservationsState, Reservation, Patient, Acting, ActingType, TreatmentDetailItem } from '../types';
 import { NewReservationData } from '../components/NewReservationForm';
 import { findAvailableSlot } from '../utils/reservationUtils';
 import * as api from '../lib/api';
-import { supabase } from '@shared/lib/supabase';
 import { DOCTORS } from '../constants';
 
 export const useReservations = (currentUser: any, allPatients: Patient[]) => {
@@ -80,77 +79,75 @@ export const useReservations = (currentUser: any, allPatients: Patient[]) => {
     loadReservationData();
   }, [currentUser]); // allPatients 의존성 제거
 
-  // 실시간 구독 (currentUser가 변경될 때만 재구독)
+  // 예약 데이터 로드 함수
+  const loadReservationData = useCallback(async () => {
+    try {
+      const today = new Date();
+      const futureDate = new Date();
+      futureDate.setDate(today.getDate() + 30);
+
+      const allReservations = await api.fetchReservations({
+        startDate: today.toISOString().split('T')[0],
+        endDate: futureDate.toISOString().split('T')[0],
+      });
+
+      const reservationsNested: { [date: string]: { [doctor: string]: { [time: string]: Reservation[] } } } = {};
+
+      for (const res of allReservations) {
+        const treatments = await api.fetchReservationTreatments(res.id);
+        const year = res.reservation_date.substring(0, 4);
+        const month = res.reservation_date.substring(5, 7);
+        const day = res.reservation_date.substring(8, 10);
+        const dateKey = `${year}-${month}-${day}`;
+        const timeKey = res.reservation_time;
+
+        // ref를 통해 최신 allPatients 참조 (의존성 배열에서 제외)
+        const patient = allPatientsRef.current.find(p => p.id === res.patient_id);
+        const totalActing = treatments.reduce((sum, t) => sum + t.acting, 0);
+        const slots = findAvailableSlot(dateKey, timeKey, totalActing, reservationsNested, res.doctor);
+
+        slots.forEach((slot, index) => {
+          const reservation: Reservation = {
+            id: res.id,
+            partId: `${res.id}-${slot.date}-${slot.time}`,
+            patientId: res.patient_id,
+            patientName: patient?.name || res.patientName || '알 수 없음',
+            patientChartNumber: patient?.chartNumber || res.patientChartNumber || '',
+            doctor: res.doctor,
+            date: slot.date,
+            time: slot.time,
+            treatments,
+            slotActing: slot.acting,
+            isContinuation: index > 0,
+            memo: res.memo || '',
+            status: res.status || 'confirmed',
+          };
+
+          if (!reservationsNested[slot.date]) reservationsNested[slot.date] = {};
+          if (!reservationsNested[slot.date][res.doctor]) reservationsNested[slot.date][res.doctor] = {};
+          if (!reservationsNested[slot.date][res.doctor][slot.time]) reservationsNested[slot.date][res.doctor][slot.time] = [];
+
+          reservationsNested[slot.date][res.doctor][slot.time].push(reservation);
+        });
+      }
+
+      setReservations(reservationsNested);
+    } catch (error) {
+      console.error('❌ 예약 데이터 로드 오류:', error);
+    }
+  }, []);
+
+  // 예약 데이터 폴링 (10초마다 - 예약은 자주 변경되지 않음)
   useEffect(() => {
     if (!currentUser) return;
 
-    const reservationsSubscription = supabase
-      .channel('reservations-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'reservations' },
-        async (payload) => {
-          try {
-            const today = new Date();
-            const futureDate = new Date();
-            futureDate.setDate(today.getDate() + 30);
-
-            const allReservations = await api.fetchReservations({
-              startDate: today.toISOString().split('T')[0],
-              endDate: futureDate.toISOString().split('T')[0],
-            });
-
-            const reservationsNested: { [date: string]: { [doctor: string]: { [time: string]: Reservation[] } } } = {};
-
-            for (const res of allReservations) {
-              const treatments = await api.fetchReservationTreatments(res.id);
-              const year = res.reservation_date.substring(0, 4);
-              const month = res.reservation_date.substring(5, 7);
-              const day = res.reservation_date.substring(8, 10);
-              const dateKey = `${year}-${month}-${day}`;
-              const timeKey = res.reservation_time;
-
-              // ref를 통해 최신 allPatients 참조 (의존성 배열에서 제외)
-              const patient = allPatientsRef.current.find(p => p.id === res.patient_id);
-              const totalActing = treatments.reduce((sum, t) => sum + t.acting, 0);
-              const slots = findAvailableSlot(dateKey, timeKey, totalActing, reservationsNested, res.doctor);
-
-              slots.forEach((slot, index) => {
-                const reservation: Reservation = {
-                  id: res.id,
-                  partId: `${res.id}-${slot.date}-${slot.time}`,
-                  patientId: res.patient_id,
-                  patientName: patient?.name || res.patientName || '알 수 없음',
-                  patientChartNumber: patient?.chartNumber || res.patientChartNumber || '',
-                  doctor: res.doctor,
-                  date: slot.date,
-                  time: slot.time,
-                  treatments,
-                  slotActing: slot.acting,
-                  isContinuation: index > 0,
-                  memo: res.memo || '',
-                  status: res.status || 'confirmed',
-                };
-
-                if (!reservationsNested[slot.date]) reservationsNested[slot.date] = {};
-                if (!reservationsNested[slot.date][res.doctor]) reservationsNested[slot.date][res.doctor] = {};
-                if (!reservationsNested[slot.date][res.doctor][slot.time]) reservationsNested[slot.date][res.doctor][slot.time] = [];
-
-                reservationsNested[slot.date][res.doctor][slot.time].push(reservation);
-              });
-            }
-
-            setReservations(reservationsNested);
-          } catch (error) {
-            console.error('❌ 실시간 예약 데이터 로드 오류:', error);
-          }
-        }
-      )
-      .subscribe();
+    const POLLING_INTERVAL = 10000;
+    const intervalId = setInterval(loadReservationData, POLLING_INTERVAL);
 
     return () => {
-      supabase.removeChannel(reservationsSubscription);
+      clearInterval(intervalId);
     };
-  }, [currentUser]); // allPatients 의존성 제거
+  }, [currentUser, loadReservationData]);
 
   const addNewReservation = async (data: NewReservationData, onAddActings: (doctor: string, actings: Acting[]) => void) => {
     const { patient, doctor, date, time, treatments, memo } = data;

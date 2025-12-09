@@ -4,7 +4,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { supabase } from '@shared/lib/supabase';
 import type { PortalUser } from '@shared/types';
 import type { ActingQueueItem, DoctorStatus } from '@modules/acting/types';
 import * as actingApi from '@modules/acting/api';
@@ -217,22 +216,15 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
     loadData();
   }, [loadData]);
 
-  // 실시간 구독
+  // 폴링 (2초마다 - 진료패드는 빠른 응답 필요)
   useEffect(() => {
-    const subscription = supabase
-      .channel(`doctor-pad-${doctor.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'acting_queue' }, () => {
-        loadData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'doctor_status' }, () => {
-        loadData();
-      })
-      .subscribe();
+    const POLLING_INTERVAL = 2000;
+    const intervalId = setInterval(loadData, POLLING_INTERVAL);
 
     return () => {
-      supabase.removeChannel(subscription);
+      clearInterval(intervalId);
     };
-  }, [doctor.id, loadData]);
+  }, [loadData]);
 
   // 진료중일 때 경과 시간 계산
   useEffect(() => {

@@ -1,8 +1,8 @@
 /**
- * 한약재 API - Supabase 직접 연결
+ * 한약재 API - SQLite 연결
  */
 
-import { supabase } from '@shared/lib/supabase';
+import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/sqlite';
 
 export interface Herb {
   id: number;
@@ -25,241 +25,152 @@ export interface Herb {
 
 export const herbsApi = {
   getAll: async (params?: { search?: string; isActive?: boolean }): Promise<Herb[]> => {
-    let query = supabase
-      .from('herbs')
-      .select('*')
-      .order('name', { ascending: true });
+    let sql = `SELECT * FROM herbs WHERE 1=1`;
 
     if (params?.search) {
-      query = query.or(`name.ilike.%${params.search}%,code.ilike.%${params.search}%`);
+      const searchEscaped = params.search.replace(/'/g, "''");
+      sql += ` AND (name LIKE '%${searchEscaped}%' OR code LIKE '%${searchEscaped}%')`;
     }
 
     if (params?.isActive !== undefined) {
-      query = query.eq('is_active', params.isActive);
+      sql += ` AND is_active = ${params.isActive ? 1 : 0}`;
     }
 
-    const { data, error } = await query;
+    sql += ` ORDER BY name ASC`;
 
-    if (error) throw new Error(error.message);
-    return data || [];
+    const data = await query<Herb>(sql);
+    return data.map(h => ({ ...h, is_active: !!h.is_active }));
   },
 
   getById: async (id: number): Promise<Herb> => {
-    const { data, error } = await supabase
-      .from('herbs')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error) throw new Error(error.message);
-    return data;
+    const data = await queryOne<Herb>(`SELECT * FROM herbs WHERE id = ${id}`);
+    if (!data) throw new Error('약재를 찾을 수 없습니다');
+    return { ...data, is_active: !!data.is_active };
   },
 
   create: async (herbData: Partial<Herb>): Promise<Herb> => {
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from('herbs')
-      .insert({
-        code: herbData.code,
-        name: herbData.name,
-        scientific_name: herbData.scientific_name,
-        origin: herbData.origin,
-        unit: herbData.unit || 'g',
-        current_stock: herbData.current_stock || 0,
-        min_stock: herbData.min_stock || 0,
-        max_stock: herbData.max_stock,
-        unit_cost: herbData.unit_cost || 0,
-        selling_price: herbData.selling_price || 0,
-        description: herbData.description,
-        storage_location: herbData.storage_location,
-        is_active: herbData.is_active !== undefined ? herbData.is_active : true,
-        created_at: now,
-        updated_at: now
-      })
-      .select()
-      .single();
+    const now = getCurrentTimestamp();
+    const id = await insert(`
+      INSERT INTO herbs (
+        code, name, scientific_name, origin, unit, current_stock, min_stock, max_stock,
+        unit_cost, selling_price, description, storage_location, is_active, created_at, updated_at
+      ) VALUES (
+        ${escapeString(herbData.code || '')},
+        ${escapeString(herbData.name || '')},
+        ${herbData.scientific_name ? escapeString(herbData.scientific_name) : 'NULL'},
+        ${herbData.origin ? escapeString(herbData.origin) : 'NULL'},
+        ${escapeString(herbData.unit || 'g')},
+        ${herbData.current_stock || 0},
+        ${herbData.min_stock || 0},
+        ${herbData.max_stock !== undefined ? herbData.max_stock : 'NULL'},
+        ${herbData.unit_cost || 0},
+        ${herbData.selling_price || 0},
+        ${herbData.description ? escapeString(herbData.description) : 'NULL'},
+        ${herbData.storage_location ? escapeString(herbData.storage_location) : 'NULL'},
+        ${herbData.is_active !== false ? 1 : 0},
+        ${escapeString(now)},
+        ${escapeString(now)}
+      )
+    `);
 
-    if (error) throw new Error(error.message);
-    return data;
+    return herbsApi.getById(id);
   },
 
   update: async (id: number, herbData: Partial<Herb>): Promise<Herb> => {
-    const { data, error } = await supabase
-      .from('herbs')
-      .update({
-        code: herbData.code,
-        name: herbData.name,
-        scientific_name: herbData.scientific_name,
-        origin: herbData.origin,
-        unit: herbData.unit,
-        current_stock: herbData.current_stock,
-        min_stock: herbData.min_stock,
-        max_stock: herbData.max_stock,
-        unit_cost: herbData.unit_cost,
-        selling_price: herbData.selling_price,
-        description: herbData.description,
-        storage_location: herbData.storage_location,
-        is_active: herbData.is_active,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id)
-      .select()
-      .single();
+    const updates: string[] = [];
 
-    if (error) throw new Error(error.message);
-    return data;
+    if (herbData.code !== undefined) updates.push(`code = ${escapeString(herbData.code)}`);
+    if (herbData.name !== undefined) updates.push(`name = ${escapeString(herbData.name)}`);
+    if (herbData.scientific_name !== undefined) updates.push(`scientific_name = ${herbData.scientific_name ? escapeString(herbData.scientific_name) : 'NULL'}`);
+    if (herbData.origin !== undefined) updates.push(`origin = ${herbData.origin ? escapeString(herbData.origin) : 'NULL'}`);
+    if (herbData.unit !== undefined) updates.push(`unit = ${escapeString(herbData.unit)}`);
+    if (herbData.current_stock !== undefined) updates.push(`current_stock = ${herbData.current_stock}`);
+    if (herbData.min_stock !== undefined) updates.push(`min_stock = ${herbData.min_stock}`);
+    if (herbData.max_stock !== undefined) updates.push(`max_stock = ${herbData.max_stock}`);
+    if (herbData.unit_cost !== undefined) updates.push(`unit_cost = ${herbData.unit_cost}`);
+    if (herbData.selling_price !== undefined) updates.push(`selling_price = ${herbData.selling_price}`);
+    if (herbData.description !== undefined) updates.push(`description = ${herbData.description ? escapeString(herbData.description) : 'NULL'}`);
+    if (herbData.storage_location !== undefined) updates.push(`storage_location = ${herbData.storage_location ? escapeString(herbData.storage_location) : 'NULL'}`);
+    if (herbData.is_active !== undefined) updates.push(`is_active = ${herbData.is_active ? 1 : 0}`);
+
+    updates.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
+
+    await execute(`UPDATE herbs SET ${updates.join(', ')} WHERE id = ${id}`);
+    return herbsApi.getById(id);
   },
 
   delete: async (id: number): Promise<void> => {
-    const { error } = await supabase
-      .from('herbs')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw new Error(error.message);
+    await execute(`DELETE FROM herbs WHERE id = ${id}`);
   },
 
   stockIn: async (id: number, data: { quantity: number; unitCost?: number; reason?: string; note?: string; createdBy?: string }): Promise<Herb> => {
-    // 현재 재고 조회
-    const { data: herb, error: fetchError } = await supabase
-      .from('herbs')
-      .select('current_stock')
-      .eq('id', id)
-      .single();
-
-    if (fetchError) throw new Error(fetchError.message);
-
+    const herb = await herbsApi.getById(id);
     const newStock = (herb.current_stock || 0) + data.quantity;
 
-    // 재고 업데이트
-    const updateData: any = {
-      current_stock: newStock,
-      updated_at: new Date().toISOString()
-    };
-
+    const updates = [`current_stock = ${newStock}`, `updated_at = ${escapeString(getCurrentTimestamp())}`];
     if (data.unitCost !== undefined) {
-      updateData.unit_cost = data.unitCost;
+      updates.push(`unit_cost = ${data.unitCost}`);
     }
 
-    const { data: updated, error: updateError } = await supabase
-      .from('herbs')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (updateError) throw new Error(updateError.message);
-    return updated;
+    await execute(`UPDATE herbs SET ${updates.join(', ')} WHERE id = ${id}`);
+    return herbsApi.getById(id);
   },
 
   stockOut: async (id: number, data: { quantity: number; reason?: string; note?: string; createdBy?: string }): Promise<Herb> => {
-    // 현재 재고 조회
-    const { data: herb, error: fetchError } = await supabase
-      .from('herbs')
-      .select('current_stock')
-      .eq('id', id)
-      .single();
-
-    if (fetchError) throw new Error(fetchError.message);
-
+    const herb = await herbsApi.getById(id);
     const newStock = Math.max(0, (herb.current_stock || 0) - data.quantity);
 
-    // 재고 업데이트
-    const { data: updated, error: updateError } = await supabase
-      .from('herbs')
-      .update({
-        current_stock: newStock,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id)
-      .select()
-      .single();
+    await execute(`
+      UPDATE herbs
+      SET current_stock = ${newStock}, updated_at = ${escapeString(getCurrentTimestamp())}
+      WHERE id = ${id}
+    `);
 
-    if (updateError) throw new Error(updateError.message);
-    return updated;
+    return herbsApi.getById(id);
   },
 
   stockAdjust: async (id: number, data: { newStock: number; reason?: string; note?: string; createdBy?: string }): Promise<Herb> => {
-    const { data: updated, error } = await supabase
-      .from('herbs')
-      .update({
-        current_stock: data.newStock,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id)
-      .select()
-      .single();
+    await execute(`
+      UPDATE herbs
+      SET current_stock = ${data.newStock}, updated_at = ${escapeString(getCurrentTimestamp())}
+      WHERE id = ${id}
+    `);
 
-    if (error) throw new Error(error.message);
-    return updated;
+    return herbsApi.getById(id);
   },
 
   getLowStock: async (): Promise<Herb[]> => {
-    const { data, error } = await supabase
-      .from('herbs')
-      .select('*')
-      .eq('is_active', true)
-      .filter('current_stock', 'lte', supabase.rpc('get_min_stock'))
-      .order('current_stock', { ascending: true });
-
-    // 간단한 방식으로 변경 - 모든 활성 약재 조회 후 필터링
-    const { data: allHerbs, error: allError } = await supabase
-      .from('herbs')
-      .select('*')
-      .eq('is_active', true);
-
-    if (allError) throw new Error(allError.message);
-
-    const lowStockHerbs = (allHerbs || []).filter(herb => herb.current_stock <= herb.min_stock);
-    return lowStockHerbs;
+    const allHerbs = await query<Herb>(`SELECT * FROM herbs WHERE is_active = 1`);
+    const lowStockHerbs = allHerbs.filter(herb => herb.current_stock <= herb.min_stock);
+    return lowStockHerbs.map(h => ({ ...h, is_active: !!h.is_active }));
   },
 
   getInventoryLogs: async (id: number, params?: { limit?: number; offset?: number }): Promise<any[]> => {
-    // 재고 로그 테이블이 있다면 조회, 없으면 빈 배열 반환
     try {
-      let query = supabase
-        .from('herb_inventory_logs')
-        .select('*')
-        .eq('herb_id', id)
-        .order('created_at', { ascending: false });
+      let sql = `SELECT * FROM herb_inventory_logs WHERE herb_id = ${id} ORDER BY created_at DESC`;
 
       if (params?.limit) {
-        query = query.limit(params.limit);
+        sql += ` LIMIT ${params.limit}`;
       }
 
       if (params?.offset) {
-        query = query.range(params.offset, params.offset + (params.limit || 10) - 1);
+        sql += ` OFFSET ${params.offset}`;
       }
 
-      const { data, error } = await query;
-
-      if (error) {
-        console.warn('herb_inventory_logs 테이블이 없거나 접근 불가:', error.message);
-        return [];
-      }
-
-      return data || [];
+      return await query(sql);
     } catch {
       return [];
     }
   },
 
   getPriceHistory: async (id: number, limit: number = 10): Promise<any[]> => {
-    // 가격 이력 테이블이 있다면 조회, 없으면 빈 배열 반환
     try {
-      const { data, error } = await supabase
-        .from('herb_price_history')
-        .select('*')
-        .eq('herb_id', id)
-        .order('created_at', { ascending: false })
-        .limit(limit);
-
-      if (error) {
-        console.warn('herb_price_history 테이블이 없거나 접근 불가:', error.message);
-        return [];
-      }
-
-      return data || [];
+      return await query(`
+        SELECT * FROM herb_price_history
+        WHERE herb_id = ${id}
+        ORDER BY created_at DESC
+        LIMIT ${limit}
+      `);
     } catch {
       return [];
     }

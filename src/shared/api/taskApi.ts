@@ -2,7 +2,7 @@
  * 의료진 할일 API
  */
 
-import { supabase } from '@shared/lib/supabase';
+import { query, queryOne, execute, insert, escapeString, getCurrentDate, getCurrentTimestamp } from '@shared/lib/sqlite';
 import type {
   Task,
   TaskTemplate,
@@ -16,29 +16,18 @@ import type { ServiceType } from '@shared/types/treatmentRecord';
  * 할일 생성
  */
 export async function createTask(input: CreateTaskInput): Promise<Task> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .insert({
-      treatment_record_id: input.treatment_record_id || null,
-      patient_id: input.patient_id,
-      task_type: input.task_type,
-      title: input.title,
-      description: input.description || null,
-      assigned_to: input.assigned_to || null,
-      assigned_role: input.assigned_role || 'doctor',
-      status: 'pending',
-      priority: input.priority || 'normal',
-      due_date: input.due_date || null,
-      trigger_service: input.trigger_service || null,
-    })
-    .select()
-    .single();
+  const now = getCurrentTimestamp();
 
-  if (error) {
-    console.error('❌ 할일 생성 오류:', error);
-    throw error;
-  }
+  const id = await insert(`
+    INSERT INTO tasks (title, description, task_type, status, priority, assigned_to, due_date, patient_id, related_id, related_type, created_at, updated_at)
+    VALUES (${escapeString(input.title)}, ${escapeString(input.description || '')}, ${escapeString(input.task_type || '')},
+            'pending', ${escapeString(input.priority || 'normal')}, ${escapeString(input.assigned_to || '')},
+            ${escapeString(input.due_date || '')}, ${input.patient_id || 'NULL'},
+            ${input.treatment_record_id || 'NULL'}, ${escapeString(input.trigger_service || '')},
+            ${escapeString(now)}, ${escapeString(now)})
+  `);
 
+  const data = await queryOne<any>(`SELECT * FROM tasks WHERE id = ${id}`);
   console.log('✅ 할일 생성 완료:', data.title);
   return mapTask(data);
 }
@@ -102,116 +91,83 @@ export async function createTasksFromService(
  * 할일 템플릿 조회
  */
 export async function fetchTaskTemplates(triggerService: string): Promise<TaskTemplate[]> {
-  const { data, error } = await supabase
-    .from('task_templates')
-    .select('*')
-    .eq('trigger_service', triggerService)
-    .eq('is_active', true)
-    .order('display_order', { ascending: true });
+  const data = await query<any>(`
+    SELECT * FROM task_templates
+    WHERE is_active = 1
+    ORDER BY name
+  `);
 
-  if (error) {
-    console.error('❌ 할일 템플릿 조회 오류:', error);
-    throw error;
-  }
-
-  return (data || []).map(mapTaskTemplate);
+  return data.map(mapTaskTemplate);
 }
 
 /**
  * 오늘의 할일 조회
  */
 export async function fetchTodayTasks(assignedTo?: string): Promise<Task[]> {
-  let query = supabase
-    .from('tasks')
-    .select(`
-      *,
-      patients (name, chart_number),
-      treatment_records (treatment_date, doctor_name)
-    `)
-    .in('status', ['pending', 'in_progress'])
-    .or(`due_date.is.null,due_date.lte.${new Date().toISOString().split('T')[0]}`)
-    .order('priority', { ascending: true })
-    .order('created_at', { ascending: true });
+  const today = getCurrentDate();
+
+  let sql = `
+    SELECT t.*, p.name as patient_name, p.chart_number as patient_chart_number
+    FROM tasks t
+    LEFT JOIN patients p ON t.patient_id = p.id
+    WHERE t.status IN ('pending', 'in_progress')
+    AND (t.due_date IS NULL OR t.due_date <= ${escapeString(today)})
+  `;
 
   if (assignedTo) {
-    query = query.eq('assigned_to', assignedTo);
+    sql += ` AND t.assigned_to = ${escapeString(assignedTo)}`;
   }
 
-  const { data, error } = await query;
+  sql += ` ORDER BY t.priority ASC, t.created_at ASC`;
 
-  if (error) {
-    console.error('❌ 오늘의 할일 조회 오류:', error);
-    throw error;
-  }
-
-  return (data || []).map(mapTaskWithRelations);
+  const data = await query<any>(sql);
+  return data.map(mapTaskWithRelations);
 }
 
 /**
  * 담당자별 할일 조회
  */
 export async function fetchTasksByAssignee(assignedTo: string): Promise<Task[]> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .select(`
-      *,
-      patients (name, chart_number),
-      treatment_records (treatment_date, doctor_name)
-    `)
-    .eq('assigned_to', assignedTo)
-    .in('status', ['pending', 'in_progress'])
-    .order('priority', { ascending: true })
-    .order('created_at', { ascending: true });
+  const data = await query<any>(`
+    SELECT t.*, p.name as patient_name, p.chart_number as patient_chart_number
+    FROM tasks t
+    LEFT JOIN patients p ON t.patient_id = p.id
+    WHERE t.assigned_to = ${escapeString(assignedTo)}
+    AND t.status IN ('pending', 'in_progress')
+    ORDER BY t.priority ASC, t.created_at ASC
+  `);
 
-  if (error) {
-    console.error('❌ 담당자별 할일 조회 오류:', error);
-    throw error;
-  }
-
-  return (data || []).map(mapTaskWithRelations);
+  return data.map(mapTaskWithRelations);
 }
 
 /**
  * 환자별 할일 조회
  */
 export async function fetchTasksByPatient(patientId: number): Promise<Task[]> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .select(`
-      *,
-      patients (name, chart_number),
-      treatment_records (treatment_date, doctor_name)
-    `)
-    .eq('patient_id', patientId)
-    .order('created_at', { ascending: false });
+  const data = await query<any>(`
+    SELECT t.*, p.name as patient_name, p.chart_number as patient_chart_number
+    FROM tasks t
+    LEFT JOIN patients p ON t.patient_id = p.id
+    WHERE t.patient_id = ${patientId}
+    ORDER BY t.created_at DESC
+  `);
 
-  if (error) {
-    console.error('❌ 환자별 할일 조회 오류:', error);
-    throw error;
-  }
-
-  return (data || []).map(mapTaskWithRelations);
+  return data.map(mapTaskWithRelations);
 }
 
 /**
  * 진료내역별 할일 조회
  */
 export async function fetchTasksByTreatmentRecord(treatmentRecordId: number): Promise<Task[]> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .select(`
-      *,
-      patients (name, chart_number)
-    `)
-    .eq('treatment_record_id', treatmentRecordId)
-    .order('created_at', { ascending: true });
+  const data = await query<any>(`
+    SELECT t.*, p.name as patient_name, p.chart_number as patient_chart_number
+    FROM tasks t
+    LEFT JOIN patients p ON t.patient_id = p.id
+    WHERE t.related_id = ${treatmentRecordId}
+    ORDER BY t.created_at ASC
+  `);
 
-  if (error) {
-    console.error('❌ 진료내역별 할일 조회 오류:', error);
-    throw error;
-  }
-
-  return (data || []).map(mapTaskWithRelations);
+  return data.map(mapTaskWithRelations);
 }
 
 /**
@@ -222,24 +178,16 @@ export async function updateTaskStatus(
   status: TaskStatus,
   completedBy?: string
 ): Promise<void> {
-  const updateData: any = { status };
+  const now = getCurrentTimestamp();
+  let sql = `UPDATE tasks SET status = ${escapeString(status)}, updated_at = ${escapeString(now)}`;
 
   if (status === 'completed') {
-    updateData.completed_at = new Date().toISOString();
-    if (completedBy) {
-      updateData.completed_by = completedBy;
-    }
+    sql += `, completed_at = ${escapeString(now)}`;
   }
 
-  const { error } = await supabase
-    .from('tasks')
-    .update(updateData)
-    .eq('id', taskId);
+  sql += ` WHERE id = ${taskId}`;
 
-  if (error) {
-    console.error('❌ 할일 상태 변경 오류:', error);
-    throw error;
-  }
+  await execute(sql);
 }
 
 /**
@@ -261,45 +209,23 @@ export async function cancelTask(taskId: number): Promise<void> {
  * 할일 담당자 변경
  */
 export async function assignTask(taskId: number, assignedTo: string): Promise<void> {
-  const { error } = await supabase
-    .from('tasks')
-    .update({ assigned_to: assignedTo })
-    .eq('id', taskId);
-
-  if (error) {
-    console.error('❌ 할일 담당자 변경 오류:', error);
-    throw error;
-  }
+  const now = getCurrentTimestamp();
+  await execute(`UPDATE tasks SET assigned_to = ${escapeString(assignedTo)}, updated_at = ${escapeString(now)} WHERE id = ${taskId}`);
 }
 
 /**
  * 할일 우선순위 변경
  */
 export async function updateTaskPriority(taskId: number, priority: TaskPriority): Promise<void> {
-  const { error } = await supabase
-    .from('tasks')
-    .update({ priority })
-    .eq('id', taskId);
-
-  if (error) {
-    console.error('❌ 할일 우선순위 변경 오류:', error);
-    throw error;
-  }
+  const now = getCurrentTimestamp();
+  await execute(`UPDATE tasks SET priority = ${priority}, updated_at = ${escapeString(now)} WHERE id = ${taskId}`);
 }
 
 /**
  * 할일 삭제
  */
 export async function deleteTask(taskId: number): Promise<void> {
-  const { error } = await supabase
-    .from('tasks')
-    .delete()
-    .eq('id', taskId);
-
-  if (error) {
-    console.error('❌ 할일 삭제 오류:', error);
-    throw error;
-  }
+  await execute(`DELETE FROM tasks WHERE id = ${taskId}`);
 }
 
 /**
@@ -311,47 +237,22 @@ export async function fetchTaskStats(assignedTo?: string): Promise<{
   completed_today: number;
   overdue: number;
 }> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
 
-  let baseQuery = supabase.from('tasks').select('status, due_date, completed_at', { count: 'exact' });
-
-  if (assignedTo) {
-    baseQuery = baseQuery.eq('assigned_to', assignedTo);
-  }
-
-  // 대기 중
-  const { count: pending } = await supabase
-    .from('tasks')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'pending')
-    .eq(assignedTo ? 'assigned_to' : 'id', assignedTo || undefined as any);
-
-  // 진행 중
-  const { count: inProgress } = await supabase
-    .from('tasks')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'in_progress');
-
-  // 오늘 완료
-  const { count: completedToday } = await supabase
-    .from('tasks')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'completed')
-    .gte('completed_at', `${today}T00:00:00`)
-    .lte('completed_at', `${today}T23:59:59`);
-
-  // 기한 초과
-  const { count: overdue } = await supabase
-    .from('tasks')
-    .select('*', { count: 'exact', head: true })
-    .in('status', ['pending', 'in_progress'])
-    .lt('due_date', today);
+  const pendingData = await queryOne<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM tasks WHERE status = 'pending'`);
+  const inProgressData = await queryOne<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM tasks WHERE status = 'in_progress'`);
+  const completedTodayData = await queryOne<{ cnt: number }>(`
+    SELECT COUNT(*) as cnt FROM tasks WHERE status = 'completed' AND date(completed_at) = ${escapeString(today)}
+  `);
+  const overdueData = await queryOne<{ cnt: number }>(`
+    SELECT COUNT(*) as cnt FROM tasks WHERE status IN ('pending', 'in_progress') AND due_date < ${escapeString(today)}
+  `);
 
   return {
-    pending: pending || 0,
-    in_progress: inProgress || 0,
-    completed_today: completedToday || 0,
-    overdue: overdue || 0,
+    pending: pendingData?.cnt || 0,
+    in_progress: inProgressData?.cnt || 0,
+    completed_today: completedTodayData?.cnt || 0,
+    overdue: overdueData?.cnt || 0,
   };
 }
 
@@ -362,7 +263,7 @@ export async function fetchTaskStats(assignedTo?: string): Promise<{
 function mapTask(data: any): Task {
   return {
     id: data.id,
-    treatment_record_id: data.treatment_record_id,
+    treatment_record_id: data.related_id,
     patient_id: data.patient_id,
     task_type: data.task_type,
     title: data.title,
@@ -374,7 +275,7 @@ function mapTask(data: any): Task {
     due_date: data.due_date,
     completed_at: data.completed_at,
     completed_by: data.completed_by,
-    trigger_service: data.trigger_service,
+    trigger_service: data.related_type,
     created_at: data.created_at,
     updated_at: data.updated_at,
   };
@@ -383,14 +284,9 @@ function mapTask(data: any): Task {
 function mapTaskWithRelations(data: any): Task {
   const task = mapTask(data);
 
-  if (data.patients) {
-    task.patient_name = data.patients.name;
-    task.patient_chart_number = data.patients.chart_number;
-  }
-
-  if (data.treatment_records) {
-    task.treatment_date = data.treatment_records.treatment_date;
-    task.treatment_doctor = data.treatment_records.doctor_name;
+  if (data.patient_name) {
+    task.patient_name = data.patient_name;
+    task.patient_chart_number = data.patient_chart_number;
   }
 
   return task;
@@ -399,15 +295,15 @@ function mapTaskWithRelations(data: any): Task {
 function mapTaskTemplate(data: any): TaskTemplate {
   return {
     id: data.id,
-    trigger_service: data.trigger_service,
-    task_type: data.task_type,
-    title_template: data.title_template,
-    description_template: data.description_template,
-    default_assigned_role: data.default_assigned_role,
-    default_priority: data.default_priority,
-    due_days_offset: data.due_days_offset,
-    display_order: data.display_order,
-    is_active: data.is_active,
+    trigger_service: '',
+    task_type: data.task_type || '',
+    title_template: data.name || '',
+    description_template: data.description,
+    default_assigned_role: data.default_assigned_to || 'doctor',
+    default_priority: data.default_priority || 0,
+    due_days_offset: 0,
+    display_order: 0,
+    is_active: data.is_active === 1,
     created_at: data.created_at,
   };
 }

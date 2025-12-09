@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
-import { supabase } from '@shared/lib/supabase';
 import { Patient, DefaultTreatment, TreatmentRoom } from './types';
 import { useTreatmentRooms } from './hooks/useTreatmentRooms';
 import { useTreatmentItems } from './hooks/useTreatmentItems';
@@ -77,9 +76,11 @@ function TreatmentApp({ user }: TreatmentAppProps) {
     }
   }, [user, loadWaitingList]);
 
-  // Real-time subscription for waiting_queue changes
+  // Polling for waiting_queue changes (5초마다)
   useEffect(() => {
     if (!user) return;
+
+    const POLLING_INTERVAL = 5000;
 
     const reloadWaitingList = async () => {
       // 자기 자신이 일으킨 변경은 무시 (로컬 업데이트 후 일정 시간 이내)
@@ -90,16 +91,10 @@ function TreatmentApp({ user }: TreatmentAppProps) {
       await loadWaitingList();
     };
 
-    const waitingQueueSubscription = supabase
-      .channel('treatment-waiting-queue-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'waiting_queue' },
-        reloadWaitingList
-      )
-      .subscribe();
+    const intervalId = setInterval(reloadWaitingList, POLLING_INTERVAL);
 
     return () => {
-      supabase.removeChannel(waitingQueueSubscription);
+      clearInterval(intervalId);
     };
   }, [user, loadWaitingList]);
 

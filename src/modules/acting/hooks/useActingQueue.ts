@@ -2,10 +2,12 @@
  * 액팅 대기열 관리 Hook
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@shared/lib/supabase';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ActingQueueItem, DoctorQueueGroup, DoctorStatus, AddActingRequest } from '../types';
 import * as actingApi from '../api';
+
+// Polling 간격 (밀리초)
+const POLLING_INTERVAL = 5000;
 
 interface Doctor {
   id: number;
@@ -17,9 +19,16 @@ export function useActingQueue(doctors: Doctor[]) {
   const [queueGroups, setQueueGroups] = useState<DoctorQueueGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const lastLocalUpdateRef = useRef<number>(0);
+  const IGNORE_POLLING_MS = 2000;
 
   // 데이터 로드
   const loadQueueGroups = useCallback(async () => {
+    const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
+    if (timeSinceLastUpdate < IGNORE_POLLING_MS) {
+      return;
+    }
+
     try {
       const groups = await actingApi.fetchDoctorQueueGroups(doctors);
       setQueueGroups(groups);
@@ -37,30 +46,20 @@ export function useActingQueue(doctors: Doctor[]) {
     loadQueueGroups();
   }, [loadQueueGroups]);
 
-  // 실시간 구독
+  // Polling으로 실시간 구독 대체
   useEffect(() => {
-    const queueSubscription = supabase
-      .channel('acting-queue-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'acting_queue' }, () => {
-        loadQueueGroups();
-      })
-      .subscribe();
-
-    const statusSubscription = supabase
-      .channel('doctor-status-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'doctor_status' }, () => {
-        loadQueueGroups();
-      })
-      .subscribe();
+    const intervalId = setInterval(() => {
+      loadQueueGroups();
+    }, POLLING_INTERVAL);
 
     return () => {
-      supabase.removeChannel(queueSubscription);
-      supabase.removeChannel(statusSubscription);
+      clearInterval(intervalId);
     };
   }, [loadQueueGroups]);
 
   // 액팅 추가
   const addActing = useCallback(async (request: AddActingRequest) => {
+    lastLocalUpdateRef.current = Date.now();
     try {
       await actingApi.addActing(request);
       await loadQueueGroups();
@@ -72,6 +71,7 @@ export function useActingQueue(doctors: Doctor[]) {
 
   // 액팅 취소
   const cancelActing = useCallback(async (actingId: number) => {
+    lastLocalUpdateRef.current = Date.now();
     try {
       await actingApi.cancelActing(actingId);
       await loadQueueGroups();
@@ -83,6 +83,7 @@ export function useActingQueue(doctors: Doctor[]) {
 
   // 액팅 순서 변경
   const reorderActing = useCallback(async (actingId: number, doctorId: number, fromIndex: number, toIndex: number) => {
+    lastLocalUpdateRef.current = Date.now();
     try {
       await actingApi.reorderActing(actingId, doctorId, fromIndex, toIndex);
       await loadQueueGroups();
@@ -94,6 +95,7 @@ export function useActingQueue(doctors: Doctor[]) {
 
   // 액팅을 다른 원장에게 이동
   const moveActingToDoctor = useCallback(async (actingId: number, newDoctorId: number, newDoctorName: string) => {
+    lastLocalUpdateRef.current = Date.now();
     try {
       await actingApi.moveActingToDoctor(actingId, newDoctorId, newDoctorName);
       await loadQueueGroups();
@@ -105,6 +107,7 @@ export function useActingQueue(doctors: Doctor[]) {
 
   // 진료 시작
   const startActing = useCallback(async (actingId: number, doctorId: number, doctorName: string) => {
+    lastLocalUpdateRef.current = Date.now();
     try {
       await actingApi.startActing(actingId, doctorId, doctorName);
       await loadQueueGroups();
@@ -116,6 +119,7 @@ export function useActingQueue(doctors: Doctor[]) {
 
   // 진료 완료
   const completeActing = useCallback(async (actingId: number, doctorId: number, doctorName: string) => {
+    lastLocalUpdateRef.current = Date.now();
     try {
       await actingApi.completeActing(actingId, doctorId, doctorName);
       await loadQueueGroups();
@@ -127,6 +131,7 @@ export function useActingQueue(doctors: Doctor[]) {
 
   // 원장 상태 변경
   const setDoctorStatus = useCallback(async (doctorId: number, doctorName: string, status: DoctorStatus['status']) => {
+    lastLocalUpdateRef.current = Date.now();
     try {
       await actingApi.upsertDoctorStatus(doctorId, doctorName, status);
       await loadQueueGroups();

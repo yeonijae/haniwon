@@ -1,8 +1,8 @@
 /**
- * 구입 요청 API - Supabase 직접 연결
+ * 구입 요청 API - SQLite 연결
  */
 
-import { supabase } from '@shared/lib/supabase';
+import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/sqlite';
 
 export interface SupplyRequest {
   id: number;
@@ -17,85 +17,75 @@ export interface SupplyRequest {
 
 export const suppliesApi = {
   getAll: async (): Promise<SupplyRequest[]> => {
-    const { data, error } = await supabase
-      .from('supply_requests')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) throw new Error(error.message);
-    return data || [];
+    return await query<SupplyRequest>(`
+      SELECT * FROM supply_requests
+      ORDER BY created_at DESC
+    `);
   },
 
   create: async (data: Partial<SupplyRequest>): Promise<SupplyRequest> => {
-    const { data: result, error } = await supabase
-      .from('supply_requests')
-      .insert({
-        item_name: data.item_name,
-        quantity: data.quantity,
-        requested_by: data.requested_by || '관리자',
-        status: 'pending',
-        note: data.note,
-        created_at: new Date().toISOString()
-      })
-      .select()
-      .single();
+    const now = getCurrentTimestamp();
+    const id = await insert(`
+      INSERT INTO supply_requests (
+        item_name, quantity, requested_by, status, note, created_at
+      ) VALUES (
+        ${escapeString(data.item_name || '')},
+        ${data.quantity ? escapeString(data.quantity) : 'NULL'},
+        ${escapeString(data.requested_by || '관리자')},
+        'pending',
+        ${data.note ? escapeString(data.note) : 'NULL'},
+        ${escapeString(now)}
+      )
+    `);
 
-    if (error) throw new Error(error.message);
+    const result = await queryOne<SupplyRequest>(`SELECT * FROM supply_requests WHERE id = ${id}`);
+    if (!result) throw new Error('구입 요청 생성 실패');
     return result;
   },
 
   update: async (id: number, data: Partial<SupplyRequest>): Promise<SupplyRequest> => {
-    const { data: result, error } = await supabase
-      .from('supply_requests')
-      .update({
-        item_name: data.item_name,
-        quantity: data.quantity,
-        status: data.status,
-        note: data.note,
-        completed_at: data.completed_at
-      })
-      .eq('id', id)
-      .select()
-      .single();
+    const updates: string[] = [];
 
-    if (error) throw new Error(error.message);
+    if (data.item_name !== undefined) updates.push(`item_name = ${escapeString(data.item_name)}`);
+    if (data.quantity !== undefined) updates.push(`quantity = ${data.quantity ? escapeString(data.quantity) : 'NULL'}`);
+    if (data.status !== undefined) updates.push(`status = ${escapeString(data.status)}`);
+    if (data.note !== undefined) updates.push(`note = ${data.note ? escapeString(data.note) : 'NULL'}`);
+    if (data.completed_at !== undefined) updates.push(`completed_at = ${data.completed_at ? escapeString(data.completed_at) : 'NULL'}`);
+
+    if (updates.length > 0) {
+      await execute(`UPDATE supply_requests SET ${updates.join(', ')} WHERE id = ${id}`);
+    }
+
+    const result = await queryOne<SupplyRequest>(`SELECT * FROM supply_requests WHERE id = ${id}`);
+    if (!result) throw new Error('구입 요청을 찾을 수 없습니다');
     return result;
   },
 
   toggleComplete: async (id: number, currentStatus: string): Promise<SupplyRequest> => {
     const newStatus = currentStatus === 'pending' ? 'completed' : 'pending';
-    const { data: result, error } = await supabase
-      .from('supply_requests')
-      .update({
-        status: newStatus,
-        completed_at: newStatus === 'completed' ? new Date().toISOString() : null
-      })
-      .eq('id', id)
-      .select()
-      .single();
+    const completedAt = newStatus === 'completed' ? getCurrentTimestamp() : null;
 
-    if (error) throw new Error(error.message);
+    await execute(`
+      UPDATE supply_requests
+      SET status = ${escapeString(newStatus)},
+          completed_at = ${completedAt ? escapeString(completedAt) : 'NULL'}
+      WHERE id = ${id}
+    `);
+
+    const result = await queryOne<SupplyRequest>(`SELECT * FROM supply_requests WHERE id = ${id}`);
+    if (!result) throw new Error('구입 요청을 찾을 수 없습니다');
     return result;
   },
 
   delete: async (id: number): Promise<void> => {
-    const { error } = await supabase
-      .from('supply_requests')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw new Error(error.message);
+    await execute(`DELETE FROM supply_requests WHERE id = ${id}`);
   },
 
   getStats: async (): Promise<{ pending: number; completed: number }> => {
-    const { data, error } = await supabase
-      .from('supply_requests')
-      .select('status');
+    const data = await query<{ status: string }>(`SELECT status FROM supply_requests`);
 
-    if (error) throw new Error(error.message);
-
-    const pending = data?.filter(item => item.status === 'pending').length || 0;
-    const completed = data?.filter(item => item.status === 'completed').length || 0;
+    const pending = data.filter(item => item.status === 'pending').length;
+    const completed = data.filter(item => item.status === 'completed').length;
 
     return { pending, completed };
   }

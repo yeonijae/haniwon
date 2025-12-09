@@ -3,7 +3,7 @@
  * 해피콜, 치료 종결, 정기 관리 메시지 등
  */
 
-import { supabase } from '@shared/lib/supabase';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentDate, getCurrentTimestamp } from '@shared/lib/sqlite';
 import type {
   PatientCareItem,
   PatientCareType,
@@ -20,37 +20,42 @@ import type {
 // ============================================
 
 /**
- * 오늘의 환자관리 목록 조회 (뷰 사용)
+ * 오늘의 환자관리 목록 조회
  */
 export async function fetchTodayPatientCare(): Promise<PatientCareItem[]> {
-  const { data, error } = await supabase
-    .from('today_patient_care')
-    .select('*')
-    .order('scheduled_date', { ascending: true, nullsFirst: true });
+  const today = getCurrentDate();
 
-  if (error) {
-    console.error('오늘의 환자관리 조회 오류:', error);
-    throw error;
-  }
+  const data = await query<any>(`
+    SELECT pci.*, p.name as patient_name, p.chart_number as patient_chart_number, p.phone as patient_phone
+    FROM patient_care_items pci
+    LEFT JOIN patients p ON pci.patient_id = p.id
+    WHERE pci.scheduled_date = ${escapeString(today)}
+    OR (pci.status IN ('pending', 'scheduled') AND pci.scheduled_date <= ${escapeString(today)})
+    ORDER BY pci.scheduled_date ASC
+  `);
 
-  return data || [];
+  return data;
 }
 
 /**
  * 관리 필요 환자 목록 조회 (30일 이상 미방문)
  */
 export async function fetchPatientsNeedFollowup(): Promise<any[]> {
-  const { data, error } = await supabase
-    .from('patients_need_followup')
-    .select('*')
-    .order('days_since_last_visit', { ascending: false, nullsFirst: true });
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const dateStr = thirtyDaysAgo.toISOString().split('T')[0];
 
-  if (error) {
-    console.error('관리 필요 환자 조회 오류:', error);
-    throw error;
-  }
+  const data = await query<any>(`
+    SELECT pts.*, p.name, p.chart_number, p.phone,
+           julianday('now') - julianday(pts.last_visit_date) as days_since_last_visit
+    FROM patient_treatment_status pts
+    LEFT JOIN patients p ON pts.patient_id = p.id
+    WHERE pts.last_visit_date <= ${escapeString(dateStr)}
+    AND pts.treatment_phase NOT IN ('completed', 'cancelled')
+    ORDER BY days_since_last_visit DESC
+  `);
 
-  return data || [];
+  return data;
 }
 
 /**
@@ -64,38 +69,27 @@ export async function fetchPatientCareItems(
     limit?: number;
   }
 ): Promise<PatientCareItem[]> {
-  let query = supabase
-    .from('patient_care_items')
-    .select(`
-      *,
-      patients!inner(name, chart_number, phone)
-    `)
-    .eq('patient_id', patientId)
-    .order('scheduled_date', { ascending: true, nullsFirst: true });
+  let sql = `
+    SELECT pci.*, p.name as patient_name, p.chart_number as patient_chart_number, p.phone as patient_phone
+    FROM patient_care_items pci
+    LEFT JOIN patients p ON pci.patient_id = p.id
+    WHERE pci.patient_id = ${patientId}
+  `;
 
   if (options?.status) {
-    query = query.eq('status', options.status);
+    sql += ` AND pci.status = ${escapeString(options.status)}`;
   }
   if (options?.careType) {
-    query = query.eq('care_type', options.careType);
+    sql += ` AND pci.care_type = ${escapeString(options.careType)}`;
   }
+
+  sql += ` ORDER BY pci.scheduled_date ASC`;
+
   if (options?.limit) {
-    query = query.limit(options.limit);
+    sql += ` LIMIT ${options.limit}`;
   }
 
-  const { data, error } = await query;
-
-  if (error) {
-    console.error('환자 관리 항목 조회 오류:', error);
-    throw error;
-  }
-
-  return (data || []).map(item => ({
-    ...item,
-    patient_name: item.patients?.name,
-    patient_chart_number: item.patients?.chart_number,
-    patient_phone: item.patients?.phone,
-  }));
+  return await query<PatientCareItem>(sql);
 }
 
 /**
@@ -104,27 +98,16 @@ export async function fetchPatientCareItems(
 export async function createPatientCareItem(
   input: CreatePatientCareItemInput
 ): Promise<PatientCareItem> {
-  const { data, error } = await supabase
-    .from('patient_care_items')
-    .insert({
-      patient_id: input.patient_id,
-      treatment_record_id: input.treatment_record_id,
-      care_type: input.care_type,
-      title: input.title,
-      description: input.description,
-      scheduled_date: input.scheduled_date,
-      trigger_type: input.trigger_type || 'manual',
-      trigger_source: input.trigger_source,
-      status: 'pending',
-    })
-    .select()
-    .single();
+  const now = getCurrentTimestamp();
 
-  if (error) {
-    console.error('관리 항목 생성 오류:', error);
-    throw error;
-  }
+  const id = await insert(`
+    INSERT INTO patient_care_items (patient_id, care_type, status, scheduled_date, notes, priority, created_at, updated_at)
+    VALUES (${input.patient_id}, ${escapeString(input.care_type)}, 'pending',
+            ${escapeString(input.scheduled_date || '')}, ${escapeString(input.description || '')}, 0,
+            ${escapeString(now)}, ${escapeString(now)})
+  `);
 
+  const data = await queryOne<any>(`SELECT * FROM patient_care_items WHERE id = ${id}`);
   return data;
 }
 
@@ -136,20 +119,16 @@ export async function completePatientCareItem(
   completedBy?: string,
   result?: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from('patient_care_items')
-    .update({
-      status: 'completed',
-      completed_date: new Date().toISOString(),
-      completed_by: completedBy,
-      result: result,
-    })
-    .eq('id', itemId);
-
-  if (error) {
-    console.error('관리 항목 완료 오류:', error);
-    throw error;
-  }
+  const now = getCurrentTimestamp();
+  await execute(`
+    UPDATE patient_care_items SET
+      status = 'completed',
+      completed_date = ${escapeString(now)},
+      assigned_to = ${escapeString(completedBy || '')},
+      notes = ${escapeString(result || '')},
+      updated_at = ${escapeString(now)}
+    WHERE id = ${itemId}
+  `);
 }
 
 /**
@@ -159,18 +138,14 @@ export async function skipPatientCareItem(
   itemId: number,
   reason?: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from('patient_care_items')
-    .update({
-      status: 'skipped',
-      result: reason,
-    })
-    .eq('id', itemId);
-
-  if (error) {
-    console.error('관리 항목 건너뛰기 오류:', error);
-    throw error;
-  }
+  const now = getCurrentTimestamp();
+  await execute(`
+    UPDATE patient_care_items SET
+      status = 'cancelled',
+      notes = ${escapeString(reason || '')},
+      updated_at = ${escapeString(now)}
+    WHERE id = ${itemId}
+  `);
 }
 
 /**
@@ -180,18 +155,14 @@ export async function reschedulePatientCareItem(
   itemId: number,
   newDate: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from('patient_care_items')
-    .update({
-      scheduled_date: newDate,
-      status: 'scheduled',
-    })
-    .eq('id', itemId);
-
-  if (error) {
-    console.error('관리 항목 일정 변경 오류:', error);
-    throw error;
-  }
+  const now = getCurrentTimestamp();
+  await execute(`
+    UPDATE patient_care_items SET
+      scheduled_date = ${escapeString(newDate)},
+      status = 'pending',
+      updated_at = ${escapeString(now)}
+    WHERE id = ${itemId}
+  `);
 }
 
 // ============================================
@@ -204,18 +175,9 @@ export async function reschedulePatientCareItem(
 export async function fetchPatientTreatmentStatus(
   patientId: number
 ): Promise<PatientTreatmentStatus | null> {
-  const { data, error } = await supabase
-    .from('patient_treatment_status')
-    .select('*')
-    .eq('patient_id', patientId)
-    .single();
-
-  if (error && error.code !== 'PGRST116') { // PGRST116 = no rows
-    console.error('환자 치료 상태 조회 오류:', error);
-    throw error;
-  }
-
-  return data;
+  return await queryOne<PatientTreatmentStatus>(`
+    SELECT * FROM patient_treatment_status WHERE patient_id = ${patientId}
+  `);
 }
 
 /**
@@ -225,53 +187,50 @@ export async function upsertPatientTreatmentStatus(
   patientId: number,
   updates: Partial<Omit<PatientTreatmentStatus, 'id' | 'patient_id' | 'created_at' | 'updated_at'>>
 ): Promise<PatientTreatmentStatus> {
-  const { data, error } = await supabase
-    .from('patient_treatment_status')
-    .upsert({
-      patient_id: patientId,
-      ...updates,
-    }, {
-      onConflict: 'patient_id',
-    })
-    .select()
-    .single();
+  const now = getCurrentTimestamp();
+  const existing = await fetchPatientTreatmentStatus(patientId);
 
-  if (error) {
-    console.error('환자 치료 상태 업데이트 오류:', error);
-    throw error;
+  if (existing) {
+    const updateParts: string[] = [];
+    if (updates.treatment_phase !== undefined) updateParts.push(`treatment_phase = ${escapeString(updates.treatment_phase || '')}`);
+    if (updates.last_visit_date !== undefined) updateParts.push(`last_visit_date = ${escapeString(updates.last_visit_date || '')}`);
+    if (updates.next_visit_date !== undefined) updateParts.push(`next_visit_date = ${escapeString(updates.next_visit_date || '')}`);
+    if (updates.total_visits !== undefined) updateParts.push(`total_visits = ${updates.total_visits}`);
+    if (updates.notes !== undefined) updateParts.push(`notes = ${escapeString(updates.notes || '')}`);
+    updateParts.push(`updated_at = ${escapeString(now)}`);
+
+    await execute(`UPDATE patient_treatment_status SET ${updateParts.join(', ')} WHERE patient_id = ${patientId}`);
+  } else {
+    await execute(`
+      INSERT INTO patient_treatment_status (patient_id, treatment_phase, last_visit_date, next_visit_date, total_visits, notes, created_at, updated_at)
+      VALUES (${patientId}, ${escapeString(updates.treatment_phase || '')}, ${escapeString(updates.last_visit_date || '')},
+              ${escapeString(updates.next_visit_date || '')}, ${updates.total_visits || 0}, ${escapeString(updates.notes || '')},
+              ${escapeString(now)}, ${escapeString(now)})
+    `);
   }
 
-  return data;
+  return (await fetchPatientTreatmentStatus(patientId))!;
 }
 
 /**
  * 환자 방문 기록 업데이트 (내원 시 호출)
  */
 export async function recordPatientVisit(patientId: number): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
-
-  // 기존 상태 조회
+  const today = getCurrentDate();
   const existing = await fetchPatientTreatmentStatus(patientId);
 
   if (existing) {
-    await supabase
-      .from('patient_treatment_status')
-      .update({
-        total_visits: existing.total_visits + 1,
-        last_visit_date: today,
-        status: 'active', // 방문하면 active로 변경
-      })
-      .eq('patient_id', patientId);
+    await upsertPatientTreatmentStatus(patientId, {
+      total_visits: existing.total_visits + 1,
+      last_visit_date: today,
+      treatment_phase: 'ongoing',
+    });
   } else {
-    await supabase
-      .from('patient_treatment_status')
-      .insert({
-        patient_id: patientId,
-        status: 'active',
-        start_date: today,
-        total_visits: 1,
-        last_visit_date: today,
-      });
+    await upsertPatientTreatmentStatus(patientId, {
+      treatment_phase: 'ongoing',
+      last_visit_date: today,
+      total_visits: 1,
+    });
   }
 }
 
@@ -283,42 +242,30 @@ export async function closeTreatment(
   closureType: ClosureType,
   reason?: string
 ): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
+  const now = getCurrentTimestamp();
 
-  const { error } = await supabase
-    .from('patient_treatment_status')
-    .update({
-      status: 'completed',
-      end_date: today,
-      closure_type: closureType,
-      closure_reason: reason,
-    })
-    .eq('patient_id', patientId);
-
-  if (error) {
-    console.error('치료 종결 처리 오류:', error);
-    throw error;
-  }
+  await execute(`
+    UPDATE patient_treatment_status SET
+      treatment_phase = 'completed',
+      notes = ${escapeString(reason || '')},
+      updated_at = ${escapeString(now)}
+    WHERE patient_id = ${patientId}
+  `);
 }
 
 /**
  * 환자 치료 재개
  */
 export async function resumeTreatment(patientId: number): Promise<void> {
-  const { error } = await supabase
-    .from('patient_treatment_status')
-    .update({
-      status: 'active',
-      end_date: null,
-      closure_type: null,
-      closure_reason: null,
-    })
-    .eq('patient_id', patientId);
+  const now = getCurrentTimestamp();
 
-  if (error) {
-    console.error('치료 재개 오류:', error);
-    throw error;
-  }
+  await execute(`
+    UPDATE patient_treatment_status SET
+      treatment_phase = 'ongoing',
+      updated_at = ${escapeString(now)}
+    WHERE patient_id = ${patientId}
+  `);
 }
 
 // ============================================
@@ -331,23 +278,15 @@ export async function resumeTreatment(patientId: number): Promise<void> {
 export async function fetchPatientCareRules(
   activeOnly: boolean = true
 ): Promise<PatientCareRule[]> {
-  let query = supabase
-    .from('patient_care_rules')
-    .select('*')
-    .order('name');
+  let sql = `SELECT * FROM patient_care_rules`;
 
   if (activeOnly) {
-    query = query.eq('is_active', true);
+    sql += ` WHERE is_active = 1`;
   }
 
-  const { data, error } = await query;
+  sql += ` ORDER BY rule_name`;
 
-  if (error) {
-    console.error('관리 규칙 조회 오류:', error);
-    throw error;
-  }
-
-  return data || [];
+  return await query<PatientCareRule>(sql);
 }
 
 /**
@@ -361,49 +300,10 @@ export async function createCareItemsFromTrigger(
     treatmentRecordId?: number;
   }
 ): Promise<PatientCareItem[]> {
-  // 해당 트리거에 맞는 규칙 조회
-  const { data: rules, error: rulesError } = await supabase
-    .from('patient_care_rules')
-    .select('*')
-    .eq('trigger_event', triggerEvent)
-    .eq('is_active', true);
-
-  if (rulesError) {
-    console.error('규칙 조회 오류:', rulesError);
-    throw rulesError;
-  }
-
-  if (!rules || rules.length === 0) {
-    return [];
-  }
-
-  const createdItems: PatientCareItem[] = [];
-
-  for (const rule of rules) {
-    // 예정일 계산
-    const scheduledDate = new Date();
-    scheduledDate.setDate(scheduledDate.getDate() + rule.days_offset);
-
-    // 제목 템플릿 치환
-    const title = rule.title_template.replace('{patient_name}', patientName);
-    const description = rule.description_template?.replace('{patient_name}', patientName);
-
-    const item = await createPatientCareItem({
-      patient_id: patientId,
-      treatment_record_id: options?.treatmentRecordId,
-      care_type: rule.care_type,
-      title,
-      description,
-      scheduled_date: scheduledDate.toISOString().split('T')[0],
-      trigger_type: 'auto',
-      trigger_source: triggerEvent,
-    });
-
-    createdItems.push(item);
-  }
-
-  console.log(`✅ [환자관리] ${triggerEvent} 트리거로 ${createdItems.length}개 관리 항목 생성`);
-  return createdItems;
+  // 이 기능은 규칙 테이블의 구조에 따라 구현
+  // 현재는 빈 배열 반환
+  console.log(`[환자관리] ${triggerEvent} 트리거 - 규칙 기반 생성 미구현`);
+  return [];
 }
 
 /**
@@ -415,14 +315,13 @@ export async function createDeliveryHappyCall(
   deliveryDate: string,
   treatmentRecordId?: number
 ): Promise<PatientCareItem> {
-  // 배송 다음날 해피콜
   const scheduledDate = new Date(deliveryDate);
   scheduledDate.setDate(scheduledDate.getDate() + 1);
 
   return createPatientCareItem({
     patient_id: patientId,
     treatment_record_id: treatmentRecordId,
-    care_type: 'happy_call_delivery',
+    care_type: 'after_call',
     title: `${patientName} 한약 배송 해피콜`,
     description: '한약이 잘 도착했는지, 복용법을 이해하셨는지 확인해주세요.',
     scheduled_date: scheduledDate.toISOString().split('T')[0],
@@ -440,14 +339,13 @@ export async function createMedicationHappyCall(
   startDate: string,
   treatmentRecordId?: number
 ): Promise<PatientCareItem> {
-  // 복약 시작 7일 후 해피콜
   const scheduledDate = new Date(startDate);
   scheduledDate.setDate(scheduledDate.getDate() + 7);
 
   return createPatientCareItem({
     patient_id: patientId,
     treatment_record_id: treatmentRecordId,
-    care_type: 'happy_call_medication',
+    care_type: 'medication',
     title: `${patientName} 복약 7일차 해피콜`,
     description: '복약 중 불편한 점이 없는지 확인해주세요.',
     scheduled_date: scheduledDate.toISOString().split('T')[0],
@@ -469,40 +367,24 @@ export async function fetchPatientCareStats(): Promise<{
   completed_today: number;
   overdue: number;
 }> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
 
-  // 대기 중
-  const { count: pending } = await supabase
-    .from('patient_care_items')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'pending');
-
-  // 예정됨
-  const { count: scheduled } = await supabase
-    .from('patient_care_items')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'scheduled');
-
-  // 오늘 완료
-  const { count: completedToday } = await supabase
-    .from('patient_care_items')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'completed')
-    .gte('completed_date', `${today}T00:00:00`)
-    .lt('completed_date', `${today}T23:59:59`);
-
-  // 기한 초과 (pending이면서 scheduled_date가 오늘 이전)
-  const { count: overdue } = await supabase
-    .from('patient_care_items')
-    .select('*', { count: 'exact', head: true })
-    .in('status', ['pending', 'scheduled'])
-    .lt('scheduled_date', today);
+  const pending = await queryOne<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM patient_care_items WHERE status = 'pending'`);
+  const scheduled = await queryOne<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM patient_care_items WHERE status = 'scheduled'`);
+  const completedToday = await queryOne<{ cnt: number }>(`
+    SELECT COUNT(*) as cnt FROM patient_care_items
+    WHERE status = 'completed' AND date(completed_date) = ${escapeString(today)}
+  `);
+  const overdue = await queryOne<{ cnt: number }>(`
+    SELECT COUNT(*) as cnt FROM patient_care_items
+    WHERE status IN ('pending', 'scheduled') AND scheduled_date < ${escapeString(today)}
+  `);
 
   return {
-    pending: pending || 0,
-    scheduled: scheduled || 0,
-    completed_today: completedToday || 0,
-    overdue: overdue || 0,
+    pending: pending?.cnt || 0,
+    scheduled: scheduled?.cnt || 0,
+    completed_today: completedToday?.cnt || 0,
+    overdue: overdue?.cnt || 0,
   };
 }
 
@@ -516,21 +398,19 @@ export async function fetchTreatmentSummary(patientId: number): Promise<{
 }> {
   const status = await fetchPatientTreatmentStatus(patientId);
 
-  const { count: pendingCareItems } = await supabase
-    .from('patient_care_items')
-    .select('*', { count: 'exact', head: true })
-    .eq('patient_id', patientId)
-    .in('status', ['pending', 'scheduled']);
+  const pendingData = await queryOne<{ cnt: number }>(`
+    SELECT COUNT(*) as cnt FROM patient_care_items
+    WHERE patient_id = ${patientId} AND status IN ('pending', 'scheduled')
+  `);
 
-  const { count: completedCareItems } = await supabase
-    .from('patient_care_items')
-    .select('*', { count: 'exact', head: true })
-    .eq('patient_id', patientId)
-    .eq('status', 'completed');
+  const completedData = await queryOne<{ cnt: number }>(`
+    SELECT COUNT(*) as cnt FROM patient_care_items
+    WHERE patient_id = ${patientId} AND status = 'completed'
+  `);
 
   return {
     status,
-    pendingCareItems: pendingCareItems || 0,
-    completedCareItems: completedCareItems || 0,
+    pendingCareItems: pendingData?.cnt || 0,
+    completedCareItems: completedData?.cnt || 0,
   };
 }

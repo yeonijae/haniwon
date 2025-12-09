@@ -24,7 +24,11 @@
       "@manage/*": ["src/modules/manage/*"],
       "@chart/*": ["src/modules/chart/*"],
       "@inventory/*": ["src/modules/inventory/*"],
-      "@treatment/*": ["src/modules/treatment/*"]
+      "@treatment/*": ["src/modules/treatment/*"],
+      "@acting/*": ["src/modules/acting/*"],
+      "@funnel/*": ["src/modules/funnel/*"],
+      "@content/*": ["src/modules/content/*"],
+      "@blog/*": ["src/modules/blog/*"]
     }
   },
   "include": ["src"],

@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { TreatmentRoom, Patient } from '../types';
-import { supabase } from '@shared/lib/supabase';
 import * as actingApi from '@acting/api';
 import type { ActingQueueItem } from '@acting/types';
 
@@ -318,17 +317,13 @@ const ActingManagementView: React.FC<ActingManagementViewProps> = ({
     loadActings();
   }, [loadActings]);
 
-  // 실시간 구독
+  // 폴링 (3초마다 - 액팅은 빠른 변경이 필요)
   useEffect(() => {
-    const subscription = supabase
-      .channel('acting-management-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'acting_queue' }, () => {
-        loadActings();
-      })
-      .subscribe();
+    const POLLING_INTERVAL = 3000;
+    const intervalId = setInterval(loadActings, POLLING_INTERVAL);
 
     return () => {
-      supabase.removeChannel(subscription);
+      clearInterval(intervalId);
     };
   }, [loadActings]);
 

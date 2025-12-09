@@ -7,7 +7,7 @@ import type {
   DayOff
 } from '../types';
 
-const API_BASE = 'http://localhost:3100/api';
+const API_BASE = 'http://192.168.0.173:3100/api';
 
 // API 응답 타입
 interface MssqlReservationResponse {

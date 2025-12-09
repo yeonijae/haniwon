@@ -4,7 +4,7 @@ import { NewPatientData } from '../components/NewPatientForm';
 import { BulkPatientData } from '../components/Settings';
 import * as api from '../lib/api';
 import * as actingApi from '@acting/api';
-import { supabase } from '@shared/lib/supabase';
+import { execute, escapeString } from '@shared/lib/sqlite';
 import { DOCTORS } from '../constants';
 
 // 자신의 변경을 무시하기 위한 타임스탬프 (구독 이벤트 무시용)
@@ -115,19 +115,18 @@ export const usePatients = (currentUser: any) => {
     loadWaitingQueues();
   }, [currentUser]);
 
-  // 대기 목록 실시간 구독
+  // 대기 목록 폴링 (5초마다)
   useEffect(() => {
     if (!currentUser) return;
 
+    const POLLING_INTERVAL = 5000;
+
     const reloadWaitingQueues = async () => {
-      // 자신의 변경 직후라면 구독 이벤트 무시
+      // 자신의 변경 직후라면 폴링 스킵
       const timeSinceLastUpdate = Date.now() - lastLocalWaitingQueueUpdate;
       if (timeSinceLastUpdate < IGNORE_SUBSCRIPTION_MS) {
-        console.log(`[usePatients] 대기 목록 구독 이벤트 무시 (${timeSinceLastUpdate}ms 전 로컬 변경)`);
         return;
       }
-
-      console.log('[usePatients] 대기 목록 외부 변경 감지, 데이터 리로드');
 
       try {
         const consultationQueue = await api.fetchWaitingQueue('consultation');
@@ -192,20 +191,14 @@ export const usePatients = (currentUser: any) => {
         setConsultationWaitingList(consultationPatients);
         setTreatmentWaitingList(treatmentPatients);
       } catch (error) {
-        console.error('❌ 대기 목록 실시간 로드 오류:', error);
+        console.error('❌ 대기 목록 폴링 오류:', error);
       }
     };
 
-    const waitingQueueSubscription = supabase
-      .channel('waiting-queue-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'waiting_queue' },
-        reloadWaitingQueues
-      )
-      .subscribe();
+    const intervalId = setInterval(reloadWaitingQueues, POLLING_INTERVAL);
 
     return () => {
-      supabase.removeChannel(waitingQueueSubscription);
+      clearInterval(intervalId);
     };
   }, [currentUser, patientCache]);
 
@@ -234,47 +227,7 @@ export const usePatients = (currentUser: any) => {
     setPatientCache(prev => new Map(prev).set(patient.id, patient));
   }, []);
 
-  // 실시간 구독 (Supabase 사용 시에만) - 캐시 업데이트
-  useEffect(() => {
-    if (!currentUser || !supabase) return;
-
-    const patientsSubscription = supabase
-      .channel('patients-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'patients' },
-        async (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newPatient = payload.new as any;
-            const treatments = await api.fetchPatientDefaultTreatments(newPatient.id);
-            setPatientCache(prev => new Map(prev).set(newPatient.id, { ...newPatient, defaultTreatments: treatments }));
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedPatient = payload.new as any;
-            // 캐시에 있는 경우에만 업데이트
-            setPatientCache(prev => {
-              if (prev.has(updatedPatient.id)) {
-                const newMap = new Map(prev);
-                const existing = prev.get(updatedPatient.id);
-                newMap.set(updatedPatient.id, { ...existing, ...updatedPatient });
-                return newMap;
-              }
-              return prev;
-            });
-          } else if (payload.eventType === 'DELETE') {
-            const deletedId = payload.old.id;
-            setPatientCache(prev => {
-              const newMap = new Map(prev);
-              newMap.delete(deletedId);
-              return newMap;
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(patientsSubscription);
-    };
-  }, [currentUser]);
+  // 환자 캐시는 필요시 API를 통해 갱신되므로 별도 폴링 불필요
 
   // 활성/삭제된 환자 필터 (캐시 기반)
   const activePatients = useMemo(() => allPatients.filter(p => !p.deletionDate), [allPatients]);
@@ -952,12 +905,12 @@ export const usePatients = (currentUser: any) => {
           await actingApi.addActing({
             patientId: patient.id,
             patientName: patient.name,
-            chartNo: patient.chartNo,
+            chartNo: patient.chartNumber,
             doctorId: doctorInfo.doctorId,
             doctorName: doctorInfo.doctorName,
             actingType: '약상담',
             memo: '',
-            source: 'auto',
+            source: 'manual',
           });
           console.log(`[약상담 액팅 자동추가] ✅ 약상담 액팅 추가 완료`);
         } catch (actingError) {
@@ -1009,11 +962,12 @@ export const usePatients = (currentUser: any) => {
       );
       // DB 업데이트
       try {
-        await supabase
-          .from('waiting_queue')
-          .update(updateData)
-          .eq('patient_id', patientId)
-          .eq('queue_type', 'consultation');
+        const memoValue = updateData.memo !== undefined ? escapeString(updateData.memo) : 'NULL';
+        await execute(`
+          UPDATE waiting_queue
+          SET details = ${escapeString(updateData.details)}, memo = ${memoValue}
+          WHERE patient_id = ${patientId} AND queue_type = 'consultation'
+        `);
       } catch (error) {
         console.error('❌ 진료정보 업데이트 DB 오류:', error);
       }
@@ -1028,11 +982,12 @@ export const usePatients = (currentUser: any) => {
       );
       // DB 업데이트
       try {
-        await supabase
-          .from('waiting_queue')
-          .update(updateData)
-          .eq('patient_id', patientId)
-          .eq('queue_type', 'treatment');
+        const memoValue = updateData.memo !== undefined ? escapeString(updateData.memo) : 'NULL';
+        await execute(`
+          UPDATE waiting_queue
+          SET details = ${escapeString(updateData.details)}, memo = ${memoValue}
+          WHERE patient_id = ${patientId} AND queue_type = 'treatment'
+        `);
       } catch (error) {
         console.error('❌ 진료정보 업데이트 DB 오류:', error);
       }
