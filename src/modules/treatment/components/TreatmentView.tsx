@@ -814,6 +814,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             }
         }
 
+        // DB에도 상태 저장 (shouldSaveToDB = true)
         updateRoom(roomId, r => ({
             ...r,
             status: RoomStatus.AVAILABLE,
@@ -826,7 +827,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             doctorName: undefined,
             inTime: undefined,
             sessionTreatments: []
-        }), false);
+        }), true);
     }, [updateRoom]);
 
     const handlePatientDragStart = useCallback((e: React.DragEvent<HTMLLIElement>, patientId: number) => {

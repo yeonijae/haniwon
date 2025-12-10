@@ -20,7 +20,7 @@ interface SqliteResponse {
  */
 export async function query<T = Record<string, any>>(sql: string): Promise<T[]> {
   try {
-    const res = await fetch(`${SQLITE_API_URL}/api/sqlite/execute`, {
+    const res = await fetch(`${SQLITE_API_URL}/api/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql })
@@ -66,7 +66,7 @@ export async function execute(sql: string): Promise<{
   lastInsertRowid?: number;
 }> {
   try {
-    const res = await fetch(`${SQLITE_API_URL}/api/sqlite/execute`, {
+    const res = await fetch(`${SQLITE_API_URL}/api/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql })
