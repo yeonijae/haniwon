@@ -24,6 +24,7 @@ interface MssqlReservationResponse {
   memo: string;
   visited: boolean;
   canceled: boolean;
+  createdAt?: string;
 }
 
 // MSSQL 응답을 Reservation 타입으로 변환
@@ -43,6 +44,7 @@ const mapMssqlToReservation = (r: MssqlReservationResponse): Reservation => ({
   canceled: r.canceled,
   status: r.canceled ? 'canceled' : r.visited ? 'visited' : 'confirmed',
   source: 'internal',
+  createdAt: r.createdAt,
 });
 
 // 날짜별 예약 조회
@@ -194,6 +196,21 @@ export async function rejectExternalReservation(
 ): Promise<void> {
   // TODO: Supabase 상태 업데이트
   throw new Error('Not implemented');
+}
+
+// 현장예약 카운트 조회
+export interface OnSiteReservationCount {
+  date: string;
+  visited_count: number;
+  on_site_count: number;
+  patient_ids: number[];
+  by_doctor: Record<string, { visited_count: number; on_site_count: number }>;
+}
+
+export async function fetchOnSiteReservationCount(date: string): Promise<OnSiteReservationCount> {
+  const response = await fetch(`${API_BASE}/reservations/on-site-count?date=${date}`);
+  if (!response.ok) throw new Error('현장예약 카운트 조회 실패');
+  return response.json();
 }
 
 // 환자 검색 결과 타입

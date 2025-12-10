@@ -15,6 +15,7 @@ interface ButtonConfig {
   modalTitle: string;
   modalType: ModalType;
   wide?: boolean;
+  link?: string;  // 외부 페이지 링크 (새 창)
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -40,6 +41,7 @@ const Header: React.FC<HeaderProps> = ({
       modalTitle: '예약 관리',
       modalType: 'reservation',
       wide: true,
+      link: '/reservation',  // 예약관리 시스템으로 이동
     },
     {
       icon: 'fa-solid fa-won-sign',
@@ -80,7 +82,13 @@ const Header: React.FC<HeaderProps> = ({
           {buttons.map((btn) => (
             <button
               key={btn.label}
-              onClick={() => onOpenModal(btn.modalType, btn.modalTitle, btn.wide)}
+              onClick={() => {
+                if (btn.link) {
+                  window.open(btn.link, '_blank');
+                } else {
+                  onOpenModal(btn.modalType, btn.modalTitle, btn.wide);
+                }
+              }}
               className="flex flex-col items-center justify-center px-3 py-2 text-sm font-medium text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary rounded-lg transition-colors duration-200 w-20"
             >
               <i className={`${btn.icon} text-xl mb-1`}></i>

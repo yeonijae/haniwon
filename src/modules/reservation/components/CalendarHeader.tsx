@@ -1,11 +1,22 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import type { CalendarViewType, Doctor } from '../types';
+import type { CalendarViewType, Doctor, Reservation } from '../types';
+import { fetchOnSiteReservationCount } from '../lib/api';
+
+// 통계 데이터 타입
+interface DayStats {
+  total: number;
+  visited: number;
+  canceled: number;
+  noShow: number;
+  visitedWithNextReservation: number; // 내원 후 다음 예약 잡은 수
+}
 
 interface CalendarHeaderProps {
   selectedDate: string;
   viewType: CalendarViewType;
   doctors: Doctor[];
   selectedDoctor: string | null;
+  reservations?: Reservation[]; // 통계용
   onViewTypeChange: (type: CalendarViewType) => void;
   onDoctorChange: (doctor: string | null) => void;
   onPrevious: () => void;
@@ -28,6 +39,7 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
   viewType,
   doctors,
   selectedDoctor,
+  reservations = [],
   onViewTypeChange,
   onDoctorChange,
   onPrevious,
@@ -38,6 +50,41 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
   const currentDate = new Date(selectedDate);
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
+
+  // 오늘 날짜인지 확인
+  const today = getYYYYMMDD(new Date());
+  const isToday = selectedDate === today;
+
+  // 현장예약 카운트 (API에서 조회)
+  const [onSiteCount, setOnSiteCount] = useState<number>(0);
+
+  useEffect(() => {
+    const loadOnSiteCount = async () => {
+      try {
+        const data = await fetchOnSiteReservationCount(selectedDate);
+        setOnSiteCount(data.on_site_count);
+      } catch (err) {
+        console.error('현장예약 카운트 조회 실패:', err);
+        setOnSiteCount(0);
+      }
+    };
+    loadOnSiteCount();
+  }, [selectedDate, reservations]); // reservations 변경 시에도 새로고침
+
+  // 선택된 날짜의 예약 통계 계산
+  const dayStats = useMemo((): DayStats => {
+    const dayReservations = reservations.filter(r => r.date === selectedDate);
+    const total = dayReservations.length;
+    const canceled = dayReservations.filter(r => r.canceled).length;
+    const visited = dayReservations.filter(r => r.visited && !r.canceled).length;
+    // 노쇼: 오늘 이전 날짜인데 내원도 안하고 취소도 안한 예약
+    const isPastDate = selectedDate < today;
+    const noShow = isPastDate
+      ? dayReservations.filter(r => !r.visited && !r.canceled).length
+      : 0;
+
+    return { total, visited, canceled, noShow, visitedWithNextReservation: onSiteCount };
+  }, [reservations, selectedDate, today, onSiteCount]);
 
   // 날짜 선택 팝업 상태
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -234,9 +281,55 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
           </button>
         </div>
 
-        <h3 className="text-xl font-bold text-gray-800">
-          {`선택일자: ${selectedMonth}월 ${String(selectedDay).padStart(2, '0')}일 (${selectedDayOfWeek})`}
-        </h3>
+        <div className="flex items-center gap-6">
+          <h3 className="text-xl font-bold text-gray-800">
+            {`${selectedMonth}월 ${String(selectedDay).padStart(2, '0')}일 (${selectedDayOfWeek})`}
+          </h3>
+          {/* 일간 통계 */}
+          {dayStats.total > 0 && (
+            <div className="flex items-center gap-3 text-sm">
+              <span className="text-gray-600">
+                총 <span className="font-bold text-gray-800">{dayStats.total}</span>
+              </span>
+              <span className="text-green-600">
+                내원 <span className="font-bold">{dayStats.visited}</span>
+                <span className="text-xs ml-0.5">
+                  ({dayStats.total > 0 ? Math.round((dayStats.visited / dayStats.total) * 100) : 0}%)
+                </span>
+              </span>
+              <span className="text-orange-500">
+                취소 <span className="font-bold">{dayStats.canceled}</span>
+                <span className="text-xs ml-0.5">
+                  ({dayStats.total > 0 ? Math.round((dayStats.canceled / dayStats.total) * 100) : 0}%)
+                </span>
+              </span>
+              {dayStats.noShow > 0 && (
+                <span className="text-red-500">
+                  노쇼 <span className="font-bold">{dayStats.noShow}</span>
+                  <span className="text-xs ml-0.5">
+                    ({Math.round((dayStats.noShow / dayStats.total) * 100)}%)
+                  </span>
+                </span>
+              )}
+              {/* 대기 중 (오늘/미래) */}
+              {selectedDate >= today && (
+                <span className="text-blue-500">
+                  대기 <span className="font-bold">{dayStats.total - dayStats.visited - dayStats.canceled}</span>
+                </span>
+              )}
+              {/* 현장예약율 (내원 환자가 있을 때만) */}
+              {dayStats.visited > 0 && (
+                <span className="text-purple-600 border-l border-gray-300 pl-3 ml-1">
+                  <i className="fa-solid fa-calendar-plus mr-1 text-xs"></i>
+                  현장예약 <span className="font-bold">{dayStats.visitedWithNextReservation}</span>/{dayStats.visited}
+                  <span className="text-xs ml-0.5">
+                    ({Math.round((dayStats.visitedWithNextReservation / dayStats.visited) * 100)}%)
+                  </span>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="flex items-center gap-4">
           {/* 의사 필터 */}

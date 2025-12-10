@@ -130,3 +130,23 @@ export interface ReservationStats {
     [type: string]: number;
   };
 }
+
+// 치료 항목 설정
+export interface TreatmentItem {
+  id: string;
+  name: string;
+  slots: number; // 단독일 때 슬롯 수
+  slotsInCompound?: number; // 복합 진료일 때 슬롯 수 (없으면 slots와 동일)
+  category: string; // 카테고리 (기본진료, 재초진, 약상담 등)
+  color?: string; // 표시 색상
+  isActive: boolean; // 활성화 여부
+  sortOrder: number; // 정렬 순서
+}
+
+// 예약 설정
+export interface ReservationSettings {
+  treatmentItems: TreatmentItem[];
+  categories: string[]; // 카테고리 목록
+  maxSlotsPerReservation: number; // 최대 슬롯 수 (기본 6)
+  slotDurationMinutes: number; // 슬롯 당 시간 (기본 10분)
+}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useReservations } from './hooks/useReservations';
+import { useReservationSettings } from './hooks/useReservationSettings';
 import { CalendarHeader } from './components/CalendarHeader';
 import { DayView } from './components/DayView';
 import { MonthView } from './components/MonthView';
@@ -7,7 +8,11 @@ import { ReservationDetailModal } from './components/ReservationDetailModal';
 import { NewReservationModal, InitialPatient } from './components/NewReservationModal';
 import { ReservationStep1Modal, ReservationDraft } from './components/ReservationStep1Modal';
 import { ReservationConfirmModal } from './components/ReservationConfirmModal';
-import type { Reservation, CreateReservationRequest } from './types';
+import { ReservationEditStep1Modal, EditDraft } from './components/ReservationEditStep1Modal';
+import { ReservationEditConfirmModal } from './components/ReservationEditConfirmModal';
+import { ReservationSettingsModal } from './components/ReservationSettingsModal';
+import { fetchOnSiteReservationCount, OnSiteReservationCount } from './lib/api';
+import type { Reservation, CreateReservationRequest, UpdateReservationRequest } from './types';
 
 interface ReservationAppProps {
   user?: any;
@@ -32,7 +37,16 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
     cancelReservation,
     markAsVisited,
     createReservation,
+    updateReservation,
   } = useReservations();
+
+  // 예약 설정 훅
+  const {
+    settings: reservationSettings,
+    saveSettings: saveReservationSettings,
+    getItemsByCategory,
+    calculateSlotsFromString,
+  } = useReservationSettings();
 
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
   const [showNewReservationModal, setShowNewReservationModal] = useState(false);
@@ -43,11 +57,38 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
   const [initialPatient, setInitialPatient] = useState<InitialPatient | null>(null);
   const [initialDetails, setInitialDetails] = useState<string>('');
 
+  // 2단계 예약 수정 플로우 상태
+  const [showEditStep1Modal, setShowEditStep1Modal] = useState(false);
+  const [editingReservation, setEditingReservation] = useState<Reservation | null>(null);
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
+  const [selectedTimeForEdit, setSelectedTimeForEdit] = useState<string>('');
+
   // 2단계 예약 플로우 상태
   const [showStep1Modal, setShowStep1Modal] = useState(false);
   const [reservationDraft, setReservationDraft] = useState<ReservationDraft | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [selectedTimeForConfirm, setSelectedTimeForConfirm] = useState<string>('');
+
+  // 설정 모달 상태
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  // 현장예약 데이터
+  const [onSiteData, setOnSiteData] = useState<OnSiteReservationCount | null>(null);
+
+  // 현장예약 데이터 로드
+  useEffect(() => {
+    const loadOnSiteData = async () => {
+      try {
+        const data = await fetchOnSiteReservationCount(selectedDate);
+        setOnSiteData(data);
+      } catch (err) {
+        console.error('현장예약 데이터 조회 실패:', err);
+        setOnSiteData(null);
+      }
+    };
+    loadOnSiteData();
+  }, [selectedDate, reservations]); // reservations 변경 시에도 새로고침
 
   // URL 파라미터에서 환자 정보 읽기 (2단계 플로우로 시작)
   useEffect(() => {
@@ -168,6 +209,53 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
     setInitialDetails('');
   };
 
+  // === 2단계 예약 수정 플로우 핸들러 ===
+  const handleEditStep1Next = (draft: EditDraft) => {
+    setEditDraft(draft);
+    setShowEditStep1Modal(false);
+    // 원래 예약 날짜로 이동
+    goToDate(draft.originalDate);
+    // 자동으로 일별 뷰로 전환
+    setViewType('day');
+  };
+
+  const handleEditStep1Close = () => {
+    setShowEditStep1Modal(false);
+    setEditDraft(null);
+    setEditingReservation(null);
+  };
+
+  const handleSelectTimeSlotForEdit = (time: string) => {
+    setSelectedTimeForEdit(time);
+    setShowEditConfirmModal(true);
+  };
+
+  const handleEditConfirmBack = () => {
+    setShowEditConfirmModal(false);
+    setSelectedTimeForEdit('');
+    // 캘린더 뷰로 돌아감 (editDraft는 유지)
+  };
+
+  const handleEditConfirmClose = () => {
+    setShowEditConfirmModal(false);
+    setSelectedTimeForEdit('');
+    setEditDraft(null);
+    setEditingReservation(null);
+  };
+
+  const handleEditConfirm = async (id: number, data: UpdateReservationRequest) => {
+    await updateReservation(id, data);
+    loadReservations();
+    setEditDraft(null);
+    setEditingReservation(null);
+  };
+
+  // 수정 모드 취소 버튼 핸들러
+  const handleCancelEditMode = () => {
+    setEditDraft(null);
+    setEditingReservation(null);
+  };
+
   return (
     <div className="h-screen flex flex-col bg-gray-100">
       {/* 헤더 */}
@@ -180,6 +268,13 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
             <h1 className="text-xl font-bold">예약 관리</h1>
           </div>
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              title="설정"
+            >
+              <i className="fa-solid fa-gear"></i>
+            </button>
             <button
               onClick={loadReservations}
               className="p-2 hover:bg-white/20 rounded-lg transition-colors"
@@ -204,6 +299,7 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
         viewType={viewType}
         doctors={doctors}
         selectedDoctor={selectedDoctor}
+        reservations={reservations}
         onViewTypeChange={setViewType}
         onDoctorChange={setSelectedDoctor}
         onPrevious={goToPrevious}
@@ -261,6 +357,41 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
         </div>
       )}
 
+      {/* 수정 모드 배너 */}
+      {editDraft && (
+        <div className="bg-blue-600 text-white px-6 py-3 flex items-center justify-between shadow-md">
+          <div className="flex items-center gap-4">
+            <i className="fa-solid fa-pen-to-square text-xl"></i>
+            <div>
+              <p className="font-bold">
+                예약 수정 중: {editDraft.patientName}
+              </p>
+              <p className="text-sm text-blue-100">
+                {editDraft.doctor} | {editDraft.selectedItems.join(', ')} ({editDraft.requiredSlots}칸)
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setShowEditStep1Modal(true);
+              }}
+              className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm"
+            >
+              <i className="fa-solid fa-edit mr-1"></i>
+              내용 수정
+            </button>
+            <button
+              onClick={handleCancelEditMode}
+              className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm"
+            >
+              <i className="fa-solid fa-times mr-1"></i>
+              취소
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 캘린더 뷰 */}
       {!isLoading && !error && (
         <>
@@ -273,6 +404,11 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
               onTimeSlotClick={handleTimeSlotClick}
               reservationDraft={reservationDraft}
               onSelectTimeSlot={handleSelectTimeSlot}
+              editDraft={editDraft}
+              onSelectTimeSlotForEdit={handleSelectTimeSlotForEdit}
+              treatmentItems={reservationSettings.treatmentItems}
+              maxSlots={reservationSettings.maxSlotsPerReservation}
+              onSiteData={onSiteData}
             />
           )}
 
@@ -301,13 +437,34 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
           reservation={selectedReservation}
           onClose={() => setSelectedReservation(null)}
           onEdit={() => {
-            // TODO: 수정 모달 열기
-            alert('수정 기능은 준비 중입니다.');
+            setEditingReservation(selectedReservation);
+            setShowEditStep1Modal(true);
+            setSelectedReservation(null);
           }}
           onCancel={handleCancelReservation}
           onMarkVisited={handleMarkVisited}
         />
       )}
+
+      {/* 2단계 예약 수정 플로우: Step1 모달 */}
+      <ReservationEditStep1Modal
+        isOpen={showEditStep1Modal}
+        reservation={editingReservation}
+        doctors={doctors}
+        onClose={handleEditStep1Close}
+        onNext={handleEditStep1Next}
+      />
+
+      {/* 2단계 예약 수정 플로우: 확인 모달 */}
+      <ReservationEditConfirmModal
+        isOpen={showEditConfirmModal}
+        onClose={handleEditConfirmClose}
+        onConfirm={handleEditConfirm}
+        onBack={handleEditConfirmBack}
+        draft={editDraft}
+        selectedDate={selectedDate}
+        selectedTime={selectedTimeForEdit}
+      />
 
       {/* 새 예약 모달 (기존 - 빠른 예약용) */}
       <NewReservationModal
@@ -350,6 +507,14 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
         draft={reservationDraft}
         selectedDate={selectedDate}
         selectedTime={selectedTimeForConfirm}
+      />
+
+      {/* 설정 모달 */}
+      <ReservationSettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        settings={reservationSettings}
+        onSave={saveReservationSettings}
       />
     </div>
   );

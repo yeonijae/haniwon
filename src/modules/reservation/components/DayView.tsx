@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import type { Reservation, Doctor } from '../types';
+import type { Reservation, Doctor, TreatmentItem } from '../types';
 import type { ReservationDraft } from './ReservationStep1Modal';
+import type { EditDraft } from './ReservationEditStep1Modal';
+import type { OnSiteReservationCount } from '../lib/api';
 
 interface DayViewProps {
   date: string;
@@ -11,6 +13,14 @@ interface DayViewProps {
   // 2단계 예약 모드 props
   reservationDraft?: ReservationDraft | null;
   onSelectTimeSlot?: (time: string) => void;
+  // 2단계 예약 수정 모드 props
+  editDraft?: EditDraft | null;
+  onSelectTimeSlotForEdit?: (time: string) => void;
+  // 설정 데이터
+  treatmentItems?: TreatmentItem[];
+  maxSlots?: number;
+  // 현장예약 데이터
+  onSiteData?: OnSiteReservationCount | null;
 }
 
 // 30분 단위 시간 슬롯 생성 (09:30 ~ 20:30)
@@ -36,6 +46,20 @@ const TIME_SLOTS = generateTimeSlots();
 // 슬롯 용량 상수 (30분당 침환자 6명 = 5분씩)
 const SLOT_CAPACITY = 6;
 
+// 전화상담 여부 확인
+const isPhoneConsultation = (reservation: Reservation): boolean => {
+  const item = reservation.item?.toLowerCase() || '';
+  const type = reservation.type?.toLowerCase() || '';
+
+  // type에 '전화' 포함
+  if (type.includes('전화')) return true;
+
+  // item에 '전화' 포함 (약재진(전화) 등)
+  if (item.includes('전화')) return true;
+
+  return false;
+};
+
 // 예약 표시 텍스트 생성 (재초진의 경우 "재초진료,침" 형태로 표시)
 const getDisplayText = (reservation: Reservation): string => {
   const item = reservation.item?.toLowerCase() || '';
@@ -53,110 +77,119 @@ const getDisplayText = (reservation: Reservation): string => {
   return reservation.item || reservation.type || '';
 };
 
-// 예약 타입별 슬롯 사용량 (침환자 기준)
-// 30분 = 6칸, 5분 = 1칸
-const getSlotUsage = (reservation: Reservation): number => {
-  const item = reservation.item?.toLowerCase() || '';
-  const type = reservation.type?.toLowerCase() || ''; // Res_Gubun (구분)
+// 설정 기반 슬롯 사용량 계산
+const createSlotCalculator = (treatmentItems?: TreatmentItem[], maxSlots: number = SLOT_CAPACITY) => {
+  // 설정에서 항목 찾기 (이름으로 매칭)
+  const findItemByName = (name: string): TreatmentItem | undefined => {
+    if (!treatmentItems) return undefined;
+    const lowerName = name.toLowerCase();
+    return treatmentItems.find(item =>
+      item.isActive && item.name.toLowerCase() === lowerName
+    );
+  };
 
-  // 취소된 예약은 슬롯을 차지하지 않음
-  if (reservation.canceled) return 0;
+  // 부분 매칭으로 항목 찾기 (포함 관계)
+  const findItemByPartialMatch = (name: string): TreatmentItem | undefined => {
+    if (!treatmentItems) return undefined;
+    const lowerName = name.toLowerCase();
+    return treatmentItems.find(item =>
+      item.isActive && (
+        item.name.toLowerCase().includes(lowerName) ||
+        lowerName.includes(item.name.toLowerCase())
+      )
+    );
+  };
 
-  // === 약상담 (신규/초진) = 6칸 ===
-  // item 기준: 신규약상담
-  if (item.includes('신규') && (item.includes('약') || item.includes('상담'))) {
-    return 6;
-  }
-  // item 기준: 약초진
-  if (item.includes('약초진')) {
-    return 6;
-  }
-  // type(구분) 기준: 약초진, 초진 + 한약 관련 item
-  if (type.includes('약초진')) {
-    return 6;
-  }
-  if ((type === '초진' || type === '초진예약') &&
-      (item.includes('약') || item.includes('상담') || item.includes('한약'))) {
-    return 6;
-  }
+  return (reservation: Reservation): number => {
+    const itemStr = reservation.item || '';
+    const type = reservation.type?.toLowerCase() || '';
 
-  // === 약상담 (재진) - 전화상담 vs 내원상담 구분 ===
-  const isYakReJin = item.includes('약재진') || item.includes('선결') ||
-    (item.includes('재진') && (item.includes('약') || item.includes('상담'))) ||
-    type.includes('약재진') ||
-    (type === '재진' && (item.includes('약') || item.includes('상담') || item.includes('한약')));
+    // 취소된 예약은 슬롯을 차지하지 않음
+    if (reservation.canceled) return 0;
 
-  if (isYakReJin) {
-    // 전화상담 = 1칸
-    if (type.includes('전화상담')) {
-      return 1;
-    }
-    // 내원상담 = 3칸 (기본)
-    return 3;
-  }
+    // 복합 진료 계산: 쉼표나 +로 구분된 항목들
+    const items = itemStr.split(/[,+\/]/).map(s => s.trim()).filter(s => s);
 
-  // 선결 (전화/내원 구분)
-  if (item.includes('선결')) {
-    if (type.includes('전화상담')) {
-      return 1;
-    }
-    return 3;
-  }
-
-  // === 재초진 = 2칸 (기본 1칸 + 추가 1칸) ===
-  // item 또는 type에 '재초' 포함
-  if (item.includes('재초') || type.includes('재초')) {
-    return 2;
-  }
-
-  // 복합 진료 계산: 쉼표나 +로 구분된 항목들의 슬롯 합산
-  // 예: "침,추나" = 침(1) + 추나(1) = 2칸
-  let totalSlots = 0;
-  const items = item.split(/[,+\/]/).map(s => s.trim()).filter(s => s);
-
-  if (items.length > 1) {
-    items.forEach(singleItem => {
-      if (singleItem.includes('재초')) {
-        totalSlots += 2; // 재초진은 2칸
-      } else if (singleItem.includes('약재진') || singleItem.includes('선결')) {
-        // 복합에서 약재진/선결은 전화상담이면 1칸, 아니면 3칸
-        totalSlots += type.includes('전화상담') ? 1 : 3;
-      } else if (singleItem.includes('추나')) {
-        totalSlots += 1;
-      } else if (singleItem.includes('침') || singleItem.includes('acupuncture')) {
-        totalSlots += 1;
-      } else if (singleItem.includes('부항')) {
-        totalSlots += 1;
-      } else if (singleItem.includes('뜸')) {
-        totalSlots += 1;
-      } else if (singleItem.includes('약침')) {
-        totalSlots += 1;
-      } else {
-        // 기타 항목도 1칸
+    if (items.length > 1) {
+      // 복합 진료
+      let totalSlots = 0;
+      items.forEach(singleItem => {
+        // 설정에서 정확히 매칭되는 항목 찾기
+        const configItem = findItemByName(singleItem);
+        if (configItem) {
+          totalSlots += configItem.slotsInCompound ?? configItem.slots;
+        } else {
+          // 설정에 없으면 기존 하드코딩 로직 사용
+          totalSlots += getFallbackSlots(singleItem, type, true);
+        }
+      });
+      // type(구분)이 재초이면 추가 1칸
+      if (type.includes('재초')) {
         totalSlots += 1;
       }
-    });
-    // type(구분)이 재초이면 추가 1칸
-    if (type.includes('재초')) {
-      totalSlots += 1;
+      return Math.min(totalSlots, maxSlots);
     }
-    return Math.min(totalSlots, SLOT_CAPACITY); // 최대 6칸
+
+    // 단일 항목
+    const singleItem = items[0] || itemStr;
+
+    // 설정에서 정확히 매칭되는 항목 찾기
+    const configItem = findItemByName(singleItem);
+    if (configItem) {
+      return configItem.slots;
+    }
+
+    // 부분 매칭 시도
+    const partialMatch = findItemByPartialMatch(singleItem);
+    if (partialMatch) {
+      return partialMatch.slots;
+    }
+
+    // 설정에 없으면 기존 하드코딩 로직
+    return getFallbackSlots(singleItem, type, false);
+  };
+};
+
+// 기존 하드코딩 로직 (설정에 없는 항목용)
+const getFallbackSlots = (item: string, type: string, isCompound: boolean): number => {
+  const lowerItem = item.toLowerCase();
+
+  // 재초진
+  if (lowerItem.includes('재초')) {
+    return isCompound ? 1 : 2;
   }
 
-  // 단일 항목 처리
-  // 추나 = 1칸
-  if (item.includes('추나')) {
+  // 신규약상담, 약초진 = 6칸
+  if (lowerItem.includes('신규약상담') || lowerItem.includes('약초진')) {
+    return 6;
+  }
+
+  // 약재진
+  if (lowerItem.includes('약재진')) {
+    if (lowerItem.includes('내원')) return 3;
+    if (lowerItem.includes('전화')) return 1;
+    return type.includes('전화상담') ? 1 : 3;
+  }
+
+  // 선결
+  if (lowerItem.includes('선결')) {
+    if (lowerItem.includes('전화')) return 1;
+    return type.includes('전화상담') ? 1 : 3;
+  }
+
+  // 기본 치료 항목들
+  if (lowerItem.includes('침') || lowerItem.includes('추나') ||
+      lowerItem.includes('부항') || lowerItem.includes('뜸') ||
+      lowerItem.includes('약침')) {
     return 1;
   }
 
-  // 침 = 1칸
-  if (item.includes('침') || item.includes('acupuncture')) {
-    return 1;
-  }
-
-  // 기본값: 1칸
+  // 기본값
   return 1;
 };
+
+// 기존 함수 (설정 없이 사용할 때)
+const getSlotUsage = createSlotCalculator();
 
 // 예약 타입에 따른 색상 반환
 const getReservationColors = (reservation: Reservation): {
@@ -280,6 +313,11 @@ export const DayView: React.FC<DayViewProps> = ({
   onTimeSlotClick,
   reservationDraft,
   onSelectTimeSlot,
+  editDraft,
+  onSelectTimeSlotForEdit,
+  treatmentItems,
+  maxSlots = SLOT_CAPACITY,
+  onSiteData,
 }) => {
   // 호버 툴팁 상태
   const [hoveredReservation, setHoveredReservation] = useState<{
@@ -291,8 +329,22 @@ export const DayView: React.FC<DayViewProps> = ({
   // 호버 중인 시간 슬롯 (예약 모드에서 사용)
   const [hoveredTimeSlot, setHoveredTimeSlot] = useState<string | null>(null);
 
-  // 예약 모드인지 확인
+  // 설정 기반 슬롯 계산기 생성
+  const calculateSlots = useMemo(
+    () => createSlotCalculator(treatmentItems, maxSlots),
+    [treatmentItems, maxSlots]
+  );
+
+  // 예약 모드인지 확인 (신규 예약 또는 수정 모드)
   const isReservationMode = !!reservationDraft;
+  const isEditMode = !!editDraft;
+  const isSelectionMode = isReservationMode || isEditMode;
+
+  // 현재 선택 모드의 draft 정보
+  const currentDraft = reservationDraft || editDraft;
+  const currentDoctor = reservationDraft?.doctor || editDraft?.doctor;
+  const currentRequiredSlots = reservationDraft?.requiredSlots || editDraft?.requiredSlots || 1;
+  const currentDoctorColor = reservationDraft?.doctorColor || editDraft?.doctorColor;
 
   // 의사별, 시간별로 예약 그룹화
   const reservationsByDoctorAndTime = useMemo(() => {
@@ -340,20 +392,45 @@ export const DayView: React.FC<DayViewProps> = ({
       const roundedTime = `${hour.toString().padStart(2, '0')}:${roundedMin}`;
 
       if (usage[res.doctor][roundedTime] !== undefined) {
-        usage[res.doctor][roundedTime] += getSlotUsage(res);
+        usage[res.doctor][roundedTime] += calculateSlots(res);
       }
     });
 
     return usage;
-  }, [reservations, doctors]);
+  }, [reservations, doctors, calculateSlots]);
 
-  // 예약 모드에서 호버 시 슬롯 배치 가능 여부 및 프리뷰 계산
+  // 원장별 통계 계산
+  const doctorStats = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const isPastDate = date < today;
+
+    const stats: Record<string, { total: number; visited: number; canceled: number; noShow: number; onSiteReservation: number }> = {};
+
+    doctors.forEach(doc => {
+      const docReservations = reservations.filter(r => r.doctor === doc.name);
+      const total = docReservations.length;
+      const visited = docReservations.filter(r => r.visited && !r.canceled).length;
+      const canceled = docReservations.filter(r => r.canceled).length;
+      const noShow = isPastDate
+        ? docReservations.filter(r => !r.visited && !r.canceled).length
+        : 0;
+
+      // 현장예약 카운트 (API 데이터 사용)
+      const onSiteReservation = onSiteData?.by_doctor?.[doc.name]?.on_site_count || 0;
+
+      stats[doc.name] = { total, visited, canceled, noShow, onSiteReservation };
+    });
+
+    return stats;
+  }, [reservations, doctors, date, onSiteData]);
+
+  // 예약/수정 모드에서 호버 시 슬롯 배치 가능 여부 및 프리뷰 계산
   const getSlotPreview = (time: string) => {
-    if (!reservationDraft || !hoveredTimeSlot) return null;
+    if (!currentDraft || !hoveredTimeSlot) return null;
     if (time !== hoveredTimeSlot) return null;
 
-    const doctor = reservationDraft.doctor;
-    const requiredSlots = reservationDraft.requiredSlots;
+    const doctor = currentDoctor!;
+    const requiredSlots = currentRequiredSlots;
     const currentUsed = slotUsageByDoctorAndTime[doctor]?.[time] || 0;
     const remainingInCurrent = SLOT_CAPACITY - currentUsed;
 
@@ -424,7 +501,7 @@ export const DayView: React.FC<DayViewProps> = ({
 
   // 다음 슬롯 프리뷰 (넘침 표시용)
   const getNextSlotPreview = (time: string) => {
-    if (!reservationDraft || !hoveredTimeSlot) return null;
+    if (!currentDraft || !hoveredTimeSlot) return null;
 
     const timeIndex = TIME_SLOTS.indexOf(hoveredTimeSlot);
     const nextTime = timeIndex < TIME_SLOTS.length - 1 ? TIME_SLOTS[timeIndex + 1] : null;
@@ -461,25 +538,48 @@ export const DayView: React.FC<DayViewProps> = ({
           style={{ gridTemplateColumns: `minmax(80px, auto) repeat(${doctors.length}, minmax(0, 1fr))` }}
         >
           <div className="p-3 text-center border-r border-b text-gray-700">시간</div>
-          {doctors.map((doctor) => (
-            <div
-              key={doctor.id}
-              className={`p-3 text-center border-r border-b last:border-r-0 ${
-                doctor.isWorking === false ? 'bg-gray-200 text-gray-400' : 'text-gray-700'
-              }`}
-            >
-              <div className="flex items-center justify-center gap-2">
-                <span
-                  className={`w-3 h-3 rounded-full ${doctor.isWorking === false ? 'opacity-40' : ''}`}
-                  style={{ backgroundColor: doctor.color }}
-                ></span>
-                <span>{doctor.name}</span>
-                {doctor.isWorking === false && (
-                  <span className="text-[10px] text-gray-400">(휴무)</span>
+          {doctors.map((doctor) => {
+            const stats = doctorStats[doctor.name] || { total: 0, visited: 0, canceled: 0, noShow: 0, onSiteReservation: 0 };
+            const today = new Date().toISOString().split('T')[0];
+            const isPastDate = date < today;
+            const pending = stats.total - stats.visited - stats.canceled - stats.noShow;
+
+            return (
+              <div
+                key={doctor.id}
+                className={`p-2 text-center border-r border-b last:border-r-0 ${
+                  doctor.isWorking === false ? 'bg-gray-200 text-gray-400' : 'text-gray-700'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <span
+                    className={`w-3 h-3 rounded-full ${doctor.isWorking === false ? 'opacity-40' : ''}`}
+                    style={{ backgroundColor: doctor.color }}
+                  ></span>
+                  <span className="font-semibold">{doctor.name}</span>
+                  {doctor.isWorking === false && (
+                    <span className="text-[10px] text-gray-400">(휴무)</span>
+                  )}
+                </div>
+                {/* 원장별 통계 */}
+                {stats.total > 0 && (
+                  <div className="flex items-center justify-center gap-1.5 mt-1 text-[10px] font-normal">
+                    <span className="text-gray-500" title="총 예약">{stats.total}</span>
+                    <span className="text-green-600" title="내원">{stats.visited}</span>
+                    <span className="text-orange-500" title="취소">{stats.canceled}</span>
+                    {stats.noShow > 0 && <span className="text-red-500" title="노쇼">{stats.noShow}</span>}
+                    {!isPastDate && pending > 0 && <span className="text-blue-500" title="대기">{pending}</span>}
+                    {stats.visited > 0 && (
+                      <span className="text-purple-600 border-l border-gray-300 pl-1.5 ml-0.5" title="현장예약">
+                        <i className="fa-solid fa-calendar-plus mr-0.5"></i>
+                        {stats.onSiteReservation}/{stats.visited}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* 시간 슬롯 */}
@@ -505,9 +605,9 @@ export const DayView: React.FC<DayViewProps> = ({
                   const slotReservations = reservationsByDoctorAndTime[doctor.name]?.[time] || [];
                   const isNotWorking = doctor.isWorking === false;
 
-                  // 예약 모드에서 선택한 의사가 아닌 경우 비활성화 표시
-                  const isTargetDoctor = isReservationMode && reservationDraft?.doctor === doctor.name;
-                  const isOtherDoctorInReservationMode = isReservationMode && reservationDraft?.doctor !== doctor.name;
+                  // 예약/수정 모드에서 선택한 의사가 아닌 경우 비활성화 표시
+                  const isTargetDoctor = isSelectionMode && currentDoctor === doctor.name;
+                  const isOtherDoctorInSelectionMode = isSelectionMode && currentDoctor !== doctor.name;
 
                   // 6칸 그리드에 예약 배치 (슬롯 사용량에 따라)
                   const cellContent: { startIndex: number; span: number; reservation: Reservation }[] = [];
@@ -515,7 +615,7 @@ export const DayView: React.FC<DayViewProps> = ({
                   let totalUsage = 0;
 
                   slotReservations.forEach(res => {
-                    const usage = getSlotUsage(res);
+                    const usage = calculateSlots(res);
                     if (currentCell + usage <= SLOT_CAPACITY) {
                       cellContent.push({
                         startIndex: currentCell,
@@ -539,7 +639,7 @@ export const DayView: React.FC<DayViewProps> = ({
                       key={doctor.id}
                       className={`grid grid-cols-6 border-r last:border-r-0 group relative ${
                         isNotWorking ? 'bg-gray-100' : ''
-                      } ${isOtherDoctorInReservationMode ? 'bg-gray-50 opacity-40' : ''}`}
+                      } ${isOtherDoctorInSelectionMode ? 'bg-gray-50 opacity-40' : ''}`}
                       onMouseEnter={() => {
                         if (isTargetDoctor && !isFull) {
                           setHoveredTimeSlot(time);
@@ -551,24 +651,31 @@ export const DayView: React.FC<DayViewProps> = ({
                         }
                       }}
                     >
-                      {/* 클릭 가능한 빈 영역 - 근무하는 의사만, 예약 모드에서는 선택 의사만 */}
-                      {!isFull && !isNotWorking && !isOtherDoctorInReservationMode && (
+                      {/* 클릭 가능한 빈 영역 - 근무하는 의사만, 선택 모드에서는 선택 의사만 */}
+                      {!isFull && !isNotWorking && !isOtherDoctorInSelectionMode && (
                         <button
                           onClick={() => {
-                            if (isReservationMode && onSelectTimeSlot && slotPreview?.canBook) {
-                              onSelectTimeSlot(time);
-                            } else if (!isReservationMode) {
+                            if (isSelectionMode && slotPreview?.canBook) {
+                              // 신규 예약 모드
+                              if (isReservationMode && onSelectTimeSlot) {
+                                onSelectTimeSlot(time);
+                              }
+                              // 수정 모드
+                              if (isEditMode && onSelectTimeSlotForEdit) {
+                                onSelectTimeSlotForEdit(time);
+                              }
+                            } else if (!isSelectionMode) {
                               onTimeSlotClick(time, doctor.name);
                             }
                           }}
                           className={`absolute inset-0 transition-colors duration-150 z-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-clinic-secondary ${
-                            isReservationMode
+                            isSelectionMode
                               ? slotPreview?.canBook
                                 ? 'cursor-pointer'
                                 : 'cursor-not-allowed'
                               : 'group-hover:bg-blue-50'
                           }`}
-                          aria-label={`새 예약 추가: ${doctor.name}, ${time}`}
+                          aria-label={`${isEditMode ? '예약 시간 변경' : '새 예약 추가'}: ${doctor.name}, ${time}`}
                         ></button>
                       )}
 
@@ -593,15 +700,15 @@ export const DayView: React.FC<DayViewProps> = ({
                               top: '2px',
                               bottom: '2px',
                             }}
-                            className={`${colors.bg} border ${colors.border} flex flex-col justify-center px-1.5 py-1 text-xs overflow-hidden z-10 cursor-pointer rounded-md hover:ring-2 hover:ring-offset-1 hover:ring-clinic-primary transition-shadow`}
+                            className={`${colors.bg} border ${colors.border} flex flex-col justify-center px-1.5 py-1 text-xs overflow-hidden z-10 cursor-pointer rounded-md hover:ring-2 hover:ring-offset-1 hover:ring-clinic-primary transition-shadow ${reservation.canceled ? 'opacity-70' : ''}`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (!isReservationMode) {
+                              if (!isSelectionMode) {
                                 onReservationClick(reservation);
                               }
                             }}
                             onMouseEnter={(e) => {
-                              if (!isReservationMode) {
+                              if (!isSelectionMode) {
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 setHoveredReservation({
                                   reservation,
@@ -610,19 +717,30 @@ export const DayView: React.FC<DayViewProps> = ({
                                 });
                               }
                             }}
-                            onMouseLeave={() => !isReservationMode && setHoveredReservation(null)}
+                            onMouseLeave={() => !isSelectionMode && setHoveredReservation(null)}
                           >
+                            {/* 취소 표시 */}
+                            {reservation.canceled && (
+                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded transform -rotate-12 shadow-sm">
+                                  취소
+                                </span>
+                              </div>
+                            )}
                             <p className={`font-bold ${colors.textPrimary} truncate ${reservation.canceled ? 'line-through' : ''}`}>
                               {reservation.patientName}
                             </p>
-                            <p className={`${colors.textSecondary} text-[10px] truncate ${reservation.canceled ? 'line-through' : ''}`}>
+                            <p className={`${colors.textSecondary} text-[10px] truncate ${reservation.canceled ? 'line-through' : ''} flex items-center gap-1`}>
+                              {isPhoneConsultation(reservation) && (
+                                <i className="fa-solid fa-phone" title="전화상담"></i>
+                              )}
                               {getDisplayText(reservation)}
                             </p>
                           </div>
                         );
                       })}
 
-                      {/* 예약 모드: 호버 프리뷰 (현재 슬롯) */}
+                      {/* 예약/수정 모드: 호버 프리뷰 (현재 슬롯) */}
                       {slotPreview && slotPreview.currentSlotEnd > slotPreview.currentSlotStart && (
                         <div
                           style={{
@@ -634,16 +752,20 @@ export const DayView: React.FC<DayViewProps> = ({
                           }}
                           className={`z-20 rounded-md border-2 border-dashed flex flex-col justify-center items-center text-xs font-medium pointer-events-none ${
                             slotPreview.canBook
-                              ? 'bg-green-100/80 border-green-500 text-green-700'
+                              ? isEditMode
+                                ? 'bg-blue-100/80 border-blue-500 text-blue-700'
+                                : 'bg-green-100/80 border-green-500 text-green-700'
                               : 'bg-red-100/80 border-red-500 text-red-700'
                           }`}
                         >
-                          <span className="truncate px-1">{reservationDraft?.patient.name}</span>
+                          <span className="truncate px-1">
+                            {reservationDraft?.patient.name || editDraft?.patientName}
+                          </span>
                           <span className="text-[10px]">{slotPreview.message}</span>
                         </div>
                       )}
 
-                      {/* 예약 모드: 다음 슬롯 넘침 프리뷰 */}
+                      {/* 예약/수정 모드: 다음 슬롯 넘침 프리뷰 */}
                       {nextSlotPreview && (
                         <div
                           style={{
@@ -655,7 +777,9 @@ export const DayView: React.FC<DayViewProps> = ({
                           }}
                           className={`z-20 rounded-md border-2 border-dashed flex items-center justify-center text-xs pointer-events-none ${
                             nextSlotPreview.canBook
-                              ? 'bg-green-100/60 border-green-400 text-green-600'
+                              ? isEditMode
+                                ? 'bg-blue-100/60 border-blue-400 text-blue-600'
+                                : 'bg-green-100/60 border-green-400 text-green-600'
                               : 'bg-red-100/60 border-red-400 text-red-600'
                           }`}
                         >
@@ -683,13 +807,19 @@ export const DayView: React.FC<DayViewProps> = ({
           }}
         >
           <div className="flex flex-col gap-1">
-            <div className="font-bold text-base border-b border-gray-700 pb-1 mb-1">
+            <div className="font-bold text-base border-b border-gray-700 pb-1 mb-1 flex items-center gap-2">
+              {isPhoneConsultation(hoveredReservation.reservation) && (
+                <i className="fa-solid fa-phone text-blue-400" title="전화상담"></i>
+              )}
               {hoveredReservation.reservation.patientName}
               {hoveredReservation.reservation.canceled && (
                 <span className="ml-2 text-red-400 text-xs">(취소됨)</span>
               )}
               {hoveredReservation.reservation.visited && (
                 <span className="ml-2 text-green-400 text-xs">(내원완료)</span>
+              )}
+              {isPhoneConsultation(hoveredReservation.reservation) && (
+                <span className="text-blue-400 text-xs">(전화상담)</span>
               )}
             </div>
             <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">

@@ -222,8 +222,29 @@ export const ReservationStep1Modal: React.FC<ReservationStep1ModalProps> = ({
   };
 
   // 선택된 진료 항목들의 총 슬롯 사용량
+  // DayView의 getSlotUsage와 동일한 로직 적용
   const requiredSlots = useMemo(() => {
-    return selectedItems.reduce((total, item) => total + (ITEM_SLOT_USAGE[item] || 1), 0);
+    // 복합 진료인 경우 (2개 이상 선택)
+    if (selectedItems.length > 1) {
+      let totalSlots = 0;
+      selectedItems.forEach(item => {
+        if (item.includes('재초')) {
+          totalSlots += 1; // 재초진은 복합에서 1칸
+        } else if (item.includes('약재진') && item.includes('내원')) {
+          totalSlots += 3;
+        } else if (item.includes('약재진') && item.includes('전화')) {
+          totalSlots += 1;
+        } else if (item.includes('신규약상담') || item.includes('약초진')) {
+          totalSlots += 6;
+        } else {
+          totalSlots += 1; // 침, 추나, 부항, 뜸, 약침 등
+        }
+      });
+      return Math.min(totalSlots, 6); // 최대 6칸
+    }
+
+    // 단일 항목인 경우
+    return ITEM_SLOT_USAGE[selectedItems[0]] || 1;
   }, [selectedItems]);
 
   // 선택한 의사의 색상

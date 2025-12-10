@@ -5,6 +5,11 @@ interface DailyPaymentSummaryProps {
     // props 비워둠 - MSSQL에서 직접 조회
 }
 
+// 금액을 정수로 포맷 (소수점 제거)
+const formatMoney = (amount: number | null | undefined): string => {
+    return Math.floor(amount || 0).toLocaleString();
+};
+
 // 종별 배지 색상
 const getInsuranceTypeBadge = (type: string) => {
     switch (type) {
@@ -149,31 +154,31 @@ const DailyPaymentSummary: React.FC<DailyPaymentSummaryProps> = () => {
                 </div>
                 <div className="bg-white p-3 rounded-lg shadow-sm border-l-4 border-blue-900">
                     <p className="text-xs font-medium text-gray-500">총 매출</p>
-                    <p className="text-xl font-bold text-blue-900 mt-1">{summary.total_amount.toLocaleString()}원</p>
+                    <p className="text-xl font-bold text-blue-900 mt-1">{formatMoney(summary.total_amount)}원</p>
                 </div>
                 <div className="bg-white p-3 rounded-lg shadow-sm border-l-4 border-sky-600">
                     <p className="text-xs font-medium text-gray-500">본인부담</p>
-                    <p className="text-xl font-bold text-sky-600 mt-1">{summary.insurance_self.toLocaleString()}원</p>
+                    <p className="text-xl font-bold text-sky-600 mt-1">{formatMoney(summary.insurance_self)}원</p>
                 </div>
                 <div className="bg-white p-3 rounded-lg shadow-sm border-l-4 border-green-600">
                     <p className="text-xs font-medium text-gray-500">비급여</p>
-                    <p className="text-xl font-bold text-green-600 mt-1">{summary.general_amount.toLocaleString()}원</p>
+                    <p className="text-xl font-bold text-green-600 mt-1">{formatMoney(summary.general_amount)}원</p>
                 </div>
                 <div className="bg-white p-3 rounded-lg shadow-sm border-l-4 border-purple-600">
                     <p className="text-xs font-medium text-gray-500">카드</p>
-                    <p className="text-xl font-bold text-purple-600 mt-1">{summary.card.toLocaleString()}원</p>
+                    <p className="text-xl font-bold text-purple-600 mt-1">{formatMoney(summary.card)}원</p>
                 </div>
                 <div className="bg-white p-3 rounded-lg shadow-sm border-l-4 border-orange-600">
                     <p className="text-xs font-medium text-gray-500">현금</p>
-                    <p className="text-xl font-bold text-orange-600 mt-1">{summary.cash.toLocaleString()}원</p>
+                    <p className="text-xl font-bold text-orange-600 mt-1">{formatMoney(summary.cash)}원</p>
                 </div>
                 <div className="bg-white p-3 rounded-lg shadow-sm border-l-4 border-teal-600">
                     <p className="text-xs font-medium text-gray-500">계좌이체</p>
-                    <p className="text-xl font-bold text-teal-600 mt-1">{summary.transfer.toLocaleString()}원</p>
+                    <p className="text-xl font-bold text-teal-600 mt-1">{formatMoney(summary.transfer)}원</p>
                 </div>
                 <div className="bg-white p-3 rounded-lg shadow-sm border-l-4 border-red-600">
                     <p className="text-xs font-medium text-gray-500">미수금</p>
-                    <p className="text-xl font-bold text-red-600 mt-1">{summary.unpaid.toLocaleString()}원</p>
+                    <p className="text-xl font-bold text-red-600 mt-1">{formatMoney(summary.unpaid)}원</p>
                 </div>
             </div>
 
@@ -234,16 +239,16 @@ const DailyPaymentSummary: React.FC<DailyPaymentSummaryProps> = () => {
                                             {getTreatmentSummaryText(receipt)}
                                         </div>
                                         <div className="col-span-1 text-right text-sm text-gray-900">
-                                            {receipt.insurance_self.toLocaleString()}원
+                                            {formatMoney(receipt.insurance_self)}원
                                         </div>
                                         <div className="col-span-1 text-right text-sm text-gray-900">
-                                            {receipt.general_amount.toLocaleString()}원
+                                            {formatMoney(receipt.general_amount)}원
                                         </div>
                                         <div className="col-span-1 text-right text-sm font-semibold text-gray-900">
-                                            {receipt.total_amount.toLocaleString()}원
+                                            {formatMoney(receipt.total_amount)}원
                                         </div>
                                         <div className={`col-span-1 text-right text-sm font-bold ${(receipt.unpaid || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                                            {(receipt.unpaid || 0).toLocaleString()}원
+                                            {formatMoney(receipt.unpaid)}원
                                         </div>
                                         <div className="col-span-1 text-center">
                                             {(receipt.package_info || receipt.memo) ? (
@@ -273,7 +278,7 @@ const DailyPaymentSummary: React.FC<DailyPaymentSummaryProps> = () => {
                                                                         <span className="font-medium">{t.name || t.item}</span>
                                                                         {t.doctor && <span className="text-gray-500 ml-2">({t.doctor})</span>}
                                                                     </div>
-                                                                    <span className="font-semibold">{t.amount.toLocaleString()}원</span>
+                                                                    <span className="font-semibold">{formatMoney(t.amount)}원</span>
                                                                 </div>
                                                             ))}
                                                         </div>
@@ -290,17 +295,17 @@ const DailyPaymentSummary: React.FC<DailyPaymentSummaryProps> = () => {
                                                         <div className="flex gap-3 text-sm">
                                                             {receipt.card > 0 && (
                                                                 <div className="bg-purple-50 px-2 py-1 rounded">
-                                                                    <span className="text-purple-600 font-medium">카드:</span> {receipt.card.toLocaleString()}원
+                                                                    <span className="text-purple-600 font-medium">카드:</span> {formatMoney(receipt.card)}원
                                                                 </div>
                                                             )}
                                                             {receipt.cash > 0 && (
                                                                 <div className="bg-orange-50 px-2 py-1 rounded">
-                                                                    <span className="text-orange-600 font-medium">현금:</span> {receipt.cash.toLocaleString()}원
+                                                                    <span className="text-orange-600 font-medium">현금:</span> {formatMoney(receipt.cash)}원
                                                                 </div>
                                                             )}
                                                             {receipt.transfer > 0 && (
                                                                 <div className="bg-teal-50 px-2 py-1 rounded">
-                                                                    <span className="text-teal-600 font-medium">이체:</span> {receipt.transfer.toLocaleString()}원
+                                                                    <span className="text-teal-600 font-medium">이체:</span> {formatMoney(receipt.transfer)}원
                                                                 </div>
                                                             )}
                                                             {receipt.card === 0 && receipt.cash === 0 && receipt.transfer === 0 && (
