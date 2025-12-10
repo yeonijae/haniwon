@@ -24,9 +24,9 @@ export function useReservations(initialDate?: string) {
         // 의사 필터링 및 isWorking 계산
         const processedDoctors = data
           .filter((doc: any) => {
-            // 퇴사자, 기타여부 제외
-            if (doc.resigned || doc.isOther) {
-              console.log(`[DEBUG] ${doc.name} 제외 - resigned:${doc.resigned}, isOther:${doc.isOther}`);
+            // 기타여부 제외 (DOCTOR 등 시스템 계정)
+            if (doc.isOther) {
+              console.log(`[DEBUG] ${doc.name} 제외 - isOther:${doc.isOther}`);
               return false;
             }
             // 'DOCTOR' 같은 테스트 계정 제외
@@ -43,10 +43,21 @@ export function useReservations(initialDate?: string) {
           })
           .map((doc: any) => {
             // isWorking 계산: 근무기간 내에 있는지 확인
-            // 날짜만 비교하기 위해 YYYY-MM-DD 문자열로 변환하여 비교
+            // 날짜 문자열을 YYYY-MM-DD로 변환 (GMT 형식 또는 ISO 형식 모두 처리)
+            const parseToYYYYMMDD = (dateStr: string | null): string | null => {
+              if (!dateStr) return null;
+              try {
+                const date = new Date(dateStr);
+                if (isNaN(date.getTime())) return null;
+                return date.toISOString().split('T')[0];
+              } catch {
+                return null;
+              }
+            };
+
             const targetDateStr = selectedDate; // "YYYY-MM-DD" 형식
-            const workStartStr = doc.workStartDate ? doc.workStartDate.split('T')[0] : null;
-            const workEndStr = doc.workEndDate ? doc.workEndDate.split('T')[0] : null;
+            const workStartStr = parseToYYYYMMDD(doc.workStartDate);
+            const workEndStr = parseToYYYYMMDD(doc.workEndDate);
 
             let isWorking = true;
             if (workStartStr && targetDateStr < workStartStr) {
@@ -67,9 +78,8 @@ export function useReservations(initialDate?: string) {
           .filter((doc: any) => doc.isWorking)
           // 입사일(workStartDate) 기준 정렬 (오래된 순)
           .sort((a: any, b: any) => {
-            const aDate = a.workStartDate ? a.workStartDate.split('T')[0] : '';
-            const bDate = b.workStartDate ? b.workStartDate.split('T')[0] : '';
-            return aDate.localeCompare(bDate);
+            const parseDate = (d: string | null) => d ? new Date(d).getTime() : 0;
+            return parseDate(a.workStartDate) - parseDate(b.workStartDate);
           });
 
         setDoctors(processedDoctors);

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import type { CalendarViewType, Doctor } from '../types';
 
 interface CalendarHeaderProps {
@@ -39,6 +39,33 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
+  // 날짜 선택 팝업 상태
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [pickerYear, setPickerYear] = useState(year);
+  const [pickerMode, setPickerMode] = useState<'month' | 'year'>('month');
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  // 팝업 외부 클릭 시 닫기
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setShowDatePicker(false);
+        setPickerMode('month');
+      }
+    };
+    if (showDatePicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showDatePicker]);
+
+  // 팝업 열 때 현재 년도로 초기화
+  useEffect(() => {
+    if (showDatePicker) {
+      setPickerYear(year);
+    }
+  }, [showDatePicker, year]);
+
   // 해당 월의 모든 날짜 생성
   const daysInMonth = useMemo(() => {
     const days: Date[] = [];
@@ -74,7 +101,7 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
       {/* 상단: 월 네비게이션 + 선택일자 + 필터 */}
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 relative">
             <button
               onClick={handlePrevMonth}
               className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 hover:bg-gray-100 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-clinic-secondary"
@@ -82,7 +109,12 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
             >
               &lt;
             </button>
-            <h2 className="text-2xl font-bold text-gray-800">{`${year}년 ${String(month + 1).padStart(2, '0')}월`}</h2>
+            <button
+              onClick={() => setShowDatePicker(!showDatePicker)}
+              className="text-2xl font-bold text-gray-800 hover:text-clinic-primary hover:bg-gray-100 px-3 py-1 rounded-lg transition-colors cursor-pointer"
+            >
+              {`${year}년 ${String(month + 1).padStart(2, '0')}월`}
+            </button>
             <button
               onClick={handleNextMonth}
               className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 hover:bg-gray-100 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-clinic-secondary"
@@ -90,6 +122,109 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
             >
               &gt;
             </button>
+
+            {/* 날짜 선택 팝업 */}
+            {showDatePicker && (
+              <div
+                ref={pickerRef}
+                className="absolute top-full left-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-200 p-4 z-50 min-w-[280px]"
+              >
+                {pickerMode === 'month' ? (
+                  <>
+                    {/* 년도 선택 헤더 */}
+                    <div className="flex items-center justify-between mb-4">
+                      <button
+                        onClick={() => setPickerYear(pickerYear - 1)}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600"
+                      >
+                        &lt;
+                      </button>
+                      <button
+                        onClick={() => setPickerMode('year')}
+                        className="text-lg font-bold text-gray-800 hover:text-clinic-primary hover:bg-gray-100 px-3 py-1 rounded-lg"
+                      >
+                        {pickerYear}년
+                      </button>
+                      <button
+                        onClick={() => setPickerYear(pickerYear + 1)}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600"
+                      >
+                        &gt;
+                      </button>
+                    </div>
+                    {/* 월 그리드 */}
+                    <div className="grid grid-cols-4 gap-2">
+                      {Array.from({ length: 12 }, (_, i) => i).map((m) => {
+                        const isCurrentMonth = pickerYear === year && m === month;
+                        return (
+                          <button
+                            key={m}
+                            onClick={() => {
+                              onDateChange(getYYYYMMDD(new Date(pickerYear, m, 1)));
+                              setShowDatePicker(false);
+                              setPickerMode('month');
+                            }}
+                            className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors
+                              ${isCurrentMonth
+                                ? 'bg-clinic-primary text-white'
+                                : 'hover:bg-gray-100 text-gray-700'
+                              }`}
+                          >
+                            {m + 1}월
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* 년도 범위 선택 헤더 */}
+                    <div className="flex items-center justify-between mb-4">
+                      <button
+                        onClick={() => setPickerYear(pickerYear - 10)}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600"
+                      >
+                        &lt;&lt;
+                      </button>
+                      <span className="text-lg font-bold text-gray-800">
+                        {Math.floor(pickerYear / 10) * 10} - {Math.floor(pickerYear / 10) * 10 + 9}
+                      </span>
+                      <button
+                        onClick={() => setPickerYear(pickerYear + 10)}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600"
+                      >
+                        &gt;&gt;
+                      </button>
+                    </div>
+                    {/* 년도 그리드 */}
+                    <div className="grid grid-cols-4 gap-2">
+                      {Array.from({ length: 12 }, (_, i) => Math.floor(pickerYear / 10) * 10 - 1 + i).map((y) => {
+                        const isCurrentYear = y === year;
+                        const isOutOfRange = y < Math.floor(pickerYear / 10) * 10 || y > Math.floor(pickerYear / 10) * 10 + 9;
+                        return (
+                          <button
+                            key={y}
+                            onClick={() => {
+                              setPickerYear(y);
+                              setPickerMode('month');
+                            }}
+                            className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors
+                              ${isCurrentYear
+                                ? 'bg-clinic-primary text-white'
+                                : isOutOfRange
+                                  ? 'text-gray-300'
+                                  : 'hover:bg-gray-100 text-gray-700'
+                              }`}
+                          >
+                            {y}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
           <button
             onClick={onToday}

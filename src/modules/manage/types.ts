@@ -84,6 +84,8 @@ export interface ConsultationRoom {
   patientDetails?: string;
 }
 
+export type PaymentStatus = 'pending' | 'paid' | 'completed';  // pending: 수납대기, paid: 수납완료(예약미완), completed: 모두완료
+
 export interface Payment {
     id: number;
     patientId: number;
@@ -92,9 +94,21 @@ export interface Payment {
     amount?: number;
     details: string; // e.g., '침치료, 약침'
     isPaid: boolean;
+    status: PaymentStatus;      // 수납 상태
     reservationId?: string;
     reservationDate?: string; // YYYY-MM-DD
     reservationTime?: string; // HH:mm
+    // MSSQL 수납 정보
+    mssqlReceiptId?: number;
+    insuranceSelf?: number;     // 본인부담금
+    insuranceClaim?: number;    // 청구금액
+    generalAmount?: number;     // 비급여
+    unpaidAmount?: number;      // 미수금
+    insuranceType?: string;     // 종별 (건보, 차상위, 의료급여1종/2종, 자보, 일반, 임산부, 산정특례)
+    // 수납 메모
+    packageInfo?: string;       // 패키지 정보
+    paymentMemo?: string;       // 수납 메모 (그날 있었던 문제들)
+    paidAt?: string;            // 수납 완료 시간
 }
 
 export interface Treatment {

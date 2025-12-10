@@ -1,9 +1,45 @@
 import { useState, useEffect, useCallback } from 'react';
-import { MedicalStaff, Staff, UncoveredCategories } from '../types';
+import { MedicalStaff, Staff, UncoveredCategories, MedicalStaffPermissions } from '../types';
 import * as api from '../lib/api';
+
+// MSSQL 의료진을 MedicalStaff 형태로 변환
+const convertMssqlDoctorToMedicalStaff = (doc: api.MssqlDoctor, index: number): MedicalStaff => {
+  // 기본 권한
+  const defaultPermissions: MedicalStaffPermissions = {
+    prescription: true,
+    chart: true,
+    payment: true,
+    statistics: true,
+  };
+
+  // 날짜 변환 (GMT 문자열 → YYYY-MM-DD)
+  const parseDate = (dateStr: string | null): string => {
+    if (!dateStr) return '';
+    try {
+      const date = new Date(dateStr);
+      return date.toISOString().split('T')[0];
+    } catch {
+      return '';
+    }
+  };
+
+  return {
+    id: index + 1, // 숫자 ID 사용
+    name: doc.name,
+    dob: '', // MSSQL에서는 SSN에서 추출 필요하지만 API에서 미제공
+    gender: 'male', // 기본값
+    hireDate: parseDate(doc.workStartDate),
+    fireDate: doc.workEndDate ? parseDate(doc.workEndDate) : null,
+    status: doc.resigned ? 'retired' : 'working',
+    permissions: defaultPermissions,
+    workPatterns: [],
+    consultationRoom: null,
+  };
+};
 
 export const useStaff = (currentUser: any) => {
   const [medicalStaff, setMedicalStaff] = useState<MedicalStaff[]>([]);
+  const [mssqlDoctors, setMssqlDoctors] = useState<api.MssqlDoctor[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [uncoveredCategories, setUncoveredCategories] = useState<UncoveredCategories>({});
 
@@ -13,12 +49,24 @@ export const useStaff = (currentUser: any) => {
 
     const loadStaffData = async () => {
       try {
-        const medicalStaffData = await api.fetchMedicalStaff();
-        setMedicalStaff(medicalStaffData);
+        // MSSQL에서 의료진 데이터 로드
+        const mssqlDoctorsData = await api.fetchMssqlDoctors();
+        setMssqlDoctors(mssqlDoctorsData);
 
+        // 활성 의료진만 MedicalStaff로 변환
+        const activeDoctors = mssqlDoctorsData.filter(doc =>
+          !doc.resigned && !doc.isOther && doc.name !== 'DOCTOR'
+        );
+        const convertedStaff = activeDoctors.map((doc, i) =>
+          convertMssqlDoctorToMedicalStaff(doc, i)
+        );
+        setMedicalStaff(convertedStaff);
+
+        // 일반 스태프 로드 (SQLite)
         const staffData = await api.fetchStaff();
         setStaff(staffData);
 
+        // 비급여 카테고리 로드 (SQLite)
         const categoriesData = await api.fetchUncoveredCategories();
         setUncoveredCategories(categoriesData);
       } catch (error) {
@@ -137,6 +185,7 @@ export const useStaff = (currentUser: any) => {
 
   return {
     medicalStaff,
+    mssqlDoctors,  // MSSQL 의료진 원본 데이터
     staff,
     uncoveredCategories,
     updateMedicalStaff,

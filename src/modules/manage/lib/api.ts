@@ -1243,3 +1243,433 @@ export async function updateConsultationSubItemsOrder(
     await execute(`UPDATE consultation_sub_items SET display_order = ${item.displayOrder} WHERE id = ${item.id}`);
   }
 }
+
+/**
+ * MSSQL 수납 정보 조회 API
+ */
+
+// MSSQL 오늘 수납 내역 응답 타입
+export interface MssqlReceipt {
+  id: number;
+  patient_id: number;
+  patient_name: string;
+  chart_no: string;
+  insurance_self: number;  // 본인부담금
+  insurance_claim: number; // 청구금액
+  general_amount: number;  // 비급여
+  unpaid: number;          // 미수금
+  created_at: string;
+}
+
+// MSSQL 수납대기 환자 응답 타입
+export interface MssqlPendingPayment {
+  id: number;
+  patient_id: number;
+  patient_name: string;
+  chart_no: string;
+  bed: number;
+  treating_since: string;
+  insurance_self: number;
+  insurance_claim: number;
+  general_amount: number;
+  unpaid: number | null;  // null=미수납, 0=완납, >0=부분수납
+  treatments: {
+    acupuncture: boolean;  // 침
+    choona: boolean;       // 추나
+    yakchim: boolean;      // 약침
+    uncovered: { name: string; amount: number }[];  // 비급여 항목
+  };
+  insurance_type: string;  // 건보(직장)/건보(지역)/자보/차상위/1종/2종/임산부/산정특례/일반
+}
+
+// MSSQL에서 오늘 수납대기 환자 목록 조회 (치료실에 있는 환자)
+export async function fetchMssqlPendingPayments(): Promise<MssqlPendingPayment[]> {
+  try {
+    const response = await fetch(`${MSSQL_API_BASE_URL}/api/today/pending-payments`);
+    if (!response.ok) {
+      throw new Error(`MSSQL API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('❌ MSSQL 수납대기 환자 조회 오류:', error);
+    return [];
+  }
+}
+
+// MSSQL에서 오늘 수납 내역 조회
+export async function fetchMssqlTodayReceipts(): Promise<MssqlReceipt[]> {
+  try {
+    const response = await fetch(`${MSSQL_API_BASE_URL}/api/today/receipts`);
+    if (!response.ok) {
+      throw new Error(`MSSQL API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('❌ MSSQL 수납 내역 조회 오류:', error);
+    return [];
+  }
+}
+
+// MSSQL에서 환자별 수납 정보 조회 (차트번호 기준)
+export async function fetchMssqlReceiptByChartNo(chartNo: string): Promise<MssqlReceipt | null> {
+  try {
+    const receipts = await fetchMssqlTodayReceipts();
+    // 차트번호 정규화 (앞의 0 제거)
+    const normalizedChartNo = chartNo.replace(/^0+/, '');
+
+    // 오늘 수납 내역 중 해당 환자 찾기 (가장 최근 것)
+    const patientReceipt = receipts.find(r => {
+      const receiptChartNo = r.chart_no?.replace(/^0+/, '') || '';
+      return receiptChartNo === normalizedChartNo;
+    });
+
+    return patientReceipt || null;
+  } catch (error) {
+    console.error('❌ 환자별 수납 정보 조회 오류:', error);
+    return null;
+  }
+}
+
+/**
+ * 수납 메모 관리 API
+ * payment_memos 테이블 사용
+ */
+
+export interface PaymentMemo {
+  id?: number;
+  patient_id: number;
+  chart_number?: string;
+  patient_name?: string;
+  mssql_receipt_id?: number;
+  receipt_date?: string;
+  total_amount?: number;
+  insurance_self?: number;
+  general_amount?: number;
+  unpaid_amount?: number;
+  payment_methods?: string;
+  package_info?: string;  // 패키지 정보
+  memo?: string;          // 수납 메모 (그날 있었던 문제들 등)
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 환자의 수납 메모 조회 (오늘 날짜 기준)
+export async function fetchPaymentMemo(patientId: number, date?: string): Promise<PaymentMemo | null> {
+  const targetDate = date || new Date().toISOString().split('T')[0];
+
+  const data = await queryOne<any>(`
+    SELECT * FROM payment_memos
+    WHERE patient_id = ${patientId}
+    AND receipt_date = ${escapeString(targetDate)}
+  `);
+
+  return data ? {
+    id: data.id,
+    patient_id: data.patient_id,
+    chart_number: data.chart_number,
+    patient_name: data.patient_name,
+    mssql_receipt_id: data.mssql_receipt_id,
+    receipt_date: data.receipt_date,
+    total_amount: data.total_amount,
+    insurance_self: data.insurance_self,
+    general_amount: data.general_amount,
+    unpaid_amount: data.unpaid_amount,
+    payment_methods: data.payment_methods,
+    package_info: data.package_info,
+    memo: data.memo,
+    created_at: data.created_at,
+    updated_at: data.updated_at,
+  } : null;
+}
+
+// 환자의 최근 수납 메모 목록 조회
+export async function fetchPaymentMemos(patientId: number, limit: number = 10): Promise<PaymentMemo[]> {
+  const data = await query<any>(`
+    SELECT * FROM payment_memos
+    WHERE patient_id = ${patientId}
+    ORDER BY receipt_date DESC
+    LIMIT ${limit}
+  `);
+
+  return (data || []).map((d: any) => ({
+    id: d.id,
+    patient_id: d.patient_id,
+    chart_number: d.chart_number,
+    patient_name: d.patient_name,
+    mssql_receipt_id: d.mssql_receipt_id,
+    receipt_date: d.receipt_date,
+    total_amount: d.total_amount,
+    insurance_self: d.insurance_self,
+    general_amount: d.general_amount,
+    unpaid_amount: d.unpaid_amount,
+    payment_methods: d.payment_methods,
+    package_info: d.package_info,
+    memo: d.memo,
+    created_at: d.created_at,
+    updated_at: d.updated_at,
+  }));
+}
+
+// 수납 메모 생성 또는 업데이트 (UPSERT)
+export async function upsertPaymentMemo(memo: PaymentMemo): Promise<PaymentMemo> {
+  const now = getCurrentTimestamp();
+  const targetDate = memo.receipt_date || new Date().toISOString().split('T')[0];
+
+  // 기존 메모 확인
+  const existing = await queryOne<any>(`
+    SELECT id FROM payment_memos
+    WHERE patient_id = ${memo.patient_id}
+    AND receipt_date = ${escapeString(targetDate)}
+  `);
+
+  if (existing) {
+    // 기존 메모 업데이트
+    await execute(`
+      UPDATE payment_memos SET
+        chart_number = ${memo.chart_number ? escapeString(memo.chart_number) : 'NULL'},
+        patient_name = ${memo.patient_name ? escapeString(memo.patient_name) : 'NULL'},
+        mssql_receipt_id = ${memo.mssql_receipt_id || 'NULL'},
+        total_amount = ${memo.total_amount || 0},
+        insurance_self = ${memo.insurance_self || 0},
+        general_amount = ${memo.general_amount || 0},
+        unpaid_amount = ${memo.unpaid_amount || 0},
+        payment_methods = ${memo.payment_methods ? escapeString(memo.payment_methods) : 'NULL'},
+        package_info = ${memo.package_info ? escapeString(memo.package_info) : 'NULL'},
+        memo = ${memo.memo ? escapeString(memo.memo) : 'NULL'},
+        updated_at = ${escapeString(now)}
+      WHERE id = ${existing.id}
+    `);
+
+    return { ...memo, id: existing.id, updated_at: now };
+  } else {
+    // 새 메모 생성
+    const id = await insert(`
+      INSERT INTO payment_memos (
+        patient_id, chart_number, patient_name, mssql_receipt_id, receipt_date,
+        total_amount, insurance_self, general_amount, unpaid_amount,
+        payment_methods, package_info, memo, created_at, updated_at
+      ) VALUES (
+        ${memo.patient_id},
+        ${memo.chart_number ? escapeString(memo.chart_number) : 'NULL'},
+        ${memo.patient_name ? escapeString(memo.patient_name) : 'NULL'},
+        ${memo.mssql_receipt_id || 'NULL'},
+        ${escapeString(targetDate)},
+        ${memo.total_amount || 0},
+        ${memo.insurance_self || 0},
+        ${memo.general_amount || 0},
+        ${memo.unpaid_amount || 0},
+        ${memo.payment_methods ? escapeString(memo.payment_methods) : 'NULL'},
+        ${memo.package_info ? escapeString(memo.package_info) : 'NULL'},
+        ${memo.memo ? escapeString(memo.memo) : 'NULL'},
+        ${escapeString(now)},
+        ${escapeString(now)}
+      )
+    `);
+
+    return { ...memo, id, receipt_date: targetDate, created_at: now, updated_at: now };
+  }
+}
+
+// 수납 메모 삭제
+export async function deletePaymentMemo(memoId: number): Promise<void> {
+  await execute(`DELETE FROM payment_memos WHERE id = ${memoId}`);
+}
+
+/**
+ * 수납현황 조회 API (MSSQL + SQLite 메모 병합)
+ */
+
+// 수납현황 진료 내역 타입
+export interface ReceiptTreatment {
+  id: number;
+  item: string;
+  name: string;
+  diagnosis: string;
+  doctor: string;
+  amount: number;
+  is_covered: boolean;
+  time: string | null;
+}
+
+// 수납현황 항목 타입
+export interface ReceiptHistoryItem {
+  id: number;
+  patient_id: number;
+  patient_name: string;
+  chart_no: string;
+  receipt_time: string | null;
+  // 수납 금액
+  insurance_self: number;
+  insurance_claim: number;
+  general_amount: number;
+  total_amount: number;
+  unpaid: number | null;
+  // 수납 방법
+  cash: number;
+  card: number;
+  transfer: number;
+  // 종별
+  insurance_type: string;
+  // 치료 요약
+  treatment_summary: {
+    acupuncture: boolean;
+    choona: boolean;
+    yakchim: boolean;
+    uncovered: { name: string; amount: number }[];
+  };
+  // 진료 내역
+  treatments: ReceiptTreatment[];
+  // SQLite 메모 (병합됨)
+  package_info?: string;
+  memo?: string;
+}
+
+// 수납현황 응답 타입
+export interface ReceiptHistoryResponse {
+  date: string;
+  receipts: ReceiptHistoryItem[];
+  summary: {
+    count: number;
+    total_amount: number;
+    insurance_self: number;
+    general_amount: number;
+    cash: number;
+    card: number;
+    transfer: number;
+    unpaid: number;
+  };
+}
+
+// 날짜별 수납현황 조회 (MSSQL + SQLite 메모 병합)
+export async function fetchReceiptHistory(date?: string): Promise<ReceiptHistoryResponse> {
+  const targetDate = date || new Date().toISOString().split('T')[0];
+
+  try {
+    // 1. MSSQL에서 수납 내역 조회
+    const response = await fetch(`${MSSQL_API_BASE_URL}/api/receipts/by-date?date=${targetDate}`);
+    if (!response.ok) {
+      throw new Error(`MSSQL API 오류: ${response.status}`);
+    }
+    const mssqlData: ReceiptHistoryResponse = await response.json();
+
+    // 2. 각 환자의 SQLite 메모 조회 및 병합
+    const receiptsWithMemo: ReceiptHistoryItem[] = [];
+    for (const receipt of mssqlData.receipts) {
+      let packageInfo: string | undefined;
+      let memo: string | undefined;
+
+      try {
+        const sqliteMemo = await fetchPaymentMemo(receipt.patient_id, targetDate);
+        if (sqliteMemo) {
+          packageInfo = sqliteMemo.package_info;
+          memo = sqliteMemo.memo;
+        }
+      } catch (e) {
+        // 메모가 없을 수 있음
+      }
+
+      receiptsWithMemo.push({
+        ...receipt,
+        package_info: packageInfo,
+        memo,
+      });
+    }
+
+    return {
+      ...mssqlData,
+      receipts: receiptsWithMemo,
+    };
+  } catch (error) {
+    console.error('❌ 수납현황 조회 오류:', error);
+    return {
+      date: targetDate,
+      receipts: [],
+      summary: {
+        count: 0,
+        total_amount: 0,
+        insurance_self: 0,
+        general_amount: 0,
+        cash: 0,
+        card: 0,
+        transfer: 0,
+        unpaid: 0,
+      },
+    };
+  }
+}
+
+// 특정 날짜의 모든 수납 메모 조회 (SQLite)
+export async function fetchPaymentMemosByDate(date: string): Promise<PaymentMemo[]> {
+  const data = await query<any>(`
+    SELECT * FROM payment_memos
+    WHERE receipt_date = ${escapeString(date)}
+    ORDER BY patient_name ASC
+  `);
+
+  return (data || []).map((d: any) => ({
+    id: d.id,
+    patient_id: d.patient_id,
+    chart_number: d.chart_number,
+    patient_name: d.patient_name,
+    mssql_receipt_id: d.mssql_receipt_id,
+    receipt_date: d.receipt_date,
+    total_amount: d.total_amount,
+    insurance_self: d.insurance_self,
+    general_amount: d.general_amount,
+    unpaid_amount: d.unpaid_amount,
+    payment_methods: d.payment_methods,
+    package_info: d.package_info,
+    memo: d.memo,
+    created_at: d.created_at,
+    updated_at: d.updated_at,
+  }));
+}
+
+/**
+ * MSSQL 의료진 API
+ */
+
+// MSSQL 의료진 타입
+export interface MssqlDoctor {
+  id: string;
+  name: string;
+  color: string;
+  resigned: boolean;
+  isOther: boolean;
+  workStartDate: string | null;
+  workEndDate: string | null;
+}
+
+// MSSQL에서 의료진 목록 조회
+export async function fetchMssqlDoctors(): Promise<MssqlDoctor[]> {
+  try {
+    const response = await fetch(`${MSSQL_API_BASE_URL}/api/doctors`);
+    if (!response.ok) {
+      throw new Error(`MSSQL API 오류: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('❌ MSSQL 의료진 조회 오류:', error);
+    return [];
+  }
+}
+
+// 현재 근무중인 의료진만 필터링
+export async function fetchActiveDoctors(): Promise<MssqlDoctor[]> {
+  const doctors = await fetchMssqlDoctors();
+  return doctors.filter(doc =>
+    !doc.resigned &&
+    !doc.isOther &&
+    doc.name !== 'DOCTOR'
+  );
+}
+
+// 예약 가능한 의료진 (invisible4reserve가 아닌)
+export async function fetchReservableDoctors(): Promise<MssqlDoctor[]> {
+  const doctors = await fetchMssqlDoctors();
+  return doctors.filter(doc =>
+    !doc.resigned &&
+    !doc.isOther &&
+    doc.name !== 'DOCTOR'
+  );
+}

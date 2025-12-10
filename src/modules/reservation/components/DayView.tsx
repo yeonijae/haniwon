@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { Reservation, Doctor } from '../types';
+import type { ReservationDraft } from './ReservationStep1Modal';
 
 interface DayViewProps {
   date: string;
@@ -7,6 +8,9 @@ interface DayViewProps {
   doctors: Doctor[];
   onReservationClick: (reservation: Reservation) => void;
   onTimeSlotClick: (time: string, doctor?: string) => void;
+  // 2단계 예약 모드 props
+  reservationDraft?: ReservationDraft | null;
+  onSelectTimeSlot?: (time: string) => void;
 }
 
 // 30분 단위 시간 슬롯 생성 (09:30 ~ 20:30)
@@ -274,6 +278,8 @@ export const DayView: React.FC<DayViewProps> = ({
   doctors,
   onReservationClick,
   onTimeSlotClick,
+  reservationDraft,
+  onSelectTimeSlot,
 }) => {
   // 호버 툴팁 상태
   const [hoveredReservation, setHoveredReservation] = useState<{
@@ -281,6 +287,12 @@ export const DayView: React.FC<DayViewProps> = ({
     x: number;
     y: number;
   } | null>(null);
+
+  // 호버 중인 시간 슬롯 (예약 모드에서 사용)
+  const [hoveredTimeSlot, setHoveredTimeSlot] = useState<string | null>(null);
+
+  // 예약 모드인지 확인
+  const isReservationMode = !!reservationDraft;
 
   // 의사별, 시간별로 예약 그룹화
   const reservationsByDoctorAndTime = useMemo(() => {
@@ -308,6 +320,126 @@ export const DayView: React.FC<DayViewProps> = ({
 
     return grouped;
   }, [reservations, doctors]);
+
+  // 의사별, 시간별 슬롯 사용량 계산 (예약 모드에서 프리뷰용)
+  const slotUsageByDoctorAndTime = useMemo(() => {
+    const usage: Record<string, Record<string, number>> = {};
+
+    doctors.forEach((doc) => {
+      usage[doc.name] = {};
+      TIME_SLOTS.forEach((time) => {
+        usage[doc.name][time] = 0;
+      });
+    });
+
+    reservations.forEach((res) => {
+      if (!usage[res.doctor]) return;
+
+      const [hour, min] = res.time.split(':').map(Number);
+      const roundedMin = min < 30 ? '00' : '30';
+      const roundedTime = `${hour.toString().padStart(2, '0')}:${roundedMin}`;
+
+      if (usage[res.doctor][roundedTime] !== undefined) {
+        usage[res.doctor][roundedTime] += getSlotUsage(res);
+      }
+    });
+
+    return usage;
+  }, [reservations, doctors]);
+
+  // 예약 모드에서 호버 시 슬롯 배치 가능 여부 및 프리뷰 계산
+  const getSlotPreview = (time: string) => {
+    if (!reservationDraft || !hoveredTimeSlot) return null;
+    if (time !== hoveredTimeSlot) return null;
+
+    const doctor = reservationDraft.doctor;
+    const requiredSlots = reservationDraft.requiredSlots;
+    const currentUsed = slotUsageByDoctorAndTime[doctor]?.[time] || 0;
+    const remainingInCurrent = SLOT_CAPACITY - currentUsed;
+
+    // 현재 슬롯에 충분한 공간이 있는 경우
+    if (requiredSlots <= remainingInCurrent) {
+      return {
+        canBook: true,
+        currentSlotStart: currentUsed,
+        currentSlotEnd: currentUsed + requiredSlots,
+        nextSlotStart: 0,
+        nextSlotEnd: 0,
+        message: `예약 가능 (${requiredSlots}칸)`,
+      };
+    }
+
+    // 현재 슬롯이 꽉 찬 경우
+    if (remainingInCurrent === 0) {
+      return {
+        canBook: false,
+        currentSlotStart: 0,
+        currentSlotEnd: 0,
+        nextSlotStart: 0,
+        nextSlotEnd: 0,
+        message: '슬롯 가득 참',
+      };
+    }
+
+    // 다음 슬롯으로 넘치는 경우
+    const overflow = requiredSlots - remainingInCurrent;
+    const timeIndex = TIME_SLOTS.indexOf(time);
+    const nextTime = timeIndex < TIME_SLOTS.length - 1 ? TIME_SLOTS[timeIndex + 1] : null;
+
+    if (!nextTime) {
+      return {
+        canBook: false,
+        currentSlotStart: currentUsed,
+        currentSlotEnd: SLOT_CAPACITY,
+        nextSlotStart: 0,
+        nextSlotEnd: 0,
+        message: '마지막 시간대',
+      };
+    }
+
+    const nextUsed = slotUsageByDoctorAndTime[doctor]?.[nextTime] || 0;
+    const remainingInNext = SLOT_CAPACITY - nextUsed;
+
+    if (overflow <= remainingInNext) {
+      return {
+        canBook: true,
+        currentSlotStart: currentUsed,
+        currentSlotEnd: SLOT_CAPACITY,
+        nextSlotStart: nextUsed,
+        nextSlotEnd: nextUsed + overflow,
+        nextTime,
+        message: `예약 가능 (${remainingInCurrent}칸 + 다음 ${overflow}칸)`,
+      };
+    }
+
+    return {
+      canBook: false,
+      currentSlotStart: currentUsed,
+      currentSlotEnd: currentUsed + remainingInCurrent,
+      nextSlotStart: 0,
+      nextSlotEnd: 0,
+      message: '공간 부족',
+    };
+  };
+
+  // 다음 슬롯 프리뷰 (넘침 표시용)
+  const getNextSlotPreview = (time: string) => {
+    if (!reservationDraft || !hoveredTimeSlot) return null;
+
+    const timeIndex = TIME_SLOTS.indexOf(hoveredTimeSlot);
+    const nextTime = timeIndex < TIME_SLOTS.length - 1 ? TIME_SLOTS[timeIndex + 1] : null;
+
+    if (time !== nextTime) return null;
+
+    const preview = getSlotPreview(hoveredTimeSlot);
+    if (!preview || preview.nextSlotEnd === 0) return null;
+
+    return {
+      start: preview.nextSlotStart,
+      end: preview.nextSlotEnd,
+      canBook: preview.canBook,
+    };
+  };
 
   // 의사가 없으면 안내 메시지
   if (doctors.length === 0) {
@@ -373,6 +505,10 @@ export const DayView: React.FC<DayViewProps> = ({
                   const slotReservations = reservationsByDoctorAndTime[doctor.name]?.[time] || [];
                   const isNotWorking = doctor.isWorking === false;
 
+                  // 예약 모드에서 선택한 의사가 아닌 경우 비활성화 표시
+                  const isTargetDoctor = isReservationMode && reservationDraft?.doctor === doctor.name;
+                  const isOtherDoctorInReservationMode = isReservationMode && reservationDraft?.doctor !== doctor.name;
+
                   // 6칸 그리드에 예약 배치 (슬롯 사용량에 따라)
                   const cellContent: { startIndex: number; span: number; reservation: Reservation }[] = [];
                   let currentCell = 0;
@@ -394,18 +530,44 @@ export const DayView: React.FC<DayViewProps> = ({
                   const isFull = totalUsage >= SLOT_CAPACITY;
                   const remainingSlots = SLOT_CAPACITY - totalUsage;
 
+                  // 예약 모드 프리뷰 계산
+                  const slotPreview = isTargetDoctor ? getSlotPreview(time) : null;
+                  const nextSlotPreview = isTargetDoctor ? getNextSlotPreview(time) : null;
+
                   return (
                     <div
                       key={doctor.id}
                       className={`grid grid-cols-6 border-r last:border-r-0 group relative ${
                         isNotWorking ? 'bg-gray-100' : ''
-                      }`}
+                      } ${isOtherDoctorInReservationMode ? 'bg-gray-50 opacity-40' : ''}`}
+                      onMouseEnter={() => {
+                        if (isTargetDoctor && !isFull) {
+                          setHoveredTimeSlot(time);
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        if (isTargetDoctor) {
+                          setHoveredTimeSlot(null);
+                        }
+                      }}
                     >
-                      {/* 클릭 가능한 빈 영역 - 근무하는 의사만 */}
-                      {!isFull && !isNotWorking && (
+                      {/* 클릭 가능한 빈 영역 - 근무하는 의사만, 예약 모드에서는 선택 의사만 */}
+                      {!isFull && !isNotWorking && !isOtherDoctorInReservationMode && (
                         <button
-                          onClick={() => onTimeSlotClick(time, doctor.name)}
-                          className="absolute inset-0 group-hover:bg-blue-50 transition-colors duration-150 z-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-clinic-secondary"
+                          onClick={() => {
+                            if (isReservationMode && onSelectTimeSlot && slotPreview?.canBook) {
+                              onSelectTimeSlot(time);
+                            } else if (!isReservationMode) {
+                              onTimeSlotClick(time, doctor.name);
+                            }
+                          }}
+                          className={`absolute inset-0 transition-colors duration-150 z-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-clinic-secondary ${
+                            isReservationMode
+                              ? slotPreview?.canBook
+                                ? 'cursor-pointer'
+                                : 'cursor-not-allowed'
+                              : 'group-hover:bg-blue-50'
+                          }`}
                           aria-label={`새 예약 추가: ${doctor.name}, ${time}`}
                         ></button>
                       )}
@@ -434,17 +596,21 @@ export const DayView: React.FC<DayViewProps> = ({
                             className={`${colors.bg} border ${colors.border} flex flex-col justify-center px-1.5 py-1 text-xs overflow-hidden z-10 cursor-pointer rounded-md hover:ring-2 hover:ring-offset-1 hover:ring-clinic-primary transition-shadow`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              onReservationClick(reservation);
+                              if (!isReservationMode) {
+                                onReservationClick(reservation);
+                              }
                             }}
                             onMouseEnter={(e) => {
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              setHoveredReservation({
-                                reservation,
-                                x: rect.left + rect.width / 2,
-                                y: rect.top - 10,
-                              });
+                              if (!isReservationMode) {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setHoveredReservation({
+                                  reservation,
+                                  x: rect.left + rect.width / 2,
+                                  y: rect.top - 10,
+                                });
+                              }
                             }}
-                            onMouseLeave={() => setHoveredReservation(null)}
+                            onMouseLeave={() => !isReservationMode && setHoveredReservation(null)}
                           >
                             <p className={`font-bold ${colors.textPrimary} truncate ${reservation.canceled ? 'line-through' : ''}`}>
                               {reservation.patientName}
@@ -455,6 +621,47 @@ export const DayView: React.FC<DayViewProps> = ({
                           </div>
                         );
                       })}
+
+                      {/* 예약 모드: 호버 프리뷰 (현재 슬롯) */}
+                      {slotPreview && slotPreview.currentSlotEnd > slotPreview.currentSlotStart && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            left: `${(slotPreview.currentSlotStart / SLOT_CAPACITY) * 100}%`,
+                            width: `${((slotPreview.currentSlotEnd - slotPreview.currentSlotStart) / SLOT_CAPACITY) * 100}%`,
+                            top: '2px',
+                            bottom: '2px',
+                          }}
+                          className={`z-20 rounded-md border-2 border-dashed flex flex-col justify-center items-center text-xs font-medium pointer-events-none ${
+                            slotPreview.canBook
+                              ? 'bg-green-100/80 border-green-500 text-green-700'
+                              : 'bg-red-100/80 border-red-500 text-red-700'
+                          }`}
+                        >
+                          <span className="truncate px-1">{reservationDraft?.patient.name}</span>
+                          <span className="text-[10px]">{slotPreview.message}</span>
+                        </div>
+                      )}
+
+                      {/* 예약 모드: 다음 슬롯 넘침 프리뷰 */}
+                      {nextSlotPreview && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            left: `${(nextSlotPreview.start / SLOT_CAPACITY) * 100}%`,
+                            width: `${((nextSlotPreview.end - nextSlotPreview.start) / SLOT_CAPACITY) * 100}%`,
+                            top: '2px',
+                            bottom: '2px',
+                          }}
+                          className={`z-20 rounded-md border-2 border-dashed flex items-center justify-center text-xs pointer-events-none ${
+                            nextSlotPreview.canBook
+                              ? 'bg-green-100/60 border-green-400 text-green-600'
+                              : 'bg-red-100/60 border-red-400 text-red-600'
+                          }`}
+                        >
+                          <span className="text-[10px]">+{nextSlotPreview.end - nextSlotPreview.start}칸</span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

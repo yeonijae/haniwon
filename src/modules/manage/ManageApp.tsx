@@ -122,6 +122,10 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
   const [patientIdToDelete, setPatientIdToDelete] = useState<number | null>(null);
   const [patientForNewReservation, setPatientForNewReservation] = useState<Patient | null>(null);
   const [patientForConsultationInfo, setPatientForConsultationInfo] = useState<Patient | null>(null);
+  const [selectedPaymentForDetail, setSelectedPaymentForDetail] = useState<Payment | null>(null);
+  const [detailMemoPackageInfo, setDetailMemoPackageInfo] = useState('');
+  const [detailMemoText, setDetailMemoText] = useState('');
+  const [isDetailMemoSaving, setIsDetailMemoSaving] = useState(false);
 
   // Memoized patient to delete info
   const patientToDeleteInfo = useMemo(() => {
@@ -325,6 +329,52 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
     openModal('payment', `${payment.patientName}님 수납 처리`, true, true);
   };
 
+  // 환자 정보 클릭 핸들러 (시술/치료비/수납 상세 보기)
+  const handlePatientInfoClick = (payment: Payment) => {
+    setSelectedPaymentForDetail(payment);
+    setDetailMemoPackageInfo(payment.packageInfo || '');
+    setDetailMemoText(payment.paymentMemo || '');
+  };
+
+  // 상세 모달에서 메모 저장
+  const handleDetailMemoSave = async () => {
+    if (!selectedPaymentForDetail) return;
+
+    setIsDetailMemoSaving(true);
+    try {
+      const totalAmount = (selectedPaymentForDetail.insuranceSelf || 0) + (selectedPaymentForDetail.generalAmount || 0);
+      await import('./lib/api').then(api => api.upsertPaymentMemo({
+        patient_id: selectedPaymentForDetail.patientId,
+        chart_number: selectedPaymentForDetail.patientChartNumber,
+        patient_name: selectedPaymentForDetail.patientName,
+        mssql_receipt_id: selectedPaymentForDetail.mssqlReceiptId,
+        total_amount: totalAmount,
+        insurance_self: selectedPaymentForDetail.insuranceSelf,
+        general_amount: selectedPaymentForDetail.generalAmount,
+        unpaid_amount: selectedPaymentForDetail.unpaidAmount,
+        package_info: detailMemoPackageInfo,
+        memo: detailMemoText,
+      }));
+
+      // 로컬 상태 업데이트
+      paymentsHook.handleMemoSave(selectedPaymentForDetail.patientId, detailMemoPackageInfo, detailMemoText);
+
+      // 선택된 payment 업데이트
+      setSelectedPaymentForDetail(prev => prev ? {
+        ...prev,
+        packageInfo: detailMemoPackageInfo,
+        paymentMemo: detailMemoText,
+      } : null);
+
+      alert('메모가 저장되었습니다.');
+    } catch (error) {
+      console.error('메모 저장 오류:', error);
+      alert('메모 저장에 실패했습니다.');
+    } finally {
+      setIsDetailMemoSaving(false);
+    }
+  };
+
   const handleOpenReservationForPatient = (payment: Payment) => {
     if (payment.reservationId) {
       const allReservations: Reservation[] = Object.values(reservationHook.reservations)
@@ -339,13 +389,15 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
         alert('해당 예약을 찾을 수 없습니다. 삭제되었거나 변경되었을 수 있습니다.');
       }
     } else {
-      const patient = patients.allPatients.find(p => p.id === payment.patientId);
-      if (patient) {
-        setPatientForNewReservation(patient);
-        openModal('reservation', `${patient.name}님 예약`, true);
-      } else {
-        alert('환자 정보를 찾을 수 없습니다.');
-      }
+      // 예약관리 시스템을 새 창으로 열고 환자 정보 + 진료내역 전달
+      const params = new URLSearchParams({
+        patientId: payment.patientId.toString(),
+        chartNo: payment.patientChartNumber || '',
+        patientName: payment.patientName,
+        phone: payment.patientPhone || '',
+        details: payment.details || '',
+      });
+      window.open(`/reservation?${params.toString()}`, '_blank');
     }
   };
 
@@ -598,8 +650,14 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
           onClose={closeModal}
           consultationItems={consultationItemsHook.consultationItems}
           onReservation={(patient) => {
-            setPatientForNewReservation(patient);
-            openModal('reservation', `${patient.name}님 예약`, true);
+            // 예약관리 시스템을 새 창으로 열고 환자 정보 전달
+            const params = new URLSearchParams({
+              patientId: patient.id.toString(),
+              chartNo: patient.chartNumber || '',
+              patientName: patient.name,
+              phone: patient.phone || '',
+            });
+            window.open(`/reservation?${params.toString()}`, '_blank');
           }}
         />;
       case 'payment':
@@ -611,7 +669,7 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
           completedPayments={paymentsHook.completedPayments}
         />;
       case 'dailyPayments':
-        return <DailyPaymentSummary completedPayments={paymentsHook.completedPayments} />;
+        return <DailyPaymentSummary />;
       case 'consultationInfo':
         return patientForConsultationInfo ? (
           <ConsultationInfoModal
@@ -749,10 +807,11 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
             <div className="xl:col-span-2 flex flex-col min-h-0">
               <PaymentStatus
                 payments={paymentsHook.paymentsWaiting}
-                onPaymentClick={handleOpenPaymentModal}
+                onPatientClick={handlePatientInfoClick}
                 onReservationClick={handleOpenReservationForPatient}
                 onMoveToWaiting={handleMovePatientFromPaymentToWaiting}
                 onDelete={paymentsHook.deletePaymentFromWaiting}
+                onMemoSave={paymentsHook.handleMemoSave}
               />
             </div>
           </main>
@@ -868,6 +927,167 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
                 className="px-6 py-2 bg-clinic-primary text-white font-semibold rounded-md hover:bg-clinic-secondary"
               >
                 확인
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Payment Detail Modal (환자 정보 클릭 시 시술/치료비/수납 정보) */}
+      <Modal
+        isOpen={selectedPaymentForDetail !== null}
+        onClose={() => setSelectedPaymentForDetail(null)}
+        title={selectedPaymentForDetail ? `${selectedPaymentForDetail.patientName}님 오늘의 진료 정보` : ''}
+        maxWidth="500px"
+      >
+        {selectedPaymentForDetail && (
+          <div className="space-y-4 p-2">
+            {/* 환자 기본 정보 + 수납 상태 */}
+            <div className={`rounded-lg p-4 ${selectedPaymentForDetail.isPaid ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'}`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-12 h-12 rounded-full text-white flex items-center justify-center text-lg font-bold ${selectedPaymentForDetail.isPaid ? 'bg-green-500' : 'bg-orange-500'}`}>
+                  {selectedPaymentForDetail.isPaid ? (
+                    <i className="fa-solid fa-check"></i>
+                  ) : (
+                    selectedPaymentForDetail.patientName.charAt(0)
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-lg">{selectedPaymentForDetail.patientName}</h3>
+                    <span className="text-sm text-gray-500">({selectedPaymentForDetail.patientChartNumber || '-'})</span>
+                    {selectedPaymentForDetail.insuranceType && (
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+                        selectedPaymentForDetail.insuranceType === '건보' ? 'bg-blue-100 text-blue-800' :
+                        selectedPaymentForDetail.insuranceType === '자보' ? 'bg-purple-100 text-purple-800' :
+                        selectedPaymentForDetail.insuranceType === '일반' ? 'bg-gray-100 text-gray-800' :
+                        selectedPaymentForDetail.insuranceType === '임산부' ? 'bg-pink-100 text-pink-800' :
+                        selectedPaymentForDetail.insuranceType === '산정특례' ? 'bg-red-100 text-red-800' :
+                        selectedPaymentForDetail.insuranceType.includes('의료급여') ? 'bg-green-100 text-green-800' :
+                        selectedPaymentForDetail.insuranceType === '차상위' ? 'bg-teal-100 text-teal-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {selectedPaymentForDetail.insuranceType}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                      selectedPaymentForDetail.isPaid
+                        ? 'bg-green-200 text-green-800'
+                        : 'bg-orange-200 text-orange-800'
+                    }`}>
+                      {selectedPaymentForDetail.isPaid ? '수납완료' : '수납대기'}
+                    </span>
+                    {selectedPaymentForDetail.unpaidAmount !== undefined && selectedPaymentForDetail.unpaidAmount > 0 && (
+                      <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-200 text-red-800">
+                        미수 {selectedPaymentForDetail.unpaidAmount.toLocaleString()}원
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 시술 내역 */}
+            <div className="border rounded-lg overflow-hidden">
+              <div className="bg-blue-50 px-4 py-2 border-b">
+                <h4 className="font-semibold text-blue-800">
+                  <i className="fa-solid fa-hand-holding-medical mr-2"></i>
+                  오늘의 시술 내역
+                </h4>
+              </div>
+              <div className="p-4">
+                {selectedPaymentForDetail.details ? (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedPaymentForDetail.details.split(', ').map((item, idx) => (
+                      <span key={idx} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-400 text-sm">시술 내역 없음</p>
+                )}
+              </div>
+            </div>
+
+            {/* 치료비 내역 */}
+            <div className="border rounded-lg overflow-hidden">
+              <div className="bg-green-50 px-4 py-2 border-b">
+                <h4 className="font-semibold text-green-800">
+                  <i className="fa-solid fa-receipt mr-2"></i>
+                  치료비 내역
+                </h4>
+              </div>
+              <div className="p-4 space-y-2">
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-gray-600">급여 본인부담금</span>
+                  <span className="font-semibold text-blue-600">
+                    {(selectedPaymentForDetail.insuranceSelf || 0).toLocaleString()}원
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-gray-600">비급여</span>
+                  <span className="font-semibold text-green-600">
+                    {(selectedPaymentForDetail.generalAmount || 0).toLocaleString()}원
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-2 bg-gray-50 -mx-4 px-4">
+                  <span className="font-bold">총 진료비</span>
+                  <span className="font-bold text-lg">
+                    {((selectedPaymentForDetail.insuranceSelf || 0) + (selectedPaymentForDetail.generalAmount || 0)).toLocaleString()}원
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 메모 입력/수정 */}
+            <div className="border rounded-lg overflow-hidden">
+              <div className="bg-amber-50 px-4 py-2 border-b">
+                <h4 className="font-semibold text-amber-800">
+                  <i className="fa-solid fa-sticky-note mr-2"></i>
+                  수납 메모
+                </h4>
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">패키지 정보</label>
+                  <input
+                    type="text"
+                    value={detailMemoPackageInfo}
+                    onChange={(e) => setDetailMemoPackageInfo(e.target.value)}
+                    placeholder="예: 다이어트 패키지 3회차"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-clinic-primary focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">오늘 메모</label>
+                  <textarea
+                    value={detailMemoText}
+                    onChange={(e) => setDetailMemoText(e.target.value)}
+                    placeholder="예: 카드 결제 불가로 현금 수납, 다음 예약 시 확인 필요"
+                    rows={3}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-clinic-primary focus:border-transparent resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 버튼 영역 */}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setSelectedPaymentForDetail(null)}
+                className="px-4 py-2 text-gray-600 font-medium rounded-md hover:bg-gray-100"
+              >
+                닫기
+              </button>
+              <button
+                onClick={handleDetailMemoSave}
+                disabled={isDetailMemoSaving}
+                className="px-4 py-2 bg-clinic-primary text-white font-semibold rounded-md hover:bg-clinic-secondary disabled:opacity-50"
+              >
+                {isDetailMemoSaving ? '저장 중...' : '메모 저장'}
               </button>
             </div>
           </div>

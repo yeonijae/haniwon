@@ -1,12 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import type { Reservation, Doctor, CreateReservationRequest } from '../types';
+import type { Doctor } from '../types';
 import { searchPatients, PatientSearchResult } from '../lib/api';
-
-interface SlotInfo {
-  time: string;
-  usedSlots: number;
-  remainingSlots: number;
-}
 
 // 외부에서 환자 정보를 넘겨받을 때 사용하는 타입
 export interface InitialPatient {
@@ -16,21 +10,24 @@ export interface InitialPatient {
   phone?: string;
 }
 
-interface NewReservationModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (data: CreateReservationRequest) => Promise<void>;
-  doctors: Doctor[];
-  reservations: Reservation[];
-  selectedDate: string;
-  defaultTime?: string;
-  defaultDoctor?: string;
-  initialPatient?: InitialPatient | null; // 운영관리시스템에서 넘어온 환자
-  initialDetails?: string; // 운영관리에서 넘어온 진료내역 (예: "침치료(건보) - 침+추나")
+// 1단계에서 선택한 정보 (2단계로 전달)
+export interface ReservationDraft {
+  patient: PatientSearchResult;
+  doctor: string;
+  doctorColor: string;
+  selectedItems: string[];
+  requiredSlots: number;
+  memo: string;
 }
 
-// 슬롯 용량 상수
-const SLOT_CAPACITY = 6;
+interface ReservationStep1ModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onNext: (draft: ReservationDraft) => void;
+  doctors: Doctor[];
+  initialPatient?: InitialPatient | null;
+  initialDetails?: string;
+}
 
 // 진료 항목 카테고리
 const TREATMENT_CATEGORIES = {
@@ -58,105 +55,6 @@ Object.values(TREATMENT_CATEGORIES).flat().forEach(item => {
   ITEM_SLOT_USAGE[item.name] = item.slots;
 });
 
-// 30분 단위 시간 슬롯
-const generateTimeSlots = (): string[] => {
-  const slots: string[] = [];
-  let hour = 9;
-  let minute = 30;
-  const endHour = 21; // 20:30까지 예약 가능
-
-  while (hour < endHour) {
-    slots.push(`${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
-    minute += 30;
-    if (minute >= 60) {
-      hour++;
-      minute = 0;
-    }
-  }
-  return slots;
-};
-
-const TIME_SLOTS = generateTimeSlots();
-
-// 예약의 슬롯 사용량 계산 (DayView와 동일한 로직)
-const getSlotUsage = (reservation: Reservation): number => {
-  const item = reservation.item?.toLowerCase() || '';
-  const type = reservation.type?.toLowerCase() || '';
-
-  if (reservation.canceled) return 0;
-
-  // === 약상담 (신규/초진) = 6칸 ===
-  if (item.includes('신규') && (item.includes('약') || item.includes('상담'))) return 6;
-  if (item.includes('약초진') || type.includes('약초진')) return 6;
-  if ((type === '초진' || type === '초진예약') && (item.includes('약') || item.includes('상담') || item.includes('한약'))) return 6;
-
-  // === 약상담 (재진) ===
-  const isYakReJin = item.includes('약재진') || item.includes('선결') ||
-    (item.includes('재진') && (item.includes('약') || item.includes('상담'))) ||
-    type.includes('약재진') ||
-    (type === '재진' && (item.includes('약') || item.includes('상담') || item.includes('한약')));
-
-  if (isYakReJin) {
-    if (type.includes('전화상담')) return 1;
-    return 3;
-  }
-
-  if (item.includes('선결')) {
-    if (type.includes('전화상담')) return 1;
-    return 3;
-  }
-
-  // === 재초진 = 2칸 ===
-  if (item.includes('재초') || type.includes('재초')) return 2;
-
-  // === 복합 진료 계산: 쉼표나 +로 구분된 항목들의 슬롯 합산 ===
-  const items = item.split(/[,+\/]/).map(s => s.trim()).filter(s => s);
-
-  if (items.length > 1) {
-    let totalSlots = 0;
-    items.forEach(singleItem => {
-      if (singleItem.includes('재초')) {
-        totalSlots += 2;
-      } else if (singleItem.includes('약재진') || singleItem.includes('선결')) {
-        totalSlots += type.includes('전화상담') ? 1 : 3;
-      } else if (singleItem.includes('추나')) {
-        totalSlots += 1;
-      } else if (singleItem.includes('침') || singleItem.includes('acupuncture')) {
-        totalSlots += 1;
-      } else if (singleItem.includes('부항')) {
-        totalSlots += 1;
-      } else if (singleItem.includes('뜸')) {
-        totalSlots += 1;
-      } else if (singleItem.includes('약침')) {
-        totalSlots += 1;
-      } else {
-        totalSlots += 1;
-      }
-    });
-    // type(구분)이 재초이면 추가 1칸
-    if (type.includes('재초')) {
-      totalSlots += 1;
-    }
-    return Math.min(totalSlots, SLOT_CAPACITY);
-  }
-
-  // === 단일 항목 처리 ===
-  if (item.includes('추나')) return 1;
-  if (item.includes('침') || item.includes('acupuncture')) return 1;
-  if (item.includes('부항')) return 1;
-  if (item.includes('뜸')) return 1;
-  if (item.includes('약침')) return 1;
-
-  return 1;
-};
-
-// 다음 시간 슬롯 가져오기
-const getNextTimeSlot = (time: string): string | null => {
-  const index = TIME_SLOTS.indexOf(time);
-  if (index === -1 || index >= TIME_SLOTS.length - 1) return null;
-  return TIME_SLOTS[index + 1];
-};
-
 // 진료내역에서 치료항목 파싱
 const parseDetailsToItems = (details: string): string[] => {
   if (!details) return ['침'];
@@ -183,15 +81,11 @@ const parseDetailsToItems = (details: string): string[] => {
   return items.length > 0 ? items : ['침'];
 };
 
-export const NewReservationModal: React.FC<NewReservationModalProps> = ({
+export const ReservationStep1Modal: React.FC<ReservationStep1ModalProps> = ({
   isOpen,
   onClose,
-  onSave,
+  onNext,
   doctors,
-  reservations,
-  selectedDate,
-  defaultTime,
-  defaultDoctor,
   initialPatient,
   initialDetails,
 }) => {
@@ -205,18 +99,10 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // 예약 폼 관련 상태
-  const [selectedDoctor, setSelectedDoctor] = useState(defaultDoctor || '');
-  const [selectedTime, setSelectedTime] = useState(defaultTime || '');
+  const [selectedDoctor, setSelectedDoctor] = useState('');
   const [selectedItems, setSelectedItems] = useState<string[]>(['침']);
   const [memo, setMemo] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // 기본값 설정
-  useEffect(() => {
-    if (defaultDoctor) setSelectedDoctor(defaultDoctor);
-    if (defaultTime) setSelectedTime(defaultTime);
-  }, [defaultDoctor, defaultTime]);
 
   // 외부에서 환자 정보가 넘어온 경우 설정
   useEffect(() => {
@@ -242,13 +128,12 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
         phone: initialPatient.phone,
       } : null);
       setShowSearchResults(false);
-      setSelectedDoctor(defaultDoctor || '');
-      setSelectedTime(defaultTime || '');
+      setSelectedDoctor('');
       setSelectedItems(initialDetails ? parseDetailsToItems(initialDetails) : ['침']);
       setMemo('');
       setError(null);
     }
-  }, [isOpen, initialPatient, defaultDoctor, defaultTime, initialDetails]);
+  }, [isOpen, initialPatient, initialDetails]);
 
   // initialDetails가 변경되면 진료항목 자동 선택
   useEffect(() => {
@@ -336,104 +221,18 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
     });
   };
 
-  // 의사별, 시간별 슬롯 사용량 계산
-  const slotUsageByDoctorAndTime = useMemo(() => {
-    const usage: Record<string, Record<string, number>> = {};
-
-    doctors.forEach(doc => {
-      usage[doc.name] = {};
-      TIME_SLOTS.forEach(time => {
-        usage[doc.name][time] = 0;
-      });
-    });
-
-    reservations.forEach(res => {
-      if (!usage[res.doctor]) return;
-
-      const [hour, min] = res.time.split(':').map(Number);
-      const roundedMin = min < 30 ? '00' : '30';
-      const roundedTime = `${hour.toString().padStart(2, '0')}:${roundedMin}`;
-
-      if (usage[res.doctor][roundedTime] !== undefined) {
-        usage[res.doctor][roundedTime] += getSlotUsage(res);
-      }
-    });
-
-    return usage;
-  }, [reservations, doctors]);
-
   // 선택된 진료 항목들의 총 슬롯 사용량
   const requiredSlots = useMemo(() => {
     return selectedItems.reduce((total, item) => total + (ITEM_SLOT_USAGE[item] || 1), 0);
   }, [selectedItems]);
 
-  // 선택된 의사와 시간의 잔여 슬롯 계산
-  const getRemainingSlots = (doctor: string, time: string): number => {
-    const used = slotUsageByDoctorAndTime[doctor]?.[time] || 0;
-    return Math.max(0, SLOT_CAPACITY - used);
-  };
+  // 선택한 의사의 색상
+  const selectedDoctorColor = useMemo(() => {
+    const doc = doctors.find(d => d.name === selectedDoctor);
+    return doc?.color || '#3B82F6';
+  }, [doctors, selectedDoctor]);
 
-  // 예약 가능 여부 체크 (현재 슬롯 + 다음 슬롯까지 확인)
-  const checkAvailability = (): { canBook: boolean; message: string; overflow: number } => {
-    if (!selectedDoctor || !selectedTime) {
-      return { canBook: false, message: '의사와 시간을 선택해주세요.', overflow: 0 };
-    }
-
-    const currentRemaining = getRemainingSlots(selectedDoctor, selectedTime);
-
-    // 현재 슬롯에 충분한 공간이 있는 경우
-    if (requiredSlots <= currentRemaining) {
-      return { canBook: true, message: `예약 가능 (${requiredSlots}칸 사용)`, overflow: 0 };
-    }
-
-    // 현재 슬롯이 꽉 찬 경우
-    if (currentRemaining === 0) {
-      return { canBook: false, message: '선택한 시간은 이미 꽉 찼습니다.', overflow: 0 };
-    }
-
-    // 현재 슬롯에 일부 공간만 있는 경우 - 다음 슬롯으로 넘치는지 체크
-    const overflow = requiredSlots - currentRemaining;
-    const nextTime = getNextTimeSlot(selectedTime);
-
-    if (!nextTime) {
-      return { canBook: false, message: '마지막 시간대입니다. 다음 슬롯으로 넘길 수 없습니다.', overflow: 0 };
-    }
-
-    const nextRemaining = getRemainingSlots(selectedDoctor, nextTime);
-
-    if (overflow <= nextRemaining) {
-      return {
-        canBook: true,
-        message: `예약 가능 (${currentRemaining}칸 사용 + 다음 시간 ${overflow}칸 사용)`,
-        overflow,
-      };
-    }
-
-    return {
-      canBook: false,
-      message: `예약 불가: ${requiredSlots}칸 필요, 현재 ${currentRemaining}칸 + 다음 시간 ${nextRemaining}칸 = ${currentRemaining + nextRemaining}칸 가용`,
-      overflow: 0,
-    };
-  };
-
-  const availability = checkAvailability();
-
-  // 시간별 슬롯 정보 (선택된 의사 기준)
-  const timeSlotInfo: SlotInfo[] = useMemo(() => {
-    if (!selectedDoctor) return [];
-
-    return TIME_SLOTS.map(time => {
-      const used = slotUsageByDoctorAndTime[selectedDoctor]?.[time] || 0;
-      return {
-        time,
-        usedSlots: used,
-        remainingSlots: Math.max(0, SLOT_CAPACITY - used),
-      };
-    });
-  }, [selectedDoctor, slotUsageByDoctorAndTime]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleNext = () => {
     setError(null);
 
     if (!selectedPatient) {
@@ -441,29 +240,19 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
       return;
     }
 
-    if (!availability.canBook) {
-      setError(availability.message);
+    if (!selectedDoctor) {
+      setError('담당 의사를 선택해주세요.');
       return;
     }
 
-    setIsSubmitting(true);
-
-    try {
-      await onSave({
-        patientId: selectedPatient.id,
-        date: selectedDate,
-        time: selectedTime,
-        doctor: selectedDoctor,
-        item: selectedItems.join(','), // 복수 선택된 항목을 쉼표로 연결
-        type: '재진', // 기본값
-        memo,
-      });
-      onClose();
-    } catch (err: any) {
-      setError(err.message || '예약 저장 실패');
-    } finally {
-      setIsSubmitting(false);
-    }
+    onNext({
+      patient: selectedPatient,
+      doctor: selectedDoctor,
+      doctorColor: selectedDoctorColor,
+      selectedItems,
+      requiredSlots,
+      memo,
+    });
   };
 
   if (!isOpen) return null;
@@ -472,7 +261,10 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
-          <h3 className="text-lg font-bold">새 예약</h3>
+          <div>
+            <h3 className="text-lg font-bold">새 예약 - 1단계</h3>
+            <p className="text-sm text-gray-500">진료항목과 담당의 선택</p>
+          </div>
           <button
             onClick={onClose}
             className="p-1 hover:bg-gray-100 rounded"
@@ -481,7 +273,7 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <div className="p-6 space-y-4">
           {/* 에러 메시지 */}
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
@@ -586,88 +378,12 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
             )}
           </div>
 
-          {/* 담당 의사 - 버튼 형태 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              담당 의사 <span className="text-red-500">*</span>
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {doctors.map((doc) => {
-                const isSelected = selectedDoctor === doc.name;
-                return (
-                  <button
-                    key={doc.id}
-                    type="button"
-                    onClick={() => setSelectedDoctor(doc.name)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                      isSelected
-                        ? 'bg-clinic-primary text-white ring-2 ring-clinic-primary ring-offset-1'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
-                    }`}
-                    style={isSelected ? {} : { borderLeftColor: doc.color, borderLeftWidth: '4px' }}
-                  >
-                    {doc.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 예약 시간 - 테이블 형태 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              예약 시간 <span className="text-red-500">*</span>
-              {selectedTime && (
-                <span className="ml-2 text-clinic-primary font-semibold">{selectedTime} 선택됨</span>
-              )}
-            </label>
-            {selectedDoctor ? (
-              <div className="border rounded-lg overflow-hidden">
-                <div className="grid grid-cols-6 gap-1 p-2 bg-gray-50 max-h-48 overflow-y-auto">
-                  {timeSlotInfo.map((slot) => {
-                    const isSelected = selectedTime === slot.time;
-                    const isFull = slot.remainingSlots === 0;
-                    const isLowAvail = slot.remainingSlots > 0 && slot.remainingSlots <= 2;
-
-                    return (
-                      <button
-                        key={slot.time}
-                        type="button"
-                        onClick={() => !isFull && setSelectedTime(slot.time)}
-                        disabled={isFull}
-                        className={`p-2 rounded text-center text-xs font-medium transition-all ${
-                          isSelected
-                            ? 'bg-clinic-primary text-white ring-2 ring-clinic-primary ring-offset-1'
-                            : isFull
-                              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                              : isLowAvail
-                                ? 'bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200'
-                                : 'bg-white text-gray-700 hover:bg-blue-50 border border-gray-200'
-                        }`}
-                      >
-                        <div className="font-semibold">{slot.time}</div>
-                        <div className={`text-[10px] ${isSelected ? 'text-white/80' : isFull ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {slot.remainingSlots}/{SLOT_CAPACITY}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="p-4 bg-gray-50 rounded-lg text-center text-gray-500 text-sm">
-                <i className="fa-solid fa-user-doctor mr-2"></i>
-                먼저 담당 의사를 선택해주세요
-              </div>
-            )}
-          </div>
-
           {/* 진료 항목 - 복수 선택 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               진료 항목 <span className="text-red-500">*</span>
               <span className="ml-2 text-xs text-gray-500 font-normal">
-                (선택: {selectedItems.length}개, 총 {requiredSlots}칸)
+                (선택: {selectedItems.length}개, 총 <span className="font-bold text-clinic-primary">{requiredSlots}칸</span>)
               </span>
             </label>
             <div className="space-y-3">
@@ -707,35 +423,51 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
             )}
           </div>
 
-          {/* 예약 가능 여부 표시 */}
-          {selectedDoctor && selectedTime && (
-            <div className={`p-3 rounded-lg text-sm ${
-              availability.canBook
-                ? 'bg-green-50 border border-green-200 text-green-700'
-                : 'bg-red-50 border border-red-200 text-red-700'
-            }`}>
-              <i className={`fa-solid ${availability.canBook ? 'fa-check-circle' : 'fa-times-circle'} mr-2`}></i>
-              {availability.message}
-              {availability.overflow > 0 && (
-                <p className="mt-1 text-xs">
-                  * 다음 시간대({getNextTimeSlot(selectedTime)})로 {availability.overflow}칸이 넘어갑니다.
-                </p>
-              )}
+          {/* 담당 의사 - 버튼 형태 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              담당 의사 <span className="text-red-500">*</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {doctors.map((doc) => {
+                const isSelected = selectedDoctor === doc.name;
+                return (
+                  <button
+                    key={doc.id}
+                    type="button"
+                    onClick={() => setSelectedDoctor(doc.name)}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                      isSelected
+                        ? 'bg-clinic-primary text-white ring-2 ring-clinic-primary ring-offset-1'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
+                    }`}
+                    style={isSelected ? {} : { borderLeftColor: doc.color, borderLeftWidth: '4px' }}
+                  >
+                    {doc.name}
+                  </button>
+                );
+              })}
             </div>
-          )}
+          </div>
 
           {/* 메모 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              메모
+              메모 <span className="text-xs text-gray-400">(선택)</span>
             </label>
             <textarea
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
-              rows={3}
+              rows={2}
               placeholder="예약 관련 메모"
             />
+          </div>
+
+          {/* 안내 메시지 */}
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
+            <i className="fa-solid fa-info-circle mr-2"></i>
+            다음 단계에서 캘린더에서 직접 예약 시간을 선택합니다.
           </div>
 
           {/* 버튼 */}
@@ -748,24 +480,18 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
               취소
             </button>
             <button
-              type="submit"
-              disabled={isSubmitting || !availability.canBook}
-              className="flex-1 py-2.5 bg-clinic-primary text-white font-semibold rounded-lg hover:bg-clinic-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onClick={handleNext}
+              className="flex-1 py-2.5 bg-clinic-primary text-white font-semibold rounded-lg hover:bg-clinic-primary/90 transition-colors"
             >
-              {isSubmitting ? (
-                <>
-                  <i className="fa-solid fa-spinner fa-spin mr-2"></i>
-                  저장 중...
-                </>
-              ) : (
-                '예약 저장'
-              )}
+              다음: 시간 선택
+              <i className="fa-solid fa-arrow-right ml-2"></i>
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
 };
 
-export default NewReservationModal;
+export default ReservationStep1Modal;
