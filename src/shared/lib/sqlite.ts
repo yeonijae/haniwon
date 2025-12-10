@@ -94,8 +94,10 @@ export async function execute(sql: string): Promise<{
  * INSERT 후 마지막 삽입 ID 반환
  */
 export async function insert(sql: string): Promise<number> {
-  const result = await execute(sql);
-  return result.lastInsertRowid || 0;
+  await execute(sql);
+  // 서버가 lastInsertRowid를 반환하지 않으므로 별도 조회
+  const result = await queryOne<{ id: number }>('SELECT last_insert_rowid() as id');
+  return result?.id || 0;
 }
 
 /**

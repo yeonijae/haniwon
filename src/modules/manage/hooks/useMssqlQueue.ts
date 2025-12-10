@@ -84,11 +84,12 @@ export const useMssqlQueue = () => {
   const processedTreatingChartNosRef = useRef<Set<string>>(new Set());
 
   // SQLite에서 치료실에 배정된 환자 목록 조회 (차트번호 기준)
+  // 배정된 환자는 waiting_queue에서도 삭제
   const fetchAssignedPatients = useCallback(async () => {
     try {
-      const data = await query<{ patient_chart_number: string }>(`
-        SELECT patient_chart_number FROM treatment_rooms
-        WHERE patient_chart_number IS NOT NULL
+      const data = await query<{ patient_chart_number: string; patient_id: number }>(`
+        SELECT patient_chart_number, patient_id FROM treatment_rooms
+        WHERE patient_chart_number IS NOT NULL AND patient_chart_number != ''
       `);
 
       const chartNumbers = new Set(
@@ -97,6 +98,16 @@ export const useMssqlQueue = () => {
           .filter(Boolean)
       );
       setAssignedChartNumbers(chartNumbers);
+
+      // 치료실에 배정된 환자는 waiting_queue에서 삭제
+      for (const room of data || []) {
+        if (room.patient_id) {
+          await execute(`
+            DELETE FROM waiting_queue
+            WHERE patient_id = ${room.patient_id} AND queue_type = 'treatment'
+          `);
+        }
+      }
     } catch (err) {
       console.error('치료실 환자 조회 실패:', err);
     }
@@ -120,20 +131,27 @@ export const useMssqlQueue = () => {
 
       try {
         // SQLite patients 테이블에서 chart_no로 환자 찾기
-        const patientData = await queryOne<{ id: number }>(`
+        let patientData = await queryOne<{ id: number }>(`
           SELECT id FROM patients WHERE chart_number = ${escapeString(chartNo)}
         `);
 
+        // SQLite에 환자가 없으면 자동으로 생성
         if (!patientData) {
-          console.log(`차트번호 ${chartNo} 환자가 SQLite에 없음 - 스킵`);
-          processedTreatingChartNosRef.current.add(chartNo);
-          continue;
+          console.log(`차트번호 ${chartNo} 환자가 SQLite에 없음 - 자동 생성`);
+          const newPatientId = await insert(`
+            INSERT INTO patients (name, chart_number, mssql_id)
+            VALUES (${escapeString(patient.patient_name)}, ${escapeString(chartNo)}, ${patient.patient_id})
+          `);
+          patientData = { id: newPatientId };
+          console.log(`✅ ${patient.patient_name} (${chartNo}) SQLite 환자 생성 완료 (ID: ${newPatientId})`);
         }
 
-        // 이미 waiting_queue에 있는지 확인
+        // 이미 waiting_queue에 있는지 확인 (patient_id 또는 차트번호로)
         const existingQueue = await queryOne<{ id: number }>(`
-          SELECT id FROM waiting_queue
-          WHERE patient_id = ${patientData.id} AND queue_type = 'treatment'
+          SELECT wq.id FROM waiting_queue wq
+          LEFT JOIN patients p ON wq.patient_id = p.id
+          WHERE wq.queue_type = 'treatment'
+            AND (wq.patient_id = ${patientData.id} OR p.chart_number = ${escapeString(chartNo)})
         `);
 
         if (existingQueue) {
@@ -149,10 +167,10 @@ export const useMssqlQueue = () => {
 
         const nextPosition = (maxData?.max_pos ?? -1) + 1;
 
-        // waiting_queue에 추가
+        // waiting_queue에 추가 (INSERT OR IGNORE로 중복 방지)
         const details = `${patient.doctor || ''} ${patient.status || ''}`.trim() || '치료대기';
-        await insert(`
-          INSERT INTO waiting_queue (patient_id, queue_type, details, position)
+        await execute(`
+          INSERT OR IGNORE INTO waiting_queue (patient_id, queue_type, details, position)
           VALUES (${patientData.id}, 'treatment', ${escapeString(details)}, ${nextPosition})
         `);
 

@@ -710,13 +710,16 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
                 formatWaitingTime={mssqlQueue.formatWaitingTime}
                 getWaitingMinutes={mssqlQueue.getWaitingMinutes}
               />
-              <MssqlWaitingList
+              <WaitingList
                 title="치료 대기"
                 icon="fa-solid fa-bed-pulse"
-                list={mssqlQueue.treating}
-                listType="treating"
-                formatWaitingTime={mssqlQueue.formatWaitingTime}
-                getWaitingMinutes={mssqlQueue.getWaitingMinutes}
+                list={patients.treatmentWaitingList}
+                listType="treatment"
+                onPatientClick={handlePatientCardClick}
+                onPatientDrop={patients.handlePatientDrop}
+                onMoveToPayment={handleMoveToPayment}
+                onCancelRegistration={handleCancelRegistration}
+                onEditConsultationInfo={handleEditConsultationInfo}
               />
             </div>
 

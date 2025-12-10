@@ -132,7 +132,7 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
         name: st.treatment_name,
         status: st.status,
         duration: st.duration,
-        startTime: st.started_at ? st.started_at + 'Z' : null,
+        startTime: st.started_at ? (st.started_at.endsWith('Z') ? st.started_at : st.started_at + 'Z') : null,
         elapsedSeconds: st.elapsed_seconds || 0,
         memo: st.memo,
       })),

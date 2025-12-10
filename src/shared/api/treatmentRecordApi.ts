@@ -149,7 +149,7 @@ export async function addTimelineEvent(
   const record = await queryOne<{ patient_id: number }>(`SELECT patient_id FROM treatment_records WHERE id = ${input.treatment_record_id}`);
   const patientId = record?.patient_id || 0;
 
-  const id = await insert(`
+  await execute(`
     INSERT INTO treatment_timeline_events (patient_id, event_type, event_time, details, created_at)
     VALUES (${patientId}, ${escapeString(input.event_type)}, ${escapeString(input.timestamp || now)},
             ${escapeString(JSON.stringify({ location: input.location, staff_name: input.staff_name, memo: input.memo }))},
@@ -158,7 +158,12 @@ export async function addTimelineEvent(
 
   console.log(`✅ 타임라인 이벤트 추가: ${input.event_type}`);
 
-  const data = await queryOne<any>(`SELECT * FROM treatment_timeline_events WHERE id = ${id}`);
+  // 방금 삽입한 데이터 조회 (patient_id + event_type + event_time으로 특정)
+  const data = await queryOne<any>(`
+    SELECT * FROM treatment_timeline_events
+    WHERE patient_id = ${patientId} AND event_type = ${escapeString(input.event_type)}
+    ORDER BY id DESC LIMIT 1
+  `);
   return mapTimelineEvent(data);
 }
 
@@ -297,7 +302,9 @@ function mapTreatmentRecordWithRelations(data: any, events: any[]): TreatmentRec
   return record;
 }
 
-function mapTimelineEvent(data: any): TimelineEvent {
+function mapTimelineEvent(data: any): TimelineEvent | null {
+  if (!data) return null;
+
   let details: any = {};
   try {
     details = data.details ? JSON.parse(data.details) : {};
