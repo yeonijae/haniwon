@@ -45,7 +45,7 @@ export const usePayments = (currentUser: any) => {
   useEffect(() => {
     if (!currentUser) return;
 
-    const POLLING_INTERVAL = 5000;
+    const POLLING_INTERVAL = 2000;
     const intervalId = setInterval(loadPaymentData, POLLING_INTERVAL);
 
     return () => {

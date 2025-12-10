@@ -496,6 +496,18 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
     alert('환자를 찾을 수 없습니다.');
   };
 
+  // 접수정보 수정 (WaitingList 컴포넌트용)
+  const handleEditConsultationInfo = (patient: Patient) => {
+    setPatientForConsultationInfo(patient);
+    openModal('consultationInfo', `${patient.name}님 접수 정보`, false);
+  };
+
+  // 환자 카드 클릭 (WaitingList 컴포넌트용)
+  const handlePatientCardClick = (patient: Patient) => {
+    // 환자 카드 클릭 시 접수정보 수정 모달 오픈
+    handleEditConsultationInfo(patient);
+  };
+
   const handleMovePatientToPayment = async (patientId: number, sourceList: 'consultation' | 'treatment' | 'treatment_room') => {
     let patientToMove: Patient | undefined;
 
@@ -530,6 +542,11 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
     }
 
     await paymentsHook.createPayment(patientToMove, '치료비');
+  };
+
+  // 치료대기에서 수납으로 이동 (WaitingList 컴포넌트용 래퍼)
+  const handleMoveToPayment = (patientId: number, sourceList: 'consultation' | 'treatment') => {
+    handleMovePatientToPayment(patientId, sourceList);
   };
 
   const handleMovePatientFromPaymentToWaiting = (paymentId: number, destination: 'consultation' | 'treatment') => {

@@ -119,7 +119,7 @@ export const usePatients = (currentUser: any) => {
   useEffect(() => {
     if (!currentUser) return;
 
-    const POLLING_INTERVAL = 5000;
+    const POLLING_INTERVAL = 2000;
 
     const reloadWaitingQueues = async () => {
       // 자신의 변경 직후라면 폴링 스킵

@@ -49,6 +49,13 @@ const formatInTime = (date: Date): string => {
 const useTimer = (treatment: SessionTreatment | null) => {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
 
+  // treatment 속성을 개별 변수로 추출하여 dependency 명확화
+  const id = treatment?.id;
+  const status = treatment?.status;
+  const startTime = treatment?.startTime;
+  const elapsedSeconds = treatment?.elapsedSeconds || 0;
+  const duration = treatment?.duration || 0;
+
   useEffect(() => {
     if (!treatment) {
       setRemainingSeconds(0);
@@ -56,17 +63,17 @@ const useTimer = (treatment: SessionTreatment | null) => {
     }
 
     const calculateRemaining = () => {
-      const totalSeconds = treatment.duration * 60;
+      const totalSeconds = duration * 60;
 
-      if (treatment.status === 'completed') {
+      if (status === 'completed') {
         return 0;
-      } else if (treatment.status === 'running' && treatment.startTime) {
+      } else if (status === 'running' && startTime) {
         const now = Date.now();
-        const start = new Date(treatment.startTime).getTime();
-        const elapsed = (now - start) / 1000 + (treatment.elapsedSeconds || 0);
+        const start = new Date(startTime).getTime();
+        const elapsed = (now - start) / 1000 + elapsedSeconds;
         return Math.max(0, totalSeconds - elapsed);
-      } else if (treatment.status === 'paused') {
-        return Math.max(0, totalSeconds - (treatment.elapsedSeconds || 0));
+      } else if (status === 'paused') {
+        return Math.max(0, totalSeconds - elapsedSeconds);
       } else {
         // pending
         return totalSeconds;
@@ -76,13 +83,13 @@ const useTimer = (treatment: SessionTreatment | null) => {
     setRemainingSeconds(calculateRemaining());
 
     // running 상태일 때만 매초 업데이트
-    if (treatment.status === 'running') {
+    if (status === 'running') {
       const interval = setInterval(() => {
         setRemainingSeconds(calculateRemaining());
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [treatment?.id, treatment?.status, treatment?.startTime, treatment?.elapsedSeconds, treatment?.duration]);
+  }, [treatment, id, status, startTime, elapsedSeconds, duration]);
 
   return remainingSeconds;
 };
@@ -108,6 +115,17 @@ const TimerDisplay = memo<TimerDisplayProps>(({ treatment }) => {
       {formatTime(remainingSeconds)}
     </span>
   );
+}, (prevProps, nextProps) => {
+  // treatment 속성이 바뀌면 리렌더링
+  const prev = prevProps.treatment;
+  const next = nextProps.treatment;
+  if (!prev && !next) return true;
+  if (!prev || !next) return false;
+  return prev.id === next.id &&
+         prev.status === next.status &&
+         prev.startTime === next.startTime &&
+         prev.elapsedSeconds === next.elapsedSeconds &&
+         prev.duration === next.duration;
 });
 
 TimerDisplay.displayName = 'TimerDisplay';
@@ -121,7 +139,7 @@ const TreatmentStatus = memo<TreatmentStatusProps>(({ treatment }) => {
   const isRunning = treatment?.status === 'running';
   const isPaused = treatment?.status === 'paused';
 
-  if (!treatment) {
+  if (!treatment || !treatment.name) {
     return <span className="text-green-600 font-medium text-xs">완료</span>;
   }
 
@@ -130,7 +148,7 @@ const TreatmentStatus = memo<TreatmentStatusProps>(({ treatment }) => {
       className={`font-medium text-xs ${isRunning ? 'text-clinic-secondary' : isPaused ? 'text-yellow-600' : 'text-gray-600'}`}
       title={treatment.name}
     >
-      {treatment.name.slice(0, 3)}
+      {(treatment.name || '').slice(0, 3)}
       {isPaused && <i className="fa-solid fa-pause text-[9px] text-yellow-500 ml-0.5"></i>}
     </span>
   );

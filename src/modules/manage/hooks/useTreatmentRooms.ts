@@ -3,7 +3,7 @@ import { TreatmentRoom } from '../types';
 import * as api from '../lib/api';
 
 // Polling 간격 (밀리초)
-const POLLING_INTERVAL = 5000;
+const POLLING_INTERVAL = 2000;
 
 export const useTreatmentRooms = (currentUser: any) => {
   const [treatmentRooms, setTreatmentRooms] = useState<TreatmentRoom[]>([]);

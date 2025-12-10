@@ -169,9 +169,9 @@ export async function updateTreatmentRoom(roomId: number, room: Partial<Treatmen
     for (let i = 0; i < room.sessionTreatments.length; i++) {
       const st = room.sessionTreatments[i];
       await execute(`
-        INSERT INTO session_treatments (room_id, treatment_name, duration, status, started_at, completed_at, display_order)
+        INSERT INTO session_treatments (room_id, treatment_name, duration, status, started_at, completed_at, elapsed_seconds, display_order)
         VALUES (${roomId}, ${escapeString(st.name)}, ${st.duration}, ${escapeString(st.status)},
-                ${st.startTime ? escapeString(st.startTime) : 'NULL'}, NULL, ${i})
+                ${st.startTime ? escapeString(st.startTime) : 'NULL'}, NULL, ${st.elapsedSeconds || 0}, ${i})
       `);
     }
   }

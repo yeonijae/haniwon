@@ -130,20 +130,31 @@ export const useMssqlQueue = () => {
       }
 
       try {
-        // SQLite patients 테이블에서 chart_no로 환자 찾기
+        // SQLite patients 테이블에서 chart_no 또는 mssql_id로 환자 찾기
         let patientData = await queryOne<{ id: number }>(`
-          SELECT id FROM patients WHERE chart_number = ${escapeString(chartNo)}
+          SELECT id FROM patients WHERE chart_number = ${escapeString(chartNo)} OR mssql_id = ${patient.patient_id}
         `);
 
         // SQLite에 환자가 없으면 자동으로 생성
         if (!patientData) {
           console.log(`차트번호 ${chartNo} 환자가 SQLite에 없음 - 자동 생성`);
-          const newPatientId = await insert(`
-            INSERT INTO patients (name, chart_number, mssql_id)
-            VALUES (${escapeString(patient.patient_name)}, ${escapeString(chartNo)}, ${patient.patient_id})
-          `);
-          patientData = { id: newPatientId };
-          console.log(`✅ ${patient.patient_name} (${chartNo}) SQLite 환자 생성 완료 (ID: ${newPatientId})`);
+          try {
+            const newPatientId = await insert(`
+              INSERT INTO patients (name, chart_number, mssql_id)
+              VALUES (${escapeString(patient.patient_name)}, ${escapeString(chartNo)}, ${patient.patient_id})
+            `);
+            patientData = { id: newPatientId };
+            console.log(`✅ ${patient.patient_name} (${chartNo}) SQLite 환자 생성 완료 (ID: ${newPatientId})`);
+          } catch (insertErr) {
+            // UNIQUE constraint 오류 시 다시 조회
+            console.log(`환자 생성 실패, 재조회 시도...`);
+            patientData = await queryOne<{ id: number }>(`
+              SELECT id FROM patients WHERE chart_number = ${escapeString(chartNo)} OR mssql_id = ${patient.patient_id}
+            `);
+            if (!patientData) {
+              throw insertErr;
+            }
+          }
         }
 
         // 이미 waiting_queue에 있는지 확인 (patient_id 또는 차트번호로)
@@ -211,10 +222,10 @@ export const useMssqlQueue = () => {
     // 초기 로드
     fetchAssignedPatients();
 
-    // 5초마다 치료실 배정 환자 목록 갱신
+    // 2초마다 치료실 배정 환자 목록 갱신
     const assignedInterval = setInterval(() => {
       fetchAssignedPatients();
-    }, 5000);
+    }, 2000);
 
     return () => {
       clearInterval(assignedInterval);

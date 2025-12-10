@@ -817,10 +817,10 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
       inTime: room.in_time,
       sessionTreatments: (treatments || []).map((st: any) => ({
         id: st.id,
-        name: st.name,
+        name: st.treatment_name || st.name,
         status: st.status,
         duration: st.duration,
-        startTime: st.start_time || null,
+        startTime: st.started_at || st.start_time || null,
         elapsedSeconds: st.elapsed_seconds || 0,
         memo: st.memo,
       })),
