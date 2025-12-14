@@ -18,6 +18,7 @@ export interface ReservationDraft {
   selectedItems: string[];
   requiredSlots: number;
   memo: string;
+  defaultTime?: string;  // 빈 시간 클릭시 선택한 시간
 }
 
 interface ReservationStep1ModalProps {
@@ -27,6 +28,8 @@ interface ReservationStep1ModalProps {
   doctors: Doctor[];
   initialPatient?: InitialPatient | null;
   initialDetails?: string;
+  defaultDoctor?: string;  // 빈 시간 클릭시 선택한 의사
+  defaultTime?: string;    // 빈 시간 클릭시 선택한 시간
 }
 
 // 진료 항목 카테고리
@@ -88,6 +91,8 @@ export const ReservationStep1Modal: React.FC<ReservationStep1ModalProps> = ({
   doctors,
   initialPatient,
   initialDetails,
+  defaultDoctor,
+  defaultTime,
 }) => {
   // 환자 검색 관련 상태
   const [searchTerm, setSearchTerm] = useState('');
@@ -128,12 +133,12 @@ export const ReservationStep1Modal: React.FC<ReservationStep1ModalProps> = ({
         phone: initialPatient.phone,
       } : null);
       setShowSearchResults(false);
-      setSelectedDoctor('');
+      setSelectedDoctor(defaultDoctor || '');
       setSelectedItems(initialDetails ? parseDetailsToItems(initialDetails) : ['침']);
       setMemo('');
       setError(null);
     }
-  }, [isOpen, initialPatient, initialDetails]);
+  }, [isOpen, initialPatient, initialDetails, defaultDoctor]);
 
   // initialDetails가 변경되면 진료항목 자동 선택
   useEffect(() => {
@@ -142,12 +147,16 @@ export const ReservationStep1Modal: React.FC<ReservationStep1ModalProps> = ({
     }
   }, [initialDetails]);
 
-  // 외부에서 환자 정보가 넘어온 경우 첫 번째 의사 자동 선택
+  // defaultDoctor 또는 initialPatient가 있을 때 의사 자동 선택
   useEffect(() => {
-    if (initialPatient && doctors.length > 0 && !selectedDoctor) {
-      setSelectedDoctor(doctors[0].name);
+    if (isOpen && doctors.length > 0 && !selectedDoctor) {
+      if (defaultDoctor) {
+        setSelectedDoctor(defaultDoctor);
+      } else if (initialPatient) {
+        setSelectedDoctor(doctors[0].name);
+      }
     }
-  }, [initialPatient, doctors, selectedDoctor]);
+  }, [isOpen, initialPatient, doctors, selectedDoctor, defaultDoctor]);
 
   // 환자 검색 (디바운스 적용)
   const handleSearch = useCallback(async (term: string) => {
@@ -273,6 +282,7 @@ export const ReservationStep1Modal: React.FC<ReservationStep1ModalProps> = ({
       selectedItems,
       requiredSlots,
       memo,
+      defaultTime,
     });
   };
 

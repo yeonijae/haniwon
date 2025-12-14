@@ -18,6 +18,8 @@ import FunnelApp from './modules/funnel/FunnelApp';
 import ContentApp from './modules/content/ContentApp';
 import ReservationApp from './modules/reservation/ReservationApp';
 import { DoctorPadApp } from './modules/doctor-pad';
+import StatisticsApp from './modules/statistics/StatisticsApp';
+import DbAdminApp from './modules/db-admin/DbAdminApp';
 
 // Public Blog Pages (공개 - 로그인 불필요)
 import BlogListPage from './modules/blog/pages/BlogListPage';
@@ -171,6 +173,18 @@ function App() {
       <Route
         path="/doctor-pad/*"
         element={user ? <DoctorPadApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Statistics Routes (통계 대시보드) */}
+      <Route
+        path="/statistics/*"
+        element={user ? <StatisticsApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* DB Admin Routes (DB 관리자) */}
+      <Route
+        path="/db-admin/*"
+        element={user ? <DbAdminApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Fallback */}

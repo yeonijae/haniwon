@@ -8,10 +8,12 @@ interface ModalProps {
   wide?: boolean;
   fullWidth?: boolean;
   fullHeight?: boolean;
+  fullScreen?: boolean; // 화면 꽉 채우기
   maxWidth?: string; // 커스텀 최대 너비 (예: '1000px')
+  headerExtra?: React.ReactNode; // 제목 옆에 추가할 컴포넌트
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, wide = false, fullWidth = false, fullHeight = false, maxWidth }) => {
+const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, wide = false, fullWidth = false, fullHeight = false, fullScreen = false, maxWidth, headerExtra }) => {
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -26,17 +28,19 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, wide = 
 
   if (!isOpen) return null;
 
-  const modalWidthClass = maxWidth
-    ? 'w-full'
-    : fullWidth
-      ? 'w-full max-w-[98vw]'
-      : wide
-        ? 'w-full max-w-[95vw]'
-        : 'w-full max-w-2xl';
+  const modalWidthClass = fullScreen
+    ? 'w-[98vw]'
+    : maxWidth
+      ? 'w-full'
+      : fullWidth
+        ? 'w-full max-w-[98vw]'
+        : wide
+          ? 'w-full max-w-[95vw]'
+          : 'w-full max-w-2xl';
 
   const customMaxWidthStyle = maxWidth ? { maxWidth } : {};
 
-  const modalHeightClass = fullHeight ? 'h-[95vh]' : 'max-h-[90vh]';
+  const modalHeightClass = fullScreen ? 'h-[95vh]' : fullHeight ? 'h-[95vh]' : 'max-h-[90vh]';
 
   return (
     <div
@@ -47,10 +51,13 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, wide = 
         style={customMaxWidthStyle}
       >
         <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
-          <h3 className="text-xl font-semibold">{title}</h3>
+          <div className="flex items-center gap-4 flex-1">
+            <h3 className="text-xl font-semibold">{title}</h3>
+            {headerExtra && <div className="flex-1">{headerExtra}</div>}
+          </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-gray-400 hover:text-gray-600 ml-4"
           >
             <i className="fa-solid fa-times text-2xl"></i>
           </button>

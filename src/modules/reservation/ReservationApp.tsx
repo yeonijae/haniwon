@@ -123,10 +123,10 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
     setSelectedReservation(reservation);
   };
 
-  // 빈 시간 슬롯 클릭 핸들러
+  // 빈 시간 슬롯 클릭 핸들러 - Step1 모달 사용
   const handleTimeSlotClick = (time: string, doctor?: string) => {
     setNewReservationDefaults({ time, doctor });
-    setShowNewReservationModal(true);
+    setShowStep1Modal(true);
   };
 
   // 예약 취소 핸들러
@@ -166,6 +166,12 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
     setShowStep1Modal(false);
     // 자동으로 일별 뷰로 전환
     setViewType('day');
+
+    // defaultTime이 있으면 바로 확인 모달 열기
+    if (draft.defaultTime) {
+      setSelectedTimeForConfirm(draft.defaultTime);
+      setShowConfirmModal(true);
+    }
   };
 
   const handleStep1Close = () => {
@@ -173,6 +179,7 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
     setReservationDraft(null);
     setInitialPatient(null);
     setInitialDetails('');
+    setNewReservationDefaults({});
   };
 
   const handleSelectTimeSlot = (time: string) => {
@@ -496,6 +503,8 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
         doctors={doctors}
         initialPatient={initialPatient}
         initialDetails={initialDetails}
+        defaultDoctor={newReservationDefaults.doctor}
+        defaultTime={newReservationDefaults.time}
       />
 
       {/* 2단계 예약 플로우: 확인 모달 */}

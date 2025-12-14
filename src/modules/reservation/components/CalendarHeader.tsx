@@ -8,7 +8,8 @@ interface DayStats {
   visited: number;
   canceled: number;
   noShow: number;
-  visitedWithNextReservation: number; // 내원 후 다음 예약 잡은 수
+  acuVisited: number; // 침치료 환자 수 (자보 + 청구금>0)
+  visitedWithNextReservation: number; // 침치료 후 다음 예약 잡은 수
 }
 
 interface CalendarHeaderProps {
@@ -55,20 +56,20 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
   const today = getYYYYMMDD(new Date());
   const isToday = selectedDate === today;
 
-  // 현장예약 카운트 (API에서 조회)
-  const [onSiteCount, setOnSiteCount] = useState<number>(0);
+  // 현장예약 데이터 (API에서 조회) - 침치료 환자 기준
+  const [onSiteData, setOnSiteData] = useState<{ visited_count: number; on_site_count: number }>({ visited_count: 0, on_site_count: 0 });
 
   useEffect(() => {
-    const loadOnSiteCount = async () => {
+    const loadOnSiteData = async () => {
       try {
         const data = await fetchOnSiteReservationCount(selectedDate);
-        setOnSiteCount(data.on_site_count);
+        setOnSiteData({ visited_count: data.visited_count, on_site_count: data.on_site_count });
       } catch (err) {
         console.error('현장예약 카운트 조회 실패:', err);
-        setOnSiteCount(0);
+        setOnSiteData({ visited_count: 0, on_site_count: 0 });
       }
     };
-    loadOnSiteCount();
+    loadOnSiteData();
   }, [selectedDate, reservations]); // reservations 변경 시에도 새로고침
 
   // 선택된 날짜의 예약 통계 계산
@@ -83,8 +84,15 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
       ? dayReservations.filter(r => !r.visited && !r.canceled).length
       : 0;
 
-    return { total, visited, canceled, noShow, visitedWithNextReservation: onSiteCount };
-  }, [reservations, selectedDate, today, onSiteCount]);
+    return {
+      total,
+      visited,
+      canceled,
+      noShow,
+      acuVisited: onSiteData.visited_count,  // 침치료 환자 수
+      visitedWithNextReservation: onSiteData.on_site_count  // 침치료 후 예약 잡은 수
+    };
+  }, [reservations, selectedDate, today, onSiteData]);
 
   // 날짜 선택 팝업 상태
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -317,13 +325,13 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
                   대기 <span className="font-bold">{dayStats.total - dayStats.visited - dayStats.canceled}</span>
                 </span>
               )}
-              {/* 현장예약율 (내원 환자가 있을 때만) */}
-              {dayStats.visited > 0 && (
+              {/* 현장예약율 (침치료 환자가 있을 때만) */}
+              {dayStats.acuVisited > 0 && (
                 <span className="text-purple-600 border-l border-gray-300 pl-3 ml-1">
                   <i className="fa-solid fa-calendar-plus mr-1 text-xs"></i>
-                  현장예약 <span className="font-bold">{dayStats.visitedWithNextReservation}</span>/{dayStats.visited}
+                  현장예약 <span className="font-bold">{dayStats.visitedWithNextReservation}</span>/{dayStats.acuVisited}
                   <span className="text-xs ml-0.5">
-                    ({Math.round((dayStats.visitedWithNextReservation / dayStats.visited) * 100)}%)
+                    ({Math.round((dayStats.visitedWithNextReservation / dayStats.acuVisited) * 100)}%)
                   </span>
                 </span>
               )}

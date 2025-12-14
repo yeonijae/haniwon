@@ -1552,17 +1552,28 @@ export async function fetchReceiptHistory(date?: string): Promise<ReceiptHistory
     }
     const mssqlData: ReceiptHistoryResponse = await response.json();
 
-    // 2. 각 환자의 SQLite 메모 조회 및 병합
+    // 2. 각 수납건의 SQLite 메모 조회 및 병합 (receipt_id 기준)
     const receiptsWithMemo: ReceiptHistoryItem[] = [];
     for (const receipt of mssqlData.receipts) {
       let packageInfo: string | undefined;
       let memo: string | undefined;
 
       try {
-        const sqliteMemo = await fetchPaymentMemo(receipt.patient_id, targetDate);
-        if (sqliteMemo) {
-          packageInfo = sqliteMemo.package_info;
-          memo = sqliteMemo.memo;
+        // 먼저 mssql_receipt_id로 조회 시도
+        const sqliteMemoByReceipt = await queryOne<any>(`
+          SELECT memo, package_info FROM payment_memos
+          WHERE mssql_receipt_id = ${receipt.id}
+        `);
+        if (sqliteMemoByReceipt) {
+          packageInfo = sqliteMemoByReceipt.package_info;
+          memo = sqliteMemoByReceipt.memo;
+        } else {
+          // fallback: patient_id + date로 조회
+          const sqliteMemo = await fetchPaymentMemo(receipt.patient_id, targetDate);
+          if (sqliteMemo) {
+            packageInfo = sqliteMemo.package_info;
+            memo = sqliteMemo.memo;
+          }
         }
       } catch (e) {
         // 메모가 없을 수 있음
@@ -1672,4 +1683,34 @@ export async function fetchReservableDoctors(): Promise<MssqlDoctor[]> {
     !doc.isOther &&
     doc.name !== 'DOCTOR'
   );
+}
+
+/**
+ * 수납 메모 저장/업데이트 (Receipt ID 기반)
+ * - 기존 레코드가 있으면 UPDATE, 없으면 INSERT
+ */
+export async function saveReceiptMemo(receiptId: number, memo: string): Promise<void> {
+  // 1. 먼저 해당 receipt의 메모 레코드가 있는지 확인
+  const existing = await queryOne<any>(`
+    SELECT id FROM payment_memos
+    WHERE mssql_receipt_id = ${receiptId}
+  `);
+
+  const now = new Date().toISOString();
+
+  if (existing) {
+    // 2a. 기존 레코드가 있으면 UPDATE
+    await execute(`
+      UPDATE payment_memos
+      SET memo = ${escapeString(memo)},
+          updated_at = ${escapeString(now)}
+      WHERE mssql_receipt_id = ${receiptId}
+    `);
+  } else {
+    // 2b. 없으면 INSERT (최소 필드만)
+    await execute(`
+      INSERT INTO payment_memos (mssql_receipt_id, memo, created_at, updated_at)
+      VALUES (${receiptId}, ${escapeString(memo)}, ${escapeString(now)}, ${escapeString(now)})
+    `);
+  }
 }

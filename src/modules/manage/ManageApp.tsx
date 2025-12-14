@@ -135,12 +135,16 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
 
   // Modal Handlers
   const [isModalFullHeight, setIsModalFullHeight] = useState<boolean>(false);
+  const [isModalFullScreen, setIsModalFullScreen] = useState<boolean>(false);
+  const [modalHeaderExtra, setModalHeaderExtra] = useState<React.ReactNode>(null);
 
   const openModal = (type: ModalType, title: string, wide?: boolean, fullHeight?: boolean) => {
     setModalType(type);
     setModalTitle(title);
     setIsModalWide(wide || false);
     setIsModalFullHeight(fullHeight || false);
+    // 수납현황은 fullScreen으로 열기
+    setIsModalFullScreen(type === 'dailyPayments');
   };
 
   const closeModal = () => {
@@ -148,6 +152,8 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
     setModalTitle('');
     setIsModalWide(false);
     setIsModalFullHeight(false);
+    setIsModalFullScreen(false);
+    setModalHeaderExtra(null);
     setEditingReservation(null);
     setSelectedPayment(null);
     setPatientForNewReservation(null);
@@ -669,7 +675,7 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
           completedPayments={paymentsHook.completedPayments}
         />;
       case 'dailyPayments':
-        return <DailyPaymentSummary />;
+        return <DailyPaymentSummary onDatePickerRender={setModalHeaderExtra} />;
       case 'consultationInfo':
         return patientForConsultationInfo ? (
           <ConsultationInfoModal
@@ -824,7 +830,9 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
         title={modalTitle}
         wide={isModalWide}
         fullHeight={isModalFullHeight}
+        fullScreen={isModalFullScreen}
         maxWidth={modalType === 'patientSearch' || modalType === 'consultationInfo' ? '800px' : undefined}
+        headerExtra={modalHeaderExtra}
       >
         {renderModalContent()}
       </Modal>

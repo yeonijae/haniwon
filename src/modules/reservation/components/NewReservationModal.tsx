@@ -212,6 +212,12 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 2-step 상태: 1 = 환자+담당의+치료항목, 2 = 날짜+시간선택
+  const [currentStep, setCurrentStep] = useState(1);
+
+  // Step 2에서 사용할 예약 날짜 (기본값: 달력에서 선택한 날짜)
+  const [reservationDate, setReservationDate] = useState(selectedDate);
+
   // 기본값 설정
   useEffect(() => {
     if (defaultDoctor) setSelectedDoctor(defaultDoctor);
@@ -247,8 +253,10 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
       setSelectedItems(initialDetails ? parseDetailsToItems(initialDetails) : ['침']);
       setMemo('');
       setError(null);
+      setCurrentStep(1); // step 초기화
+      setReservationDate(selectedDate); // 날짜 초기화
     }
-  }, [isOpen, initialPatient, defaultDoctor, defaultTime, initialDetails]);
+  }, [isOpen, initialPatient, defaultDoctor, defaultTime, initialDetails, selectedDate]);
 
   // initialDetails가 변경되면 진료항목 자동 선택
   useEffect(() => {
@@ -418,6 +426,30 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
 
   const availability = checkAvailability();
 
+  // Step1 → Step2 이동 (환자/담당의/치료항목 선택 후)
+  const handleNextStep = () => {
+    setError(null);
+    if (!selectedPatient) {
+      setError('환자를 검색하여 선택해주세요.');
+      return;
+    }
+    if (!selectedDoctor) {
+      setError('담당 의사를 선택해주세요.');
+      return;
+    }
+    if (selectedItems.length === 0) {
+      setError('치료 항목을 하나 이상 선택해주세요.');
+      return;
+    }
+    setCurrentStep(2);
+  };
+
+  // Step2 → Step1 뒤로가기
+  const handlePrevStep = () => {
+    setError(null);
+    setCurrentStep(1);
+  };
+
   // 시간별 슬롯 정보 (선택된 의사 기준)
   const timeSlotInfo: SlotInfo[] = useMemo(() => {
     if (!selectedDoctor) return [];
@@ -451,7 +483,7 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
     try {
       await onSave({
         patientId: selectedPatient.id,
-        date: selectedDate,
+        date: reservationDate, // Step 2에서 선택한 날짜 사용
         time: selectedTime,
         doctor: selectedDoctor,
         item: selectedItems.join(','), // 복수 선택된 항목을 쉼표로 연결
@@ -471,14 +503,46 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
-          <h3 className="text-lg font-bold">새 예약</h3>
+        {/* 헤더 */}
+        <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
+          <div className="flex items-center gap-3">
+            {currentStep === 2 && (
+              <button
+                onClick={handlePrevStep}
+                className="p-1 hover:bg-gray-100 rounded text-gray-600"
+              >
+                <i className="fa-solid fa-arrow-left text-lg"></i>
+              </button>
+            )}
+            <h3 className="text-lg font-bold">
+              새 예약 {currentStep === 1 ? '- 환자 선택' : '- 시간 선택'}
+            </h3>
+          </div>
           <button
             onClick={onClose}
             className="p-1 hover:bg-gray-100 rounded"
           >
             <i className="fa-solid fa-xmark text-xl"></i>
           </button>
+        </div>
+
+        {/* Step Indicator */}
+        <div className="px-6 py-3 bg-gray-50 border-b">
+          <div className="flex items-center justify-center gap-2">
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${
+              currentStep === 1 ? 'bg-clinic-primary text-white' : 'bg-gray-200 text-gray-600'
+            }`}>
+              <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs">1</span>
+              환자/치료
+            </div>
+            <i className="fa-solid fa-chevron-right text-gray-400 text-xs"></i>
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${
+              currentStep === 2 ? 'bg-clinic-primary text-white' : 'bg-gray-200 text-gray-600'
+            }`}>
+              <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs">2</span>
+              시간 선택
+            </div>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -490,278 +554,426 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
             </div>
           )}
 
-          {/* 환자 검색/선택 */}
-          <div ref={searchRef}>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              환자 <span className="text-red-500">*</span>
-            </label>
+          {/* ===== STEP 1: 환자 + 담당의 + 치료항목 선택 ===== */}
+          {currentStep === 1 && (
+            <>
+              {/* 환자 검색/선택 */}
+              <div ref={searchRef}>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  환자 <span className="text-red-500">*</span>
+                </label>
 
-            {selectedPatient ? (
-              // 환자가 선택된 상태
-              <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-clinic-primary text-white rounded-full flex items-center justify-center font-bold">
-                    {selectedPatient.name.charAt(0)}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-900">
-                      {selectedPatient.name}
-                      <span className="ml-2 text-sm font-normal text-gray-500">
-                        ({selectedPatient.chartNo})
-                      </span>
-                    </p>
-                    {selectedPatient.phone && (
-                      <p className="text-sm text-gray-500">{selectedPatient.phone}</p>
-                    )}
-                  </div>
-                </div>
-                {!initialPatient && (
-                  <button
-                    type="button"
-                    onClick={handleClearPatient}
-                    className="text-sm text-red-600 hover:text-red-700 font-medium"
-                  >
-                    변경
-                  </button>
-                )}
-              </div>
-            ) : (
-              // 환자 검색 입력
-              <div className="relative">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => handleSearchTermChange(e.target.value)}
-                    onFocus={() => searchResults.length > 0 && setShowSearchResults(true)}
-                    className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
-                    placeholder="환자 이름 또는 차트번호로 검색 (2글자 이상)"
-                  />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    {isSearching ? (
-                      <i className="fa-solid fa-spinner fa-spin text-gray-400"></i>
-                    ) : (
-                      <i className="fa-solid fa-search text-gray-400"></i>
-                    )}
-                  </div>
-                </div>
-
-                {/* 검색 결과 드롭다운 */}
-                {showSearchResults && searchResults.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {searchResults.map((patient) => (
+                {selectedPatient ? (
+                  <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-clinic-primary text-white rounded-full flex items-center justify-center font-bold">
+                        {selectedPatient.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-900">
+                          {selectedPatient.name}
+                          <span className="ml-2 text-sm font-normal text-gray-500">
+                            ({selectedPatient.chartNo})
+                          </span>
+                        </p>
+                        {selectedPatient.phone && (
+                          <p className="text-sm text-gray-500">{selectedPatient.phone}</p>
+                        )}
+                      </div>
+                    </div>
+                    {!initialPatient && (
                       <button
-                        key={patient.id}
                         type="button"
-                        onClick={() => handleSelectPatient(patient)}
-                        className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b last:border-b-0 flex items-center gap-3"
+                        onClick={handleClearPatient}
+                        className="text-sm text-red-600 hover:text-red-700 font-medium"
                       >
-                        <div className="w-8 h-8 bg-gray-200 text-gray-600 rounded-full flex items-center justify-center text-sm font-medium">
-                          {patient.name.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">
-                            {patient.name}
-                            <span className="ml-2 text-sm font-normal text-gray-500">
-                              ({patient.chartNo})
-                            </span>
-                          </p>
-                          {patient.phone && (
-                            <p className="text-xs text-gray-500">{patient.phone}</p>
-                          )}
-                        </div>
+                        변경
                       </button>
-                    ))}
+                    )}
                   </div>
-                )}
+                ) : (
+                  <div className="relative">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => handleSearchTermChange(e.target.value)}
+                        onFocus={() => searchResults.length > 0 && setShowSearchResults(true)}
+                        className="w-full px-3 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
+                        placeholder="환자 이름 또는 차트번호로 검색 (2글자 이상)"
+                      />
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        {isSearching ? (
+                          <i className="fa-solid fa-spinner fa-spin text-gray-400"></i>
+                        ) : (
+                          <i className="fa-solid fa-search text-gray-400"></i>
+                        )}
+                      </div>
+                    </div>
 
-                {/* 검색 결과 없음 */}
-                {showSearchResults && searchTerm.length >= 2 && searchResults.length === 0 && !isSearching && (
-                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-4 text-center text-gray-500">
-                    <i className="fa-solid fa-user-slash text-2xl mb-2"></i>
-                    <p>검색 결과가 없습니다</p>
+                    {showSearchResults && searchResults.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {searchResults.map((patient) => (
+                          <button
+                            key={patient.id}
+                            type="button"
+                            onClick={() => handleSelectPatient(patient)}
+                            className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b last:border-b-0 flex items-center gap-3"
+                          >
+                            <div className="w-8 h-8 bg-gray-200 text-gray-600 rounded-full flex items-center justify-center text-sm font-medium">
+                              {patient.name.charAt(0)}
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {patient.name}
+                                <span className="ml-2 text-sm font-normal text-gray-500">
+                                  ({patient.chartNo})
+                                </span>
+                              </p>
+                              {patient.phone && (
+                                <p className="text-xs text-gray-500">{patient.phone}</p>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {showSearchResults && searchTerm.length >= 2 && searchResults.length === 0 && !isSearching && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-4 text-center text-gray-500">
+                        <i className="fa-solid fa-user-slash text-2xl mb-2"></i>
+                        <p>검색 결과가 없습니다</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
 
-          {/* 담당 의사 - 버튼 형태 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              담당 의사 <span className="text-red-500">*</span>
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {doctors.map((doc) => {
-                const isSelected = selectedDoctor === doc.name;
-                return (
-                  <button
-                    key={doc.id}
-                    type="button"
-                    onClick={() => setSelectedDoctor(doc.name)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                      isSelected
-                        ? 'bg-clinic-primary text-white ring-2 ring-clinic-primary ring-offset-1'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
-                    }`}
-                    style={isSelected ? {} : { borderLeftColor: doc.color, borderLeftWidth: '4px' }}
-                  >
-                    {doc.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 예약 시간 - 테이블 형태 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              예약 시간 <span className="text-red-500">*</span>
-              {selectedTime && (
-                <span className="ml-2 text-clinic-primary font-semibold">{selectedTime} 선택됨</span>
-              )}
-            </label>
-            {selectedDoctor ? (
-              <div className="border rounded-lg overflow-hidden">
-                <div className="grid grid-cols-6 gap-1 p-2 bg-gray-50 max-h-48 overflow-y-auto">
-                  {timeSlotInfo.map((slot) => {
-                    const isSelected = selectedTime === slot.time;
-                    const isFull = slot.remainingSlots === 0;
-                    const isLowAvail = slot.remainingSlots > 0 && slot.remainingSlots <= 2;
-
+              {/* 담당 의사 선택 - Step 1로 이동 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  담당 의사 <span className="text-red-500">*</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {doctors.map((doc) => {
+                    const isSelected = selectedDoctor === doc.name;
                     return (
                       <button
-                        key={slot.time}
+                        key={doc.id}
                         type="button"
-                        onClick={() => !isFull && setSelectedTime(slot.time)}
-                        disabled={isFull}
-                        className={`p-2 rounded text-center text-xs font-medium transition-all ${
+                        onClick={() => setSelectedDoctor(doc.name)}
+                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
                           isSelected
                             ? 'bg-clinic-primary text-white ring-2 ring-clinic-primary ring-offset-1'
-                            : isFull
-                              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                              : isLowAvail
-                                ? 'bg-orange-50 text-orange-700 hover:bg-orange-100 border border-orange-200'
-                                : 'bg-white text-gray-700 hover:bg-blue-50 border border-gray-200'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
                         }`}
+                        style={isSelected ? {} : { borderLeftColor: doc.color, borderLeftWidth: '4px' }}
                       >
-                        <div className="font-semibold">{slot.time}</div>
-                        <div className={`text-[10px] ${isSelected ? 'text-white/80' : isFull ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {slot.remainingSlots}/{SLOT_CAPACITY}
-                        </div>
+                        {doc.name}
                       </button>
                     );
                   })}
                 </div>
               </div>
-            ) : (
-              <div className="p-4 bg-gray-50 rounded-lg text-center text-gray-500 text-sm">
-                <i className="fa-solid fa-user-doctor mr-2"></i>
-                먼저 담당 의사를 선택해주세요
-              </div>
-            )}
-          </div>
 
-          {/* 진료 항목 - 복수 선택 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              진료 항목 <span className="text-red-500">*</span>
-              <span className="ml-2 text-xs text-gray-500 font-normal">
-                (선택: {selectedItems.length}개, 총 {requiredSlots}칸)
-              </span>
-            </label>
-            <div className="space-y-3">
-              {Object.entries(TREATMENT_CATEGORIES).map(([category, items]) => (
-                <div key={category} className="border rounded-lg p-3">
-                  <div className="text-xs font-semibold text-gray-500 mb-2">{category}</div>
-                  <div className="flex flex-wrap gap-2">
-                    {items.map(({ name, slots }) => {
-                      const isSelected = selectedItems.includes(name);
-                      return (
-                        <button
-                          key={name}
-                          type="button"
-                          onClick={() => toggleItem(name)}
-                          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-                            isSelected
-                              ? 'bg-clinic-primary text-white ring-2 ring-clinic-primary ring-offset-1'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          }`}
-                        >
-                          {name}
-                          <span className={`ml-1 text-xs ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>
-                            ({slots}칸)
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+              {/* 진료 항목 - 복수 선택 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  진료 항목 <span className="text-red-500">*</span>
+                  <span className="ml-2 text-xs text-gray-500 font-normal">
+                    (선택: {selectedItems.length}개, 총 {requiredSlots}칸)
+                  </span>
+                </label>
+                <div className="space-y-3">
+                  {Object.entries(TREATMENT_CATEGORIES).map(([category, items]) => (
+                    <div key={category} className="border rounded-lg p-3">
+                      <div className="text-xs font-semibold text-gray-500 mb-2">{category}</div>
+                      <div className="flex flex-wrap gap-2">
+                        {items.map(({ name, slots }) => {
+                          const isSelected = selectedItems.includes(name);
+                          return (
+                            <button
+                              key={name}
+                              type="button"
+                              onClick={() => toggleItem(name)}
+                              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                                isSelected
+                                  ? 'bg-clinic-primary text-white ring-2 ring-clinic-primary ring-offset-1'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                              }`}
+                            >
+                              {name}
+                              <span className={`ml-1 text-xs ${isSelected ? 'text-white/80' : 'text-gray-500'}`}>
+                                ({slots}칸)
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            {/* 선택된 항목 표시 */}
-            {selectedItems.length > 0 && (
-              <div className="mt-2 text-sm text-gray-600">
-                선택됨: {selectedItems.join(', ')}
+                {selectedItems.length > 0 && (
+                  <div className="mt-2 text-sm text-gray-600">
+                    선택됨: {selectedItems.join(', ')}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* 예약 가능 여부 표시 */}
-          {selectedDoctor && selectedTime && (
-            <div className={`p-3 rounded-lg text-sm ${
-              availability.canBook
-                ? 'bg-green-50 border border-green-200 text-green-700'
-                : 'bg-red-50 border border-red-200 text-red-700'
-            }`}>
-              <i className={`fa-solid ${availability.canBook ? 'fa-check-circle' : 'fa-times-circle'} mr-2`}></i>
-              {availability.message}
-              {availability.overflow > 0 && (
-                <p className="mt-1 text-xs">
-                  * 다음 시간대({getNextTimeSlot(selectedTime)})로 {availability.overflow}칸이 넘어갑니다.
-                </p>
-              )}
-            </div>
+              {/* Step1 버튼 */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 py-2.5 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNextStep}
+                  disabled={!selectedPatient || !selectedDoctor || selectedItems.length === 0}
+                  className="flex-1 py-2.5 bg-clinic-primary text-white font-semibold rounded-lg hover:bg-clinic-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  다음: 날짜/시간 선택 <i className="fa-solid fa-arrow-right ml-2"></i>
+                </button>
+              </div>
+            </>
           )}
 
-          {/* 메모 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              메모
-            </label>
-            <textarea
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
-              rows={3}
-              placeholder="예약 관련 메모"
-            />
-          </div>
+          {/* ===== STEP 2: 날짜 + 시간 선택 (프리뷰) ===== */}
+          {currentStep === 2 && (
+            <>
+              {/* 선택된 환자/담당의/치료 요약 */}
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-clinic-primary text-white rounded-full flex items-center justify-center font-bold text-sm">
+                      {selectedPatient?.name.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900">
+                        {selectedPatient?.name}
+                        <span className="ml-2 text-sm font-normal text-gray-500">
+                          ({selectedPatient?.chartNo})
+                        </span>
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        담당: <span className="font-medium">{selectedDoctor}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {selectedItems.map(item => (
+                    <span key={item} className="px-2 py-0.5 bg-clinic-primary/20 text-clinic-primary text-xs rounded-full font-medium">
+                      {item}
+                    </span>
+                  ))}
+                  <span className="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs rounded-full">
+                    총 {requiredSlots}칸
+                  </span>
+                </div>
+              </div>
 
-          {/* 버튼 */}
-          <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-2.5 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
-            >
-              취소
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting || !availability.canBook}
-              className="flex-1 py-2.5 bg-clinic-primary text-white font-semibold rounded-lg hover:bg-clinic-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? (
-                <>
-                  <i className="fa-solid fa-spinner fa-spin mr-2"></i>
-                  저장 중...
-                </>
-              ) : (
-                '예약 저장'
+              {/* 예약 날짜 선택 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  예약 날짜 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={reservationDate}
+                  onChange={(e) => {
+                    setReservationDate(e.target.value);
+                    setSelectedTime(''); // 날짜 변경 시 시간 초기화
+                  }}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  {(() => {
+                    const date = new Date(reservationDate);
+                    const days = ['일', '월', '화', '수', '목', '금', '토'];
+                    return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 (${days[date.getDay()]})`;
+                  })()}
+                </p>
+              </div>
+
+              {/* 예약 시간 - 비주얼 프리뷰 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  예약 시간 <span className="text-red-500">*</span>
+                  {selectedTime && (
+                    <span className="ml-2 text-clinic-primary font-semibold">{selectedTime} 선택됨</span>
+                  )}
+                </label>
+
+                {/* 시간 슬롯 비주얼 프리뷰 */}
+                <div className="border rounded-lg overflow-hidden">
+                  {/* 프리뷰 헤더 */}
+                  <div className="px-3 py-2 bg-gray-100 border-b flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">
+                      <i className="fa-solid fa-clock mr-1"></i>
+                      {selectedDoctor} 원장 시간표
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      필요: <span className="font-bold text-clinic-primary">{requiredSlots}칸</span>
+                    </span>
+                  </div>
+
+                  {/* 시간 슬롯 그리드 */}
+                  <div className="p-3 bg-gray-50 max-h-72 overflow-y-auto">
+                    <div className="space-y-1">
+                      {timeSlotInfo.map((slot) => {
+                        const isSelected = selectedTime === slot.time;
+                        const isFull = slot.remainingSlots === 0;
+                        const canFit = slot.remainingSlots >= requiredSlots;
+                        const needsOverflow = !canFit && slot.remainingSlots > 0;
+
+                        // 예약 가능 여부 미리 체크
+                        let slotAvailable = false;
+                        let overflowSlots = 0;
+                        if (!isFull) {
+                          if (canFit) {
+                            slotAvailable = true;
+                          } else if (needsOverflow) {
+                            const nextTime = getNextTimeSlot(slot.time);
+                            if (nextTime) {
+                              const nextRemaining = getRemainingSlots(selectedDoctor, nextTime);
+                              overflowSlots = requiredSlots - slot.remainingSlots;
+                              if (overflowSlots <= nextRemaining) {
+                                slotAvailable = true;
+                              }
+                            }
+                          }
+                        }
+
+                        // 비주얼 슬롯 바
+                        const usedSlots = SLOT_CAPACITY - slot.remainingSlots;
+                        const usedWidth = (usedSlots / SLOT_CAPACITY) * 100;
+                        const previewWidth = slotAvailable && isSelected ? (requiredSlots / SLOT_CAPACITY) * 100 : 0;
+
+                        return (
+                          <button
+                            key={slot.time}
+                            type="button"
+                            onClick={() => slotAvailable && setSelectedTime(slot.time)}
+                            disabled={!slotAvailable}
+                            className={`w-full p-2 rounded-lg text-left transition-all ${
+                              isSelected
+                                ? 'bg-clinic-primary/10 ring-2 ring-clinic-primary'
+                                : !slotAvailable
+                                  ? 'bg-gray-100 cursor-not-allowed opacity-50'
+                                  : 'bg-white hover:bg-blue-50 border border-gray-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className={`font-semibold ${isSelected ? 'text-clinic-primary' : !slotAvailable ? 'text-gray-400' : 'text-gray-700'}`}>
+                                {slot.time}
+                              </span>
+                              <span className={`text-xs ${!slotAvailable ? 'text-gray-400' : 'text-gray-500'}`}>
+                                잔여 {slot.remainingSlots}/{SLOT_CAPACITY}
+                                {needsOverflow && slotAvailable && (
+                                  <span className="ml-1 text-orange-500">
+                                    (+{overflowSlots}→다음)
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                            {/* 슬롯 바 */}
+                            <div className="h-3 bg-gray-200 rounded-full overflow-hidden flex">
+                              {/* 사용 중인 슬롯 */}
+                              <div
+                                className="h-full bg-gray-400 transition-all"
+                                style={{ width: `${usedWidth}%` }}
+                              />
+                              {/* 예약 프리뷰 */}
+                              {isSelected && slotAvailable && (
+                                <div
+                                  className="h-full bg-clinic-primary animate-pulse transition-all"
+                                  style={{ width: `${Math.min(previewWidth, 100 - usedWidth)}%` }}
+                                />
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 범례 */}
+                  <div className="px-3 py-2 bg-gray-100 border-t text-xs text-gray-600 flex items-center gap-4">
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 bg-gray-400 rounded"></span> 예약됨
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 bg-clinic-primary rounded"></span> 새 예약
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 bg-gray-200 rounded"></span> 여유
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 예약 가능 여부 표시 */}
+              {selectedTime && (
+                <div className={`p-3 rounded-lg text-sm ${
+                  availability.canBook
+                    ? 'bg-green-50 border border-green-200 text-green-700'
+                    : 'bg-red-50 border border-red-200 text-red-700'
+                }`}>
+                  <i className={`fa-solid ${availability.canBook ? 'fa-check-circle' : 'fa-times-circle'} mr-2`}></i>
+                  {availability.message}
+                  {availability.overflow > 0 && (
+                    <p className="mt-1 text-xs">
+                      * 다음 시간대({getNextTimeSlot(selectedTime)})로 {availability.overflow}칸이 넘어갑니다.
+                    </p>
+                  )}
+                </div>
               )}
-            </button>
-          </div>
+
+              {/* 메모 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  메모
+                </label>
+                <textarea
+                  value={memo}
+                  onChange={(e) => setMemo(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
+                  rows={2}
+                  placeholder="예약 관련 메모"
+                />
+              </div>
+
+              {/* Step2 버튼 */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={handlePrevStep}
+                  className="flex-1 py-2.5 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  <i className="fa-solid fa-arrow-left mr-2"></i> 이전
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !availability.canBook}
+                  className="flex-1 py-2.5 bg-clinic-primary text-white font-semibold rounded-lg hover:bg-clinic-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <i className="fa-solid fa-spinner fa-spin mr-2"></i>
+                      저장 중...
+                    </>
+                  ) : (
+                    '예약 저장'
+                  )}
+                </button>
+              </div>
+            </>
+          )}
         </form>
       </div>
     </div>

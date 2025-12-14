@@ -90,6 +90,22 @@ const APPS: AppInfo[] = [
     icon: '👨‍⚕️',
     color: '#059669',
   },
+  {
+    id: 'statistics',
+    name: '통계',
+    description: '일간/주간/월간 운영 통계를 확인합니다. 환자수, 추나현황, 예약율, 매출 등을 분석할 수 있습니다.',
+    path: '/statistics',
+    icon: '📈',
+    color: '#dc2626',
+  },
+  {
+    id: 'db_admin',
+    name: 'DB관리',
+    description: 'MSSQL 데이터베이스를 조회합니다. 테이블 구조, 데이터 확인, SQL 쿼리 실행이 가능합니다.',
+    path: '/db-admin',
+    icon: '🗄️',
+    color: '#475569',
+  },
 ];
 
 function Dashboard({ user, onLogout }: DashboardProps) {
