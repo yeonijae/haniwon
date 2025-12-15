@@ -191,7 +191,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
     prevYear: { total: number; workDays: number } | null;
   }>({ prevMonth: null, prevYear: null });
 
-  // 12개월 매출 추이 데이터
+  // 18개월 매출 추이 데이터
   const [revenueTrend, setRevenueTrend] = useState<{
     month: string;
     insurance: number;
@@ -206,7 +206,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
     keywords: { keyword: string; cnt: number; ratio: number }[];
   } | null>(null);
 
-  // 12개월 침초진 추이 데이터
+  // 18개월 침초진 추이 데이터
   const [visitRouteTrend, setVisitRouteTrend] = useState<{
     month: string;
     intro: number;
@@ -216,7 +216,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
     total: number;
   }[]>([]);
 
-  // 12개월 침환자 추이 데이터
+  // 18개월 침환자 추이 데이터
   const [chimPatientTrend, setChimPatientTrend] = useState<{
     month: string;
     avg_daily: number;
@@ -353,7 +353,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
         yakChojinData.by_doctor = sortByDoctorOrder(yakChojinData.by_doctor, doctorOrder);
       }
       setYakChojinDetail(yakChojinData.error ? null : yakChojinData);
-      // 12개월 매출 추이 데이터 설정
+      // 18개월 매출 추이 데이터 설정
       if (!trendData.error && trendData.data) {
         setRevenueTrend(trendData.data);
       } else {
@@ -365,13 +365,13 @@ function StatisticsApp({ user }: StatisticsAppProps) {
       } else {
         setSearchKeywords(null);
       }
-      // 12개월 침초진 추이 데이터 설정
+      // 18개월 침초진 추이 데이터 설정
       if (!visitRouteTrendData.error && visitRouteTrendData.data) {
         setVisitRouteTrend(visitRouteTrendData.data);
       } else {
         setVisitRouteTrend([]);
       }
-      // 12개월 침환자 추이 데이터 설정
+      // 18개월 침환자 추이 데이터 설정
       if (!chimPatientTrendData.error && chimPatientTrendData.data) {
         setChimPatientTrend(chimPatientTrendData.data);
       } else {
@@ -664,7 +664,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                   </div>
                 </div>
 
-                {/* 12개월 매출 추이 */}
+                {/* 18개월 매출 추이 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   {revenueTrend.length > 0 ? (
                     <div className="p-4">
@@ -737,7 +737,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                 </div>
               </div>
 
-              {/* 침초진 유입분석 (3열: 현황표 + 검색어 상세 + 12개월 추이) */}
+              {/* 침초진 유입분석 (3열: 현황표 + 검색어 상세 + 18개월 추이) */}
               <div className="grid grid-cols-3 gap-4">
                 {/* 침초진 현황표 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -854,11 +854,11 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                   )}
                 </div>
 
-                {/* 12개월 침초진 추이 */}
+                {/* 18개월 침초진 추이 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="bg-indigo-50 px-4 py-3 border-b border-gray-200">
                     <h2 className="text-base font-bold text-indigo-800 flex items-center gap-2">
-                      <span>📈</span> 12개월 추이
+                      <span>📈</span> 18개월 추이
                     </h2>
                   </div>
                   {visitRouteTrend.length > 0 ? (
@@ -922,7 +922,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                 </div>
               </div>
 
-              {/* 침환자 현황 + 12개월 추이 */}
+              {/* 침환자 현황 + 18개월 추이 */}
               <div className="grid grid-cols-2 gap-6">
                 {/* 침환자 현황 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -990,11 +990,11 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                   </div>
                 </div>
 
-                {/* 12개월 침환자 추이 */}
+                {/* 18개월 침환자 추이 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
                     <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                      <span>📈</span> 12개월 침환자 추이
+                      <span>📈</span> 18개월 침환자 추이
                     </h2>
                   </div>
                   {chimPatientTrend.length > 0 ? (() => {
