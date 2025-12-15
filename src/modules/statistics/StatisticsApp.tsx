@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { PortalUser } from '@shared/types';
 
 const API_BASE = 'http://192.168.0.173:3100';
@@ -91,6 +92,7 @@ interface YakChojinRawPatient {
     name: string;
     chart_no: string;
     main_doctor: string;
+    suggest?: string;
     cust_url?: string;
   };
 }
@@ -189,6 +191,43 @@ function StatisticsApp({ user }: StatisticsAppProps) {
     prevYear: { total: number; workDays: number } | null;
   }>({ prevMonth: null, prevYear: null });
 
+  // 12개월 매출 추이 데이터
+  const [revenueTrend, setRevenueTrend] = useState<{
+    month: string;
+    insurance: number;
+    chuna: number;
+    jabo: number;
+    uncovered: number;
+  }[]>([]);
+
+  // 검색어 상세 데이터
+  const [searchKeywords, setSearchKeywords] = useState<{
+    total: number;
+    keywords: { keyword: string; cnt: number; ratio: number }[];
+  } | null>(null);
+
+  // 12개월 침초진 추이 데이터
+  const [visitRouteTrend, setVisitRouteTrend] = useState<{
+    month: string;
+    intro: number;
+    search: number;
+    signboard: number;
+    other: number;
+    total: number;
+  }[]>([]);
+
+  // 12개월 침환자 추이 데이터
+  const [chimPatientTrend, setChimPatientTrend] = useState<{
+    month: string;
+    avg_daily: number;
+    chim_chojin: number;
+    chim_rechojin: number;
+    chim_total: number;
+    jabo_chojin: number;
+    jabo_rechojin: number;
+    jabo_total: number;
+  }[]>([]);
+
   // 약초진 Raw Data 모달
   const [yakRawModal, setYakRawModal] = useState<{
     open: boolean;
@@ -258,12 +297,16 @@ function StatisticsApp({ user }: StatisticsAppProps) {
       const queryDate = getQueryDate();
       const { prevMonth, prevYear } = getComparisonDates();
 
-      // 통합 API + 비급여 상세 API + 내원경로 API + 약초진 API 병렬 호출
+      // 통합 API + 비급여 상세 API + 내원경로 API + 약초진 API + 매출추이 API + 검색어 API + 침초진추이 API + 침환자추이 API 병렬 호출
       const fetchPromises: Promise<Response>[] = [
         fetch(`${API_BASE}/api/stats/all?period=${period}&date=${queryDate}`),
         fetch(`${API_BASE}/api/stats/uncovered-detail?period=${period}&date=${queryDate}`),
         fetch(`${API_BASE}/api/stats/visit-route?period=${period}&date=${queryDate}`),
-        fetch(`${API_BASE}/api/stats/yak-chojin-detail?period=${period}&date=${queryDate}`)
+        fetch(`${API_BASE}/api/stats/yak-chojin-detail?period=${period}&date=${queryDate}`),
+        fetch(`${API_BASE}/api/stats/revenue-trend?end_date=${queryDate}`),
+        fetch(`${API_BASE}/api/stats/search-keywords?period=${period}&date=${queryDate}`),
+        fetch(`${API_BASE}/api/stats/visit-route-trend?end_date=${queryDate}`),
+        fetch(`${API_BASE}/api/stats/chim-patient-trend?end_date=${queryDate}`)
       ];
 
       // 월간일 때만 전월/전년 데이터 추가 요청
@@ -273,12 +316,16 @@ function StatisticsApp({ user }: StatisticsAppProps) {
       }
 
       const responses = await Promise.all(fetchPromises);
-      const [statsRes, uncoveredRes, visitRouteRes, yakChojinRes, ...comparisonRes] = responses;
+      const [statsRes, uncoveredRes, visitRouteRes, yakChojinRes, trendRes, searchKeywordsRes, visitRouteTrendRes, chimPatientTrendRes, ...comparisonRes] = responses;
 
       const data = await statsRes.json();
       const uncoveredData = await uncoveredRes.json();
       const visitRouteData = await visitRouteRes.json();
       const yakChojinData = await yakChojinRes.json();
+      const trendData = await trendRes.json();
+      const searchKeywordsData = await searchKeywordsRes.json();
+      const visitRouteTrendData = await visitRouteTrendRes.json();
+      const chimPatientTrendData = await chimPatientTrendRes.json();
 
       if (data.error) {
         throw new Error(data.error);
@@ -306,6 +353,30 @@ function StatisticsApp({ user }: StatisticsAppProps) {
         yakChojinData.by_doctor = sortByDoctorOrder(yakChojinData.by_doctor, doctorOrder);
       }
       setYakChojinDetail(yakChojinData.error ? null : yakChojinData);
+      // 12개월 매출 추이 데이터 설정
+      if (!trendData.error && trendData.data) {
+        setRevenueTrend(trendData.data);
+      } else {
+        setRevenueTrend([]);
+      }
+      // 검색어 상세 데이터 설정
+      if (!searchKeywordsData.error) {
+        setSearchKeywords(searchKeywordsData);
+      } else {
+        setSearchKeywords(null);
+      }
+      // 12개월 침초진 추이 데이터 설정
+      if (!visitRouteTrendData.error && visitRouteTrendData.data) {
+        setVisitRouteTrend(visitRouteTrendData.data);
+      } else {
+        setVisitRouteTrend([]);
+      }
+      // 12개월 침환자 추이 데이터 설정
+      if (!chimPatientTrendData.error && chimPatientTrendData.data) {
+        setChimPatientTrend(chimPatientTrendData.data);
+      } else {
+        setChimPatientTrend([]);
+      }
       setDateRange({
         start: data.start_date || queryDate,
         end: data.end_date || queryDate,
@@ -341,9 +412,10 @@ function StatisticsApp({ user }: StatisticsAppProps) {
   const categoryLabels: Record<string, string> = {
     existing_same: '기존-담당',
     existing_other: '기존-다른',
-    new_direct: '약생초',
+    new_direct: '신규',
     referral_same: '소개-담당',
-    referral_other: '소개-다른'
+    referral_other: '소개-다른',
+    yak_saeng_cho: '약생초'
   };
 
   async function fetchYakChojinRaw(doctor: string, category: string) {
@@ -592,106 +664,101 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                   </div>
                 </div>
 
-                {/* 전월/전년 비교 */}
+                {/* 12개월 매출 추이 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="bg-indigo-50 px-6 py-4 border-b border-gray-200">
-                    <h2 className="text-lg font-bold text-indigo-800 flex items-center gap-2">
-                      <span>📊</span> 매출 비교
-                    </h2>
-                  </div>
-                  {period === 'monthly' ? (
-                    <div className="p-6">
-                      <div className="grid grid-cols-2 gap-4">
-                        {/* 전월 대비 */}
-                        <div className="bg-blue-50 rounded-lg p-4">
-                          <div className="text-sm text-blue-600 mb-2">전월 대비</div>
-                          {comparisonData.prevMonth ? (
-                            <>
-                              <div className="flex items-baseline gap-2">
-                                <span className="text-2xl font-bold text-blue-800">
-                                  {formatMoney(totalStats.revenue.total)}
-                                </span>
-                                {(() => {
-                                  const diff = totalStats.revenue.total - comparisonData.prevMonth.total;
-                                  const pct = comparisonData.prevMonth.total > 0
-                                    ? Math.round((diff / comparisonData.prevMonth.total) * 100)
-                                    : 0;
-                                  return (
-                                    <span className={`text-sm font-semibold ${diff >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                                      {diff >= 0 ? '▲' : '▼'} {Math.abs(pct)}%
-                                    </span>
-                                  );
-                                })()}
-                              </div>
-                              <div className="text-xs text-gray-500 mt-1">
-                                전월: {formatMoney(comparisonData.prevMonth.total)} ({comparisonData.prevMonth.workDays}일)
-                              </div>
-                            </>
-                          ) : (
-                            <div className="text-gray-400 text-sm">데이터 없음</div>
-                          )}
-                        </div>
-                        {/* 전년 동월 대비 */}
-                        <div className="bg-green-50 rounded-lg p-4">
-                          <div className="text-sm text-green-600 mb-2">전년 동월 대비</div>
-                          {comparisonData.prevYear ? (
-                            <>
-                              <div className="flex items-baseline gap-2">
-                                <span className="text-2xl font-bold text-green-800">
-                                  {formatMoney(totalStats.revenue.total)}
-                                </span>
-                                {(() => {
-                                  const diff = totalStats.revenue.total - comparisonData.prevYear.total;
-                                  const pct = comparisonData.prevYear.total > 0
-                                    ? Math.round((diff / comparisonData.prevYear.total) * 100)
-                                    : 0;
-                                  return (
-                                    <span className={`text-sm font-semibold ${diff >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                                      {diff >= 0 ? '▲' : '▼'} {Math.abs(pct)}%
-                                    </span>
-                                  );
-                                })()}
-                              </div>
-                              <div className="text-xs text-gray-500 mt-1">
-                                전년: {formatMoney(comparisonData.prevYear.total)} ({comparisonData.prevYear.workDays}일)
-                              </div>
-                            </>
-                          ) : (
-                            <div className="text-gray-400 text-sm">데이터 없음</div>
-                          )}
-                        </div>
-                      </div>
+                  {revenueTrend.length > 0 ? (
+                    <div className="p-4">
+                      <ResponsiveContainer width="100%" height={280}>
+                        <LineChart data={revenueTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis
+                            dataKey="month"
+                            tick={{ fontSize: 11, fill: '#6b7280' }}
+                            tickLine={{ stroke: '#d1d5db' }}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 11, fill: '#6b7280' }}
+                            tickFormatter={(value) => formatMoney(value)}
+                            tickLine={{ stroke: '#d1d5db' }}
+                            width={55}
+                          />
+                          <Tooltip
+                            formatter={(value: number, name: string) => [formatMoney(value) + '원', name]}
+                            labelStyle={{ fontWeight: 'bold' }}
+                            contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                          />
+                          <Legend
+                            wrapperStyle={{ fontSize: 12, paddingTop: 10 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="insurance"
+                            name="급여"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="chuna"
+                            name="추나"
+                            stroke="#06b6d4"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="jabo"
+                            name="자보"
+                            stroke="#f97316"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="uncovered"
+                            name="비급여"
+                            stroke="#a855f7"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
                     </div>
                   ) : (
                     <div className="p-6 text-center text-gray-400 text-sm">
-                      월간 통계에서만 비교 가능
+                      데이터 없음
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* 침초진 현황 + 침환자 현황 (같은 줄에 배치) */}
-              <div className="grid grid-cols-2 gap-6">
-                {/* 침초진 현황 */}
+              {/* 침초진 유입분석 (3열: 현황표 + 검색어 상세 + 12개월 추이) */}
+              <div className="grid grid-cols-3 gap-4">
+                {/* 침초진 현황표 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="bg-teal-50 px-6 py-4 border-b border-gray-200">
-                    <h2 className="text-lg font-bold text-teal-800 flex items-center gap-2">
+                  <div className="bg-teal-50 px-4 py-3 border-b border-gray-200">
+                    <h2 className="text-base font-bold text-teal-800 flex items-center gap-2">
                       <span>🚶</span> 침초진 현황
                       {visitRouteDetail && (
-                        <span className="ml-2 text-sm font-normal text-teal-600">
-                          (총 {visitRouteDetail.total}명)
+                        <span className="ml-1 text-sm font-normal text-teal-600">
+                          ({visitRouteDetail.total}명)
                         </span>
                       )}
                     </h2>
                   </div>
                   {visitRouteDetail && (
-                    <div className="overflow-y-auto" style={{ maxHeight: '250px' }}>
+                    <div className="overflow-y-auto" style={{ maxHeight: '220px' }}>
                       <table className="w-full">
                         <thead className="bg-gray-50 sticky top-0">
                           <tr>
-                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 border-b">경로</th>
-                            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 border-b">인원</th>
-                            <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700 border-b">비율</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">경로</th>
+                            <th className="px-2 py-2 text-right text-xs font-semibold text-gray-700 border-b">인원</th>
+                            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 border-b">비율</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -715,20 +782,20 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                                   className={`cursor-pointer hover:bg-gray-100 ${colors.bg}`}
                                   onClick={() => toggleRouteCategory(categoryName)}
                                 >
-                                  <td className="px-4 py-2 text-sm">
-                                    <span className="text-gray-400 mr-2">{isExpanded ? '▼' : '▶'}</span>
+                                  <td className="px-3 py-1.5 text-sm">
+                                    <span className="text-gray-400 mr-1">{isExpanded ? '▼' : '▶'}</span>
                                     <span className="mr-1">{colors.icon}</span>
                                     <span className={`font-medium ${colors.text}`}>{categoryName}</span>
                                   </td>
-                                  <td className={`px-3 py-2 text-right text-sm ${colors.text}`}>{cat.total}명</td>
-                                  <td className={`px-4 py-2 text-right text-sm font-medium ${colors.text}`}>{percentage}%</td>
+                                  <td className={`px-2 py-1.5 text-right text-sm ${colors.text}`}>{cat.total}</td>
+                                  <td className={`px-3 py-1.5 text-right text-sm font-medium ${colors.text}`}>{percentage}%</td>
                                 </tr>
                                 {isExpanded && cat.items.map((item, idx) => (
                                   <tr key={`${categoryName}-${idx}`} className="bg-white hover:bg-gray-50">
-                                    <td className="px-4 py-1.5 text-xs text-gray-500 pl-10 truncate" title={item.name} colSpan={2}>
-                                      {item.name.length > 30 ? item.name.slice(0, 30) + '...' : item.name}
+                                    <td className="px-3 py-1 text-xs text-gray-500 pl-8 truncate" title={item.name} colSpan={2}>
+                                      {item.name.length > 20 ? item.name.slice(0, 20) + '...' : item.name}
                                     </td>
-                                    <td className="px-4 py-1.5 text-right text-xs text-gray-500">{item.cnt}명</td>
+                                    <td className="px-3 py-1 text-right text-xs text-gray-500">{item.cnt}</td>
                                   </tr>
                                 ))}
                               </React.Fragment>
@@ -739,12 +806,124 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                     </div>
                   )}
                   {!visitRouteDetail && (
-                    <div className="px-6 py-8 text-center text-sm text-gray-400">
+                    <div className="px-4 py-6 text-center text-sm text-gray-400">
                       데이터 없음
                     </div>
                   )}
                 </div>
 
+                {/* 검색어 상세표 */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="bg-blue-50 px-4 py-3 border-b border-gray-200">
+                    <h2 className="text-base font-bold text-blue-800 flex items-center gap-2">
+                      <span>🔍</span> 검색어 상세
+                      {searchKeywords && (
+                        <span className="ml-1 text-sm font-normal text-blue-600">
+                          ({searchKeywords.total}명)
+                        </span>
+                      )}
+                    </h2>
+                  </div>
+                  {searchKeywords && searchKeywords.keywords.length > 0 ? (
+                    <div className="overflow-y-auto" style={{ maxHeight: '220px' }}>
+                      <table className="w-full">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">검색어</th>
+                            <th className="px-2 py-2 text-right text-xs font-semibold text-gray-700 border-b">인원</th>
+                            <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 border-b">비율</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {searchKeywords.keywords.map((kw, idx) => (
+                            <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                              <td className="px-3 py-1.5 text-sm text-gray-700 truncate" title={kw.keyword}>
+                                {kw.keyword.length > 15 ? kw.keyword.slice(0, 15) + '...' : kw.keyword}
+                              </td>
+                              <td className="px-2 py-1.5 text-right text-sm text-blue-600">{kw.cnt}</td>
+                              <td className="px-3 py-1.5 text-right text-sm font-medium text-blue-700">{kw.ratio}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="px-4 py-6 text-center text-sm text-gray-400">
+                      데이터 없음
+                    </div>
+                  )}
+                </div>
+
+                {/* 12개월 침초진 추이 */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="bg-indigo-50 px-4 py-3 border-b border-gray-200">
+                    <h2 className="text-base font-bold text-indigo-800 flex items-center gap-2">
+                      <span>📈</span> 12개월 추이
+                    </h2>
+                  </div>
+                  {visitRouteTrend.length > 0 ? (
+                    <div className="p-2">
+                      <ResponsiveContainer width="100%" height={210}>
+                        <LineChart data={visitRouteTrend} margin={{ top: 5, right: 15, left: -10, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis
+                            dataKey="month"
+                            tick={{ fontSize: 10, fill: '#6b7280' }}
+                            tickLine={{ stroke: '#d1d5db' }}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 10, fill: '#6b7280' }}
+                            tickLine={{ stroke: '#d1d5db' }}
+                            width={30}
+                          />
+                          <Tooltip
+                            formatter={(value: number, name: string) => [value + '명', name]}
+                            labelStyle={{ fontWeight: 'bold', fontSize: 11 }}
+                            contentStyle={{ fontSize: 11, borderRadius: 8 }}
+                          />
+                          <Legend
+                            wrapperStyle={{ fontSize: 10, paddingTop: 5 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="intro"
+                            name="소개"
+                            stroke="#ec4899"
+                            strokeWidth={2}
+                            dot={{ r: 2 }}
+                            activeDot={{ r: 4 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="search"
+                            name="검색"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            dot={{ r: 2 }}
+                            activeDot={{ r: 4 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="signboard"
+                            name="간판"
+                            stroke="#f59e0b"
+                            strokeWidth={2}
+                            dot={{ r: 2 }}
+                            activeDot={{ r: 4 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="px-4 py-6 text-center text-sm text-gray-400">
+                      데이터 없음
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 침환자 현황 + 12개월 추이 */}
+              <div className="grid grid-cols-2 gap-6">
                 {/* 침환자 현황 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
@@ -810,6 +989,73 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                     </table>
                   </div>
                 </div>
+
+                {/* 12개월 침환자 추이 */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                    <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                      <span>📈</span> 12개월 침환자 추이
+                    </h2>
+                  </div>
+                  {chimPatientTrend.length > 0 ? (
+                    <div className="p-4">
+                      <ResponsiveContainer width="100%" height={280}>
+                        <LineChart data={chimPatientTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis
+                            dataKey="month"
+                            tick={{ fontSize: 11, fill: '#6b7280' }}
+                            tickLine={{ stroke: '#d1d5db' }}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 11, fill: '#6b7280' }}
+                            tickLine={{ stroke: '#d1d5db' }}
+                            width={35}
+                          />
+                          <Tooltip
+                            formatter={(value: number, name: string) => [value + (name === '평환' ? '명' : '명'), name]}
+                            labelStyle={{ fontWeight: 'bold' }}
+                            contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                          />
+                          <Legend
+                            wrapperStyle={{ fontSize: 12, paddingTop: 10 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="avg_daily"
+                            name="평환"
+                            stroke="#10b981"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="chim_total"
+                            name="침초진+재초"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="jabo_total"
+                            name="자보초진+재초"
+                            stroke="#f97316"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center text-gray-400 text-sm">
+                      데이터 없음
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* 약초진 현황 + 비급여 매출 (같은 줄에 배치) */}
@@ -850,7 +1096,10 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                                 className={`px-3 py-2 text-sm font-medium text-gray-900 ${stat.total > 0 ? 'cursor-pointer hover:bg-gray-100 hover:underline' : ''}`}
                                 onClick={() => stat.total > 0 && fetchYakChojinRaw(stat.doctor, '')}
                               >{stat.doctor}</td>
-                              <td className="px-2 py-2 text-center text-sm font-bold text-green-700 bg-green-50">{yakSaengCho || '-'}</td>
+                              <td
+                                className={`px-2 py-2 text-center text-sm font-bold text-green-700 bg-green-50 ${yakSaengCho > 0 ? 'cursor-pointer hover:bg-green-100 hover:underline' : ''}`}
+                                onClick={() => yakSaengCho > 0 && fetchYakChojinRaw(stat.doctor, 'yak_saeng_cho')}
+                              >{yakSaengCho || '-'}</td>
                               <td
                                 className={`px-2 py-2 text-center text-sm text-purple-600 ${stat.new_direct > 0 ? 'cursor-pointer hover:bg-purple-100 hover:underline' : ''}`}
                                 onClick={() => stat.new_direct > 0 && fetchYakChojinRaw(stat.doctor, 'new_direct')}
@@ -876,7 +1125,10 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                           )})}
                           <tr className="bg-green-50 border-t-2 border-green-200">
                             <td className="px-3 py-2 text-sm font-bold text-green-800">전체</td>
-                            <td className="px-2 py-2 text-center text-sm font-bold text-green-900 bg-green-100">{(yakChojinDetail.totals.new_direct + yakChojinDetail.totals.existing_other + yakChojinDetail.totals.referral_other) || '-'}</td>
+                            <td
+                              className={`px-2 py-2 text-center text-sm font-bold text-green-900 bg-green-100 ${(yakChojinDetail.totals.new_direct + yakChojinDetail.totals.existing_other + yakChojinDetail.totals.referral_other) > 0 ? 'cursor-pointer hover:bg-green-200 hover:underline' : ''}`}
+                              onClick={() => (yakChojinDetail.totals.new_direct + yakChojinDetail.totals.existing_other + yakChojinDetail.totals.referral_other) > 0 && fetchYakChojinRaw('', 'yak_saeng_cho')}
+                            >{(yakChojinDetail.totals.new_direct + yakChojinDetail.totals.existing_other + yakChojinDetail.totals.referral_other) || '-'}</td>
                             <td className="px-2 py-2 text-center text-sm font-bold text-green-700">{yakChojinDetail.totals.new_direct || '-'}</td>
                             <td className="px-2 py-2 text-center text-sm font-bold text-green-700">{yakChojinDetail.totals.existing_other || '-'}</td>
                             <td className="px-2 py-2 text-center text-sm font-bold text-green-700">{yakChojinDetail.totals.referral_other || '-'}</td>
@@ -994,6 +1246,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                           <th className="px-3 py-3 text-center text-xs font-semibold text-orange-700 border-b">자보</th>
                           <th className="px-3 py-3 text-center text-xs font-semibold text-purple-700 border-b">비급여</th>
                           <th className="px-3 py-3 text-center text-xs font-semibold text-gray-800 border-b bg-gray-100">합계</th>
+                          <th className="px-3 py-3 text-center text-xs font-semibold text-green-700 border-b">일평균</th>
                           <th className="px-3 py-3 text-right text-xs font-semibold text-cyan-700 border-b">매출</th>
                         </tr>
                       </thead>
@@ -1006,6 +1259,9 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             <td className="px-3 py-2 text-center text-sm text-orange-600">{stat.chuna.jabo}</td>
                             <td className="px-3 py-2 text-center text-sm text-purple-600">{stat.chuna.uncovered}</td>
                             <td className="px-3 py-2 text-center text-sm font-bold text-gray-800 bg-gray-100">{stat.chuna.total}</td>
+                            <td className="px-3 py-2 text-center text-sm text-green-600 font-semibold">
+                              {(stat.work_days || 0) > 0 ? (stat.chuna.total / stat.work_days!).toFixed(1) : '-'}
+                            </td>
                             <td className="px-3 py-2 text-right text-sm text-cyan-600">{formatMoney(stat.revenue.chuna_revenue)}</td>
                           </tr>
                         ))}
@@ -1016,6 +1272,9 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                           <td className="px-3 py-2 text-center text-sm text-blue-800 font-bold">{totalStats.chuna.jabo}</td>
                           <td className="px-3 py-2 text-center text-sm text-blue-800 font-bold">{totalStats.chuna.uncovered}</td>
                           <td className="px-3 py-2 text-center text-sm font-bold text-blue-900 bg-blue-100">{totalStats.chuna.total}</td>
+                          <td className="px-3 py-2 text-center text-sm text-green-700 font-bold">
+                            {dateRange.workDays > 0 ? (totalStats.chuna.total / dateRange.workDays).toFixed(1) : '-'}
+                          </td>
                           <td className="px-3 py-2 text-right text-sm font-bold text-cyan-800">{formatMoney(totalStats.revenue.chuna_revenue)}</td>
                         </tr>
                       </tbody>
@@ -1102,27 +1361,28 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                   <table className="w-full">
                     <thead className="bg-gray-50 sticky top-0">
                       <tr>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">날짜</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">차트번호</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">환자명</th>
-                        {!yakRawModal.category && (
+                        {(!yakRawModal.category || yakRawModal.category === 'yak_saeng_cho') && (
                           <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">분류</th>
                         )}
-                        {(yakRawModal.category === 'referral_same' || yakRawModal.category === 'referral_other' || !yakRawModal.category) && (
-                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">소개자</th>
+                        {(yakRawModal.category === 'referral_same' || yakRawModal.category === 'referral_other' || yakRawModal.category === 'new_direct' || yakRawModal.category === 'yak_saeng_cho' || !yakRawModal.category) && (
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">소개자/메모</th>
                         )}
                         <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">항목</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">날짜</th>
                       </tr>
                     </thead>
                     <tbody>
                       {yakRawModal.patients.map((p, idx) => (
                         <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="px-3 py-2 text-sm text-gray-500">{p.date}</td>
                           <td className="px-3 py-2 text-sm text-gray-600">{p.chart_no}</td>
                           <td className="px-3 py-2 text-sm font-medium text-gray-900">{p.patient_name}</td>
-                          {!yakRawModal.category && (
+                          {(!yakRawModal.category || yakRawModal.category === 'yak_saeng_cho') && (
                             <td className="px-3 py-2 text-sm text-gray-500">{categoryLabels[p.category] || p.category}</td>
                           )}
-                          {(yakRawModal.category === 'referral_same' || yakRawModal.category === 'referral_other' || !yakRawModal.category) && (
+                          {(yakRawModal.category === 'referral_same' || yakRawModal.category === 'referral_other' || yakRawModal.category === 'new_direct' || yakRawModal.category === 'yak_saeng_cho' || !yakRawModal.category) && (
                             <td className="px-3 py-2 text-sm text-gray-500">
                               {p.referrer ? (
                                 p.referrer.name ? (
@@ -1133,6 +1393,13 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                                     </span>
                                     {p.referrer.cust_url && (
                                       <span className="block text-xs text-blue-500">{p.referrer.cust_url}</span>
+                                    )}
+                                  </span>
+                                ) : p.referrer.suggest ? (
+                                  <span>
+                                    <span className="text-green-600">{p.referrer.suggest}</span>
+                                    {p.referrer.cust_url && (
+                                      <span className="text-blue-500 ml-1">({p.referrer.cust_url})</span>
                                     )}
                                   </span>
                                 ) : p.referrer.cust_url ? (
@@ -1148,7 +1415,6 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             </td>
                           )}
                           <td className="px-3 py-2 text-sm text-purple-600" title={p.items}>{p.items || '-'}</td>
-                          <td className="px-3 py-2 text-sm text-gray-500">{p.date}</td>
                         </tr>
                       ))}
                     </tbody>
