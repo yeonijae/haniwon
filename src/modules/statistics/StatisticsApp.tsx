@@ -747,7 +747,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                     </h2>
                   </div>
                   {visitRouteDetail && (
-                    <div className="overflow-y-auto" style={{ maxHeight: '220px' }}>
+                    <div className="overflow-y-auto" style={{ maxHeight: '150px' }}>
                       <table className="w-full">
                         <thead className="bg-gray-50 sticky top-0">
                           <tr>
@@ -820,7 +820,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                     </h2>
                   </div>
                   {searchKeywords && searchKeywords.keywords.length > 0 ? (
-                    <div className="overflow-y-auto" style={{ maxHeight: '220px' }}>
+                    <div className="overflow-y-auto" style={{ maxHeight: '150px' }}>
                       <table className="w-full">
                         <thead className="bg-gray-50 sticky top-0">
                           <tr>
@@ -853,7 +853,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                 <div className="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   {visitRouteTrend.length > 0 ? (
                     <div className="p-2">
-                      <ResponsiveContainer width="100%" height={150}>
+                      <ResponsiveContainer width="100%" height={210}>
                         <LineChart data={visitRouteTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                           <XAxis
