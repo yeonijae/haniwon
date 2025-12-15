@@ -997,10 +997,30 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                       <span>📈</span> 12개월 침환자 추이
                     </h2>
                   </div>
-                  {chimPatientTrend.length > 0 ? (
+                  {chimPatientTrend.length > 0 ? (() => {
+                    // 첫 달 기준으로 정규화 (100 = 기준점)
+                    const baseAvg = chimPatientTrend[0]?.avg_daily || 1;
+                    const baseChim = chimPatientTrend[0]?.chim_total || 1;
+                    const baseJabo = chimPatientTrend[0]?.jabo_total || 1;
+
+                    const normalizedData = chimPatientTrend.map((item, idx) => ({
+                      month: item.month,
+                      평환: Math.round((item.avg_daily / baseAvg) * 100),
+                      '침초진+재초': Math.round((item.chim_total / baseChim) * 100),
+                      '자보초진+재초': Math.round((item.jabo_total / baseJabo) * 100),
+                      // 원본 값 (툴팁용)
+                      raw_avg: item.avg_daily,
+                      raw_chim: item.chim_total,
+                      raw_jabo: item.jabo_total,
+                    }));
+
+                    return (
                     <div className="p-4">
-                      <ResponsiveContainer width="100%" height={280}>
-                        <LineChart data={chimPatientTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                      <div className="text-xs text-gray-500 mb-2 text-center">
+                        기준: {chimPatientTrend[0]?.month} (평환 {baseAvg}명, 침초진+재초 {baseChim}명, 자보 {baseJabo}명) = 100
+                      </div>
+                      <ResponsiveContainer width="100%" height={260}>
+                        <LineChart data={normalizedData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                           <XAxis
                             dataKey="month"
@@ -1010,10 +1030,17 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                           <YAxis
                             tick={{ fontSize: 11, fill: '#6b7280' }}
                             tickLine={{ stroke: '#d1d5db' }}
-                            width={35}
+                            width={40}
+                            domain={['auto', 'auto']}
+                            tickFormatter={(value) => `${value}%`}
                           />
                           <Tooltip
-                            formatter={(value: number, name: string) => [value + (name === '평환' ? '명' : '명'), name]}
+                            formatter={(value: number, name: string, props: any) => {
+                              const raw = name === '평환' ? props.payload.raw_avg
+                                : name === '침초진+재초' ? props.payload.raw_chim
+                                : props.payload.raw_jabo;
+                              return [`${value}% (${raw}명)`, name];
+                            }}
                             labelStyle={{ fontWeight: 'bold' }}
                             contentStyle={{ fontSize: 12, borderRadius: 8 }}
                           />
@@ -1022,8 +1049,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                           />
                           <Line
                             type="monotone"
-                            dataKey="avg_daily"
-                            name="평환"
+                            dataKey="평환"
                             stroke="#10b981"
                             strokeWidth={2}
                             dot={{ r: 3 }}
@@ -1031,8 +1057,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                           />
                           <Line
                             type="monotone"
-                            dataKey="chim_total"
-                            name="침초진+재초"
+                            dataKey="침초진+재초"
                             stroke="#3b82f6"
                             strokeWidth={2}
                             dot={{ r: 3 }}
@@ -1040,8 +1065,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                           />
                           <Line
                             type="monotone"
-                            dataKey="jabo_total"
-                            name="자보초진+재초"
+                            dataKey="자보초진+재초"
                             stroke="#f97316"
                             strokeWidth={2}
                             dot={{ r: 3 }}
@@ -1050,7 +1074,8 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
-                  ) : (
+                    );
+                  })() : (
                     <div className="p-6 text-center text-gray-400 text-sm">
                       데이터 없음
                     </div>
