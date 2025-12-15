@@ -849,13 +849,8 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                   )}
                 </div>
 
-                {/* 18개월 침초진 추이 (2/4) */}
+                {/* 침환자 유입 추이 차트 (2/4) */}
                 <div className="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="bg-indigo-50 px-4 py-3 border-b border-gray-200">
-                    <h2 className="text-base font-bold text-indigo-800 flex items-center gap-2">
-                      <span>📈</span> 18개월 추이
-                    </h2>
-                  </div>
                   {visitRouteTrend.length > 0 ? (
                     <div className="p-2">
                       <ResponsiveContainer width="100%" height={210}>
@@ -981,13 +976,8 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                   </div>
                 </div>
 
-                {/* 18개월 침환자 추이 */}
+                {/* 침환자 현황 추이 차트 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-                    <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                      <span>📈</span> 18개월 침환자 추이
-                    </h2>
-                  </div>
                   {chimPatientTrend.length > 0 ? (() => {
                     // 첫 달 기준으로 정규화 (100 = 기준점)
                     const baseAvg = chimPatientTrend[0]?.avg_daily || 1;
