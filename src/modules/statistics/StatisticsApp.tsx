@@ -737,13 +737,13 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                 </div>
               </div>
 
-              {/* 침초진 유입분석 (3열: 현황표 + 검색어 상세 + 18개월 추이) */}
+              {/* 침환자 유입내역 (3열: 현황표 + 검색어 상세 + 18개월 추이) */}
               <div className="grid grid-cols-3 gap-4">
-                {/* 침초진 현황표 */}
+                {/* 침환자 유입내역 현황표 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="bg-teal-50 px-4 py-3 border-b border-gray-200">
                     <h2 className="text-base font-bold text-teal-800 flex items-center gap-2">
-                      <span>🚶</span> 침초진 현황
+                      <span>🚶</span> 침환자 유입내역
                       {visitRouteDetail && (
                         <span className="ml-1 text-sm font-normal text-teal-600">
                           ({visitRouteDetail.total}명)
