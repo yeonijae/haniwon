@@ -737,10 +737,10 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                 </div>
               </div>
 
-              {/* 침환자 유입내역 (3열: 현황표 + 검색어 상세 + 18개월 추이) */}
-              <div className="grid grid-cols-3 gap-4">
-                {/* 침환자 유입내역 현황표 */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              {/* 침환자 유입내역 (4열: 현황표 1/4 + 검색어 상세 1/4 + 18개월 추이 2/4) */}
+              <div className="grid grid-cols-4 gap-4">
+                {/* 침환자 유입내역 현황표 (1/4) */}
+                <div className="col-span-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="bg-teal-50 px-4 py-3 border-b border-gray-200">
                     <h2 className="text-base font-bold text-teal-800 flex items-center gap-2">
                       <span>🚶</span> 침환자 유입내역
@@ -812,8 +812,8 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                   )}
                 </div>
 
-                {/* 검색어 상세표 */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                {/* 검색어 상세표 (1/4) */}
+                <div className="col-span-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="bg-blue-50 px-4 py-3 border-b border-gray-200">
                     <h2 className="text-base font-bold text-blue-800 flex items-center gap-2">
                       <span>🔍</span> 검색어 상세
@@ -854,8 +854,8 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                   )}
                 </div>
 
-                {/* 18개월 침초진 추이 */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                {/* 18개월 침초진 추이 (2/4) */}
+                <div className="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="bg-indigo-50 px-4 py-3 border-b border-gray-200">
                     <h2 className="text-base font-bold text-indigo-800 flex items-center gap-2">
                       <span>📈</span> 18개월 추이
