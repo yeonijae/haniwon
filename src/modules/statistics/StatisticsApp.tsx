@@ -676,12 +676,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             tick={{ fontSize: 11, fill: '#6b7280' }}
                             tickLine={{ stroke: '#d1d5db' }}
                           />
-                          <YAxis
-                            tick={{ fontSize: 11, fill: '#6b7280' }}
-                            tickFormatter={(value) => formatMoney(value)}
-                            tickLine={{ stroke: '#d1d5db' }}
-                            width={55}
-                          />
+                          <YAxis hide />
                           <Tooltip
                             formatter={(value: number, name: string) => [formatMoney(value) + '원', name]}
                             labelStyle={{ fontWeight: 'bold' }}
@@ -871,11 +866,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             tick={{ fontSize: 10, fill: '#6b7280' }}
                             tickLine={{ stroke: '#d1d5db' }}
                           />
-                          <YAxis
-                            tick={{ fontSize: 10, fill: '#6b7280' }}
-                            tickLine={{ stroke: '#d1d5db' }}
-                            width={30}
-                          />
+                          <YAxis hide />
                           <Tooltip
                             formatter={(value: number, name: string) => [value + '명', name]}
                             labelStyle={{ fontWeight: 'bold', fontSize: 11 }}
@@ -1027,13 +1018,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             tick={{ fontSize: 11, fill: '#6b7280' }}
                             tickLine={{ stroke: '#d1d5db' }}
                           />
-                          <YAxis
-                            tick={{ fontSize: 11, fill: '#6b7280' }}
-                            tickLine={{ stroke: '#d1d5db' }}
-                            width={40}
-                            domain={['auto', 'auto']}
-                            tickFormatter={(value) => `${value}%`}
-                          />
+                          <YAxis hide domain={['auto', 'auto']} />
                           <Tooltip
                             formatter={(value: number, name: string, props: any) => {
                               const raw = name === '평환' ? props.payload.raw_avg
