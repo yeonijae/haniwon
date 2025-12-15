@@ -853,7 +853,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                 <div className="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   {visitRouteTrend.length > 0 ? (
                     <div className="p-2">
-                      <ResponsiveContainer width="100%" height={180}>
+                      <ResponsiveContainer width="100%" height={150}>
                         <LineChart data={visitRouteTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                           <XAxis
