@@ -426,9 +426,9 @@ INSERT OR IGNORE INTO treatment_items (name, category, default_duration, display
 -- 10. 기본 데이터 삽입
 -- =====================================================
 
--- 기본 관리자 계정 (password: admin123)
+-- 기본 관리자 계정 (password: 7582)
 INSERT OR IGNORE INTO portal_users (name, login_id, password_hash, role, permissions)
-VALUES ('관리자', 'admin', 'admin123', 'super_admin', '["manage","chart","inventory","treatment","patient_care","funnel","content","reservation","doctor_pad"]');
+VALUES ('관리자', 'admin', '7582', 'super_admin', '["manage","chart","inventory","treatment","patient_care","funnel","content","reservation","doctor_pad"]');
 
 -- 기본 원장 상태
 INSERT OR IGNORE INTO doctor_status (doctor_id, doctor_name, status) VALUES

@@ -20,6 +20,7 @@ import ReservationApp from './modules/reservation/ReservationApp';
 import { DoctorPadApp } from './modules/doctor-pad';
 import StatisticsApp from './modules/statistics/StatisticsApp';
 import DbAdminApp from './modules/db-admin/DbAdminApp';
+import HerbalApp from './modules/herbal/HerbalApp';
 
 // Public Blog Pages (공개 - 로그인 불필요)
 import BlogListPage from './modules/blog/pages/BlogListPage';
@@ -185,6 +186,12 @@ function App() {
       <Route
         path="/db-admin/*"
         element={user ? <DbAdminApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Herbal Management Routes (복약관리) */}
+      <Route
+        path="/herbal/*"
+        element={user ? <HerbalApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Fallback */}
