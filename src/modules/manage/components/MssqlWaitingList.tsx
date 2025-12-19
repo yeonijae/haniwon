@@ -37,12 +37,17 @@ const MssqlWaitingListItem: React.FC<{
   const timeField = isWaitingPatient(patient) ? patient.waiting_since : (patient as MssqlTreatingPatient).treating_since;
   const waitingMinutes = getWaitingMinutes(timeField);
 
-  // 오래 대기한 경우 강조
-  const isLongWait = waitingMinutes > 30;
+  // 오래 대기한 경우 강조 (30분: 주황, 60분: 빨강)
+  const isLongWait = waitingMinutes >= 30;
+  const isVeryLongWait = waitingMinutes >= 60;
 
   return (
     <li className={`flex justify-between items-center p-2 rounded-md transition-colors duration-150 ${
-      isLongWait ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-blue-50'
+      isVeryLongWait
+        ? 'bg-red-100 hover:bg-red-150 border-l-4 border-red-500'
+        : isLongWait
+          ? 'bg-orange-50 hover:bg-orange-100 border-l-4 border-orange-400'
+          : 'hover:bg-blue-50'
     }`}>
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-1 flex-wrap">
@@ -81,7 +86,9 @@ const MssqlWaitingListItem: React.FC<{
       <div className="flex flex-col items-end ml-2 flex-shrink-0">
         <span className="text-xs text-gray-400">{formatWaitingTime(timeField)}</span>
         {waitingMinutes > 0 && (
-          <span className={`text-xs font-medium ${isLongWait ? 'text-red-600' : 'text-gray-500'}`}>
+          <span className={`text-xs font-medium ${
+            isVeryLongWait ? 'text-red-600' : isLongWait ? 'text-orange-600' : 'text-gray-500'
+          }`}>
             {waitingMinutes}분
           </span>
         )}

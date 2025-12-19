@@ -122,12 +122,38 @@ const HerbalSetupModal: React.FC<HerbalSetupModalProps> = ({ task, onClose, onSu
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-500">결제일: {task.data.tx_date}</span>
             <span className="font-semibold text-gray-800">
-              {task.data.total_amount?.toLocaleString()}원
+              총 {Math.floor(task.data.total_amount || 0).toLocaleString()}원
             </span>
           </div>
           {task.data.tx_doctor && (
             <div className="text-xs text-gray-400 mt-1">
               담당: {task.data.tx_doctor}
+            </div>
+          )}
+
+          {/* 결제 상세 내역 */}
+          {task.data.payment_details && task.data.payment_details.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-gray-200">
+              <div className="text-xs text-gray-500 mb-1">결제 내역:</div>
+              <div className="space-y-1">
+                {task.data.payment_details.map((detail: { px_name: string; tx_money: number; is_deer_antler: boolean }, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between text-sm">
+                    <span className={`${detail.is_deer_antler ? 'text-amber-700 font-medium' : 'text-gray-700'}`}>
+                      {detail.is_deer_antler && <i className="fas fa-star text-amber-500 mr-1 text-xs"></i>}
+                      {detail.px_name}
+                    </span>
+                    <span className="text-gray-600">{Math.floor(detail.tx_money).toLocaleString()}원</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 녹용 포함 안내 */}
+          {task.data.has_deer_antler && (
+            <div className="mt-2 px-2 py-1.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
+              <i className="fas fa-exclamation-circle text-amber-500"></i>
+              <span className="text-xs text-amber-700 font-medium">녹용 결제가 포함되어 있습니다</span>
             </div>
           )}
         </div>

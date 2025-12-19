@@ -45,21 +45,36 @@ export const usePatients = (currentUser: any) => {
         // 치료 대기 목록 로드
         const treatmentQueue = await api.fetchWaitingQueue('treatment');
 
-        // 환자 ID 수집
-        const patientIds = [
+        // 환자 ID 수집 (중복 제거)
+        const patientIds = [...new Set([
           ...consultationQueue.map(q => q.patient_id),
           ...treatmentQueue.map(q => q.patient_id),
-        ];
+        ])];
 
-        // 환자 정보 로드 및 캐시
+        // 환자 정보 로드 및 캐시 (병렬 처리)
         const patientMap = new Map<number, Patient>();
-        for (const patientId of patientIds) {
-          const patient = await api.fetchPatientById(patientId);
-          if (patient) {
-            // 기본 치료 정보도 로드
-            const treatments = await api.fetchPatientDefaultTreatments(patientId);
-            patient.defaultTreatments = treatments;
-            patientMap.set(patientId, patient);
+        const patientResults = await Promise.all(
+          patientIds.map(async (patientId) => {
+            try {
+              const [patient, treatments] = await Promise.all([
+                api.fetchPatientById(patientId),
+                api.fetchPatientDefaultTreatments(patientId),
+              ]);
+              if (patient) {
+                patient.defaultTreatments = treatments;
+                return { id: patientId, patient };
+              }
+            } catch (err) {
+              console.error(`환자 ${patientId} 로드 실패:`, err);
+            }
+            return null;
+          })
+        );
+
+        // 결과를 Map에 추가
+        for (const result of patientResults) {
+          if (result?.patient) {
+            patientMap.set(result.id, result.patient);
           }
         }
 
@@ -81,6 +96,7 @@ export const usePatients = (currentUser: any) => {
               time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
               details: q.details,
               memo: q.memo,
+              doctor: q.doctor,
             };
           })
           .filter((p): p is Patient => p !== null);
@@ -96,6 +112,7 @@ export const usePatients = (currentUser: any) => {
               time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
               details: q.details,
               memo: q.memo,
+              doctor: q.doctor,
             };
           })
           .filter((p): p is Patient => p !== null);
@@ -129,27 +146,56 @@ export const usePatients = (currentUser: any) => {
       }
 
       try {
-        const consultationQueue = await api.fetchWaitingQueue('consultation');
-        const treatmentQueue = await api.fetchWaitingQueue('treatment');
+        // 대기 목록 병렬 조회
+        const [consultationQueue, treatmentQueue] = await Promise.all([
+          api.fetchWaitingQueue('consultation'),
+          api.fetchWaitingQueue('treatment'),
+        ]);
 
-        const patientIds = [
+        // 환자 ID 수집 (중복 제거)
+        const patientIds = [...new Set([
           ...consultationQueue.map(q => q.patient_id),
           ...treatmentQueue.map(q => q.patient_id),
-        ];
+        ])];
 
+        // 캐시에 없는 환자만 필터링
+        const uncachedIds = patientIds.filter(id => !patientCache.has(id));
+
+        // 캐시에 없는 환자만 병렬 로드
         const patientMap = new Map<number, Patient>();
+
+        // 캐시된 환자 먼저 추가
         for (const patientId of patientIds) {
-          // 캐시 확인
-          let patient = patientCache.get(patientId);
-          if (!patient) {
-            patient = await api.fetchPatientById(patientId) || undefined;
-            if (patient) {
-              const treatments = await api.fetchPatientDefaultTreatments(patientId);
-              patient.defaultTreatments = treatments;
-            }
+          const cached = patientCache.get(patientId);
+          if (cached) {
+            patientMap.set(patientId, cached);
           }
-          if (patient) {
-            patientMap.set(patientId, patient);
+        }
+
+        // 캐시에 없는 환자만 병렬 로드
+        if (uncachedIds.length > 0) {
+          const newPatientResults = await Promise.all(
+            uncachedIds.map(async (patientId) => {
+              try {
+                const [patient, treatments] = await Promise.all([
+                  api.fetchPatientById(patientId),
+                  api.fetchPatientDefaultTreatments(patientId),
+                ]);
+                if (patient) {
+                  patient.defaultTreatments = treatments;
+                  return { id: patientId, patient };
+                }
+              } catch (err) {
+                console.error(`환자 ${patientId} 로드 실패:`, err);
+              }
+              return null;
+            })
+          );
+
+          for (const result of newPatientResults) {
+            if (result?.patient) {
+              patientMap.set(result.id, result.patient);
+            }
           }
         }
 
@@ -170,6 +216,7 @@ export const usePatients = (currentUser: any) => {
               time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
               details: q.details,
               memo: q.memo,
+              doctor: q.doctor,
             };
           })
           .filter((p): p is Patient => p !== null);
@@ -184,6 +231,7 @@ export const usePatients = (currentUser: any) => {
               time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
               details: q.details,
               memo: q.memo,
+              doctor: q.doctor,
             };
           })
           .filter((p): p is Patient => p !== null);

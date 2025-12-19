@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { PortalUser } from '@shared/types';
 
@@ -228,6 +228,27 @@ function StatisticsApp({ user }: StatisticsAppProps) {
     jabo_total: number;
   }[]>([]);
 
+  // 18개월 약초진 추이 데이터
+  const [yakChojinTrend, setYakChojinTrend] = useState<{
+    month: string;
+    new: number;
+    referral: number;
+    existing: number;
+    total: number;
+  }[]>([]);
+
+  // 18개월 비급여 추이 데이터
+  const [uncoveredTrend, setUncoveredTrend] = useState<{
+    month: string;
+    맞춤한약: number;
+    녹용: number;
+    공진단: number;
+    경옥고: number;
+    상비한약: number;
+    약침: number;
+    다이어트: number;
+  }[]>([]);
+
   // 약초진 Raw Data 모달
   const [yakRawModal, setYakRawModal] = useState<{
     open: boolean;
@@ -237,6 +258,63 @@ function StatisticsApp({ user }: StatisticsAppProps) {
     patients: YakChojinRawPatient[];
     loading: boolean;
   }>({ open: false, doctor: '', category: '', categoryLabel: '', patients: [], loading: false });
+
+  // 차트 Legend 토글 상태 (각 차트별로 숨길 라인 관리)
+  const [hiddenRevenue, setHiddenRevenue] = useState<Set<string>>(new Set());
+  const [hiddenVisitRoute, setHiddenVisitRoute] = useState<Set<string>>(new Set());
+  const [hiddenChimPatient, setHiddenChimPatient] = useState<Set<string>>(new Set());
+  const [hiddenYakChojin, setHiddenYakChojin] = useState<Set<string>>(new Set());
+  const [hiddenUncovered, setHiddenUncovered] = useState<Set<string>>(new Set());
+
+  // 뷰 모드: 전체 통계 vs 원장별 통계
+  const [viewMode, setViewMode] = useState<'all' | 'doctor'>('all');
+  // 원장별 통계용 선택된 원장
+  const [selectedDoctorForView, setSelectedDoctorForView] = useState<string>('');
+  // 원장별 통계 데이터
+  const [doctorTrendData, setDoctorTrendData] = useState<{
+    weekly: { month: string; insurance: number; chuna: number; jabo: number; uncovered: number; total: number }[];
+    monthly: { month: string; insurance: number; chuna: number; jabo: number; uncovered: number; total: number }[];
+    summary: {
+      current: { total: number; insurance: number; chuna: number; jabo: number; uncovered: number };
+      previous: { total: number; insurance: number; chuna: number; jabo: number; uncovered: number };
+      change_rate: number;
+    } | null;
+    hire_date: string | null;
+  }>({ weekly: [], monthly: [], summary: null, hire_date: null });
+  const [doctorTrendLoading, setDoctorTrendLoading] = useState(false);
+  // 원장별 통계 차트 Legend 토글
+  const [hiddenDoctorRevenue, setHiddenDoctorRevenue] = useState<Set<string>>(new Set());
+
+  // Legend 클릭 핸들러 (토글)
+  const createLegendClickHandler = useCallback((setHidden: React.Dispatch<React.SetStateAction<Set<string>>>) => {
+    return (e: { dataKey?: string }) => {
+      if (!e.dataKey) return;
+      setHidden(prev => {
+        const next = new Set(prev);
+        if (next.has(e.dataKey!)) next.delete(e.dataKey!);
+        else next.add(e.dataKey!);
+        return next;
+      });
+    };
+  }, []);
+
+  // 침환자 추이 정규화 데이터 (메모이제이션)
+  const normalizedChimPatientData = useMemo(() => {
+    if (chimPatientTrend.length === 0) return { data: [], baseAvg: 0, baseChim: 0, baseJabo: 0, baseMonth: '' };
+    const baseAvg = chimPatientTrend[0]?.avg_daily || 1;
+    const baseChim = chimPatientTrend[0]?.chim_total || 1;
+    const baseJabo = chimPatientTrend[0]?.jabo_total || 1;
+    const data = chimPatientTrend.map(item => ({
+      month: item.month,
+      평환: Math.round((item.avg_daily / baseAvg) * 100),
+      '침초진+재초': Math.round((item.chim_total / baseChim) * 100),
+      '자보초진+재초': Math.round((item.jabo_total / baseJabo) * 100),
+      raw_avg: item.avg_daily,
+      raw_chim: item.chim_total,
+      raw_jabo: item.jabo_total,
+    }));
+    return { data, baseAvg, baseChim, baseJabo, baseMonth: chimPatientTrend[0]?.month || '' };
+  }, [chimPatientTrend]);
 
   // 컴포넌트 마운트 시 원장 입사순서 가져오기
   useEffect(() => {
@@ -261,9 +339,12 @@ function StatisticsApp({ user }: StatisticsAppProps) {
 
   // 월간일 때는 연/월 변경 시, 아닐 때는 날짜 변경 시 조회
   // doctorOrder가 로드된 후에만 통계 조회
+  // AbortController로 이전 요청 취소 (race condition 방지)
   useEffect(() => {
     if (doctorOrder.length > 0) {
-      fetchAllStats();
+      const abortController = new AbortController();
+      fetchAllStats(abortController.signal);
+      return () => abortController.abort();
     }
   }, [period, selectedDate, selectedYear, selectedMonth, doctorOrder]);
 
@@ -290,33 +371,38 @@ function StatisticsApp({ user }: StatisticsAppProps) {
     return { prevMonth: '', prevYear: '' };
   }
 
-  async function fetchAllStats() {
+  async function fetchAllStats(signal?: AbortSignal) {
     setLoading(true);
     setError(null);
     try {
       const queryDate = getQueryDate();
       const { prevMonth, prevYear } = getComparisonDates();
 
-      // 통합 API + 비급여 상세 API + 내원경로 API + 약초진 API + 매출추이 API + 검색어 API + 침초진추이 API + 침환자추이 API 병렬 호출
+      // 통합 API + 비급여 상세 API + 내원경로 API + 약초진 API + 매출추이 API + 검색어 API + 침초진추이 API + 침환자추이 API + 약초진추이 API + 비급여추이 API 병렬 호출
+      // 주간 뷰에서는 18주 추이, 그 외에는 18개월 추이
+      const trendPeriod = period === 'weekly' ? 'weekly' : 'monthly';
+      const fetchOptions = signal ? { signal } : {};
       const fetchPromises: Promise<Response>[] = [
-        fetch(`${API_BASE}/api/stats/all?period=${period}&date=${queryDate}`),
-        fetch(`${API_BASE}/api/stats/uncovered-detail?period=${period}&date=${queryDate}`),
-        fetch(`${API_BASE}/api/stats/visit-route?period=${period}&date=${queryDate}`),
-        fetch(`${API_BASE}/api/stats/yak-chojin-detail?period=${period}&date=${queryDate}`),
-        fetch(`${API_BASE}/api/stats/revenue-trend?end_date=${queryDate}`),
-        fetch(`${API_BASE}/api/stats/search-keywords?period=${period}&date=${queryDate}`),
-        fetch(`${API_BASE}/api/stats/visit-route-trend?end_date=${queryDate}`),
-        fetch(`${API_BASE}/api/stats/chim-patient-trend?end_date=${queryDate}`)
+        fetch(`${API_BASE}/api/stats/all?period=${period}&date=${queryDate}`, fetchOptions),
+        fetch(`${API_BASE}/api/stats/uncovered-detail?period=${period}&date=${queryDate}`, fetchOptions),
+        fetch(`${API_BASE}/api/stats/visit-route?period=${period}&date=${queryDate}`, fetchOptions),
+        fetch(`${API_BASE}/api/stats/yak-chojin-detail?period=${period}&date=${queryDate}`, fetchOptions),
+        fetch(`${API_BASE}/api/stats/revenue-trend?end_date=${queryDate}&period=${trendPeriod}`, fetchOptions),
+        fetch(`${API_BASE}/api/stats/search-keywords?period=${period}&date=${queryDate}`, fetchOptions),
+        fetch(`${API_BASE}/api/stats/visit-route-trend?end_date=${queryDate}&period=${trendPeriod}`, fetchOptions),
+        fetch(`${API_BASE}/api/stats/chim-patient-trend?end_date=${queryDate}&period=${trendPeriod}`, fetchOptions),
+        fetch(`${API_BASE}/api/stats/yak-chojin-trend?end_date=${queryDate}&period=${trendPeriod}`, fetchOptions),
+        fetch(`${API_BASE}/api/stats/uncovered-trend?end_date=${queryDate}&period=${trendPeriod}`, fetchOptions)
       ];
 
       // 월간일 때만 전월/전년 데이터 추가 요청
       if (period === 'monthly' && prevMonth && prevYear) {
-        fetchPromises.push(fetch(`${API_BASE}/api/stats/all?period=monthly&date=${prevMonth}`));
-        fetchPromises.push(fetch(`${API_BASE}/api/stats/all?period=monthly&date=${prevYear}`));
+        fetchPromises.push(fetch(`${API_BASE}/api/stats/all?period=monthly&date=${prevMonth}`, fetchOptions));
+        fetchPromises.push(fetch(`${API_BASE}/api/stats/all?period=monthly&date=${prevYear}`, fetchOptions));
       }
 
       const responses = await Promise.all(fetchPromises);
-      const [statsRes, uncoveredRes, visitRouteRes, yakChojinRes, trendRes, searchKeywordsRes, visitRouteTrendRes, chimPatientTrendRes, ...comparisonRes] = responses;
+      const [statsRes, uncoveredRes, visitRouteRes, yakChojinRes, trendRes, searchKeywordsRes, visitRouteTrendRes, chimPatientTrendRes, yakChojinTrendRes, uncoveredTrendRes, ...comparisonRes] = responses;
 
       const data = await statsRes.json();
       const uncoveredData = await uncoveredRes.json();
@@ -326,6 +412,8 @@ function StatisticsApp({ user }: StatisticsAppProps) {
       const searchKeywordsData = await searchKeywordsRes.json();
       const visitRouteTrendData = await visitRouteTrendRes.json();
       const chimPatientTrendData = await chimPatientTrendRes.json();
+      const yakChojinTrendData = await yakChojinTrendRes.json();
+      const uncoveredTrendData = await uncoveredTrendRes.json();
 
       if (data.error) {
         throw new Error(data.error);
@@ -377,6 +465,18 @@ function StatisticsApp({ user }: StatisticsAppProps) {
       } else {
         setChimPatientTrend([]);
       }
+      // 18개월 약초진 추이 데이터 설정
+      if (!yakChojinTrendData.error && yakChojinTrendData.data) {
+        setYakChojinTrend(yakChojinTrendData.data);
+      } else {
+        setYakChojinTrend([]);
+      }
+      // 18개월 비급여 추이 데이터 설정
+      if (!uncoveredTrendData.error && uncoveredTrendData.data) {
+        setUncoveredTrend(uncoveredTrendData.data);
+      } else {
+        setUncoveredTrend([]);
+      }
       setDateRange({
         start: data.start_date || queryDate,
         end: data.end_date || queryDate,
@@ -401,12 +501,60 @@ function StatisticsApp({ user }: StatisticsAppProps) {
         setComparisonData({ prevMonth: null, prevYear: null });
       }
 
+      setLoading(false);
     } catch (err) {
+      // AbortError는 의도적인 취소이므로 무시 (새 요청이 진행 중)
+      if (err instanceof Error && err.name === 'AbortError') {
+        return; // finally도 실행하지 않도록 early return
+      }
       setError(err instanceof Error ? err.message : '알 수 없는 오류');
-    } finally {
       setLoading(false);
     }
   }
+
+  // 원장별 매출 추이 데이터 조회 (주간 + 월간 동시 로드)
+  async function fetchDoctorTrend(doctor: string, signal?: AbortSignal) {
+    if (!doctor) {
+      setDoctorTrendData({ weekly: [], monthly: [], summary: null, hire_date: null });
+      return;
+    }
+
+    setDoctorTrendLoading(true);
+    try {
+      const fetchOptions = signal ? { signal } : {};
+      const [weeklyRes, monthlyRes] = await Promise.all([
+        fetch(`${API_BASE}/api/stats/doctor-revenue-trend?doctor=${encodeURIComponent(doctor)}&period=weekly`, fetchOptions),
+        fetch(`${API_BASE}/api/stats/doctor-revenue-trend?doctor=${encodeURIComponent(doctor)}&period=monthly`, fetchOptions)
+      ]);
+
+      const weeklyData = await weeklyRes.json();
+      const monthlyData = await monthlyRes.json();
+
+      if (weeklyData.error) throw new Error(weeklyData.error);
+      if (monthlyData.error) throw new Error(monthlyData.error);
+
+      setDoctorTrendData({
+        weekly: weeklyData.data || [],
+        monthly: monthlyData.data || [],
+        summary: monthlyData.summary || null,
+        hire_date: monthlyData.hire_date || null
+      });
+      setDoctorTrendLoading(false);
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      console.error('원장별 추이 조회 오류:', err);
+      setDoctorTrendLoading(false);
+    }
+  }
+
+  // 원장 선택 변경 시 데이터 로드
+  useEffect(() => {
+    if (viewMode === 'doctor' && selectedDoctorForView) {
+      const abortController = new AbortController();
+      fetchDoctorTrend(selectedDoctorForView, abortController.signal);
+      return () => abortController.abort();
+    }
+  }, [viewMode, selectedDoctorForView]);
 
   // 약초진 Raw Data 조회
   const categoryLabels: Record<string, string> = {
@@ -610,6 +758,35 @@ function StatisticsApp({ user }: StatisticsAppProps) {
 
         {!loading && totalStats && (
           <>
+            {/* 뷰 모드 탭 */}
+            <div className="mb-6 flex justify-center">
+              <div className="flex bg-gray-200 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode('all')}
+                  className={`px-6 py-2 text-sm font-medium rounded-md transition-colors ${
+                    viewMode === 'all'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  전체 통계
+                </button>
+                <button
+                  onClick={() => setViewMode('doctor')}
+                  className={`px-6 py-2 text-sm font-medium rounded-md transition-colors ${
+                    viewMode === 'doctor'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  원장별 통계
+                </button>
+              </div>
+            </div>
+
+            {/* 전체 통계 뷰 */}
+            {viewMode === 'all' && (
+            <>
             {/* Period Label */}
             <div className="mb-6 text-center">
               <span className="inline-block px-4 py-2 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
@@ -683,7 +860,8 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             contentStyle={{ fontSize: 12, borderRadius: 8 }}
                           />
                           <Legend
-                            wrapperStyle={{ fontSize: 12, paddingTop: 10 }}
+                            wrapperStyle={{ fontSize: 12, paddingTop: 10, cursor: 'pointer' }}
+                            onClick={createLegendClickHandler(setHiddenRevenue)}
                           />
                           <Line
                             type="monotone"
@@ -693,6 +871,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             strokeWidth={2}
                             dot={{ r: 3 }}
                             activeDot={{ r: 5 }}
+                            hide={hiddenRevenue.has('insurance')}
                           />
                           <Line
                             type="monotone"
@@ -702,6 +881,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             strokeWidth={2}
                             dot={{ r: 3 }}
                             activeDot={{ r: 5 }}
+                            hide={hiddenRevenue.has('chuna')}
                           />
                           <Line
                             type="monotone"
@@ -711,6 +891,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             strokeWidth={2}
                             dot={{ r: 3 }}
                             activeDot={{ r: 5 }}
+                            hide={hiddenRevenue.has('jabo')}
                           />
                           <Line
                             type="monotone"
@@ -720,6 +901,17 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             strokeWidth={2}
                             dot={{ r: 3 }}
                             activeDot={{ r: 5 }}
+                            hide={hiddenRevenue.has('uncovered')}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="total"
+                            name="총매출"
+                            stroke="#1f2937"
+                            strokeWidth={3}
+                            dot={{ r: 4 }}
+                            activeDot={{ r: 6 }}
+                            hide={hiddenRevenue.has('total')}
                           />
                         </LineChart>
                       </ResponsiveContainer>
@@ -868,7 +1060,8 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             contentStyle={{ fontSize: 11, borderRadius: 8 }}
                           />
                           <Legend
-                            wrapperStyle={{ fontSize: 10, paddingTop: 5 }}
+                            wrapperStyle={{ fontSize: 10, paddingTop: 5, cursor: 'pointer' }}
+                            onClick={createLegendClickHandler(setHiddenVisitRoute)}
                           />
                           <Line
                             type="monotone"
@@ -878,6 +1071,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             strokeWidth={2}
                             dot={{ r: 2 }}
                             activeDot={{ r: 4 }}
+                            hide={hiddenVisitRoute.has('intro')}
                           />
                           <Line
                             type="monotone"
@@ -887,6 +1081,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             strokeWidth={2}
                             dot={{ r: 2 }}
                             activeDot={{ r: 4 }}
+                            hide={hiddenVisitRoute.has('search')}
                           />
                           <Line
                             type="monotone"
@@ -896,6 +1091,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             strokeWidth={2}
                             dot={{ r: 2 }}
                             activeDot={{ r: 4 }}
+                            hide={hiddenVisitRoute.has('signboard')}
                           />
                         </LineChart>
                       </ResponsiveContainer>
@@ -978,30 +1174,13 @@ function StatisticsApp({ user }: StatisticsAppProps) {
 
                 {/* 침환자 현황 추이 차트 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                  {chimPatientTrend.length > 0 ? (() => {
-                    // 첫 달 기준으로 정규화 (100 = 기준점)
-                    const baseAvg = chimPatientTrend[0]?.avg_daily || 1;
-                    const baseChim = chimPatientTrend[0]?.chim_total || 1;
-                    const baseJabo = chimPatientTrend[0]?.jabo_total || 1;
-
-                    const normalizedData = chimPatientTrend.map((item, idx) => ({
-                      month: item.month,
-                      평환: Math.round((item.avg_daily / baseAvg) * 100),
-                      '침초진+재초': Math.round((item.chim_total / baseChim) * 100),
-                      '자보초진+재초': Math.round((item.jabo_total / baseJabo) * 100),
-                      // 원본 값 (툴팁용)
-                      raw_avg: item.avg_daily,
-                      raw_chim: item.chim_total,
-                      raw_jabo: item.jabo_total,
-                    }));
-
-                    return (
+                  {normalizedChimPatientData.data.length > 0 ? (
                     <div className="p-4">
                       <div className="text-xs text-gray-500 mb-2 text-center">
-                        기준: {chimPatientTrend[0]?.month} (평환 {baseAvg}명, 침초진+재초 {baseChim}명, 자보 {baseJabo}명) = 100
+                        기준: {normalizedChimPatientData.baseMonth} (평환 {normalizedChimPatientData.baseAvg}명, 침초진+재초 {normalizedChimPatientData.baseChim}명, 자보 {normalizedChimPatientData.baseJabo}명) = 100
                       </div>
                       <ResponsiveContainer width="100%" height={260}>
-                        <LineChart data={normalizedData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <LineChart data={normalizedChimPatientData.data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                           <XAxis
                             dataKey="month"
@@ -1020,7 +1199,8 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             contentStyle={{ fontSize: 12, borderRadius: 8 }}
                           />
                           <Legend
-                            wrapperStyle={{ fontSize: 12, paddingTop: 10 }}
+                            wrapperStyle={{ fontSize: 12, paddingTop: 10, cursor: 'pointer' }}
+                            onClick={createLegendClickHandler(setHiddenChimPatient)}
                           />
                           <Line
                             type="monotone"
@@ -1029,6 +1209,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             strokeWidth={2}
                             dot={{ r: 3 }}
                             activeDot={{ r: 5 }}
+                            hide={hiddenChimPatient.has('평환')}
                           />
                           <Line
                             type="monotone"
@@ -1037,6 +1218,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             strokeWidth={2}
                             dot={{ r: 3 }}
                             activeDot={{ r: 5 }}
+                            hide={hiddenChimPatient.has('침초진+재초')}
                           />
                           <Line
                             type="monotone"
@@ -1045,12 +1227,12 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                             strokeWidth={2}
                             dot={{ r: 3 }}
                             activeDot={{ r: 5 }}
+                            hide={hiddenChimPatient.has('자보초진+재초')}
                           />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
-                    );
-                  })() : (
+                  ) : (
                     <div className="p-6 text-center text-gray-400 text-sm">
                       데이터 없음
                     </div>
@@ -1058,10 +1240,10 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                 </div>
               </div>
 
-              {/* 약초진 현황 + 비급여 매출 (같은 줄에 배치) */}
-              <div className="grid grid-cols-2 gap-6">
-                {/* 약초진 현황 */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              {/* 약초진 현황 + 약초진 추이 + 비급여 매출 (4열) */}
+              <div className="grid grid-cols-4 gap-4">
+                {/* 약초진 현황 (2열) */}
+                <div className="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="bg-green-50 px-6 py-4 border-b border-gray-200">
                     <h2 className="text-lg font-bold text-green-800 flex items-center gap-2">
                       <span>💊</span> 약초진 현황
@@ -1147,6 +1329,71 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                   )}
                 </div>
 
+                {/* 약초진 추이 차트 (2열) */}
+                <div className="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  {yakChojinTrend.length > 0 ? (
+                    <div className="p-4">
+                      <ResponsiveContainer width="100%" height={260}>
+                        <LineChart data={yakChojinTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis
+                            dataKey="month"
+                            tick={{ fontSize: 11, fill: '#6b7280' }}
+                            tickLine={{ stroke: '#d1d5db' }}
+                          />
+                          <YAxis tick={false} axisLine={{ stroke: '#e5e7eb' }} tickLine={false} width={10} />
+                          <Tooltip
+                            formatter={(value: number, name: string) => [value + '명', name]}
+                            labelStyle={{ fontWeight: 'bold' }}
+                            contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                          />
+                          <Legend
+                            wrapperStyle={{ fontSize: 12, paddingTop: 10, cursor: 'pointer' }}
+                            onClick={createLegendClickHandler(setHiddenYakChojin)}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="new"
+                            name="신규"
+                            stroke="#8b5cf6"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                            hide={hiddenYakChojin.has('new')}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="referral"
+                            name="소개"
+                            stroke="#f97316"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                            hide={hiddenYakChojin.has('referral')}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="existing"
+                            name="기존"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                            hide={hiddenYakChojin.has('existing')}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center text-gray-400 text-sm">
+                      데이터 없음
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 비급여 매출 + 비급여 추이 (2열 그리드) */}
+              <div className="grid grid-cols-2 gap-6">
                 {/* 비급여 매출 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="bg-purple-50 px-6 py-4 border-b border-gray-200">
@@ -1162,7 +1409,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                   {uncoveredDetail && (
                     <div className="overflow-x-auto">
                       {(() => {
-                        const categoryList = (['녹용', '맞춤한약', '상비한약', '공진단', '경옥고', '약침', '기타'] as const)
+                        const categoryList = (['녹용', '맞춤한약', '상비한약', '공진단', '경옥고', '약침', '다이어트', '기타'] as const)
                           .filter(cat => uncoveredDetail.categories[cat]?.total_amount > 0);
                         const categoryColors: Record<string, string> = {
                           '녹용': 'text-amber-700',
@@ -1171,6 +1418,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                           '공진단': 'text-rose-700',
                           '경옥고': 'text-violet-700',
                           '약침': 'text-blue-700',
+                          '다이어트': 'text-pink-700',
                           '기타': 'text-gray-700'
                         };
                         return (
@@ -1221,6 +1469,101 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                   )}
                   {!uncoveredDetail && (
                     <div className="px-6 py-8 text-center text-sm text-gray-400">
+                      데이터 없음
+                    </div>
+                  )}
+                </div>
+
+                {/* 비급여 추이 차트 */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  {uncoveredTrend.length > 0 ? (
+                    <div className="p-4">
+                      <ResponsiveContainer width="100%" height={280}>
+                        <LineChart data={uncoveredTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis
+                            dataKey="month"
+                            tick={{ fontSize: 11, fill: '#6b7280' }}
+                            tickLine={{ stroke: '#d1d5db' }}
+                          />
+                          <YAxis tick={false} axisLine={{ stroke: '#e5e7eb' }} tickLine={false} width={10} />
+                          <Tooltip
+                            formatter={(value: number, name: string) => [formatMoney(value) + '원', name]}
+                            labelStyle={{ fontWeight: 'bold' }}
+                            contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                          />
+                          <Legend
+                            wrapperStyle={{ fontSize: 12, paddingTop: 10, cursor: 'pointer' }}
+                            onClick={createLegendClickHandler(setHiddenUncovered)}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="맞춤한약"
+                            stroke="#10b981"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                            hide={hiddenUncovered.has('맞춤한약')}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="녹용"
+                            stroke="#f59e0b"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                            hide={hiddenUncovered.has('녹용')}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="공진단"
+                            stroke="#ef4444"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                            hide={hiddenUncovered.has('공진단')}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="경옥고"
+                            stroke="#8b5cf6"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                            hide={hiddenUncovered.has('경옥고')}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="상비한약"
+                            stroke="#06b6d4"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                            hide={hiddenUncovered.has('상비한약')}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="약침"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                            hide={hiddenUncovered.has('약침')}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="다이어트"
+                            stroke="#ec4899"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                            hide={hiddenUncovered.has('다이어트')}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center text-gray-400 text-sm">
                       데이터 없음
                     </div>
                   )}
@@ -1327,6 +1670,207 @@ function StatisticsApp({ user }: StatisticsAppProps) {
               </div>
 
             </div>
+            </>
+            )}
+
+            {/* 원장별 통계 뷰 */}
+            {viewMode === 'doctor' && (
+              <div className="space-y-6">
+                {/* 원장 선택 드롭다운 */}
+                <div className="flex justify-center">
+                  <select
+                    value={selectedDoctorForView}
+                    onChange={(e) => setSelectedDoctorForView(e.target.value)}
+                    className="px-4 py-3 text-lg border-2 border-blue-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm min-w-[200px]"
+                  >
+                    <option value="">원장 선택...</option>
+                    {doctorOrder.filter(d => d !== '_fallback_').map((doctor) => (
+                      <option key={doctor} value={doctor}>{doctor}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 선택된 원장이 없을 때 */}
+                {!selectedDoctorForView && (
+                  <div className="text-center py-20 text-gray-400">
+                    <div className="text-6xl mb-4">👨‍⚕️</div>
+                    <div className="text-lg">원장을 선택해주세요</div>
+                  </div>
+                )}
+
+                {/* 선택된 원장이 있을 때 */}
+                {selectedDoctorForView && (
+                  <>
+                    {/* 로딩 */}
+                    {doctorTrendLoading && (
+                      <div className="flex items-center justify-center h-64">
+                        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                      </div>
+                    )}
+
+                    {/* 데이터 표시 */}
+                    {!doctorTrendLoading && (
+                      <>
+                        {/* 요약 카드 */}
+                        <div className="grid grid-cols-4 gap-4">
+                          {/* 이번달 총매출 */}
+                          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <div className="text-sm text-gray-500 mb-1">이번달 총매출</div>
+                            <div className="text-2xl font-bold text-gray-800">
+                              {doctorTrendData.summary ? formatMoney(doctorTrendData.summary.current.total) : '-'}
+                            </div>
+                            <div className="mt-2 text-xs text-gray-400 space-y-0.5">
+                              <div>급여: {doctorTrendData.summary ? formatMoney(doctorTrendData.summary.current.insurance) : '-'}</div>
+                              <div>추나: {doctorTrendData.summary ? formatMoney(doctorTrendData.summary.current.chuna) : '-'}</div>
+                              <div>자보: {doctorTrendData.summary ? formatMoney(doctorTrendData.summary.current.jabo) : '-'}</div>
+                              <div>비급여: {doctorTrendData.summary ? formatMoney(doctorTrendData.summary.current.uncovered) : '-'}</div>
+                            </div>
+                          </div>
+
+                          {/* 전월 총매출 */}
+                          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <div className="text-sm text-gray-500 mb-1">전월 총매출</div>
+                            <div className="text-2xl font-bold text-gray-600">
+                              {doctorTrendData.summary ? formatMoney(doctorTrendData.summary.previous.total) : '-'}
+                            </div>
+                            <div className="mt-2 text-xs text-gray-400 space-y-0.5">
+                              <div>급여: {doctorTrendData.summary ? formatMoney(doctorTrendData.summary.previous.insurance) : '-'}</div>
+                              <div>추나: {doctorTrendData.summary ? formatMoney(doctorTrendData.summary.previous.chuna) : '-'}</div>
+                              <div>자보: {doctorTrendData.summary ? formatMoney(doctorTrendData.summary.previous.jabo) : '-'}</div>
+                              <div>비급여: {doctorTrendData.summary ? formatMoney(doctorTrendData.summary.previous.uncovered) : '-'}</div>
+                            </div>
+                          </div>
+
+                          {/* 전월대비 */}
+                          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <div className="text-sm text-gray-500 mb-1">전월대비</div>
+                            {doctorTrendData.summary ? (
+                              <div className={`text-2xl font-bold ${
+                                doctorTrendData.summary.change_rate >= 0 ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {doctorTrendData.summary.change_rate >= 0 ? '+' : ''}{doctorTrendData.summary.change_rate}%
+                              </div>
+                            ) : (
+                              <div className="text-2xl font-bold text-gray-400">-</div>
+                            )}
+                            {doctorTrendData.summary && (
+                              <div className={`mt-2 text-sm ${
+                                doctorTrendData.summary.change_rate >= 0 ? 'text-green-500' : 'text-red-500'
+                              }`}>
+                                {doctorTrendData.summary.change_rate >= 0 ? '▲' : '▼'}{' '}
+                                {formatMoney(Math.abs(doctorTrendData.summary.current.total - doctorTrendData.summary.previous.total))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* 입사일 */}
+                          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                            <div className="text-sm text-gray-500 mb-1">입사일</div>
+                            <div className="text-2xl font-bold text-gray-800">
+                              {doctorTrendData.hire_date || '-'}
+                            </div>
+                            {doctorTrendData.hire_date && (
+                              <div className="mt-2 text-sm text-gray-400">
+                                {(() => {
+                                  const hire = new Date(doctorTrendData.hire_date);
+                                  const now = new Date();
+                                  const months = (now.getFullYear() - hire.getFullYear()) * 12 + (now.getMonth() - hire.getMonth());
+                                  const years = Math.floor(months / 12);
+                                  const remainMonths = months % 12;
+                                  return years > 0 ? `${years}년 ${remainMonths}개월째` : `${remainMonths}개월째`;
+                                })()}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 주간 매출 추이 (18주) */}
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                              <span>📈</span> 주간 매출 추이 (최근 18주)
+                            </h2>
+                          </div>
+                          {doctorTrendData.weekly.length > 0 ? (
+                            <div className="p-4">
+                              <ResponsiveContainer width="100%" height={300}>
+                                <LineChart data={doctorTrendData.weekly} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                                  <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} />
+                                  <Tooltip
+                                    formatter={(value: number, name: string) => [formatMoney(value) + '원', name]}
+                                    labelFormatter={(label) => `${label} 주`}
+                                  />
+                                  <Legend
+                                    onClick={createLegendClickHandler(setHiddenDoctorRevenue)}
+                                    formatter={(value) => (
+                                      <span style={{ color: hiddenDoctorRevenue.has(value) ? '#ccc' : undefined, cursor: 'pointer' }}>
+                                        {value}
+                                      </span>
+                                    )}
+                                  />
+                                  <Line type="monotone" dataKey="insurance" name="급여" stroke="#3b82f6" strokeWidth={2} dot={false} hide={hiddenDoctorRevenue.has('급여')} />
+                                  <Line type="monotone" dataKey="chuna" name="추나" stroke="#06b6d4" strokeWidth={2} dot={false} hide={hiddenDoctorRevenue.has('추나')} />
+                                  <Line type="monotone" dataKey="jabo" name="자보" stroke="#f97316" strokeWidth={2} dot={false} hide={hiddenDoctorRevenue.has('자보')} />
+                                  <Line type="monotone" dataKey="uncovered" name="비급여" stroke="#8b5cf6" strokeWidth={2} dot={false} hide={hiddenDoctorRevenue.has('비급여')} />
+                                  <Line type="monotone" dataKey="total" name="총매출" stroke="#374151" strokeWidth={2} dot={false} hide={hiddenDoctorRevenue.has('총매출')} />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </div>
+                          ) : (
+                            <div className="p-8 text-center text-gray-400">
+                              데이터가 없습니다
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 월간 매출 추이 (18개월) */}
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                              <span>📊</span> 월간 매출 추이 (최근 18개월)
+                            </h2>
+                          </div>
+                          {doctorTrendData.monthly.length > 0 ? (
+                            <div className="p-4">
+                              <ResponsiveContainer width="100%" height={300}>
+                                <LineChart data={doctorTrendData.monthly} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                                  <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} />
+                                  <Tooltip
+                                    formatter={(value: number, name: string) => [formatMoney(value) + '원', name]}
+                                    labelFormatter={(label) => label}
+                                  />
+                                  <Legend
+                                    onClick={createLegendClickHandler(setHiddenDoctorRevenue)}
+                                    formatter={(value) => (
+                                      <span style={{ color: hiddenDoctorRevenue.has(value) ? '#ccc' : undefined, cursor: 'pointer' }}>
+                                        {value}
+                                      </span>
+                                    )}
+                                  />
+                                  <Line type="monotone" dataKey="insurance" name="급여" stroke="#3b82f6" strokeWidth={2} dot={false} hide={hiddenDoctorRevenue.has('급여')} />
+                                  <Line type="monotone" dataKey="chuna" name="추나" stroke="#06b6d4" strokeWidth={2} dot={false} hide={hiddenDoctorRevenue.has('추나')} />
+                                  <Line type="monotone" dataKey="jabo" name="자보" stroke="#f97316" strokeWidth={2} dot={false} hide={hiddenDoctorRevenue.has('자보')} />
+                                  <Line type="monotone" dataKey="uncovered" name="비급여" stroke="#8b5cf6" strokeWidth={2} dot={false} hide={hiddenDoctorRevenue.has('비급여')} />
+                                  <Line type="monotone" dataKey="total" name="총매출" stroke="#374151" strokeWidth={2} dot={false} hide={hiddenDoctorRevenue.has('총매출')} />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </div>
+                          ) : (
+                            <div className="p-8 text-center text-gray-400">
+                              데이터가 없습니다
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </>
         )}
 

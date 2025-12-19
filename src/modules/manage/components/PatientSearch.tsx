@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Patient, ConsultationItem } from '../types';
 import * as api from '../lib/api';
+import type { ReceiptHistoryItem } from '../lib/api';
 
 // 선택된 진료항목 형식
 export interface SelectedConsultationItem {
@@ -12,10 +13,14 @@ export interface SelectedConsultationItem {
 }
 
 interface PatientSearchProps {
-  addPatientToConsultation: (patient: Patient, details?: string, memo?: string) => void;
-  addPatientToTreatment: (patient: Patient, details?: string, memo?: string) => void;
-  updatePatientInfo: (patient: Patient) => void;
-  deletePatient: (patientId: number) => void;
+  // 심플 모드 props (수납 히스토리 조회용)
+  allPatients?: Patient[];
+  onSelectPatient?: (patient: Patient) => void;
+  // 풀 모드 props (접수용)
+  addPatientToConsultation?: (patient: Patient, details?: string, memo?: string) => void;
+  addPatientToTreatment?: (patient: Patient, details?: string, memo?: string) => void;
+  updatePatientInfo?: (patient: Patient) => void;
+  deletePatient?: (patientId: number) => void;
   onClose?: () => void;
   consultationItems?: ConsultationItem[];
   onReservation?: (patient: Patient) => void;
@@ -28,13 +33,30 @@ const DetailItem: React.FC<{ label: string; value?: string }> = ({ label, value 
     </div>
 );
 
-const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation, addPatientToTreatment, updatePatientInfo, deletePatient, onClose, consultationItems = [], onReservation }) => {
+const PatientSearch: React.FC<PatientSearchProps> = ({
+  allPatients,
+  onSelectPatient,
+  addPatientToConsultation,
+  addPatientToTreatment,
+  updatePatientInfo,
+  deletePatient,
+  onClose,
+  consultationItems = [],
+  onReservation
+}) => {
+  // 심플 모드 여부 판단 (수납 히스토리 조회 전용 모드)
+  const isSimpleMode = !addPatientToConsultation && !addPatientToTreatment;
+
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<Patient[]>([]);
-  const [view, setView] = useState<'search' | 'detail' | 'edit' | 'selectItems' | 'selectTreatmentItems'>('search');
+  const [view, setView] = useState<'search' | 'detail' | 'edit' | 'selectItems' | 'selectTreatmentItems' | 'paymentHistory'>('search');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [editFormData, setEditFormData] = useState<Patient | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+
+  // 수납 히스토리 상태
+  const [receiptHistory, setReceiptHistory] = useState<ReceiptHistoryItem[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   // 진료항목 선택 상태
   const [selectedConsultationItems, setSelectedConsultationItems] = useState<SelectedConsultationItem[]>([]);
@@ -92,9 +114,29 @@ const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation,
     }
   }, [view, selectedPatient]);
   
-  const handleSelectPatient = (patient: Patient) => {
+  const handleSelectPatient = async (patient: Patient) => {
     setSelectedPatient(patient);
-    setView('detail');
+
+    // 심플 모드에서는 수납 히스토리 뷰로 이동
+    if (isSimpleMode) {
+      setView('paymentHistory');
+      setIsLoadingHistory(true);
+      try {
+        if (patient.chartNumber) {
+          const history = await api.fetchPatientReceiptHistory(patient.chartNumber);
+          setReceiptHistory(history);
+        } else {
+          setReceiptHistory([]);
+        }
+      } catch (error) {
+        console.error('수납 히스토리 조회 오류:', error);
+        setReceiptHistory([]);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    } else {
+      setView('detail');
+    }
   };
 
   const handleBackToSearch = () => {
@@ -117,7 +159,7 @@ const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation,
   };
 
   const handleSave = () => {
-    if (editFormData) {
+    if (editFormData && updatePatientInfo) {
         if (!editFormData.name.trim()) {
             alert('환자 이름은 필수입니다.');
             return;
@@ -167,7 +209,7 @@ const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation,
   };
 
   const handleDelete = () => {
-    if (selectedPatient) {
+    if (selectedPatient && deletePatient) {
         deletePatient(selectedPatient.id);
     }
   };
@@ -247,6 +289,139 @@ const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation,
     );
   }
 
+  // 수납 히스토리 뷰 (심플 모드)
+  if (view === 'paymentHistory' && selectedPatient) {
+    return (
+      <div className="flex flex-col h-[70vh]">
+        {/* 헤더 */}
+        <div className="flex-shrink-0">
+          <div className="flex items-center mb-4 -mt-2">
+            <button onClick={handleBackToSearch} className="flex items-center text-gray-600 hover:text-gray-900 font-semibold text-sm">
+              <i className="fa-solid fa-arrow-left mr-2"></i>
+              <span>검색 결과로 돌아가기</span>
+            </button>
+          </div>
+
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-blue-500 text-white flex items-center justify-center text-xl font-bold">
+                {selectedPatient.name.charAt(0)}
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-800">{selectedPatient.name}</h3>
+                <p className="text-sm text-gray-500">
+                  차트번호: {selectedPatient.chartNumber || 'N/A'}
+                  {selectedPatient.phone && ` | ${selectedPatient.phone}`}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <h4 className="text-lg font-semibold text-gray-700 mt-4 mb-2 flex items-center gap-2">
+            <i className="fa-solid fa-clock-rotate-left text-blue-500"></i>
+            수납 히스토리
+          </h4>
+        </div>
+
+        {/* 수납 내역 리스트 */}
+        <div className="flex-1 overflow-y-auto min-h-0 border rounded-lg bg-white">
+          {isLoadingHistory ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <i className="fa-solid fa-spinner fa-spin text-3xl text-blue-500 mb-2"></i>
+                <p className="text-gray-500">수납 내역을 불러오는 중...</p>
+              </div>
+            </div>
+          ) : receiptHistory.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center text-gray-400">
+                <i className="fa-solid fa-receipt text-5xl mb-3"></i>
+                <p className="text-lg">수납 내역이 없습니다.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {receiptHistory.map((receipt, index) => (
+                <div key={receipt.id || index} className="p-4 hover:bg-gray-50">
+                  {/* 날짜 및 시간 */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-700">
+                        {receipt.receipt_time ? new Date(receipt.receipt_time).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) : '-'}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {receipt.receipt_time ? new Date(receipt.receipt_time).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </span>
+                      {receipt.insurance_type && (
+                        <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+                          receipt.insurance_type === '건보' ? 'bg-blue-100 text-blue-700' :
+                          receipt.insurance_type === '자보' ? 'bg-purple-100 text-purple-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {receipt.insurance_type}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-lg font-bold text-gray-800">
+                      {(receipt.total_amount || 0).toLocaleString()}원
+                    </span>
+                  </div>
+
+                  {/* 금액 상세 */}
+                  <div className="flex gap-4 text-xs text-gray-500 mb-2">
+                    <span>급여: {(receipt.insurance_self || 0).toLocaleString()}원</span>
+                    <span>비급여: {(receipt.general_amount || 0).toLocaleString()}원</span>
+                    {receipt.unpaid && receipt.unpaid > 0 && (
+                      <span className="text-red-500 font-medium">미수: {receipt.unpaid.toLocaleString()}원</span>
+                    )}
+                  </div>
+
+                  {/* 치료 요약 */}
+                  {receipt.treatment_summary && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {receipt.treatment_summary.acupuncture && (
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded">침</span>
+                      )}
+                      {receipt.treatment_summary.choona && (
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded">추나</span>
+                      )}
+                      {receipt.treatment_summary.yakchim && (
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded">약침</span>
+                      )}
+                      {receipt.treatment_summary.uncovered?.map((item, i) => (
+                        <span key={i} className="px-2 py-0.5 bg-green-50 text-green-600 text-xs rounded">
+                          {item.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 패키지 정보 및 메모 */}
+                  {(receipt.package_info || receipt.memo) && (
+                    <div className="mt-2 p-2 bg-amber-50 rounded border border-amber-100">
+                      {receipt.package_info && (
+                        <p className="text-sm text-amber-700 font-medium">
+                          <i className="fa-solid fa-tag mr-1"></i>
+                          {receipt.package_info}
+                        </p>
+                      )}
+                      {receipt.memo && (
+                        <p className="text-sm text-amber-600 mt-1">
+                          <i className="fa-solid fa-sticky-note mr-1"></i>
+                          {receipt.memo}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (view === 'detail' && selectedPatient) {
     return (
         <div>
@@ -256,16 +431,18 @@ const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation,
                     <span>검색 결과로 돌아가기</span>
                 </button>
             </div>
-            
+
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                 <div className="flex justify-between items-start">
                     <div>
                         <h3 className="text-xl font-bold text-clinic-primary">{selectedPatient.name}</h3>
                         <p className="text-sm text-clinic-text-secondary">차트번호: {selectedPatient.chartNumber || 'N/A'}</p>
                     </div>
-                    <button onClick={() => setView('edit')} className="px-4 py-2 bg-white text-sm text-clinic-secondary font-semibold rounded-md border border-clinic-secondary hover:bg-gray-50 transition-colors">
-                        <i className="fa-solid fa-pencil mr-2"></i>수정
-                    </button>
+                    {updatePatientInfo && (
+                      <button onClick={() => setView('edit')} className="px-4 py-2 bg-white text-sm text-clinic-secondary font-semibold rounded-md border border-clinic-secondary hover:bg-gray-50 transition-colors">
+                          <i className="fa-solid fa-pencil mr-2"></i>수정
+                      </button>
+                    )}
                 </div>
             </div>
             
@@ -283,25 +460,29 @@ const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation,
             </dl>
             
             <div className="flex justify-end space-x-2 pt-4 border-t mt-6">
-                <button
-                    onClick={() => {
-                        setSelectedConsultationItems([]);
-                        setView('selectItems');
-                    }}
-                    className="px-4 py-2 bg-clinic-secondary text-white font-semibold rounded-md hover:bg-blue-700 transition-colors"
-                >
-                    <i className="fa-solid fa-user-doctor mr-2"></i>재초진 접수
-                </button>
-                <button
-                    onClick={async () => {
-                        resetSelections();
-                        await parseLastTreatmentInfo(selectedPatient.id);
-                        setView('selectTreatmentItems');
-                    }}
-                    className="px-4 py-2 bg-clinic-accent text-white font-semibold rounded-md hover:bg-green-700 transition-colors"
-                >
-                    <i className="fa-solid fa-bed-pulse mr-2"></i>재진 접수
-                </button>
+                {addPatientToConsultation && (
+                  <button
+                      onClick={() => {
+                          setSelectedConsultationItems([]);
+                          setView('selectItems');
+                      }}
+                      className="px-4 py-2 bg-clinic-secondary text-white font-semibold rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                      <i className="fa-solid fa-user-doctor mr-2"></i>재초진 접수
+                  </button>
+                )}
+                {addPatientToTreatment && (
+                  <button
+                      onClick={async () => {
+                          resetSelections();
+                          await parseLastTreatmentInfo(selectedPatient.id);
+                          setView('selectTreatmentItems');
+                      }}
+                      className="px-4 py-2 bg-clinic-accent text-white font-semibold rounded-md hover:bg-green-700 transition-colors"
+                  >
+                      <i className="fa-solid fa-bed-pulse mr-2"></i>재진 접수
+                  </button>
+                )}
                 {onReservation && (
                     <button
                         onClick={() => {
@@ -357,7 +538,7 @@ const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation,
 
       const detailsText = parts.join(', ');
 
-      if (detailsText) {
+      if (detailsText && addPatientToConsultation) {
         addPatientToConsultation(selectedPatient, detailsText, receptionMemo || undefined);
         resetSelections();
         onClose?.();
@@ -703,7 +884,7 @@ const PatientSearch: React.FC<PatientSearchProps> = ({ addPatientToConsultation,
 
       const detailsText = parts.join(', ');
 
-      if (detailsText) {
+      if (detailsText && addPatientToTreatment) {
         // 치료대기로 추가 (details와 memo 파라미터로 전달)
         addPatientToTreatment(selectedPatient, detailsText, receptionMemo || undefined);
         resetSelections();

@@ -62,17 +62,24 @@ export function useTreatmentRecord() {
     }
 
     // 없으면 새로 생성 (체크인 이벤트 포함)
-    const newRecord = await treatmentRecordApi.checkInPatient(patientId, options);
-    activeRecordsCache.set(patientId, newRecord.id);
-
-    // 환자 내원 기록 업데이트 (치료 상태 테이블)
     try {
-      await patientCareApi.recordPatientVisit(patientId);
-    } catch (error) {
-      console.error('❌ [환자관리] 내원 기록 오류:', error);
-    }
+      const newRecord = await treatmentRecordApi.checkInPatient(patientId, options);
+      activeRecordsCache.set(patientId, newRecord.id);
 
-    return newRecord.id;
+      // 환자 내원 기록 업데이트 (치료 상태 테이블)
+      try {
+        await patientCareApi.recordPatientVisit(patientId);
+      } catch (error) {
+        console.error('❌ [환자관리] 내원 기록 오류:', error);
+      }
+
+      return newRecord.id;
+    } catch (error) {
+      console.error('❌ [진료내역] 체크인 생성 오류 (무시하고 진행):', error);
+      // 에러 발생해도 0을 반환하여 이후 로직이 중단되지 않도록 함
+      // 진료내역은 선택적 기록이므로 핵심 기능(베드 배정)은 계속 진행되어야 함
+      return 0;
+    }
   }, []);
 
   /**
@@ -113,6 +120,12 @@ export function useTreatmentRecord() {
         doctorName: options?.doctorName,
         visitType: options?.visitType,
       });
+
+      // recordId가 0이면 진료내역 생성 실패 - 이벤트 추가 생략
+      if (recordId === 0) {
+        console.log(`⚠️ [진료내역] 이벤트 기록 생략 (진료내역 없음): ${eventType} (patientId: ${patientId})`);
+        return;
+      }
 
       // 이벤트 추가
       await treatmentRecordApi.addTimelineEvent({

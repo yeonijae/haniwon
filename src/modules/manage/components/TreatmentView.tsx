@@ -5,10 +5,11 @@
 
 
 import React, { useState, useEffect, useRef, useMemo, memo, useCallback } from 'react';
-import { TreatmentRoom, RoomStatus, Patient, SessionTreatment, DefaultTreatment, TreatmentItem } from '../types';
+import { TreatmentRoom, RoomStatus, Patient, SessionTreatment, DefaultTreatment, TreatmentItem, TreatmentTypeCode } from '../types';
 import TreatmentInfoModal from './TreatmentInfoModal';
 import DefaultTreatmentEditModal from './DefaultTreatmentEditModal';
 import * as api from '../lib/api';
+import { loadSessionTreatmentsForRoom, logTreatmentStart, logTreatmentEnd, fetchActiveTreatmentTimeLog } from '../lib/treatmentApi';
 
 const getStatusClasses = (status: RoomStatus): { border: string, bg: string, text: string } => {
   switch (status) {
@@ -584,7 +585,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
         setEditingPatient(patient);
     };
     
-    const handlePatientDropOnBed = useCallback((patientId: number, roomId: number) => {
+    const handlePatientDropOnBed = useCallback(async (patientId: number, roomId: number) => {
         console.log(`[handlePatientDropOnBed] 시작 - patientId: ${patientId}, roomId: ${roomId}`);
         const currentWaitingList = waitingListRef.current;
         const currentAllPatients = allPatientsRef.current;
@@ -606,23 +607,40 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
         console.log(`[handlePatientDropOnBed] 환자 찾음: ${patient.name} (id: ${patient.id})`);
         console.log(`[handlePatientDropOnBed] 환자 gender: ${patient.gender}, dob: ${patient.dob}`);
 
+        // SQLite에서 환자의 치료 정보 로드
+        let sessionTreatments: SessionTreatment[];
+        let dailyRecordId: number | undefined;
+
+        try {
+            const result = await loadSessionTreatmentsForRoom(
+                patientId,
+                patient.name,
+                patient.chartNumber
+            );
+            sessionTreatments = result.sessionTreatments;
+            dailyRecordId = result.dailyRecord.id;
+            console.log(`[handlePatientDropOnBed] SQLite에서 치료 정보 로드 완료: ${sessionTreatments.length}개 항목`);
+        } catch (error) {
+            console.error(`[handlePatientDropOnBed] SQLite 치료 정보 로드 실패, 폴백 사용:`, error);
+            // 폴백: 기존 방식 사용
+            const treatmentsToApply =
+                (patient.defaultTreatments && patient.defaultTreatments.length > 0)
+                ? patient.defaultTreatments
+                : treatmentItems.slice(0, 3).map(ti => ({ name: ti.name, duration: ti.defaultDuration }));
+
+            sessionTreatments = treatmentsToApply.map((dt, index) => ({
+                id: `tx-${patientId}-${Date.now()}-${index}`,
+                name: dt.name,
+                duration: dt.duration,
+                status: 'pending' as const,
+                elapsedSeconds: 0,
+                memo: 'memo' in dt ? (dt.memo as string | undefined) : undefined,
+            }));
+        }
+
         let updatedRoom: TreatmentRoom | null = null;
         const newRooms = currentTreatmentRooms.map(room => {
             if (room.id === roomId) {
-                const treatmentsToApply =
-                    (patient.defaultTreatments && patient.defaultTreatments.length > 0)
-                    ? patient.defaultTreatments
-                    : treatmentItems.slice(0, 3).map(ti => ({ name: ti.name, duration: ti.defaultDuration }));
-
-                const sessionTreatments: SessionTreatment[] = treatmentsToApply.map((dt, index) => ({
-                    id: `tx-${patientId}-${Date.now()}-${index}`,
-                    name: dt.name,
-                    duration: dt.duration,
-                    status: 'pending' as const,
-                    elapsedSeconds: 0,
-                    memo: 'memo' in dt ? (dt.memo as string | undefined) : undefined,
-                }));
-
                 updatedRoom = {
                     ...room,
                     status: RoomStatus.IN_USE,
@@ -632,9 +650,10 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                     patientChartNumber: patient.chartNumber,
                     patientGender: patient.gender,
                     patientDob: patient.dob,
-                    doctorName: '김원장', // Placeholder
+                    doctorName: patient.doctor, // MSSQL 접수 시 담당의
                     inTime: new Date().toISOString(),
                     sessionTreatments,
+                    dailyRecordId,
                 };
                 return updatedRoom;
             }
@@ -679,9 +698,51 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
         updateRoomRef.current?.(roomId, updateFn, shouldSaveToDB);
     }, []);
 
-    const handleTreatmentAction = useCallback((roomId: number, treatmentId: string, action: 'start' | 'pause' | 'complete' | 'reset') => {
+    const handleTreatmentAction = useCallback(async (roomId: number, treatmentId: string, action: 'start' | 'pause' | 'complete' | 'reset') => {
         // 타이머 시작, 정지, 완료 시 DB에 저장 (reset은 로컬만)
         const shouldSave = action === 'start' || action === 'pause' || action === 'complete';
+
+        // 현재 룸 정보 가져오기
+        const currentRoom = treatmentRoomsRef.current.find(r => r.id === roomId);
+        const currentTreatment = currentRoom?.sessionTreatments.find(tx => tx.id === treatmentId);
+
+        // 타이머 시작 시 time_logs 기록
+        let newTimeLogId: number | undefined;
+        if (action === 'start' && currentRoom?.patientId && currentRoom?.dailyRecordId && currentTreatment?.treatmentType) {
+            try {
+                // 이미 진행 중인 로그가 있는지 확인
+                const existingLog = await fetchActiveTreatmentTimeLog(
+                    currentRoom.patientId,
+                    currentTreatment.treatmentType
+                );
+
+                if (!existingLog) {
+                    newTimeLogId = await logTreatmentStart(
+                        currentRoom.dailyRecordId,
+                        currentRoom.patientId,
+                        currentTreatment.treatmentType,
+                        currentTreatment.name,
+                        roomId
+                    );
+                    console.log(`[타이머 시작] ${currentTreatment.name} - timeLogId: ${newTimeLogId}`);
+                } else {
+                    newTimeLogId = existingLog.id;
+                    console.log(`[타이머 시작] ${currentTreatment.name} - 기존 로그 사용: ${newTimeLogId}`);
+                }
+            } catch (error) {
+                console.error(`[타이머 시작] 시간 로그 기록 실패:`, error);
+            }
+        }
+
+        // 타이머 완료 시 time_logs 종료 기록
+        if (action === 'complete' && currentTreatment?.timeLogId) {
+            try {
+                await logTreatmentEnd(currentTreatment.timeLogId);
+                console.log(`[타이머 완료] ${currentTreatment.name} - timeLogId: ${currentTreatment.timeLogId}`);
+            } catch (error) {
+                console.error(`[타이머 완료] 시간 로그 기록 실패:`, error);
+            }
+        }
 
         updateRoom(roomId, room => {
             const newTreatments = room.sessionTreatments.map(tx => {
@@ -696,7 +757,8 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                                 ...tx,
                                 status: 'running' as const,
                                 startTime: newStartTime,
-                                elapsedSeconds: newElapsedSeconds
+                                elapsedSeconds: newElapsedSeconds,
+                                timeLogId: newTimeLogId ?? tx.timeLogId,
                             };
                         case 'pause':
                             if (!tx.startTime) return tx;
@@ -711,10 +773,10 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                             };
                         case 'complete':
                             // 완료: 모두 초기화
-                            return { ...tx, status: 'completed' as const, startTime: null, elapsedSeconds: 0 };
+                            return { ...tx, status: 'completed' as const, startTime: null, elapsedSeconds: 0, timeLogId: undefined };
                         case 'reset':
                             // 리셋: 대기 상태로, 모두 초기화
-                            return { ...tx, status: 'pending' as const, startTime: null, elapsedSeconds: 0 };
+                            return { ...tx, status: 'pending' as const, startTime: null, elapsedSeconds: 0, timeLogId: undefined };
                     }
                 }
                 return tx;

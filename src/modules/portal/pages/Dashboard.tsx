@@ -51,12 +51,12 @@ const APPS: AppInfo[] = [
     color: '#06b6d4',
   },
   {
-    id: 'patient_care',
-    name: '환자관리',
-    description: '환자 관리 업무를 처리합니다. 해피콜, 치료 종결, 정기 관리 메시지 등을 관리할 수 있습니다.',
-    path: '/patient-care',
-    icon: '📞',
-    color: '#f97316',
+    id: 'herbal',
+    name: '복약관리',
+    description: '초진콜, 복약콜, 내원콜 등 환자 관리 업무를 처리합니다.',
+    path: '/herbal',
+    icon: '💊',
+    color: '#22c55e',
   },
   {
     id: 'funnel',
@@ -105,6 +105,14 @@ const APPS: AppInfo[] = [
     path: '/db-admin',
     icon: '🗄️',
     color: '#475569',
+  },
+  {
+    id: 'staff',
+    name: '직원관리',
+    description: '원장/직원 정보 및 근무일정을 관리합니다. 근무패턴, 급여/면담 타임라인, 휴가 관리가 가능합니다.',
+    path: '/staff',
+    icon: '👥',
+    color: '#6366f1',
   },
 ];
 

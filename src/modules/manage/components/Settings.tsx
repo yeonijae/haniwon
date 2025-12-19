@@ -246,6 +246,7 @@ const MedicalStaffManagement: React.FC<{
     const [editingStaff, setEditingStaff] = useState<MedicalStaff | 'new' | null>(null);
     const [formData, setFormData] = useState<Omit<MedicalStaff, 'id'>>({
         name: '',
+        alias: '',
         dob: '',
         gender: 'male',
         hireDate: '',
@@ -274,6 +275,7 @@ const MedicalStaffManagement: React.FC<{
             // Reset form for new staff
             setFormData({
                 name: '',
+                alias: '',
                 dob: '',
                 gender: 'male',
                 hireDate: new Date().toISOString().split('T')[0],
@@ -464,17 +466,31 @@ const MedicalStaffManagement: React.FC<{
             { key: 'payment', label: '수납현황' },
             { key: 'statistics', label: '지표관리' },
         ];
-        
+
         return (
              <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="flex items-center justify-between mb-4 -mt-2">
                     <h4 className="text-lg font-semibold text-clinic-text-primary">{title}</h4>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                     <div>
                         <label htmlFor="name" className="block text-sm font-medium text-gray-700">이름</label>
                         <input type="text" id="name" name="name" value={formData.name} onChange={handleFormChange} required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary sm:text-sm" />
+                    </div>
+                    <div>
+                        <label htmlFor="alias" className="block text-sm font-medium text-gray-700">
+                            호칭 <span className="text-gray-400 text-xs">(액팅 표시용)</span>
+                        </label>
+                        <input
+                            type="text"
+                            id="alias"
+                            name="alias"
+                            value={formData.alias || ''}
+                            onChange={handleFormChange}
+                            placeholder="예: 김, 강, 임, 전"
+                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-clinic-secondary focus:border-clinic-secondary sm:text-sm"
+                        />
                     </div>
                     <div>
                         <label htmlFor="dob" className="block text-sm font-medium text-gray-700">생년월일</label>
@@ -1654,7 +1670,7 @@ const Settings: React.FC<SettingsProps> = ({
 }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
-    const [currentView, setCurrentView] = useState<'main' | 'patient' | 'staff' | 'uncovered' | 'staffMedical' | 'staffRegular' | 'consultationItems'>('main');
+    const [currentView, setCurrentView] = useState<'main' | 'patient' | 'staff' | 'uncovered' | 'patientDelete' | 'treatmentRoom' | 'staffMedical' | 'staffRegular' | 'consultationItems'>('main');
     const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, message: '' });
     const [patientCount, setPatientCount] = useState<number | null>(null);
 
@@ -1916,113 +1932,13 @@ const Settings: React.FC<SettingsProps> = ({
         </button>
     );
 
-    if (currentView === 'patient') {
-        return (
-            <SettingsPage title="환자 DB 동기화" onBack={() => setCurrentView('main')}>
-                <PatientDbSync />
-            </SettingsPage>
-        );
-    }
-    
-    if (currentView === 'staff') {
-        return (
-            <SettingsPage title="직원 관리" onBack={() => setCurrentView('main')}>
-                <MenuButton 
-                    icon="fa-user-doctor"
-                    title="의료진 관리"
-                    description="의료진 정보를 추가, 수정, 삭제합니다."
-                    onClick={() => setCurrentView('staffMedical')}
-                />
-                <MenuButton 
-                    icon="fa-user-group"
-                    title="스탭 관리"
-                    description="스탭 정보를 관리합니다."
-                    onClick={() => setCurrentView('staffRegular')}
-                />
-            </SettingsPage>
-        );
-    }
-
-    if (currentView === 'staffMedical') {
-        return (
-            <SettingsPage title="의료진 관리" onBack={() => setCurrentView('staff')}>
-                <MedicalStaffManagement 
-                    staffList={medicalStaff}
-                    onUpdate={updateMedicalStaff}
-                    onAdd={addMedicalStaff}
-                />
-            </SettingsPage>
-        );
-    }
-    
-    if (currentView === 'staffRegular') {
-        return (
-            <SettingsPage title="스탭 관리" onBack={() => setCurrentView('staff')}>
-                <StaffManagement 
-                    staffList={staff}
-                    onUpdate={updateStaff}
-                    onAdd={addStaff}
-                />
-            </SettingsPage>
-        );
-    }
-
-    if (currentView === 'uncovered') {
-        return (
-            <SettingsPage title="비급여 관리" onBack={() => setCurrentView('main')}>
-                <UncoveredManagement
-                    categories={uncoveredCategories}
-                    onUpdate={updateUncoveredCategories}
-                />
-            </SettingsPage>
-        );
-    }
-
-    if (currentView === 'consultationItems') {
-        return (
-            <SettingsPage title="진료항목 관리" onBack={() => setCurrentView('main')}>
-                <ConsultationItemsManagement
-                    consultationItems={consultationItems}
-                    addConsultationItem={addConsultationItem}
-                    updateConsultationItem={updateConsultationItem}
-                    deleteConsultationItem={deleteConsultationItem}
-                    reorderConsultationItems={reorderConsultationItems}
-                    addSubItem={addSubItem}
-                    updateSubItem={updateSubItem}
-                    deleteSubItem={deleteSubItem}
-                    reorderSubItems={reorderSubItems}
-                />
-            </SettingsPage>
-        );
-    }
-
     // Default: Main View
     return (
-        <div className="space-y-4">
-            <MenuButton
-                icon="fa-users"
-                title="환자 DB 동기화"
-                description="차트DB(MSSQL)와 운영DB(Supabase)의 환자 데이터 동기화 상태를 확인하고 관리합니다."
-                onClick={() => setCurrentView('patient')}
-            />
-            <MenuButton
-                icon="fa-user-nurse"
-                title="직원 관리"
-                description="의료진, 스탭 등 직원 정보를 관리합니다."
-                onClick={() => setCurrentView('staff')}
-            />
-            <MenuButton
-                icon="fa-file-invoice-dollar"
-                title="비급여 관리"
-                description="비급여 항목의 분류를 추가, 변경, 삭제하고 금액을 수정합니다."
-                onClick={() => setCurrentView('uncovered')}
-            />
-            <MenuButton
-                icon="fa-stethoscope"
-                title="진료항목 관리"
-                description="환자 접수 시 선택할 수 있는 진료항목과 세부항목을 관리합니다."
-                onClick={() => setCurrentView('consultationItems')}
-            />
+        <div className="flex items-center justify-center h-64 text-gray-500">
+            <div className="text-center">
+                <i className="fas fa-cog text-4xl text-gray-300 mb-3"></i>
+                <p>설정 항목이 없습니다.</p>
+            </div>
         </div>
     );
 };

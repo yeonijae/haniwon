@@ -12,7 +12,9 @@ import type {
   HerbalPurchase,
   HerbalCall,
   HerbalEvent,
-  CallType
+  CallType,
+  FirstVisitMessage,
+  FirstVisitTemplateType
 } from '../types';
 
 // MSSQL API URL (unified-server)
@@ -22,9 +24,147 @@ const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.17
 const HERBAL_MIN_AMOUNT = 200000;
 
 /**
- * MSSQL에서 고액 비급여 결제 조회 (복약관리 설정 필요 건)
+ * MSSQL에서 오늘 초진 환자 조회
  */
-export async function fetchPendingHerbalSetup(days: number = 7): Promise<HerbalTask[]> {
+export async function fetchFirstVisitTargets(date?: string): Promise<HerbalTask[]> {
+  try {
+    const targetDate = date || new Date().toISOString().split('T')[0];
+
+    // 이미 메시지 발송한 환자 조회
+    const sent = await query<{ customer_pk: number; treatment_date: string }>(
+      `SELECT customer_pk, treatment_date FROM first_visit_messages
+       WHERE treatment_date = ${escapeString(targetDate)} AND message_sent = 1`
+    );
+    const sentKeys = new Set(sent.map(s => `${s.customer_pk}_${s.treatment_date}`));
+
+    // MSSQL에서 해당 날짜 초진 환자 조회
+    const sqlQuery = `
+      SELECT DISTINCT
+        c.Customer_PK,
+        c.sn as chart_number,
+        c.name as patient_name,
+        c.cell as phone,
+        CONVERT(varchar, d.TxDate, 23) as treatment_date,
+        d.TxDoctor as doctor_name
+      FROM Detail d
+      JOIN Customer c ON d.Customer_PK = c.Customer_PK
+      WHERE CONVERT(varchar, d.TxDate, 23) = '${targetDate}'
+        AND NOT EXISTS (
+          SELECT 1 FROM Detail d2
+          WHERE d2.Customer_PK = d.Customer_PK
+            AND d2.TxDate < d.TxDate
+        )
+      ORDER BY c.name
+    `;
+
+    const response = await fetch(`${MSSQL_API_URL}/api/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql: sqlQuery })
+    });
+
+    if (!response.ok) throw new Error('MSSQL 조회 실패');
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+
+    const columns: string[] = data.columns || [];
+    const rows: any[][] = data.rows || [];
+
+    return rows
+      .map(row => {
+        const rowObj: Record<string, any> = {};
+        columns.forEach((col, idx) => {
+          rowObj[col] = row[idx];
+        });
+        return rowObj;
+      })
+      .filter(row => !sentKeys.has(`${row.Customer_PK}_${row.treatment_date}`))
+      .map(row => ({
+        task_type: 'first_visit' as const,
+        task_title: `${row.patient_name} 초진 감사 메시지`,
+        task_description: `${row.treatment_date} 초진 - ${row.doctor_name || ''}`,
+        priority: 'normal' as const,
+        patient: {
+          customer_pk: row.Customer_PK,
+          chart_number: row.chart_number,
+          name: row.patient_name,
+          phone: row.phone
+        },
+        data: {
+          customer_pk: row.Customer_PK,
+          treatment_date: row.treatment_date,
+          doctor_name: row.doctor_name
+        }
+      }));
+  } catch (error) {
+    console.error('초진 환자 조회 실패:', error);
+    return [];
+  }
+}
+
+/**
+ * 초진 메시지 발송 완료 처리
+ */
+export async function markFirstVisitMessageSent(
+  customerPk: number,
+  chartNumber: string,
+  patientName: string,
+  patientPhone: string | undefined,
+  treatmentDate: string,
+  doctorName: string | undefined,
+  templateType: FirstVisitTemplateType,
+  sentBy: string,
+  notes?: string
+): Promise<void> {
+  await execute(`
+    INSERT INTO first_visit_messages (
+      customer_pk, chart_number, patient_name, patient_phone,
+      treatment_date, doctor_name, template_type,
+      message_sent, sent_at, sent_by, notes, created_at
+    ) VALUES (
+      ${customerPk},
+      ${escapeString(chartNumber)},
+      ${escapeString(patientName)},
+      ${escapeString(patientPhone)},
+      ${escapeString(treatmentDate)},
+      ${escapeString(doctorName)},
+      ${escapeString(templateType)},
+      1,
+      datetime('now'),
+      ${escapeString(sentBy)},
+      ${escapeString(notes)},
+      datetime('now')
+    )
+    ON CONFLICT(customer_pk, treatment_date) DO UPDATE SET
+      message_sent = 1,
+      sent_at = datetime('now'),
+      sent_by = ${escapeString(sentBy)},
+      template_type = ${escapeString(templateType)},
+      notes = ${escapeString(notes)}
+  `);
+}
+
+/**
+ * 초진 메시지 발송 이력 조회
+ */
+export async function fetchFirstVisitMessageHistory(date?: string): Promise<FirstVisitMessage[]> {
+  const whereClause = date ? `WHERE treatment_date = ${escapeString(date)}` : '';
+  return query<FirstVisitMessage>(`
+    SELECT * FROM first_visit_messages
+    ${whereClause}
+    ORDER BY treatment_date DESC, created_at DESC
+    LIMIT 100
+  `);
+}
+
+/**
+ * MSSQL에서 고액 비급여 결제 조회 (복약관리 설정 필요 건)
+ * - 결제 상세 내역 포함 (한약명, 녹용 여부)
+ * @param days 조회 기간 (일수)
+ * @param targetDate 기준 날짜 (YYYY-MM-DD)
+ */
+export async function fetchPendingHerbalSetup(days: number = 7, targetDate?: string): Promise<HerbalTask[]> {
   try {
     // 이미 처리된 receipt_pk 목록 조회
     const processed = await query<{ receipt_pk: number }>(
@@ -36,6 +176,11 @@ export async function fetchPendingHerbalSetup(days: number = 7): Promise<HerbalT
     const excludeClause = processedPks.length > 0
       ? `AND r.Receipt_PK NOT IN (${processedPks.join(',')})`
       : '';
+
+    // 날짜 조건: targetDate가 있으면 해당 날짜 기준, 없으면 오늘 기준
+    const dateCondition = targetDate
+      ? `AND CONVERT(varchar, r.TxDate, 23) >= '${targetDate}' AND CONVERT(varchar, r.TxDate, 23) <= DATEADD(DAY, ${days}, '${targetDate}')`
+      : `AND r.TxDate >= DATEADD(DAY, -${days}, GETDATE())`;
 
     const sqlQuery = `
       SELECT
@@ -53,7 +198,7 @@ export async function fetchPendingHerbalSetup(days: number = 7): Promise<HerbalT
       FROM Receipt r
       JOIN Customer c ON r.Customer_PK = c.Customer_PK
       WHERE r.General_Money >= ${HERBAL_MIN_AMOUNT}
-        AND r.TxDate >= DATEADD(DAY, -${days}, GETDATE())
+        ${dateCondition}
         ${excludeClause}
       ORDER BY r.TxDate DESC
     `;
@@ -79,16 +224,85 @@ export async function fetchPendingHerbalSetup(days: number = 7): Promise<HerbalT
     const columns: string[] = data.columns || [];
     const rows: any[][] = data.rows || [];
 
-    return rows.map(row => {
+    const receipts = rows.map(row => {
       const rowObj: Record<string, any> = {};
       columns.forEach((col, idx) => {
         rowObj[col] = row[idx];
       });
+      return rowObj;
+    });
+
+    // 결제 상세 내역 조회 (비급여 항목)
+    const detailDateCondition = targetDate
+      ? `AND CONVERT(varchar, d.TxDate, 23) >= '${targetDate}' AND CONVERT(varchar, d.TxDate, 23) <= DATEADD(DAY, ${days}, '${targetDate}')`
+      : `AND d.TxDate >= DATEADD(DAY, -${days}, GETDATE())`;
+
+    const detailQuery = `
+      SELECT
+        d.Customer_PK,
+        CONVERT(varchar, d.TxDate, 23) as tx_date,
+        d.PxName as px_name,
+        d.TxMoney as tx_money
+      FROM Detail d
+      WHERE d.InsuYes = 0
+        AND d.TxMoney > 0
+        ${detailDateCondition}
+      ORDER BY d.TxDate DESC, d.TxMoney DESC
+    `;
+
+    const detailResponse = await fetch(`${MSSQL_API_URL}/api/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql: detailQuery })
+    });
+
+    let detailMap: Map<string, { px_name: string; tx_money: number; is_deer_antler: boolean }[]> = new Map();
+
+    if (detailResponse.ok) {
+      const detailData = await detailResponse.json();
+      if (!detailData.error && detailData.rows) {
+        const detailCols: string[] = detailData.columns || [];
+        detailData.rows.forEach((row: any[]) => {
+          const detailObj: Record<string, any> = {};
+          detailCols.forEach((col, idx) => {
+            detailObj[col] = row[idx];
+          });
+
+          const key = `${detailObj.Customer_PK}_${detailObj.tx_date}`;
+          const pxName = detailObj.px_name || '';
+          const isDeerAntler = pxName.includes('녹용');
+
+          if (!detailMap.has(key)) {
+            detailMap.set(key, []);
+          }
+          detailMap.get(key)!.push({
+            px_name: pxName,
+            tx_money: Math.floor(detailObj.tx_money || 0),
+            is_deer_antler: isDeerAntler
+          });
+        });
+      }
+    }
+
+    return receipts.map(rowObj => {
+      const key = `${rowObj.Customer_PK}_${rowObj.tx_date}`;
+      const paymentDetails = detailMap.get(key) || [];
+      const hasDeerAntler = paymentDetails.some(d => d.is_deer_antler);
+
+      // 결제 상세 내역 요약 문자열 생성
+      const detailSummary = paymentDetails
+        .map(d => `${d.px_name} ${Math.floor(d.tx_money).toLocaleString()}원`)
+        .join(', ');
+
+      // 결제일 + 상세 내역
+      const description = detailSummary
+        ? `${rowObj.tx_date} | ${detailSummary}`
+        : `${rowObj.tx_date} 결제 ${Math.floor(rowObj.total_amount || 0).toLocaleString()}원`;
 
       return {
         task_type: 'herbal_setup' as const,
         task_title: `${rowObj.patient_name} 복약관리 설정`,
-        task_description: `${rowObj.tx_date} 결제 ${rowObj.total_amount?.toLocaleString()}원`,
+        task_description: description,
         priority: 'high' as const,
         patient: {
           customer_pk: rowObj.Customer_PK,
@@ -101,7 +315,9 @@ export async function fetchPendingHerbalSetup(days: number = 7): Promise<HerbalT
           customer_pk: rowObj.Customer_PK,
           tx_date: rowObj.tx_date,
           total_amount: rowObj.total_amount,
-          tx_doctor: rowObj.tx_doctor
+          tx_doctor: rowObj.tx_doctor,
+          payment_details: paymentDetails,
+          has_deer_antler: hasDeerAntler
         }
       };
     });
@@ -112,14 +328,17 @@ export async function fetchPendingHerbalSetup(days: number = 7): Promise<HerbalT
 }
 
 /**
- * SQLite에서 오늘의 콜 예정 조회
+ * SQLite에서 콜 예정 조회
+ * @param targetDate 기준 날짜 (YYYY-MM-DD)
  */
-export async function fetchPendingCalls(): Promise<HerbalTask[]> {
+export async function fetchPendingCalls(targetDate?: string): Promise<HerbalTask[]> {
   const callTypeLabels: Record<CallType, string> = {
     chojin: '초진콜',
     bokyak: '복약콜',
     naewon: '내원콜'
   };
+
+  const date = targetDate ? `'${targetDate}'` : `date('now')`;
 
   const data = await query<any>(`
     SELECT
@@ -133,7 +352,7 @@ export async function fetchPendingCalls(): Promise<HerbalTask[]> {
     FROM herbal_calls hc
     JOIN herbal_purchases hp ON hc.purchase_id = hp.id
     WHERE hc.status = 'pending'
-      AND hc.scheduled_date <= date('now')
+      AND hc.scheduled_date <= ${date}
     ORDER BY
       CASE hc.call_type
         WHEN 'chojin' THEN 1
@@ -237,23 +456,32 @@ export async function fetchFollowupNeeded(): Promise<HerbalTask[]> {
 
 /**
  * 전체 가상과제 조회
+ * @param targetDate 기준 날짜 (YYYY-MM-DD), 기본값은 오늘
  */
-export async function fetchAllHerbalTasks(): Promise<HerbalTasksResponse> {
-  const [setup, calls, benefits, followup] = await Promise.all([
-    fetchPendingHerbalSetup(),
-    fetchPendingCalls(),
+export async function fetchAllHerbalTasks(targetDate?: string): Promise<HerbalTasksResponse> {
+  const date = targetDate || new Date().toISOString().split('T')[0];
+
+  const [firstVisits, setup, activePurchases, calls, benefits, followup] = await Promise.all([
+    fetchFirstVisitTargets(date),
+    fetchPendingHerbalSetup(7, date),
+    fetchActiveHerbalPurchases(),
+    fetchPendingCalls(date),
     fetchPendingEventBenefits(),
     fetchFollowupNeeded()
   ]);
 
   return {
+    first_visits: firstVisits,
     herbal_setup: setup,
+    active_purchases: activePurchases,
     calls,
     event_benefits: benefits,
     followup,
     summary: {
-      total: setup.length + calls.length + benefits.length + followup.length,
+      total: firstVisits.length + setup.length + calls.length + benefits.length + followup.length,
+      first_visit_count: firstVisits.length,
       setup_count: setup.length,
+      active_count: activePurchases.length,
       calls_count: calls.length,
       benefits_count: benefits.length,
       followup_count: followup.length
@@ -424,6 +652,17 @@ export async function fetchHerbalPurchase(id: number): Promise<HerbalPurchase | 
     SELECT * FROM herbal_purchases WHERE id = ${id}
   `);
   return results[0] || null;
+}
+
+/**
+ * 진행 중인 복약관리 목록 조회
+ */
+export async function fetchActiveHerbalPurchases(): Promise<HerbalPurchase[]> {
+  return query<HerbalPurchase>(`
+    SELECT * FROM herbal_purchases
+    WHERE status = 'active'
+    ORDER BY start_date DESC
+  `);
 }
 
 /**

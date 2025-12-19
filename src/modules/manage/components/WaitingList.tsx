@@ -18,6 +18,7 @@ interface WaitingListProps {
   onMoveToPayment?: (patientId: number, sourceList: 'consultation' | 'treatment') => void;
   onCancelRegistration?: (patientId: number) => void;
   onEditConsultationInfo?: (patient: Patient) => void;
+  onEditTreatmentInfo?: (patient: Patient) => void;
 }
 
 const WaitingListItem: React.FC<{
@@ -28,7 +29,8 @@ const WaitingListItem: React.FC<{
     onMoveToPayment?: WaitingListProps['onMoveToPayment'];
     onCancelRegistration?: WaitingListProps['onCancelRegistration'];
     onEditConsultationInfo?: WaitingListProps['onEditConsultationInfo'];
-}> = ({ patient, onClick, listType, onPatientDrop, onMoveToPayment, onCancelRegistration, onEditConsultationInfo }) => {
+    onEditTreatmentInfo?: WaitingListProps['onEditTreatmentInfo'];
+}> = ({ patient, onClick, listType, onPatientDrop, onMoveToPayment, onCancelRegistration, onEditConsultationInfo, onEditTreatmentInfo }) => {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -98,6 +100,13 @@ const WaitingListItem: React.FC<{
         setContextMenu(null);
     };
 
+    const handleEditTreatmentInfoClick = () => {
+        if (onEditTreatmentInfo) {
+            onEditTreatmentInfo(patient);
+        }
+        setContextMenu(null);
+    };
+
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
           if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -134,10 +143,38 @@ const WaitingListItem: React.FC<{
     const age = getAge(patient.dob);
     const genderAge = gender || age ? `${gender}${gender && age ? '/' : ''}${age}` : '';
 
+    // 대기 시간 계산 (분 단위)
+    const getWaitingMinutes = (timeStr?: string): number => {
+        if (!timeStr) return 0;
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        if (isNaN(hours) || isNaN(minutes)) return 0;
+
+        const now = new Date();
+        const waitingSince = new Date();
+        waitingSince.setHours(hours, minutes, 0, 0);
+
+        // 만약 대기 시작 시간이 현재보다 미래면 (자정 넘김 케이스)
+        if (waitingSince > now) {
+            waitingSince.setDate(waitingSince.getDate() - 1);
+        }
+
+        return Math.max(0, Math.floor((now.getTime() - waitingSince.getTime()) / (1000 * 60)));
+    };
+
+    const waitingMinutes = getWaitingMinutes(patient.time);
+    const isLongWait = waitingMinutes >= 30; // 30분 이상 대기 시 하이라이트
+    const isVeryLongWait = waitingMinutes >= 60; // 60분 이상 대기 시 강한 하이라이트
+
     return (
         <>
             <li
-                className="flex justify-between items-center p-2 hover:bg-blue-50 rounded-md cursor-grab transition-colors duration-150"
+                className={`flex justify-between items-center p-2 rounded-md cursor-grab transition-colors duration-150 ${
+                    isVeryLongWait
+                        ? 'bg-red-100 hover:bg-red-150 border-l-4 border-red-500'
+                        : isLongWait
+                            ? 'bg-orange-50 hover:bg-orange-100 border-l-4 border-orange-400'
+                            : 'hover:bg-blue-50'
+                }`}
                 draggable="true"
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
@@ -170,7 +207,16 @@ const WaitingListItem: React.FC<{
                         </div>
                     )}
                 </div>
-                <span className="text-xs text-gray-400 ml-2 flex-shrink-0">{patient.time}</span>
+                <div className="flex flex-col items-end ml-2 flex-shrink-0">
+                    <span className="text-xs text-gray-400">{patient.time}</span>
+                    {waitingMinutes > 0 && (
+                        <span className={`text-xs font-medium ${
+                            isVeryLongWait ? 'text-red-600' : isLongWait ? 'text-orange-600' : 'text-gray-500'
+                        }`}>
+                            {waitingMinutes}분
+                        </span>
+                    )}
+                </div>
             </li>
             {contextMenu && (
                 <div
@@ -188,6 +234,17 @@ const WaitingListItem: React.FC<{
                                 진료정보
                             </button>
                         </li>
+                        {listType === 'treatment' && (
+                            <li>
+                                <button
+                                    onClick={handleEditTreatmentInfoClick}
+                                    className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100"
+                                >
+                                    <i className="fa-solid fa-syringe mr-2 text-purple-600"></i>
+                                    치료정보
+                                </button>
+                            </li>
+                        )}
                         <li>
                             <button
                                 onClick={handleMoveToPaymentClick}
@@ -213,7 +270,7 @@ const WaitingListItem: React.FC<{
     );
 };
 
-const WaitingList: React.FC<WaitingListProps> = ({ title, icon, list, listType, onPatientClick, onPatientDrop, onMoveToPayment, onCancelRegistration, onEditConsultationInfo }) => {
+const WaitingList: React.FC<WaitingListProps> = ({ title, icon, list, listType, onPatientClick, onPatientDrop, onMoveToPayment, onCancelRegistration, onEditConsultationInfo, onEditTreatmentInfo }) => {
     const handleDragOver = (e: React.DragEvent<HTMLUListElement>) => {
         e.preventDefault();
         e.currentTarget.classList.add('bg-blue-50');
@@ -263,6 +320,7 @@ const WaitingList: React.FC<WaitingListProps> = ({ title, icon, list, listType, 
                 onMoveToPayment={onMoveToPayment}
                 onCancelRegistration={onCancelRegistration}
                 onEditConsultationInfo={onEditConsultationInfo}
+                onEditTreatmentInfo={onEditTreatmentInfo}
               />
             ))
            ) : (

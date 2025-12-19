@@ -13,7 +13,7 @@ import ManageApp from '@manage/ManageApp';
 import ChartApp from '@chart/ChartApp';
 import InventoryApp from '@inventory/InventoryApp';
 import TreatmentApp from '@treatment/TreatmentApp';
-import PatientCareApp from './modules/patient-care/PatientCareApp';
+// PatientCareApp은 HerbalApp으로 통합됨 (patient-care → herbal 리다이렉트)
 import FunnelApp from './modules/funnel/FunnelApp';
 import ContentApp from './modules/content/ContentApp';
 import ReservationApp from './modules/reservation/ReservationApp';
@@ -21,6 +21,7 @@ import { DoctorPadApp } from './modules/doctor-pad';
 import StatisticsApp from './modules/statistics/StatisticsApp';
 import DbAdminApp from './modules/db-admin/DbAdminApp';
 import HerbalApp from './modules/herbal/HerbalApp';
+import StaffApp from './modules/staff/StaffApp';
 
 // Public Blog Pages (공개 - 로그인 불필요)
 import BlogListPage from './modules/blog/pages/BlogListPage';
@@ -121,10 +122,10 @@ function App() {
         element={user ? <TreatmentApp user={user} /> : <Navigate to="/login" replace />}
       />
 
-      {/* Patient Care Module Routes */}
+      {/* Patient Care Module Routes (레거시 - /herbal로 리다이렉트) */}
       <Route
         path="/patient-care/*"
-        element={user ? <PatientCareApp user={user} /> : <Navigate to="/login" replace />}
+        element={<Navigate to="/herbal" replace />}
       />
 
       {/* Funnel Module Routes */}
@@ -192,6 +193,12 @@ function App() {
       <Route
         path="/herbal/*"
         element={user ? <HerbalApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Staff Management Routes (직원관리) */}
+      <Route
+        path="/staff/*"
+        element={user ? <StaffApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Fallback */}

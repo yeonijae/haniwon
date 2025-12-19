@@ -107,8 +107,11 @@ interface MssqlPatientResponse {
   reg_date: string | null;
   last_visit: string | null;
   main_doctor: string | null;
-  treat_type: string | null;
-  nurse_memo: string | null;
+  main_disease: string | null;    // 주소증 (MAINDISEASE)
+  doctor_memo: string | null;     // 진료메모1/주치의메모 (NOTEFORDOC)
+  treat_type: string | null;      // 진료메모2 (TreatCurrent)
+  nurse_memo: string | null;      // 간호사메모 (NOTEFORNURSE)
+  etc_memo: string | null;        // 기타메모 (ETCMemo)
   referral_source: string | null;  // 조합된 유입경로
   referral_type: string | null;    // 유입경로 분류
   referral_detail: string | null;  // 상세 (검색키워드 또는 미등록 소개자)
@@ -574,6 +577,7 @@ export async function fetchMedicalStaff(): Promise<MedicalStaff[]> {
     return {
       id: staff.id,
       name: staff.name,
+      alias: staff.alias,
       dob: staff.dob,
       gender: staff.gender,
       hireDate: staff.hire_date,
@@ -589,8 +593,9 @@ export async function fetchMedicalStaff(): Promise<MedicalStaff[]> {
 // 의료진 추가
 export async function createMedicalStaff(staff: Omit<MedicalStaff, 'id'>): Promise<MedicalStaff> {
   const id = await insert(`
-    INSERT INTO medical_staff (name, dob, gender, hire_date, status, permissions, work_patterns)
-    VALUES (${escapeString(staff.name)}, ${staff.dob ? escapeString(staff.dob) : 'NULL'},
+    INSERT INTO medical_staff (name, alias, dob, gender, hire_date, status, permissions, work_patterns)
+    VALUES (${escapeString(staff.name)}, ${staff.alias ? escapeString(staff.alias) : 'NULL'},
+            ${staff.dob ? escapeString(staff.dob) : 'NULL'},
             ${escapeString(staff.gender)}, ${staff.hireDate ? escapeString(staff.hireDate) : 'NULL'},
             ${escapeString(staff.status)}, ${escapeString(JSON.stringify(staff.permissions || []))},
             ${escapeString(JSON.stringify(staff.workPatterns || []))})
@@ -613,6 +618,7 @@ export async function createMedicalStaff(staff: Omit<MedicalStaff, 'id'>): Promi
   return {
     id: data.id,
     name: data.name,
+    alias: data.alias,
     dob: data.dob,
     gender: data.gender,
     hireDate: data.hire_date,
@@ -628,6 +634,7 @@ export async function createMedicalStaff(staff: Omit<MedicalStaff, 'id'>): Promi
 export async function updateMedicalStaff(staffId: number, updates: Partial<MedicalStaff>): Promise<void> {
   const updateParts: string[] = [];
   if (updates.name !== undefined) updateParts.push(`name = ${escapeString(updates.name)}`);
+  if (updates.alias !== undefined) updateParts.push(`alias = ${updates.alias ? escapeString(updates.alias) : 'NULL'}`);
   if (updates.dob !== undefined) updateParts.push(`dob = ${updates.dob ? escapeString(updates.dob) : 'NULL'}`);
   if (updates.gender !== undefined) updateParts.push(`gender = ${escapeString(updates.gender)}`);
   if (updates.hireDate !== undefined) updateParts.push(`hire_date = ${updates.hireDate ? escapeString(updates.hireDate) : 'NULL'}`);
@@ -1023,6 +1030,7 @@ export interface WaitingQueueItem {
   queue_type: 'consultation' | 'treatment';
   details: string;
   memo?: string;
+  doctor?: string; // 담당의 (MSSQL 접수 시 담당의)
   position: number;
   created_at?: string;
 }
@@ -1053,9 +1061,10 @@ export async function addToWaitingQueue(item: Omit<WaitingQueueItem, 'id' | 'cre
 
   const nextPosition = (maxData?.max_pos ?? -1) + 1;
 
+  const doctorValue = item.doctor ? escapeString(item.doctor) : 'NULL';
   const id = await insert(`
-    INSERT INTO waiting_queue (patient_id, queue_type, details, position)
-    VALUES (${item.patient_id}, ${escapeString(item.queue_type)}, ${escapeString(item.details)}, ${nextPosition})
+    INSERT INTO waiting_queue (patient_id, queue_type, details, doctor, position)
+    VALUES (${item.patient_id}, ${escapeString(item.queue_type)}, ${escapeString(item.details)}, ${doctorValue}, ${nextPosition})
   `);
 
   const data = await queryOne<any>(`SELECT * FROM waiting_queue WHERE id = ${id}`);
@@ -1475,6 +1484,49 @@ export async function deletePaymentMemo(memoId: number): Promise<void> {
   await execute(`DELETE FROM payment_memos WHERE id = ${memoId}`);
 }
 
+// 환자별 수납 히스토리 조회 (MSSQL + SQLite 메모 병합)
+export async function fetchPatientReceiptHistory(chartNo: string, limit: number = 30): Promise<ReceiptHistoryItem[]> {
+  try {
+    // MSSQL에서 환자별 수납 내역 조회
+    const response = await fetch(`${MSSQL_API_BASE_URL}/api/receipts/by-patient?chartNo=${encodeURIComponent(chartNo)}&limit=${limit}`);
+    if (!response.ok) {
+      throw new Error(`MSSQL API 오류: ${response.status}`);
+    }
+    const receipts: ReceiptHistoryItem[] = await response.json();
+
+    // SQLite 메모 병합
+    const receiptsWithMemo: ReceiptHistoryItem[] = [];
+    for (const receipt of receipts) {
+      let packageInfo: string | undefined;
+      let memo: string | undefined;
+
+      try {
+        const sqliteMemo = await queryOne<any>(`
+          SELECT memo, package_info FROM payment_memos
+          WHERE mssql_receipt_id = ${receipt.id}
+        `);
+        if (sqliteMemo) {
+          packageInfo = sqliteMemo.package_info;
+          memo = sqliteMemo.memo;
+        }
+      } catch (e) {
+        // 메모가 없을 수 있음
+      }
+
+      receiptsWithMemo.push({
+        ...receipt,
+        package_info: packageInfo,
+        memo,
+      });
+    }
+
+    return receiptsWithMemo;
+  } catch (error) {
+    console.error('❌ 환자별 수납 히스토리 조회 오류:', error);
+    return [];
+  }
+}
+
 /**
  * 수납현황 조회 API (MSSQL + SQLite 메모 병합)
  */
@@ -1714,3 +1766,33 @@ export async function saveReceiptMemo(receiptId: number, memo: string): Promise<
     `);
   }
 }
+
+/**
+ * 치료 정보 관리 API re-export
+ * 상세 구현은 treatmentApi.ts 참조
+ */
+export {
+  initTreatmentTables,
+  fetchPatientDefaultTreatments as fetchPatientTreatmentInfo,
+  savePatientDefaultTreatments as savePatientTreatmentInfo,
+  createDefaultTreatmentsForNewPatient,
+  fetchDailyTreatmentRecord,
+  createDailyTreatmentRecord,
+  updateDailyTreatmentRecord,
+  fetchDailyTreatmentRecordsByDate,
+  getOrCreateDailyTreatmentRecord,
+  createTreatmentTimeLog,
+  updateTreatmentTimeLog,
+  fetchTreatmentTimeLogsByDailyRecord,
+  createActingTimeLog,
+  updateActingTimeLog,
+  updateActingStatus,
+  fetchActingTimeLogsByDate,
+  fetchPendingActingsByDoctor,
+  extractActingItems,
+  treatmentsToTimerItems,
+  processPatientForTreatmentQueue,
+  checkIsFirstVisitToday,
+} from './treatmentApi';
+
+export type { TreatmentQueueEntryResult } from './treatmentApi';

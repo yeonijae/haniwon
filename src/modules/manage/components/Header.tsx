@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { User } from '../types';
 
-export type ModalType = 'newPatient' | 'reservation' | 'patientSearch' | 'stats' | 'settings' | 'payment' | 'dailyPayments' | 'consultationInfo';
+export type ModalType = 'reservation' | 'patientSearch' | 'stats' | 'settings' | 'payment' | 'dailyPayments' | 'consultationInfo' | 'paymentHistory';
 
 interface HeaderProps {
   onOpenModal: (type: ModalType, title: string, wide?: boolean) => void;
@@ -28,12 +28,7 @@ const Header: React.FC<HeaderProps> = ({
       label: '환자검색',
       modalTitle: '환자 검색',
       modalType: 'patientSearch',
-    },
-    {
-      icon: 'fa-solid fa-user-plus',
-      label: '신규환자',
-      modalTitle: '신규환자 등록',
-      modalType: 'newPatient'
+      wide: true,
     },
     {
       icon: 'fa-solid fa-calendar-check',

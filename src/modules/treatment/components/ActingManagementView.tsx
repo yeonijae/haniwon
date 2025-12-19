@@ -3,20 +3,23 @@ import { TreatmentRoom, Patient } from '../types';
 import * as actingApi from '@acting/api';
 import type { ActingQueueItem } from '@acting/types';
 
-// 원장 정보 (DB doctor_id와 매칭)
+// 원장 정보 (MSSQL doctor_id와 매칭)
+// doctor_1 = 강희종, doctor_3 = 김대현, doctor_13 = 임세열, doctor_15 = 전인태
 const DOCTORS = [
-  { id: 1, name: '김대현', alias: '김' },
-  { id: 2, name: '강희종', alias: '강' },
-  { id: 3, name: '임세열', alias: '임' },
-  { id: 4, name: '전인태', alias: '전' },
+  { id: 3, name: '김대현', alias: '김' },
+  { id: 1, name: '강희종', alias: '강' },
+  { id: 13, name: '임세열', alias: '임' },
+  { id: 15, name: '전인태', alias: '전' },
 ];
 
 // 액팅 타입 템플릿 (수동 추가 시 선택 가능)
-const ACTING_TYPES = ['침', '추나', '초음파', '향기', '약초진', '약재진', '대기', '상비약'];
+// 자침: 원장이 침 놓는 시간 (1~3분), 기존 '침'은 호환성 위해 유지
+const ACTING_TYPES = ['자침', '침', '추나', '초음파', '향기', '약초진', '약재진', '대기', '상비약'];
 
 // 액팅 타입별 스타일
 const ACTING_TYPE_STYLES: Record<string, { color: string }> = {
-  '침': { color: 'bg-teal-100 border-teal-500' },
+  '자침': { color: 'bg-teal-100 border-teal-500' },  // 원장 자침 시간
+  '침': { color: 'bg-teal-100 border-teal-500' },    // 기존 호환성
   '추나': { color: 'bg-sky-100 border-sky-500' },
   '초음파': { color: 'bg-purple-100 border-purple-500' },
   '향기': { color: 'bg-violet-100 border-violet-500' },
@@ -219,7 +222,7 @@ const ActingCard: React.FC<{
 
   const style = getActingStyle(acting.actingType);
   const remainingText = remainingTreatments.length > 0 ? remainingTreatments.join(' → ') : '';
-  const displayText = acting.actingType === '침' && bedNumber ? bedNumber : acting.actingType;
+  const displayText = (acting.actingType === '침' || acting.actingType === '자침') && bedNumber ? bedNumber : acting.actingType;
   const memoText = acting.memo || '';
 
   return (

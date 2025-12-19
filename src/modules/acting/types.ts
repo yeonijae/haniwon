@@ -97,7 +97,7 @@ export interface AddActingRequest {
   actingType: string;
   orderNum?: number; // 미지정시 맨 뒤
   memo?: string;
-  source?: 'reservation' | 'manual';
+  source?: 'reservation' | 'manual' | 'treatment_queue';
   sourceId?: number;
 }
 

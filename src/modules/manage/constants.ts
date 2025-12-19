@@ -203,8 +203,10 @@ export const UNCOVERED_CATEGORIES_DATA: UncoveredCategories = {
 
 export const DOCTORS = ['김원장', '강원장', '임원장', '전원장'];
 
+// 자침: 원장이 침 놓는 시간 (1~3분), 기존 '침'은 호환성 위해 유지
 export const ACTING_TYPE_DETAILS: { [key in ActingType]: { icon: string; color: string; } } = {
-  '침': { icon: 'fa-solid fa-syringe', color: 'bg-teal-100 border-teal-500' },
+  '자침': { icon: 'fa-solid fa-syringe', color: 'bg-teal-100 border-teal-500' },  // 원장 자침 시간
+  '침': { icon: 'fa-solid fa-syringe', color: 'bg-teal-100 border-teal-500' },    // 기존 호환성
   '추나': { icon: 'fa-solid fa-person-cane', color: 'bg-sky-100 border-sky-500' },
   '초진': { icon: 'fa-solid fa-user-plus', color: 'bg-indigo-100 border-indigo-500' },
   '약상담': { icon: 'fa-solid fa-pills', color: 'bg-yellow-100 border-yellow-500' },

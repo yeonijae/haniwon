@@ -3,6 +3,13 @@
  */
 
 import { query, queryOne, execute, insert, escapeString, getCurrentDate, getCurrentTimestamp, toSqlValue } from '@shared/lib/sqlite';
+import {
+  createActingTimeLog,
+  updateActingStatus as updateActingTimeLogStatus,
+  fetchDailyTreatmentRecord,
+  getOrCreateDailyTreatmentRecord,
+} from '../manage/lib/treatmentApi';
+import type { ActingTypeCode } from '../manage/types';
 
 // MSSQL API 서버 URL
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://192.168.0.173:3100';
@@ -18,6 +25,19 @@ import type {
   AddActingRequest,
   DoctorQueueGroup,
 } from './types';
+
+// 액팅 타입 이름을 ActingTypeCode로 변환
+// 침 → 자침으로 변경: 원장이 침 놓는 시간(1~3분)과 환자 유침 시간(10~15분)을 분리하기 위함
+const ACTING_TYPE_TO_CODE: Record<string, ActingTypeCode> = {
+  '자침': 'acupuncture',   // 원장 자침 시간 (1~3분)
+  '침': 'acupuncture',     // 기존 '침' 호환성 유지
+  '추나': 'chuna',
+  '초음파': 'ultrasound',
+  '상담': 'consultation',
+  '약상담': 'consultation',
+  '신규약상담': 'consultation',
+  '재초진': 'consultation',
+};
 
 // DB 응답을 타입으로 변환하는 헬퍼
 const mapQueueItem = (row: any): ActingQueueItem => ({
@@ -122,7 +142,31 @@ export async function addActing(request: AddActingRequest): Promise<ActingQueueI
             ${escapeString(request.memo || '')}, ${escapeString(today)})
   `);
 
-  const data = await queryOne<any>(`SELECT * FROM acting_queue WHERE id = ${id}`);
+  // last_insert_rowid()가 제대로 동작하지 않을 수 있으므로, 방금 삽입한 레코드를 다른 방식으로 조회
+  let data: any = null;
+
+  if (id && id > 0) {
+    data = await queryOne<any>(`SELECT * FROM acting_queue WHERE id = ${id}`);
+  }
+
+  // ID로 못 찾으면 다른 조건으로 조회
+  if (!data) {
+    data = await queryOne<any>(`
+      SELECT * FROM acting_queue
+      WHERE patient_id = ${toSqlValue(request.patientId)}
+        AND doctor_id = ${request.doctorId}
+        AND work_date = ${escapeString(today)}
+        AND acting_type = ${escapeString(request.actingType)}
+        AND order_num = ${orderNum}
+      ORDER BY id DESC
+      LIMIT 1
+    `);
+  }
+
+  if (!data) {
+    throw new Error(`액팅 추가 실패: 레코드 조회 불가`);
+  }
+
   return mapQueueItem(data);
 }
 
@@ -261,6 +305,7 @@ export async function upsertDoctorStatus(
 // 진료 시작
 export async function startActing(actingId: number, doctorId: number, doctorName: string): Promise<ActingQueueItem> {
   const now = getCurrentTimestamp();
+  const today = getCurrentDate();
 
   // 1. 액팅 상태 업데이트
   await execute(`
@@ -273,12 +318,50 @@ export async function startActing(actingId: number, doctorId: number, doctorName
   await upsertDoctorStatus(doctorId, doctorName, 'in_progress', actingId);
 
   const data = await queryOne<any>(`SELECT * FROM acting_queue WHERE id = ${actingId}`);
-  return mapQueueItem(data);
+  const acting = mapQueueItem(data);
+
+  // 3. acting_time_logs에 기록 (환자 타임라인용)
+  try {
+    const actingTypeCode = ACTING_TYPE_TO_CODE[acting.actingType];
+    if (actingTypeCode && acting.patientId) {
+      // 당일 치료 기록 조회/생성
+      const dailyRecord = await getOrCreateDailyTreatmentRecord(
+        acting.patientId,
+        acting.patientName,
+        acting.chartNo || undefined,
+        today
+      );
+
+      await createActingTimeLog({
+        daily_record_id: dailyRecord.id,
+        patient_id: acting.patientId,
+        patient_name: acting.patientName,
+        chart_number: acting.chartNo || undefined,
+        treatment_date: today,
+        acting_type: actingTypeCode,
+        acting_name: acting.actingType,
+        doctor_id: doctorId,
+        doctor_name: doctorName,
+        started_at: now,
+        status: 'in_progress',
+      });
+
+      console.log(`[액팅 시작] ${acting.patientName} - ${acting.actingType} (acting_time_logs 기록됨)`);
+    }
+  } catch (error) {
+    console.error('[액팅 시작] acting_time_logs 기록 실패:', error);
+  }
+
+  return acting;
 }
+
+// 유침 기본 시간 (분)
+const DEFAULT_YUCHIM_DURATION = 12;
 
 // 진료 완료
 export async function completeActing(actingId: number, doctorId: number, doctorName: string): Promise<ActingQueueItem> {
   const now = getCurrentTimestamp();
+  const today = getCurrentDate();
 
   // 1. 현재 액팅 조회
   const acting = await queryOne<any>(`SELECT * FROM acting_queue WHERE id = ${actingId}`);
@@ -304,7 +387,42 @@ export async function completeActing(actingId: number, doctorId: number, doctorN
             ${escapeString(acting.started_at)}, ${escapeString(now)}, ${durationSec}, ${escapeString(acting.work_date)})
   `);
 
-  // 5. 다음 대기 액팅 확인 후 원장 상태 업데이트
+  // 5. acting_time_logs 업데이트 (환자 타임라인용)
+  try {
+    const actingTypeCode = ACTING_TYPE_TO_CODE[acting.acting_type];
+    if (actingTypeCode && acting.patient_id) {
+      // 해당 환자의 진행 중인 액팅 로그 찾아서 완료 처리
+      const logRow = await queryOne<{ id: number }>(`
+        SELECT id FROM acting_time_logs
+        WHERE patient_id = ${acting.patient_id}
+          AND acting_type = ${escapeString(actingTypeCode)}
+          AND treatment_date = ${escapeString(today)}
+          AND status = 'in_progress'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `);
+
+      if (logRow) {
+        await updateActingTimeLogStatus(logRow.id, 'completed', now);
+        console.log(`[액팅 완료] ${acting.patient_name} - ${acting.acting_type} (acting_time_logs 업데이트됨)`);
+      }
+    }
+  } catch (error) {
+    console.error('[액팅 완료] acting_time_logs 업데이트 실패:', error);
+  }
+
+  // 6. 자침 → 유침 자동 전환 (베드 타이머 시작)
+  // 자침 완료 시 환자가 있는 베드에서 유침 타이머 자동 시작
+  if (acting.acting_type === '자침' || acting.acting_type === '침') {
+    try {
+      await startYuchimAfterJachim(acting.patient_id, now);
+      console.log(`[자침→유침] ${acting.patient_name} - 유침 타이머 자동 시작`);
+    } catch (error) {
+      console.error('[자침→유침] 유침 전환 실패:', error);
+    }
+  }
+
+  // 7. 다음 대기 액팅 확인 후 원장 상태 업데이트
   const queue = await fetchDoctorQueue(doctorId);
   const waitingQueue = queue.filter(q => q.status === 'waiting');
 
@@ -316,6 +434,108 @@ export async function completeActing(actingId: number, doctorId: number, doctorN
 
   const data = await queryOne<any>(`SELECT * FROM acting_queue WHERE id = ${actingId}`);
   return mapQueueItem(data);
+}
+
+/**
+ * 자침 완료 후 유침 타이머 자동 시작
+ * - 환자가 있는 베드(treatment_rooms) 찾기
+ * - session_treatments에서 현재 진행중인 "자침" 또는 "침"을 찾아 완료 처리
+ * - 다음 치료 항목을 "유침"으로 시작 (없으면 새로 추가)
+ */
+async function startYuchimAfterJachim(patientId: number, now: string): Promise<void> {
+  // 1. 환자가 있는 베드 찾기
+  const room = await queryOne<{ id: number }>(`
+    SELECT id FROM treatment_rooms
+    WHERE patient_id = ${patientId}
+    LIMIT 1
+  `);
+
+  if (!room) {
+    console.log(`[자침→유침] 환자 ${patientId}가 베드에 없음, 스킵`);
+    return;
+  }
+
+  const roomId = room.id;
+
+  // 2. 현재 진행중인 자침/침 치료 찾기
+  const currentJachim = await queryOne<{ id: number; display_order: number }>(`
+    SELECT id, display_order FROM session_treatments
+    WHERE room_id = ${roomId}
+      AND (treatment_name = '자침' OR treatment_name = '침')
+      AND status = 'running'
+    LIMIT 1
+  `);
+
+  if (currentJachim) {
+    // 자침을 완료 처리
+    await execute(`
+      UPDATE session_treatments
+      SET status = 'completed', completed_at = ${escapeString(now)}
+      WHERE id = ${currentJachim.id}
+    `);
+
+    // 3. 다음 pending 치료 항목 확인
+    const nextTreatment = await queryOne<{ id: number; treatment_name: string }>(`
+      SELECT id, treatment_name FROM session_treatments
+      WHERE room_id = ${roomId}
+        AND status = 'pending'
+      ORDER BY display_order ASC
+      LIMIT 1
+    `);
+
+    if (nextTreatment) {
+      // 다음 치료가 있으면 그것을 시작
+      await execute(`
+        UPDATE session_treatments
+        SET status = 'running', started_at = ${escapeString(now)}
+        WHERE id = ${nextTreatment.id}
+      `);
+      console.log(`[자침→유침] 다음 치료 시작: ${nextTreatment.treatment_name}`);
+    } else {
+      // 다음 치료가 없으면 "유침"을 새로 추가하고 시작
+      const maxOrder = await queryOne<{ max_order: number }>(`
+        SELECT MAX(display_order) as max_order FROM session_treatments WHERE room_id = ${roomId}
+      `);
+      const nextOrder = (maxOrder?.max_order ?? 0) + 1;
+
+      await execute(`
+        INSERT INTO session_treatments (room_id, treatment_name, duration, status, started_at, elapsed_seconds, display_order)
+        VALUES (${roomId}, '유침', ${DEFAULT_YUCHIM_DURATION}, 'running', ${escapeString(now)}, 0, ${nextOrder})
+      `);
+      console.log(`[자침→유침] 유침 치료 추가 및 시작`);
+    }
+  } else {
+    // 자침이 진행중이 아닌 경우 - pending 상태의 자침/침을 찾아 스킵하고 유침 시작
+    const pendingJachim = await queryOne<{ id: number; display_order: number }>(`
+      SELECT id, display_order FROM session_treatments
+      WHERE room_id = ${roomId}
+        AND (treatment_name = '자침' OR treatment_name = '침')
+        AND status = 'pending'
+      ORDER BY display_order ASC
+      LIMIT 1
+    `);
+
+    if (pendingJachim) {
+      // pending 자침을 completed로 변경
+      await execute(`
+        UPDATE session_treatments
+        SET status = 'completed', completed_at = ${escapeString(now)}
+        WHERE id = ${pendingJachim.id}
+      `);
+
+      // 유침 추가
+      const maxOrder = await queryOne<{ max_order: number }>(`
+        SELECT MAX(display_order) as max_order FROM session_treatments WHERE room_id = ${roomId}
+      `);
+      const nextOrder = (maxOrder?.max_order ?? 0) + 1;
+
+      await execute(`
+        INSERT INTO session_treatments (room_id, treatment_name, duration, status, started_at, elapsed_seconds, display_order)
+        VALUES (${roomId}, '유침', ${DEFAULT_YUCHIM_DURATION}, 'running', ${escapeString(now)}, 0, ${nextOrder})
+      `);
+      console.log(`[자침→유침] pending 자침 완료 처리 후 유침 시작`);
+    }
+  }
 }
 
 // 원장실 대기 상태로 변경
@@ -438,11 +658,12 @@ export async function fetchDoctorQueueGroups(doctors: { id: number; name: string
 // 원장 별명(alias) → ID 매핑
 // MSSQL의 MAINDOCTOR 컬럼에는 "김", "강", "임", "전" 같은 별명이 저장됨
 // 성씨가 겹치면 입사가 늦은 사람의 끝글자를 사용 (예: 김대현=김, 김철수=수)
+// ID는 MSSQL doctor_X 에서 추출한 숫자 (doctor_3 → 3)
 const DOCTOR_ALIAS_TO_ID: Record<string, { id: number; displayName: string }> = {
-  '김': { id: 1, displayName: '김대현' },  // 김대현 원장
-  '강': { id: 2, displayName: '강희종' },  // 강희종 원장
-  '임': { id: 3, displayName: '임세열' },  // 임세열 원장
-  '전': { id: 4, displayName: '전인태' },  // 전인태 원장
+  '김': { id: 3, displayName: '김대현' },   // 김대현 원장 (doctor_3)
+  '강': { id: 1, displayName: '강희종' },   // 강희종 원장 (doctor_1)
+  '임': { id: 13, displayName: '임세열' },  // 임세열 원장 (doctor_13)
+  '전': { id: 15, displayName: '전인태' },  // 전인태 원장 (doctor_15)
 };
 
 export interface PatientMemo {

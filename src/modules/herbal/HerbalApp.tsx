@@ -1,21 +1,29 @@
 /**
- * 한약 복약관리 앱
+ * 복약관리 앱
+ * - 초진콜: 초진 환자 감사 메시지
+ * - 신규설정: 고액 비급여 결제 → 복약관리 설정
+ * - 복약콜/내원콜: 복약 관련 콜
+ * - 이벤트: 공진단/경옥고 이벤트 혜택
+ * - 사후관리: 복용 완료 후 관리
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
-import type { HerbalTask, HerbalTasksResponse } from './types';
-import { fetchAllHerbalTasks, markEventBenefitSent } from './api/herbalApi';
+import type { HerbalTask, HerbalTasksResponse, FirstVisitTemplateType } from './types';
+import { fetchAllHerbalTasks, markEventBenefitSent, markFirstVisitMessageSent } from './api/herbalApi';
 
 import HerbalTaskList from './components/HerbalTaskList';
 import HerbalSetupModal from './components/HerbalSetupModal';
 import CallCompleteModal from './components/CallCompleteModal';
+import FirstVisitModal from './components/FirstVisitModal';
 
 interface HerbalAppProps {
   user: PortalUser;
 }
+
+export type TabType = 'dashboard' | 'firstvisit' | 'setup' | 'active' | 'calls' | 'events' | 'followup';
 
 const HerbalApp: React.FC<HerbalAppProps> = ({ user }) => {
   const navigate = useNavigate();
@@ -23,30 +31,54 @@ const HerbalApp: React.FC<HerbalAppProps> = ({ user }) => {
   // 상태
   const [tasks, setTasks] = useState<HerbalTasksResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'setup' | 'calls' | 'events' | 'followup'>('setup');
+  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [targetDate, setTargetDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   // 모달 상태
   const [setupTask, setSetupTask] = useState<HerbalTask | null>(null);
   const [callTask, setCallTask] = useState<HerbalTask | null>(null);
+  const [firstVisitTask, setFirstVisitTask] = useState<HerbalTask | null>(null);
 
   // 데이터 로드
   const loadTasks = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchAllHerbalTasks();
+      const data = await fetchAllHerbalTasks(targetDate);
       setTasks(data);
     } catch (error) {
       console.error('가상과제 조회 실패:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [targetDate]);
 
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
 
+  // 날짜 변경 핸들러
+  function handleDateChange(days: number) {
+    const date = new Date(targetDate);
+    date.setDate(date.getDate() + days);
+    setTargetDate(date.toISOString().split('T')[0]);
+  }
+
+  function handleDateInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setTargetDate(e.target.value);
+  }
+
+  function handleTodayClick() {
+    setTargetDate(new Date().toISOString().split('T')[0]);
+  }
+
+  // 오늘 날짜인지 확인
+  const isToday = targetDate === new Date().toISOString().split('T')[0];
+
   // 핸들러
+  function handleFirstVisitClick(task: HerbalTask) {
+    setFirstVisitTask(task);
+  }
+
   function handleSetupClick(task: HerbalTask) {
     setSetupTask(task);
   }
@@ -70,9 +102,35 @@ const HerbalApp: React.FC<HerbalAppProps> = ({ user }) => {
     }
   }
 
+  async function handleFirstVisitSend(
+    task: HerbalTask,
+    templateType: FirstVisitTemplateType,
+    notes?: string
+  ) {
+    try {
+      await markFirstVisitMessageSent(
+        task.data.customer_pk,
+        task.patient.chart_number,
+        task.patient.name,
+        task.patient.phone,
+        task.data.treatment_date,
+        task.data.doctor_name,
+        templateType,
+        user.name || '관리자',
+        notes
+      );
+      handleModalClose();
+      loadTasks();
+    } catch (error) {
+      console.error('초진 메시지 발송 실패:', error);
+      alert('처리에 실패했습니다.');
+    }
+  }
+
   function handleModalClose() {
     setSetupTask(null);
     setCallTask(null);
+    setFirstVisitTask(null);
   }
 
   function handleModalSuccess() {
@@ -98,17 +156,58 @@ const HerbalApp: React.FC<HerbalAppProps> = ({ user }) => {
           </div>
         </div>
 
+        {/* 날짜 선택 */}
+        <div className="flex items-center gap-2 ml-6 px-3 py-1.5 bg-gray-50 rounded-lg border">
+          <button
+            onClick={() => handleDateChange(-1)}
+            className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-500"
+            title="이전 날짜"
+          >
+            <i className="fas fa-chevron-left text-xs"></i>
+          </button>
+          <input
+            type="date"
+            value={targetDate}
+            onChange={handleDateInputChange}
+            className="bg-transparent text-sm font-medium text-gray-700 border-none focus:outline-none cursor-pointer"
+          />
+          <button
+            onClick={() => handleDateChange(1)}
+            className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-500"
+            title="다음 날짜"
+          >
+            <i className="fas fa-chevron-right text-xs"></i>
+          </button>
+          {!isToday && (
+            <button
+              onClick={handleTodayClick}
+              className="ml-1 px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 font-medium"
+              title="오늘로 이동"
+            >
+              오늘
+            </button>
+          )}
+        </div>
+
         {/* 중앙 - 요약 정보 */}
-        <div className="flex items-center gap-6 ml-10">
+        <div className="flex items-center gap-6 ml-6">
           {tasks && (
             <>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-pink-600">{tasks.summary.first_visit_count}</div>
+                <div className="text-xs text-gray-500">초진콜</div>
+              </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-600">{tasks.summary.setup_count}</div>
                 <div className="text-xs text-gray-500">신규 설정</div>
               </div>
               <div className="text-center">
+                <div className="text-2xl font-bold text-teal-600">{tasks.summary.active_count}</div>
+                <div className="text-xs text-gray-500">진행현황</div>
+              </div>
+              <div className="text-center">
                 <div className="text-2xl font-bold text-green-600">{tasks.summary.calls_count}</div>
-                <div className="text-xs text-gray-500">콜 예정</div>
+                <div className="text-xs text-gray-500">복약콜</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-purple-600">{tasks.summary.benefits_count}</div>
@@ -157,6 +256,7 @@ const HerbalApp: React.FC<HerbalAppProps> = ({ user }) => {
           loading={loading}
           activeTab={activeTab}
           onTabChange={setActiveTab}
+          onFirstVisitClick={handleFirstVisitClick}
           onSetupClick={handleSetupClick}
           onCallComplete={handleCallComplete}
           onEventBenefitSend={handleEventBenefitSend}
@@ -164,6 +264,14 @@ const HerbalApp: React.FC<HerbalAppProps> = ({ user }) => {
       </main>
 
       {/* Modals */}
+      {firstVisitTask && (
+        <FirstVisitModal
+          task={firstVisitTask}
+          onClose={handleModalClose}
+          onSend={handleFirstVisitSend}
+        />
+      )}
+
       {setupTask && (
         <HerbalSetupModal
           task={setupTask}

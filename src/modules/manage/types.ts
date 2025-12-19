@@ -39,6 +39,7 @@ export interface Patient {
   registrationDate?: string; // YYYY-MM-DD
   deletionDate?: string; // ISO string for when the patient was deleted
   defaultTreatments?: DefaultTreatment[];
+  doctor?: string; // 담당의 (MSSQL에서 가져온 접수 시 담당의)
 }
 
 export enum RoomStatus {
@@ -53,9 +54,11 @@ export interface SessionTreatment {
   name: string;
   status: 'pending' | 'running' | 'paused' | 'completed';
   duration: number; // Total duration in minutes
-  startTime?: string; // ISO string
+  startTime?: string | null; // ISO string
   elapsedSeconds: number; // Seconds elapsed, for pausing
   memo?: string;
+  treatmentType?: TreatmentTypeCode; // 치료 항목 코드 (시간 로그용)
+  timeLogId?: number; // treatment_time_logs의 id (시작된 타이머용)
 }
 
 export interface TreatmentRoom {
@@ -72,6 +75,7 @@ export interface TreatmentRoom {
   doctorName?: string;
   inTime?: string; // ISO string for when patient was assigned
   sessionTreatments: SessionTreatment[];
+  dailyRecordId?: number; // daily_treatment_records의 id (시간 로그용)
 }
 
 export interface ConsultationRoom {
@@ -193,6 +197,7 @@ export interface WorkPattern {
 export interface MedicalStaff {
   id: number;
   name: string;
+  alias?: string; // 호칭 (예: '김', '강', '임', '전' - 액팅 관리에서 사용)
   dob: string; // YYYY-MM-DD
   gender: 'male' | 'female';
   hireDate: string; // YYYY-MM-DD
@@ -233,7 +238,8 @@ export type UncoveredCategories = {
   [key: string]: string[];
 };
 
-export type ActingType = '침' | '추나' | '초진' | '약상담' | '초음파' | '대기' | '기타' | '향기' | '습부';
+// 자침: 원장이 침 놓는 시간 (1~3분), 기존 '침'은 호환성 위해 유지
+export type ActingType = '자침' | '침' | '추나' | '초진' | '약상담' | '초음파' | '대기' | '기타' | '향기' | '습부';
 
 // 진료항목 (접수 시 선택하는 항목)
 export interface ConsultationSubItem {
@@ -373,4 +379,160 @@ export interface ProgressNote {
   notes?: string;
   created_at: string;
   updated_at: string;
+}
+
+// =====================================================
+// 치료 정보 관리 타입
+// =====================================================
+
+// 치료 항목 코드
+export type TreatmentTypeCode =
+  | 'acupuncture'  // 침
+  | 'moxa'         // 물치
+  | 'hotpack'      // 핫팩
+  | 'cupping'      // 습부항
+  | 'chuna'        // 추나
+  | 'ultrasound'   // 초음파
+  | 'highfreq'     // 고주파
+  | 'aroma';       // 향기요법
+
+// 액팅 항목 코드 (원장이 직접 해야 하는 것)
+export type ActingTypeCode =
+  | 'acupuncture'  // 침
+  | 'chuna'        // 추나
+  | 'ultrasound'   // 초음파
+  | 'consultation'; // 약상담
+
+// 약침 종류
+export type YakchimType =
+  | 'gyeonggeun'   // 경근
+  | 'nokwong'      // 녹용
+  | 'taeban'       // 태반
+  | 'hwata'        // 화타
+  | 'line';        // 라인
+
+// 치료 항목 정보 매핑
+export const TREATMENT_TYPE_INFO: Record<TreatmentTypeCode, { name: string; isActing: boolean }> = {
+  acupuncture: { name: '침', isActing: true },
+  moxa: { name: '물치', isActing: false },
+  hotpack: { name: '핫팩', isActing: false },
+  cupping: { name: '습부항', isActing: false },
+  chuna: { name: '추나', isActing: true },
+  ultrasound: { name: '초음파', isActing: true },
+  highfreq: { name: '고주파', isActing: false },
+  aroma: { name: '향기요법', isActing: false },
+};
+
+// 약침 종류 정보 매핑
+export const YAKCHIM_TYPE_INFO: Record<YakchimType, string> = {
+  gyeonggeun: '경근',
+  nokwong: '녹용',
+  taeban: '태반',
+  hwata: '화타',
+  line: '라인',
+};
+
+// 환자별 기본 치료 정보
+export interface PatientDefaultTreatments {
+  id?: number;
+  patient_id: number;
+  // 치료 항목 (boolean)
+  has_acupuncture: boolean;
+  has_moxa: boolean;
+  has_hotpack: boolean;
+  has_cupping: boolean;
+  has_chuna: boolean;
+  has_ultrasound: boolean;
+  has_highfreq: boolean;
+  has_aroma: boolean;
+  // 약침 정보
+  yakchim_type: YakchimType | null;
+  yakchim_quantity: number;
+  // 메모
+  memo: string | null;
+  // 메타
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 당일 치료 기록
+export interface DailyTreatmentRecord {
+  id?: number;
+  patient_id: number;
+  patient_name?: string;
+  chart_number?: string;
+  treatment_date: string; // YYYY-MM-DD
+  // 프로세스 타임라인
+  reception_time?: string;
+  consultation_wait_start?: string;
+  consultation_start?: string;
+  consultation_end?: string;
+  treatment_wait_start?: string;
+  treatment_start?: string;
+  treatment_end?: string;
+  payment_time?: string;
+  // 치료 항목 (실제 받은 것)
+  has_acupuncture: boolean;
+  has_moxa: boolean;
+  has_hotpack: boolean;
+  has_cupping: boolean;
+  has_chuna: boolean;
+  has_ultrasound: boolean;
+  has_highfreq: boolean;
+  has_aroma: boolean;
+  // 약침 기록
+  yakchim_type: YakchimType | null;
+  yakchim_quantity: number;
+  // 메모
+  memo: string | null;
+  // 메타
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 치료 항목별 시간 기록
+export interface TreatmentTimeLog {
+  id?: number;
+  daily_record_id: number;
+  patient_id: number;
+  treatment_date: string;
+  // 치료 항목
+  treatment_type: TreatmentTypeCode;
+  treatment_name: string;
+  // 시간 기록
+  started_at?: string;
+  ended_at?: string;
+  duration_seconds?: number;
+  // 치료실/베드 정보
+  room_id?: number;
+  bed_number?: number;
+  // 메타
+  created_at?: string;
+}
+
+// 액팅 상태
+export type ActingStatus = 'pending' | 'in_progress' | 'completed';
+
+// 액팅 시간 기록
+export interface ActingTimeLog {
+  id?: number;
+  daily_record_id?: number;
+  patient_id: number;
+  patient_name?: string;
+  chart_number?: string;
+  treatment_date: string;
+  // 액팅 정보
+  acting_type: ActingTypeCode;
+  acting_name: string;
+  // 원장 정보
+  doctor_id?: number;
+  doctor_name?: string;
+  // 시간 기록
+  started_at?: string;
+  ended_at?: string;
+  duration_seconds?: number;
+  // 상태
+  status: ActingStatus;
+  // 메타
+  created_at?: string;
 }

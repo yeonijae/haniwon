@@ -37,7 +37,7 @@ const ActingCard: React.FC<{
 
     const details = ACTING_TYPE_DETAILS[acting.type];
     const remainingText = remainingTreatments.length > 0 ? remainingTreatments.join(' → ') : '';
-    const displayText = acting.type === '침' && bedNumber ? bedNumber : acting.type;
+    const displayText = (acting.type === '침' || acting.type === '자침') && bedNumber ? bedNumber : acting.type;
 
     return (
         <div 

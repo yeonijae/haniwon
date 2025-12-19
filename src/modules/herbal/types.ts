@@ -35,7 +35,44 @@ export type HerbalStatus = 'active' | 'paused' | 'completed';
 export type CallStatus = 'pending' | 'completed' | 'skipped' | 'rescheduled';
 
 // 가상과제 타입
-export type TaskType = 'herbal_setup' | 'call_chojin' | 'call_bokyak' | 'call_naewon' | 'event_benefit' | 'followup';
+export type TaskType = 'herbal_setup' | 'first_visit' | 'call_chojin' | 'call_bokyak' | 'call_naewon' | 'event_benefit' | 'followup';
+
+// 결제 상세 내역 (비급여 항목)
+export interface PaymentDetail {
+  px_name: string;      // 처방명 (예: "한약-1)성인", "녹용추가0.5")
+  tx_money: number;     // 금액
+  is_deer_antler: boolean;  // 녹용 여부
+}
+
+// 초진 메시지 템플릿 타입
+export type FirstVisitTemplateType = 'general' | 'pain' | 'accident' | 'herbal';
+
+export const FIRST_VISIT_TEMPLATES: Record<FirstVisitTemplateType, { name: string; icon: string; color: string; content: string }> = {
+  general: {
+    name: '일반',
+    icon: 'fa-user-check',
+    color: 'bg-gray-500',
+    content: `안녕하세요, {patient_name}님.\n연이재한의원입니다.\n\n오늘 내원해주셔서 감사합니다.\n궁금하신 점이나 불편한 점이 있으시면 언제든 연락 주세요.\n\n연이재한의원 드림`
+  },
+  pain: {
+    name: '일반통증',
+    icon: 'fa-hand-dots',
+    color: 'bg-blue-500',
+    content: `안녕하세요, {patient_name}님.\n연이재한의원입니다.\n\n오늘 내원해주셔서 감사합니다.\n치료 후 통증 부위가 일시적으로 뻐근하거나 피로감이 느껴질 수 있습니다.\n이는 정상적인 반응이니 걱정하지 않으셔도 됩니다.\n\n치료 효과를 높이기 위해 충분한 수분 섭취와 휴식을 권장드립니다.\n궁금하신 점이나 불편한 점이 있으시면 언제든 연락 주세요.\n\n연이재한의원 드림`
+  },
+  accident: {
+    name: '교통사고',
+    icon: 'fa-car-burst',
+    color: 'bg-red-500',
+    content: `안녕하세요, {patient_name}님.\n연이재한의원입니다.\n\n오늘 내원해주셔서 감사합니다.\n교통사고 후 통증은 시간이 지나면서 나타나거나 심해질 수 있으니,\n조금이라도 불편하시면 바로 말씀해 주세요.\n\n자동차보험으로 본인부담금 없이 치료받으실 수 있습니다.\n치료 기간 동안 무리한 활동은 피해주시고, 충분히 쉬어주세요.\n\n연이재한의원 드림`
+  },
+  herbal: {
+    name: '한약상담',
+    icon: 'fa-prescription-bottle-medical',
+    color: 'bg-green-500',
+    content: `안녕하세요, {patient_name}님.\n연이재한의원입니다.\n\n오늘 상담 감사드립니다.\n한약은 체질과 증상에 맞게 처방되어 효과가 점진적으로 나타납니다.\n\n복용 중 불편하신 점이나 궁금하신 사항이 있으시면\n언제든지 편하게 연락 주세요.\n\n연이재한의원 드림`
+  }
+};
 
 // 가상과제
 export interface HerbalTask {
@@ -145,15 +182,36 @@ export interface HerbalEvent {
   updated_at: string;
 }
 
+// 초진 메시지 레코드
+export interface FirstVisitMessage {
+  id: number;
+  customer_pk: number;
+  chart_number?: string;
+  patient_name: string;
+  patient_phone?: string;
+  treatment_date: string;
+  doctor_name?: string;
+  template_type?: FirstVisitTemplateType;
+  message_sent: boolean;
+  sent_at?: string;
+  sent_by?: string;
+  notes?: string;
+  created_at?: string;
+}
+
 // API 응답
 export interface HerbalTasksResponse {
+  first_visits: HerbalTask[];
   herbal_setup: HerbalTask[];
+  active_purchases: HerbalPurchase[];
   calls: HerbalTask[];
   event_benefits: HerbalTask[];
   followup: HerbalTask[];
   summary: {
     total: number;
+    first_visit_count: number;
     setup_count: number;
+    active_count: number;
     calls_count: number;
     benefits_count: number;
     followup_count: number;

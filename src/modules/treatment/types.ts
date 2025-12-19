@@ -38,6 +38,7 @@ export interface Patient {
   registrationDate?: string; // YYYY-MM-DD
   deletionDate?: string; // ISO string for when the patient was deleted
   defaultTreatments?: DefaultTreatment[];
+  doctor?: string; // 담당의
 }
 
 export enum RoomStatus {
@@ -73,7 +74,8 @@ export interface TreatmentRoom {
   sessionTreatments: SessionTreatment[];
 }
 
-export type ActingType = '침' | '추나' | '초진' | '약상담' | '초음파' | '대기' | '기타' | '향기' | '습부';
+// 자침: 원장이 침 놓는 시간 (1~3분), 기존 '침'은 호환성 위해 유지
+export type ActingType = '자침' | '침' | '추나' | '초진' | '약상담' | '초음파' | '대기' | '기타' | '향기' | '습부';
 
 export interface Acting {
   id: string;

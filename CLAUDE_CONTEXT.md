@@ -45,33 +45,48 @@ C:\Users\crimm\Documents\project\
 |------|------|------|
 | manage | `/manage/*` | 접수/수납 관리 |
 | chart | `/chart/*` | 차트 관리 |
-| herbal | `/herbal/*` | 복약관리 (한약) |
+| herbal | `/herbal/*` | **복약관리** (초진콜, 복약설정, 콜관리) |
 | reservation | `/reservation/*` | 예약 관리 |
 | doctor-pad | `/doctor-pad/*` | 원장용 진료패드 |
 | statistics | `/statistics/*` | 통계 대시보드 |
 | content | `/content/*` | 블로그/가이드/랜딩페이지 |
 | funnel | `/funnel/*` | 마케팅 퍼널 |
+| ~~patient-care~~ | `/patient-care/*` | `/herbal`로 리다이렉트 (deprecated) |
 
 ## 복약관리 모듈 (herbal) 상세
 
+> patient-care 모듈이 herbal 모듈로 통합됨. `/patient-care` → `/herbal` 리다이렉트.
+
 ### 기능
-- 고액 비급여 결제(≥200,000원) 자동 감지 → 가상과제로 표시
-- 한약 종류: 탕약(tang), 공진단(hwan), 경옥고(go)
-- 콜 스케줄: 복약콜(시작+2일), 내원콜(종료-3일)
-- 이벤트 혜택 관리 (공진단/경옥고)
+- **초진콜**: MSSQL에서 당일 초진 환자 감지 → 감사 메시지 발송
+- **신규설정**: 고액 비급여 결제(≥200,000원) 자동 감지 → 복약관리 설정
+- **복약콜**: 복용 시작 2일 후 상태 확인
+- **내원콜**: 복용 종료 3일 전 재진 안내
+- **이벤트 혜택**: 공진단/경옥고 이벤트 종료 후 혜택 안내
+- **사후관리**: 복용 완료 90일 후 관리
+
+### 한약 종류
+- 탕약(tang): 30회/3회씩
+- 공진단(hwan): 10개
+- 경옥고(go): 2개
 
 ### 데이터 흐름
 ```
-MSSQL (Receipt) → unified-server /api/execute → 프론트엔드 가상과제 표시
-                                                      ↓
-                                              복약관리 설정 모달
-                                                      ↓
-SQLite (herbal_purchases, herbal_calls) ← 저장
+MSSQL (Detail)   → 초진 환자 감지   → first_visit_messages (SQLite)
+MSSQL (Receipt)  → 고액결제 감지    → herbal_purchases (SQLite)
+                                      ↓
+                              herbal_calls, herbal_events (SQLite)
 ```
 
 ### 관련 파일
+- `src/modules/herbal/HerbalApp.tsx` - 메인 앱
 - `src/modules/herbal/api/herbalApi.ts` - API 함수들
 - `src/modules/herbal/types.ts` - 타입 정의
+- `src/modules/herbal/components/` - UI 컴포넌트들
+  - `FirstVisitModal.tsx` - 초진 메시지 모달
+  - `HerbalSetupModal.tsx` - 복약관리 설정 모달
+  - `CallCompleteModal.tsx` - 콜 완료 모달
+  - `HerbalTaskList.tsx` - 과제 목록
 - `database/phase6_herbal_management_sqlite.sql` - SQLite 스키마
 
 ## API 사용 패턴
@@ -132,6 +147,22 @@ curl -X POST "http://192.168.0.173:3200/api/query" \
 2. **SQLite 테이블 생성**: unified-server API로 CREATE TABLE 실행
 3. **인증**: Portal 로그인 후 각 모듈 접근 가능 (PortalUser)
 4. **CORS**: unified-server에서 모든 origin 허용 설정됨
+
+## unified-server API 업데이트
+
+unified-server의 MSSQL API 라우트를 수정한 경우:
+
+1. `mssql_routes.py` 파일 수정 후
+2. `mssql_routes.enc` 파일을 GitHub에 푸시해야 함
+3. 서버(192.168.0.173)에서 자동으로 pull하여 반영됨
+
+```bash
+# unified-server 디렉토리에서
+cd C:\Users\crimm\Documents\project\unified-server
+git add mssql_routes.enc
+git commit -m "Update MSSQL routes"
+git push
+```
 
 ---
 *마지막 업데이트: 2025-12-17*

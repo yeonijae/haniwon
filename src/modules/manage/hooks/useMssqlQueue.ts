@@ -10,6 +10,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { query, queryOne, insert, execute, escapeString } from '@shared/lib/sqlite';
+import { processPatientForTreatmentQueue } from '../lib/treatmentApi';
+import { addActing } from '@acting/api';
 
 const API_BASE_URL = 'http://192.168.0.173:3100';
 const POLL_INTERVAL = 1000; // 1초
@@ -99,94 +101,157 @@ export const useMssqlQueue = () => {
       );
       setAssignedChartNumbers(chartNumbers);
 
-      // 치료실에 배정된 환자는 waiting_queue에서 삭제
-      for (const room of data || []) {
-        if (room.patient_id) {
-          await execute(`
-            DELETE FROM waiting_queue
-            WHERE patient_id = ${room.patient_id} AND queue_type = 'treatment'
-          `);
-        }
+      // 치료실에 배정된 환자는 waiting_queue에서 일괄 삭제 (배치 처리)
+      const patientIds = (data || [])
+        .map(room => room.patient_id)
+        .filter(Boolean);
+
+      if (patientIds.length > 0) {
+        await execute(`
+          DELETE FROM waiting_queue
+          WHERE patient_id IN (${patientIds.join(',')}) AND queue_type = 'treatment'
+        `);
       }
     } catch (err) {
       console.error('치료실 환자 조회 실패:', err);
     }
   }, []);
 
-  // MSSQL treating 환자를 SQLite waiting_queue에 등록
+  // MSSQL treating 환자를 SQLite waiting_queue에 등록 (최적화)
   const syncTreatingToSqlite = useCallback(async (treatingPatients: MssqlTreatingPatient[]) => {
-    for (const patient of treatingPatients) {
-      // 차트번호 정규화 (앞의 0 제거)
+    // 1. 처리가 필요한 환자만 먼저 필터링
+    const patientsToProcess = treatingPatients.filter(patient => {
+      const chartNo = patient.chart_no?.replace(/^0+/, '') || '';
+      // 이미 처리된 환자나 치료실에 배정된 환자 스킵
+      return !processedTreatingChartNosRef.current.has(chartNo) && !assignedChartNumbers.has(chartNo);
+    });
+
+    if (patientsToProcess.length === 0) return;
+
+    // 2. 차트번호 목록으로 기존 환자 일괄 조회
+    const chartNos = patientsToProcess.map(p => p.chart_no?.replace(/^0+/, '') || '');
+    const mssqlIds = patientsToProcess.map(p => p.patient_id);
+
+    // 기존 환자 일괄 조회
+    const existingPatients = await query<{ id: number; chart_number: string; mssql_id: number }>(`
+      SELECT id, chart_number, mssql_id FROM patients
+      WHERE chart_number IN (${chartNos.map(c => escapeString(c)).join(',')})
+         OR mssql_id IN (${mssqlIds.join(',')})
+    `);
+
+    const patientByChartNo = new Map<string, number>();
+    const patientByMssqlId = new Map<number, number>();
+    for (const p of existingPatients || []) {
+      if (p.chart_number) patientByChartNo.set(p.chart_number, p.id);
+      if (p.mssql_id) patientByMssqlId.set(p.mssql_id, p.id);
+    }
+
+    // 3. 기존 대기열 일괄 조회
+    const existingQueuePatientIds = new Set<number>();
+    const queueData = await query<{ patient_id: number }>(`
+      SELECT patient_id FROM waiting_queue WHERE queue_type = 'treatment'
+    `);
+    for (const q of queueData || []) {
+      existingQueuePatientIds.add(q.patient_id);
+    }
+
+    // 4. 현재 최대 position 조회 (한 번만)
+    const maxData = await queryOne<{ max_pos: number }>(`
+      SELECT MAX(position) as max_pos FROM waiting_queue WHERE queue_type = 'treatment'
+    `);
+    let nextPosition = (maxData?.max_pos ?? -1) + 1;
+
+    // 5. 필요한 환자만 순차 처리 (INSERT 작업)
+    for (const patient of patientsToProcess) {
       const chartNo = patient.chart_no?.replace(/^0+/, '') || '';
 
-      // 이미 처리된 환자는 스킵
-      if (processedTreatingChartNosRef.current.has(chartNo)) {
-        continue;
-      }
-
-      // 이미 치료실에 배정된 환자는 스킵
-      if (assignedChartNumbers.has(chartNo)) {
-        continue;
-      }
-
       try {
-        // SQLite patients 테이블에서 chart_no 또는 mssql_id로 환자 찾기
-        let patientData = await queryOne<{ id: number }>(`
-          SELECT id FROM patients WHERE chart_number = ${escapeString(chartNo)} OR mssql_id = ${patient.patient_id}
-        `);
+        // SQLite 환자 ID 찾기
+        let patientId = patientByChartNo.get(chartNo) || patientByMssqlId.get(patient.patient_id);
 
         // SQLite에 환자가 없으면 자동으로 생성
-        if (!patientData) {
-          console.log(`차트번호 ${chartNo} 환자가 SQLite에 없음 - 자동 생성`);
+        if (!patientId) {
           try {
-            const newPatientId = await insert(`
+            patientId = await insert(`
               INSERT INTO patients (name, chart_number, mssql_id)
               VALUES (${escapeString(patient.patient_name)}, ${escapeString(chartNo)}, ${patient.patient_id})
             `);
-            patientData = { id: newPatientId };
-            console.log(`✅ ${patient.patient_name} (${chartNo}) SQLite 환자 생성 완료 (ID: ${newPatientId})`);
+            console.log(`✅ ${patient.patient_name} (${chartNo}) SQLite 환자 생성 완료`);
           } catch (insertErr) {
             // UNIQUE constraint 오류 시 다시 조회
-            console.log(`환자 생성 실패, 재조회 시도...`);
-            patientData = await queryOne<{ id: number }>(`
+            const retryPatient = await queryOne<{ id: number }>(`
               SELECT id FROM patients WHERE chart_number = ${escapeString(chartNo)} OR mssql_id = ${patient.patient_id}
             `);
-            if (!patientData) {
-              throw insertErr;
+            if (retryPatient) {
+              patientId = retryPatient.id;
+            } else {
+              console.error('환자 생성 실패:', insertErr);
+              continue;
             }
           }
         }
 
-        // 이미 waiting_queue에 있는지 확인 (patient_id 또는 차트번호로)
-        const existingQueue = await queryOne<{ id: number }>(`
-          SELECT wq.id FROM waiting_queue wq
-          LEFT JOIN patients p ON wq.patient_id = p.id
-          WHERE wq.queue_type = 'treatment'
-            AND (wq.patient_id = ${patientData.id} OR p.chart_number = ${escapeString(chartNo)})
-        `);
-
-        if (existingQueue) {
-          // 이미 등록되어 있으면 스킵
+        // 이미 대기열에 있으면 스킵
+        if (existingQueuePatientIds.has(patientId)) {
           processedTreatingChartNosRef.current.add(chartNo);
           continue;
         }
 
-        // 현재 최대 position 조회
-        const maxData = await queryOne<{ max_pos: number }>(`
-          SELECT MAX(position) as max_pos FROM waiting_queue WHERE queue_type = 'treatment'
-        `);
-
-        const nextPosition = (maxData?.max_pos ?? -1) + 1;
-
-        // waiting_queue에 추가 (INSERT OR IGNORE로 중복 방지)
+        // waiting_queue에 추가
         const details = `${patient.doctor || ''} ${patient.status || ''}`.trim() || '치료대기';
+        const doctorValue = patient.doctor ? escapeString(patient.doctor) : 'NULL';
         await execute(`
-          INSERT OR IGNORE INTO waiting_queue (patient_id, queue_type, details, position)
-          VALUES (${patientData.id}, 'treatment', ${escapeString(details)}, ${nextPosition})
+          INSERT OR IGNORE INTO waiting_queue (patient_id, queue_type, details, doctor, position)
+          VALUES (${patientId}, 'treatment', ${escapeString(details)}, ${doctorValue}, ${nextPosition++})
         `);
 
-        console.log(`✅ ${patient.patient_name} (${chartNo}) 치료대기 등록 완료`);
+        existingQueuePatientIds.add(patientId); // 다음 루프에서 중복 방지
         processedTreatingChartNosRef.current.add(chartNo);
+        console.log(`✅ ${patient.patient_name} (${chartNo}) 치료대기 등록 완료`);
+
+        // 치료 정보 처리 및 액팅 등록 (비동기로 처리, 메인 플로우 블로킹 안함)
+        (async () => {
+          try {
+            const treatmentResult = await processPatientForTreatmentQueue(
+              patientId,
+              patient.patient_name,
+              chartNo,
+              patient.doctor
+            );
+
+            // 액팅 항목이 있으면 원장 대기열에 등록
+            if (treatmentResult.actingItems.length > 0 && patient.doctor) {
+              // 의료진 ID 조회 (MSSQL에서)
+              try {
+                const doctorResponse = await fetch(`${API_BASE_URL}/api/doctors`);
+                if (doctorResponse.ok) {
+                  const doctors = await doctorResponse.json();
+                  const doctorInfo = doctors.find((d: any) => d.name === patient.doctor);
+
+                  if (doctorInfo) {
+                    for (const acting of treatmentResult.actingItems) {
+                      await addActing({
+                        patientId,
+                        patientName: patient.patient_name,
+                        chartNo,
+                        doctorId: parseInt(doctorInfo.id, 10),
+                        doctorName: patient.doctor,
+                        actingType: acting.name,
+                        source: 'treatment_queue',
+                        memo: treatmentResult.isFirstVisit ? '초진' : '',
+                      });
+                      console.log(`🎯 ${patient.patient_name} - ${acting.name} 액팅 등록 (${patient.doctor})`);
+                    }
+                  }
+                }
+              } catch (actingErr) {
+                console.error('액팅 등록 오류:', actingErr);
+              }
+            }
+          } catch (treatmentErr) {
+            console.error('치료 정보 처리 오류:', treatmentErr);
+          }
+        })();
       } catch (err) {
         console.error('치료대기 동기화 오류:', err);
       }

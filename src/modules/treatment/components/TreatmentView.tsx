@@ -539,41 +539,60 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
         setEditingPatient(patient);
     };
 
-    // 베드 배정 시 액팅 항목 자동 추가 (침, 추나, 초음파, 향기요법)
-    // 약침은 침과 함께 진행되므로 별도 액팅 불필요
-    const ACTING_TREATMENT_NAMES = ['침', '추나', '초음파', '향기'];
+    // 베드 배정 시 액팅 항목 자동 추가 (자침, 추나, 초음파, 향기요법)
+    // 약침은 자침과 함께 진행되므로 별도 액팅 불필요
+    // 침 → 자침으로 변경: 원장이 침 놓는 시간(1~3분)과 환자 유침 시간(10~15분)을 분리하기 위함
+    const ACTING_TREATMENT_NAMES = ['자침', '침', '추나', '초음파', '향기']; // '침'도 호환성 위해 유지
     const EXCLUDED_TREATMENTS = ['약침']; // 제외할 치료 항목
 
     const addActingForTreatments = useCallback(async (
         patientId: number,
         patientName: string,
         chartNo: string | undefined,
-        treatments: { name: string; duration: number; memo?: string }[]
+        treatments: { name: string; duration: number; memo?: string }[],
+        doctorNameFromQueue?: string
     ) => {
         // 액팅 대상 치료 항목 필터링
-        // 1. 제외 항목이 포함된 경우 스킵 (예: 약침)
-        // 2. 액팅 대상 이름이 포함된 경우만 선택
         const actingTreatments = treatments.filter(t => {
-            // 제외 항목 체크
             if (EXCLUDED_TREATMENTS.some(excluded => t.name.includes(excluded))) {
                 return false;
             }
-            // 액팅 대상 체크
             return ACTING_TREATMENT_NAMES.some(actingName => t.name.includes(actingName));
         });
 
         if (actingTreatments.length === 0) return;
 
-        console.log('[액팅 자동추가] 대상 항목:', actingTreatments.map(t => t.name));
+        // 담당 원장 정보 결정
+        let doctorInfo: { doctorId: number; doctorName: string };
 
-        // 담당 원장 정보 조회 (MSSQL에서)
-        let doctorInfo = await actingApi.fetchPatientMainDoctor(patientId);
-        if (!doctorInfo) {
-            console.warn('[액팅 자동추가] 담당 원장 정보 조회 실패, 기본값 사용');
-            doctorInfo = { doctorId: 1, doctorName: '김원장' };
+        if (doctorNameFromQueue) {
+            try {
+                const dbDoctorInfo = await api.findDoctorIdByNameOrAlias(doctorNameFromQueue);
+                if (dbDoctorInfo) {
+                    doctorInfo = dbDoctorInfo;
+                } else {
+                    const mssqlDoctorInfo = await actingApi.fetchPatientMainDoctor(patientId);
+                    if (mssqlDoctorInfo) {
+                        doctorInfo = mssqlDoctorInfo;
+                    } else {
+                        doctorInfo = { doctorId: 3, doctorName: '김대현' };
+                    }
+                }
+            } catch {
+                doctorInfo = { doctorId: 3, doctorName: '김대현' };
+            }
+        } else {
+            try {
+                const mssqlDoctorInfo = await actingApi.fetchPatientMainDoctor(patientId);
+                if (mssqlDoctorInfo) {
+                    doctorInfo = mssqlDoctorInfo;
+                } else {
+                    doctorInfo = { doctorId: 3, doctorName: '김대현' };
+                }
+            } catch {
+                doctorInfo = { doctorId: 3, doctorName: '김대현' };
+            }
         }
-
-        console.log(`[액팅 자동추가] 담당 원장: ${doctorInfo.doctorName} (ID: ${doctorInfo.doctorId})`);
 
         // 각 액팅 항목을 대기열에 추가
         for (const treatment of actingTreatments) {
@@ -588,9 +607,8 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                     memo: treatment.memo,
                     source: 'manual',
                 });
-                console.log(`[액팅 자동추가] ${treatment.name} → ${doctorInfo.doctorName} 추가 완료`);
             } catch (error) {
-                console.error(`[액팅 자동추가] ${treatment.name} 추가 실패:`, error);
+                console.error(`액팅 추가 실패 (${treatment.name}):`, error);
             }
         }
     }, []);
@@ -636,17 +654,18 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                     patientChartNumber: patient.chartNumber,
                     patientGender: patient.gender,
                     patientDob: patient.dob,
-                    doctorName: '김원장',
+                    doctorName: patient.doctor || '',
                     inTime: new Date().toISOString(),
                     sessionTreatments,
                 };
 
-                // 액팅 자동 추가 (비동기로 실행 - 담당 원장은 MSSQL에서 조회)
+                // 액팅 자동 추가 (비동기로 실행 - 담당 원장은 patient.doctor 우선 사용)
                 addActingForTreatments(
                     patient.id,
                     patient.name,
                     patient.chartNumber,
-                    treatmentsToApply
+                    treatmentsToApply,
+                    patient.doctor
                 );
 
                 return updatedRoom;

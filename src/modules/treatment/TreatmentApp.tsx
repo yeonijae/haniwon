@@ -42,7 +42,7 @@ function TreatmentApp({ user }: TreatmentAppProps) {
   const [waitingList, setWaitingList] = useState<Patient[]>([]);
   const [allPatients, setAllPatients] = useState<Patient[]>([]);
   const lastLocalUpdateRef = useRef<number>(0);
-  const IGNORE_SUBSCRIPTION_MS = 2000;
+  const IGNORE_SUBSCRIPTION_MS = 4000; // DB 저장 완료까지 충분한 시간
 
   // Load waiting list function (reusable)
   const loadWaitingList = useCallback(async () => {
@@ -58,6 +58,7 @@ function TreatmentApp({ user }: TreatmentAppProps) {
               details: item.details,
               time: item.created_at ? new Date(item.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
               defaultTreatments,
+              doctor: item.doctor,
             };
           }
           return null;
@@ -117,13 +118,19 @@ function TreatmentApp({ user }: TreatmentAppProps) {
 
   // Waiting list handlers
   const handleRemoveFromWaitingList = useCallback(async (patientId: number) => {
-    try {
-      lastLocalUpdateRef.current = Date.now();
-      await api.removeFromWaitingQueue(patientId, 'treatment');
-      setWaitingList(prev => prev.filter(p => p.id !== patientId));
-    } catch (error) {
-      console.error('대기 목록 제거 오류:', error);
-    }
+    // 낙관적 업데이트: UI를 먼저 업데이트하고 API 호출은 백그라운드에서
+    lastLocalUpdateRef.current = Date.now();
+    setWaitingList(prev => prev.filter(p => p.id !== patientId));
+
+    // 백그라운드에서 API 호출 (실패해도 UI는 이미 업데이트됨)
+    api.removeFromWaitingQueue(patientId, 'treatment')
+      .then(() => {
+        lastLocalUpdateRef.current = Date.now();
+      })
+      .catch(error => {
+        console.error('대기 목록 제거 오류:', error);
+        // 실패 시 다음 폴링에서 복구됨
+      });
   }, []);
 
   const handleAddToWaitingList = useCallback(async (patient: Patient) => {
@@ -134,8 +141,10 @@ function TreatmentApp({ user }: TreatmentAppProps) {
         queue_type: 'treatment',
         details: patient.details || '',
         position: waitingList.length,
+        doctor: patient.doctor,
       });
       setWaitingList(prev => [...prev, patient]);
+      lastLocalUpdateRef.current = Date.now(); // DB 작업 완료 후 갱신
     } catch (error) {
       console.error('대기 목록 추가 오류:', error);
     }

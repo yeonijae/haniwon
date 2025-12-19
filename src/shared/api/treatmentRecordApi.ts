@@ -28,7 +28,25 @@ export async function createTreatmentRecord(
             ${escapeString(now)}, ${escapeString(now)})
   `);
 
-  const data = await queryOne<any>(`SELECT * FROM treatment_records WHERE id = ${id}`);
+  // id가 0이면 방금 삽입한 레코드를 patient_id + created_at으로 조회
+  let data: any = null;
+  if (id > 0) {
+    data = await queryOne<any>(`SELECT * FROM treatment_records WHERE id = ${id}`);
+  }
+
+  // fallback: id가 0이거나 조회 실패 시 최근 삽입 레코드 조회
+  if (!data) {
+    data = await queryOne<any>(`
+      SELECT * FROM treatment_records
+      WHERE patient_id = ${input.patient_id} AND record_date = ${escapeString(today)}
+      ORDER BY id DESC LIMIT 1
+    `);
+  }
+
+  if (!data) {
+    throw new Error('진료내역 생성 실패: 레코드를 찾을 수 없습니다');
+  }
+
   console.log('✅ 진료내역 생성 완료, ID:', data.id);
   return mapTreatmentRecord(data);
 }

@@ -278,6 +278,7 @@ export interface WaitingQueueItem {
   details: string;
   position: number;
   created_at?: string;
+  doctor?: string;
 }
 
 // 대기 목록 조회
@@ -301,8 +302,8 @@ export async function addToWaitingQueue(item: Omit<WaitingQueueItem, 'id' | 'cre
   const nextPosition = (maxData?.position ?? -1) + 1;
 
   const id = await insert(`
-    INSERT INTO waiting_queue (patient_id, queue_type, details, position)
-    VALUES (${item.patient_id}, ${escapeString(item.queue_type)}, ${escapeString(item.details)}, ${nextPosition})
+    INSERT INTO waiting_queue (patient_id, queue_type, details, position, doctor)
+    VALUES (${item.patient_id}, ${escapeString(item.queue_type)}, ${escapeString(item.details)}, ${nextPosition}, ${escapeString(item.doctor || '')})
   `);
 
   const data = await queryOne<any>(`SELECT * FROM waiting_queue WHERE id = ${id}`);
@@ -329,4 +330,65 @@ export async function createPayment(patientId: number): Promise<number> {
   // 추후 payments 테이블 추가시 구현
   console.log('⚠️ payments 테이블 미구현, 임시 ID 반환');
   return 0;
+}
+
+/**
+ * 의료진(원장) 관련 API
+ */
+
+// 의료진 alias → MSSQL doctor ID 매핑 조회
+// alias가 없으면 이름으로 매핑
+export interface DoctorAliasMapping {
+  alias: string;       // 호칭 (예: 김원장)
+  name: string;        // 실제 이름 (예: 김대현)
+  mssqlDoctorId: number; // MSSQL doctor ID
+}
+
+export async function fetchDoctorAliasMappings(): Promise<DoctorAliasMapping[]> {
+  const data = await query<any>(`
+    SELECT name, alias, mssql_doctor_id
+    FROM staff
+    WHERE employee_type = 'doctor'
+      AND status = 'active'
+      AND mssql_doctor_id IS NOT NULL
+    ORDER BY name
+  `);
+
+  return (data || []).map((row) => {
+    // mssql_doctor_id가 "doctor_13" 형식이면 숫자만 추출
+    let doctorId = 0;
+    const mssqlId = row.mssql_doctor_id || '';
+    const match = mssqlId.match(/(\d+)/);
+    if (match) {
+      doctorId = parseInt(match[1], 10);
+    }
+
+    return {
+      alias: row.alias || row.name, // alias가 없으면 이름 사용
+      name: row.name,
+      mssqlDoctorId: doctorId,
+    };
+  });
+}
+
+// 담당의 이름/alias로 doctor ID 찾기
+export async function findDoctorIdByNameOrAlias(nameOrAlias: string): Promise<{ doctorId: number; doctorName: string } | null> {
+  const mappings = await fetchDoctorAliasMappings();
+
+  // 1. alias로 먼저 찾기
+  let found = mappings.find(m => m.alias === nameOrAlias);
+
+  // 2. 없으면 이름으로 찾기
+  if (!found) {
+    found = mappings.find(m => m.name === nameOrAlias);
+  }
+
+  if (found) {
+    return {
+      doctorId: found.mssqlDoctorId,
+      doctorName: found.name,
+    };
+  }
+
+  return null;
 }
