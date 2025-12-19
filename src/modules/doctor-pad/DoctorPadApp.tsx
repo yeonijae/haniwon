@@ -102,36 +102,36 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50">
+      <div className="bg-white w-full h-full overflow-hidden flex flex-col">
         {/* 헤더 */}
         <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold">{acting.patientName}</h2>
-            <p className="text-blue-200">{acting.chartNo || '차트번호 없음'}</p>
+            <h2 className="text-3xl font-bold">{acting.patientName}</h2>
+            <p className="text-blue-200 text-lg">{acting.chartNo || '차트번호 없음'}</p>
           </div>
           <button
             onClick={onClose}
-            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-500 transition-colors text-2xl"
+            className="w-12 h-12 flex items-center justify-center rounded-full hover:bg-blue-500 transition-colors text-3xl"
           >
             ×
           </button>
         </div>
 
         {/* 액팅 시작/종료 버튼 영역 */}
-        <div className="bg-gray-50 border-b px-6 py-4">
+        <div className="bg-white border-b-2 px-6 py-5">
           {isActingInProgress ? (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                <span className="text-lg font-bold text-gray-800">{acting.actingType} 진행중</span>
-                <span className={`text-3xl font-mono font-bold ${elapsedTime > 180 ? 'text-red-600' : 'text-gray-800'}`}>
+                <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse"></div>
+                <span className="text-xl font-bold text-gray-800">{acting.actingType} 진행중</span>
+                <span className={`text-4xl font-mono font-bold ${elapsedTime > 180 ? 'text-red-600' : 'text-gray-800'}`}>
                   {formatTime(elapsedTime)}
                 </span>
               </div>
               <button
                 onClick={onCompleteActing}
-                className="px-8 py-3 bg-blue-600 text-white text-lg font-bold rounded-xl hover:bg-blue-700 transition-colors"
+                className="px-10 py-4 bg-blue-600 text-white text-xl font-bold rounded-xl hover:bg-blue-700 transition-colors"
               >
                 {acting.actingType} 종료
               </button>
@@ -139,9 +139,9 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
           ) : (
             <button
               onClick={onStartActing}
-              className="w-full py-4 bg-green-600 text-white text-xl font-bold rounded-xl hover:bg-green-700 transition-colors"
+              className="w-full py-5 bg-green-600 text-white text-2xl font-bold rounded-xl hover:bg-green-700 transition-colors"
             >
-              {acting.actingType} 시작
+              🚀 {acting.actingType} 시작
             </button>
           )}
         </div>
@@ -152,10 +152,10 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 py-3 text-sm font-medium transition-colors ${
+              className={`flex-1 py-4 text-lg font-bold transition-colors ${
                 activeTab === tab.id
-                  ? 'bg-white text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-800'
+                  ? 'bg-white text-blue-600 border-b-4 border-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               {tab.label}
@@ -164,19 +164,29 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
         </div>
 
         {/* 탭 내용 */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
           {loading ? (
             <div className="text-center py-8 text-gray-500">환자 정보 로딩중...</div>
           ) : (
             <>
               {/* 메모 탭 */}
               {activeTab === 'memo' && (
-                <div className="space-y-4">
+                <div className="space-y-5">
+                  {/* 주소증 */}
+                  {memo?.mainDisease && (
+                    <section>
+                      <h3 className="text-base font-bold text-orange-600 mb-2">🩺 주소증</h3>
+                      <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4 text-lg text-gray-800">
+                        {memo.mainDisease}
+                      </div>
+                    </section>
+                  )}
+
                   {/* 주치의메모 */}
                   {memo?.doctorMemo && (
                     <section>
-                      <h3 className="text-sm font-bold text-gray-500 mb-2">주치의메모</h3>
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-gray-800 whitespace-pre-wrap">
+                      <h3 className="text-base font-bold text-red-600 mb-2">📌 주치의메모</h3>
+                      <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 text-lg text-gray-800 whitespace-pre-wrap">
                         {memo.doctorMemo}
                       </div>
                     </section>
@@ -185,29 +195,29 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
                   {/* 간호사메모 */}
                   {memo?.nurseMemo && (
                     <section>
-                      <h3 className="text-sm font-bold text-gray-500 mb-2">간호사메모</h3>
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-gray-800 whitespace-pre-wrap">
+                      <h3 className="text-base font-bold text-blue-600 mb-2">💉 간호사메모</h3>
+                      <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 text-lg text-gray-800 whitespace-pre-wrap">
                         {memo.nurseMemo}
                       </div>
                     </section>
                   )}
 
-                  {/* 주소증 */}
-                  {memo?.mainDisease && (
+                  {/* 진료메모1 */}
+                  {memo?.comment1 && (
                     <section>
-                      <h3 className="text-sm font-bold text-gray-500 mb-2">주소증</h3>
-                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-gray-800">
-                        {memo.mainDisease}
+                      <h3 className="text-base font-bold text-purple-600 mb-2">📝 진료메모1</h3>
+                      <div className="bg-purple-50 border-2 border-purple-300 rounded-xl p-4 text-lg text-gray-800 whitespace-pre-wrap">
+                        {memo.comment1}
                       </div>
                     </section>
                   )}
 
-                  {/* 진료메모2 (treat_type) */}
-                  {memo?.treatType && (
+                  {/* 진료메모2 */}
+                  {memo?.comment2 && (
                     <section>
-                      <h3 className="text-sm font-bold text-gray-500 mb-2">진료메모</h3>
-                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-gray-800">
-                        {memo.treatType}
+                      <h3 className="text-base font-bold text-indigo-600 mb-2">📝 진료메모2</h3>
+                      <div className="bg-indigo-50 border-2 border-indigo-300 rounded-xl p-4 text-lg text-gray-800 whitespace-pre-wrap">
+                        {memo.comment2}
                       </div>
                     </section>
                   )}
@@ -215,90 +225,90 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
                   {/* 기타메모 */}
                   {memo?.etcMemo && (
                     <section>
-                      <h3 className="text-sm font-bold text-gray-500 mb-2">기타메모</h3>
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-gray-800">
+                      <h3 className="text-base font-bold text-gray-600 mb-2">📋 기타메모</h3>
+                      <div className="bg-white border-2 border-gray-300 rounded-xl p-4 text-lg text-gray-800">
                         {memo.etcMemo}
                       </div>
                     </section>
                   )}
 
-                  {!memo?.doctorMemo && !memo?.nurseMemo && !memo?.mainDisease && !memo?.treatType && !memo?.etcMemo && (
-                    <div className="text-center py-8 text-gray-400">저장된 메모가 없습니다</div>
+                  {!memo?.mainDisease && !memo?.doctorMemo && !memo?.nurseMemo && !memo?.comment1 && !memo?.comment2 && !memo?.etcMemo && (
+                    <div className="text-center py-12 text-gray-400 text-lg">저장된 메모가 없습니다</div>
                   )}
                 </div>
               )}
 
               {/* 진료내역 탭 */}
               {activeTab === 'history' && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {treatments.length > 0 ? (
                     treatments.map(t => (
-                      <div key={t.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <div key={t.id} className="bg-white border-2 border-gray-200 rounded-xl p-4">
                         <div className="flex justify-between items-start">
                           <div>
-                            <span className="font-medium text-gray-800">{t.date}</span>
-                            {t.doctor && <span className="text-gray-500 ml-2">{t.doctor}</span>}
+                            <span className="text-lg font-bold text-gray-800">{t.date}</span>
+                            {t.doctor && <span className="text-gray-500 ml-3 text-base">{t.doctor}</span>}
                           </div>
                           {t.item && (
-                            <span className="text-sm bg-gray-200 px-2 py-1 rounded">{t.item}</span>
+                            <span className="text-base bg-blue-100 text-blue-700 px-3 py-1 rounded-lg font-medium">{t.item}</span>
                           )}
                         </div>
                         {t.diagnosis && (
-                          <p className="text-sm text-gray-600 mt-1">진단: {t.diagnosis}</p>
+                          <p className="text-base text-gray-700 mt-2">진단: {t.diagnosis}</p>
                         )}
                         {t.treatment && (
-                          <p className="text-sm text-gray-600">처치: {t.treatment}</p>
+                          <p className="text-base text-gray-700">처치: {t.treatment}</p>
                         )}
                         {t.note && (
-                          <p className="text-sm text-gray-500 mt-1">{t.note}</p>
+                          <p className="text-base text-gray-500 mt-2 bg-gray-50 p-2 rounded">{t.note}</p>
                         )}
                       </div>
                     ))
                   ) : (
-                    <div className="text-center py-8 text-gray-400">진료내역이 없습니다</div>
+                    <div className="text-center py-12 text-gray-400 text-lg">진료내역이 없습니다</div>
                   )}
                 </div>
               )}
 
               {/* 수납내역 탭 */}
               {activeTab === 'receipt' && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {receipts.length > 0 ? (
                     receipts.map((r, idx) => (
-                      <div key={idx} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <div key={idx} className="bg-white border-2 border-gray-200 rounded-xl p-4">
                         <div className="flex justify-between items-center">
-                          <span className="font-medium text-gray-800">{r.receipt_date}</span>
-                          <span className="text-lg font-bold text-blue-600">
+                          <span className="text-lg font-bold text-gray-800">{r.receipt_date}</span>
+                          <span className="text-2xl font-bold text-blue-600">
                             {(r.amount || 0).toLocaleString()}원
                           </span>
                         </div>
                         {r.payment_type && (
-                          <p className="text-sm text-gray-500 mt-1">{r.payment_type}</p>
+                          <p className="text-base text-gray-600 mt-2">{r.payment_type}</p>
                         )}
                         {r.memo && (
-                          <p className="text-sm text-gray-500">{r.memo}</p>
+                          <p className="text-base text-gray-500 mt-1">{r.memo}</p>
                         )}
                       </div>
                     ))
                   ) : (
-                    <div className="text-center py-8 text-gray-400">수납내역이 없습니다</div>
+                    <div className="text-center py-12 text-gray-400 text-lg">수납내역이 없습니다</div>
                   )}
                 </div>
               )}
 
               {/* 오늘치료 탭 */}
               {activeTab === 'today' && (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   {(treatmentItems.length > 0 || yakchimInfo) ? (
                     <>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-3">
                         {treatmentItems.map(item => (
                           <span
                             key={item.key}
-                            className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                            className={`px-5 py-2.5 rounded-full text-lg font-bold ${
                               item.isActing
-                                ? 'bg-orange-100 text-orange-700 border border-orange-300'
-                                : 'bg-purple-100 text-purple-700'
+                                ? 'bg-orange-100 text-orange-700 border-2 border-orange-400'
+                                : 'bg-purple-100 text-purple-700 border-2 border-purple-300'
                             }`}
                           >
                             {item.label}
@@ -306,19 +316,20 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
                           </span>
                         ))}
                         {yakchimInfo && (
-                          <span className="px-3 py-1.5 bg-lime-100 text-lime-700 rounded-full text-sm font-medium border border-lime-300">
-                            약침: {yakchimInfo}
+                          <span className="px-5 py-2.5 bg-lime-100 text-lime-700 rounded-full text-lg font-bold border-2 border-lime-400">
+                            💉 약침: {yakchimInfo}
                           </span>
                         )}
                       </div>
                       {defaultTreatments?.memo && (
-                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                          <span className="font-medium text-gray-700">메모:</span> {defaultTreatments.memo}
+                        <div className="bg-white border-2 border-gray-200 rounded-xl p-4">
+                          <span className="font-bold text-gray-700 text-lg">메모:</span>
+                          <span className="text-lg text-gray-800 ml-2">{defaultTreatments.memo}</span>
                         </div>
                       )}
                     </>
                   ) : (
-                    <div className="text-center py-8 text-gray-400">오늘 치료 정보가 없습니다</div>
+                    <div className="text-center py-12 text-gray-400 text-lg">오늘 치료 정보가 없습니다</div>
                   )}
                 </div>
               )}
@@ -327,10 +338,10 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
         </div>
 
         {/* 하단 닫기 버튼 */}
-        <div className="border-t px-6 py-4">
+        <div className="border-t-2 px-6 py-4 bg-white">
           <button
             onClick={onClose}
-            className="w-full py-3 bg-gray-200 text-gray-700 text-lg font-bold rounded-xl hover:bg-gray-300 transition-colors"
+            className="w-full py-4 bg-gray-200 text-gray-700 text-xl font-bold rounded-xl hover:bg-gray-300 transition-colors"
           >
             닫기
           </button>

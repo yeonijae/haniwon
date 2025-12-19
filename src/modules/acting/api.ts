@@ -667,12 +667,14 @@ const DOCTOR_ALIAS_TO_ID: Record<string, { id: number; displayName: string }> = 
 };
 
 export interface PatientMemo {
-  doctorMemo?: string;    // 원장 메모 (NOTEFORDOC)
-  nurseMemo?: string;     // 간호 메모 (NOTEFORNURSE)
-  mainDisease?: string;   // 주요 질환 (MAINDISEASE)
+  doctorMemo?: string;    // 주치의메모 (NOTEFORDOC)
+  nurseMemo?: string;     // 간호사메모 (NOTEFORNURSE)
+  mainDisease?: string;   // 주소증 (MAINDISEASE)
   mainDoctor?: string;    // 담당 원장 (MAINDOCTOR)
-  treatType?: string;     // 진료 유형 (TreatCurrent)
-  etcMemo?: string;       // 기타 메모 (ETCMemo)
+  treatType?: string;     // 진료 유형 (TreatCurrent) - 사용안함
+  etcMemo?: string;       // 기타메모 (ETCMemo)
+  comment1?: string;      // 진료메모1 (DetailComment.Comment1)
+  comment2?: string;      // 진료메모2 (DetailComment.Comment2)
 }
 
 // 담당 원장 정보
@@ -732,6 +734,8 @@ export async function fetchPatientMemo(patientId: number): Promise<PatientMemo |
       mainDoctor: data.main_doctor,
       treatType: data.treat_type,
       etcMemo: data.etc_memo,
+      comment1: data.comment1,
+      comment2: data.comment2,
     };
   } catch (error) {
     console.error('환자 메모 조회 오류:', error);
