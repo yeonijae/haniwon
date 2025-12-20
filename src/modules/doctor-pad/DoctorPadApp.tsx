@@ -14,7 +14,8 @@ import type { PortalUser } from '@shared/types';
 import type { ActingQueueItem, DoctorStatus } from '@modules/acting/types';
 import type { TreatmentRoom } from '@modules/treatment/types';
 import * as actingApi from '@modules/acting/api';
-import type { PatientMemo, TreatmentHistory } from '@modules/acting/api';
+import type { PatientMemo, TreatmentHistory, DetailComment } from '@modules/acting/api';
+import { fetchPatientDetailComments } from '@modules/acting/api';
 import { fetchTreatmentRooms } from '@modules/manage/lib/api';
 import {
   fetchPatientDefaultTreatments,
@@ -43,14 +44,36 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }>
   away: { bg: 'bg-red-500', text: 'text-white', label: '부재' },
 };
 
-// 탭 타입
-type ChartTab = 'memo' | 'history' | 'receipt' | 'today';
+// 침치료 토글 버튼 항목
+const ACUPUNCTURE_ITEMS = [
+  { key: 'jachim', label: '자침' },
+  { key: 'jeonchim', label: '전침' },
+  { key: 'gigugu', label: '기기구' },
+  { key: 'buhang', label: '부항' },
+  { key: 'ddum', label: '뜸' },
+];
 
-// 환자 차트 모달 컴포넌트 (4탭)
+// 약침 카운터 항목
+const YAKCHIM_ITEMS = [
+  { key: 'gyeonggeun', label: '경근', color: 'blue' },
+  { key: 'sinbaro', label: '신바로', color: 'green' },
+  { key: 'hwangryeon', label: '황련', color: 'yellow' },
+  { key: 'jungsongouhyul', label: '중성어혈', color: 'red' },
+  { key: 'bee', label: 'BV', color: 'orange' },
+];
+
+// 오늘 치료 선택 상태 타입
+interface TodayTreatmentSelection {
+  acupuncture: Record<string, boolean>;  // 침치료 토글
+  yakchim: Record<string, number>;       // 약침 cc 수량
+}
+
+// 환자 차트 모달 컴포넌트 (새 디자인)
 interface PatientChartModalProps {
   acting: ActingQueueItem;
   memo: PatientMemo | null;
   treatments: TreatmentHistory[];
+  detailComments: DetailComment[];
   receipts: any[];
   defaultTreatments: PatientDefaultTreatments | null;
   dailyRecord: DailyTreatmentRecord | null;
@@ -66,6 +89,7 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
   acting,
   memo,
   treatments,
+  detailComments,
   receipts,
   defaultTreatments,
   dailyRecord,
@@ -76,7 +100,38 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
   onStartActing,
   onCompleteActing,
 }) => {
-  const [activeTab, setActiveTab] = useState<ChartTab>('memo');
+  // 오늘 치료 선택 상태
+  const [todayTreatment, setTodayTreatment] = useState<TodayTreatmentSelection>({
+    acupuncture: {},
+    yakchim: {},
+  });
+
+  // 이전 치료 정보 불러오기 (재진 환자용)
+  useEffect(() => {
+    if (defaultTreatments) {
+      const acupuncture: Record<string, boolean> = {};
+      const yakchim: Record<string, number> = {};
+
+      // 기존 치료 항목에서 침치료 토글 값 설정
+      // 매핑: jachim=has_acupuncture, jeonchim=has_highfreq, buhang=has_cupping, ddum=has_moxa
+      if (defaultTreatments.has_acupuncture) acupuncture['jachim'] = true;
+      if (defaultTreatments.has_highfreq) acupuncture['jeonchim'] = true;  // 고주파 → 전침
+      if (defaultTreatments.has_cupping) acupuncture['buhang'] = true;
+      if (defaultTreatments.has_moxa) acupuncture['ddum'] = true;
+
+      // 약침 수량 설정
+      if (defaultTreatments.yakchim_type && defaultTreatments.yakchim_quantity) {
+        const yakchimKey = YAKCHIM_ITEMS.find(y =>
+          defaultTreatments.yakchim_type?.includes(y.label)
+        )?.key;
+        if (yakchimKey) {
+          yakchim[yakchimKey] = defaultTreatments.yakchim_quantity;
+        }
+      }
+
+      setTodayTreatment({ acupuncture, yakchim });
+    }
+  }, [defaultTreatments]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -84,31 +139,40 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // 기본 치료 항목 목록
-  const treatmentItems = defaultTreatments
-    ? TREATMENT_CHECKBOX_ITEMS.filter(item => defaultTreatments[item.key])
-    : [];
+  // 침치료 토글
+  const toggleAcupuncture = (key: string) => {
+    setTodayTreatment(prev => ({
+      ...prev,
+      acupuncture: {
+        ...prev.acupuncture,
+        [key]: !prev.acupuncture[key],
+      },
+    }));
+  };
 
-  // 약침 정보
-  const yakchimInfo = defaultTreatments?.yakchim_type
-    ? `${YAKCHIM_SELECT_ITEMS.find(y => y.value === defaultTreatments.yakchim_type)?.label || defaultTreatments.yakchim_type} ${defaultTreatments.yakchim_quantity}cc`
-    : null;
-
-  const tabs = [
-    { id: 'memo' as ChartTab, label: '메모' },
-    { id: 'history' as ChartTab, label: '진료내역' },
-    { id: 'receipt' as ChartTab, label: '수납내역' },
-    { id: 'today' as ChartTab, label: '오늘치료' },
-  ];
+  // 약침 수량 조절
+  const adjustYakchim = (key: string, delta: number) => {
+    setTodayTreatment(prev => {
+      const current = prev.yakchim[key] || 0;
+      const newValue = Math.max(0, current + delta);
+      return {
+        ...prev,
+        yakchim: {
+          ...prev.yakchim,
+          [key]: newValue,
+        },
+      };
+    });
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50">
       <div className="bg-white w-full h-full overflow-hidden flex flex-col">
-        {/* 헤더 */}
+        {/* 헤더: 이름, 나이/성별, 차트번호 */}
         <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-4">
             <h2 className="text-3xl font-bold">{acting.patientName}</h2>
-            <p className="text-blue-200 text-lg">{acting.chartNo || '차트번호 없음'}</p>
+            <span className="text-xl text-blue-200">#{acting.chartNo || '-'}</span>
           </div>
           <button
             onClick={onClose}
@@ -119,7 +183,7 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
         </div>
 
         {/* 액팅 시작/종료 버튼 영역 */}
-        <div className="bg-white border-b-2 px-6 py-5">
+        <div className="bg-white border-b-2 px-6 py-4">
           {isActingInProgress ? (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -141,199 +205,162 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
               onClick={onStartActing}
               className="w-full py-5 bg-green-600 text-white text-2xl font-bold rounded-xl hover:bg-green-700 transition-colors"
             >
-              🚀 {acting.actingType} 시작
+              {acting.actingType} 시작
             </button>
           )}
         </div>
 
-        {/* 탭 메뉴 */}
-        <div className="flex border-b bg-gray-50">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 py-4 text-lg font-bold transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-white text-blue-600 border-b-4 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* 탭 내용 */}
-        <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+        {/* 메인 콘텐츠 - 스크롤 가능 */}
+        <div className="flex-1 overflow-y-auto bg-gray-50">
           {loading ? (
             <div className="text-center py-8 text-gray-500">환자 정보 로딩중...</div>
           ) : (
-            <>
-              {/* 메모 탭 */}
-              {activeTab === 'memo' && (
-                <div className="space-y-5">
+            <div className="p-4 space-y-4">
+              {/* 섹션 1: 메모 (readonly) */}
+              <section className="bg-white rounded-xl shadow p-4">
+                <h3 className="text-lg font-bold text-gray-700 mb-3 flex items-center gap-2">
+                  <span>📋</span> 환자 메모
+                </h3>
+                <div className="space-y-3">
                   {/* 주소증 */}
                   {memo?.mainDisease && (
-                    <section>
-                      <h3 className="text-base font-bold text-orange-600 mb-2">🩺 주소증</h3>
-                      <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4 text-lg text-gray-800">
-                        {memo.mainDisease}
-                      </div>
-                    </section>
+                    <div className="bg-orange-50 border-l-4 border-orange-400 p-3 rounded-r">
+                      <span className="text-sm font-bold text-orange-600">주소증</span>
+                      <p className="text-gray-800 mt-1">{memo.mainDisease}</p>
+                    </div>
                   )}
 
                   {/* 주치의메모 */}
                   {memo?.doctorMemo && (
-                    <section>
-                      <h3 className="text-base font-bold text-red-600 mb-2">📌 주치의메모</h3>
-                      <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 text-lg text-gray-800 whitespace-pre-wrap">
-                        {memo.doctorMemo}
-                      </div>
-                    </section>
+                    <div className="bg-red-50 border-l-4 border-red-400 p-3 rounded-r">
+                      <span className="text-sm font-bold text-red-600">주치의메모</span>
+                      <p className="text-gray-800 mt-1 whitespace-pre-wrap">{memo.doctorMemo}</p>
+                    </div>
                   )}
 
                   {/* 간호사메모 */}
                   {memo?.nurseMemo && (
-                    <section>
-                      <h3 className="text-base font-bold text-blue-600 mb-2">💉 간호사메모</h3>
-                      <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 text-lg text-gray-800 whitespace-pre-wrap">
-                        {memo.nurseMemo}
-                      </div>
-                    </section>
-                  )}
-
-                  {/* 진료메모1 */}
-                  {memo?.comment1 && (
-                    <section>
-                      <h3 className="text-base font-bold text-purple-600 mb-2">📝 진료메모1</h3>
-                      <div className="bg-purple-50 border-2 border-purple-300 rounded-xl p-4 text-lg text-gray-800 whitespace-pre-wrap">
-                        {memo.comment1}
-                      </div>
-                    </section>
-                  )}
-
-                  {/* 진료메모2 */}
-                  {memo?.comment2 && (
-                    <section>
-                      <h3 className="text-base font-bold text-indigo-600 mb-2">📝 진료메모2</h3>
-                      <div className="bg-indigo-50 border-2 border-indigo-300 rounded-xl p-4 text-lg text-gray-800 whitespace-pre-wrap">
-                        {memo.comment2}
-                      </div>
-                    </section>
+                    <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded-r">
+                      <span className="text-sm font-bold text-blue-600">간호사메모</span>
+                      <p className="text-gray-800 mt-1 whitespace-pre-wrap">{memo.nurseMemo}</p>
+                    </div>
                   )}
 
                   {/* 기타메모 */}
                   {memo?.etcMemo && (
-                    <section>
-                      <h3 className="text-base font-bold text-gray-600 mb-2">📋 기타메모</h3>
-                      <div className="bg-white border-2 border-gray-300 rounded-xl p-4 text-lg text-gray-800">
-                        {memo.etcMemo}
-                      </div>
-                    </section>
+                    <div className="bg-gray-100 border-l-4 border-gray-400 p-3 rounded-r">
+                      <span className="text-sm font-bold text-gray-600">기타메모</span>
+                      <p className="text-gray-800 mt-1">{memo.etcMemo}</p>
+                    </div>
                   )}
 
-                  {!memo?.mainDisease && !memo?.doctorMemo && !memo?.nurseMemo && !memo?.comment1 && !memo?.comment2 && !memo?.etcMemo && (
-                    <div className="text-center py-12 text-gray-400 text-lg">저장된 메모가 없습니다</div>
+                  {!memo?.mainDisease && !memo?.doctorMemo && !memo?.nurseMemo && !memo?.etcMemo && (
+                    <p className="text-gray-400 text-center py-4">저장된 메모가 없습니다</p>
                   )}
                 </div>
-              )}
+              </section>
 
-              {/* 진료내역 탭 */}
-              {activeTab === 'history' && (
-                <div className="space-y-4">
-                  {treatments.length > 0 ? (
-                    treatments.map(t => (
-                      <div key={t.id} className="bg-white border-2 border-gray-200 rounded-xl p-4">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <span className="text-lg font-bold text-gray-800">{t.date}</span>
-                            {t.doctor && <span className="text-gray-500 ml-3 text-base">{t.doctor}</span>}
+              {/* 섹션 2: 오늘 치료 입력 */}
+              <section className="bg-white rounded-xl shadow p-4">
+                <h3 className="text-lg font-bold text-gray-700 mb-3 flex items-center gap-2">
+                  <span>💉</span> 오늘 치료
+                </h3>
+
+                {/* 침치료 토글 버튼 */}
+                <div className="mb-4">
+                  <p className="text-sm text-gray-500 mb-2">침치료</p>
+                  <div className="flex flex-wrap gap-2">
+                    {ACUPUNCTURE_ITEMS.map(item => (
+                      <button
+                        key={item.key}
+                        onClick={() => toggleAcupuncture(item.key)}
+                        className={`px-5 py-3 rounded-xl text-lg font-bold transition-all ${
+                          todayTreatment.acupuncture[item.key]
+                            ? 'bg-blue-600 text-white shadow-lg'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 약침 카운터 버튼 */}
+                <div>
+                  <p className="text-sm text-gray-500 mb-2">약침</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {YAKCHIM_ITEMS.map(item => {
+                      const count = todayTreatment.yakchim[item.key] || 0;
+                      const colorClasses: Record<string, string> = {
+                        blue: count > 0 ? 'bg-blue-100 border-blue-400' : 'bg-gray-50 border-gray-200',
+                        green: count > 0 ? 'bg-green-100 border-green-400' : 'bg-gray-50 border-gray-200',
+                        yellow: count > 0 ? 'bg-yellow-100 border-yellow-400' : 'bg-gray-50 border-gray-200',
+                        red: count > 0 ? 'bg-red-100 border-red-400' : 'bg-gray-50 border-gray-200',
+                        orange: count > 0 ? 'bg-orange-100 border-orange-400' : 'bg-gray-50 border-gray-200',
+                      };
+                      return (
+                        <div
+                          key={item.key}
+                          className={`flex items-center justify-between p-3 rounded-xl border-2 ${colorClasses[item.color]}`}
+                        >
+                          <span className="font-bold text-gray-700">{item.label}</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => adjustYakchim(item.key, -5)}
+                              className="w-10 h-10 rounded-full bg-gray-200 text-gray-700 text-xl font-bold hover:bg-gray-300"
+                            >
+                              -
+                            </button>
+                            <span className="w-12 text-center text-xl font-bold">{count}cc</span>
+                            <button
+                              onClick={() => adjustYakchim(item.key, 5)}
+                              className="w-10 h-10 rounded-full bg-blue-500 text-white text-xl font-bold hover:bg-blue-600"
+                            >
+                              +
+                            </button>
                           </div>
-                          {t.item && (
-                            <span className="text-base bg-blue-100 text-blue-700 px-3 py-1 rounded-lg font-medium">{t.item}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </section>
+
+              {/* 섹션 3: 진료내역 (날짜별 DetailComment) */}
+              <section className="bg-white rounded-xl shadow p-4">
+                <h3 className="text-lg font-bold text-gray-700 mb-3 flex items-center gap-2">
+                  <span>📝</span> 진료내역
+                </h3>
+                <div className="space-y-3">
+                  {detailComments.length > 0 ? (
+                    detailComments.slice(0, 10).map((dc, idx) => (
+                      <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
+                        <div className="bg-gray-100 px-4 py-2">
+                          <span className="font-bold text-gray-800">{dc.date}</span>
+                        </div>
+                        <div className="p-4 space-y-2">
+                          {dc.comment1 && (
+                            <div>
+                              <span className="text-xs font-bold text-purple-600">증상</span>
+                              <p className="text-gray-700 text-sm whitespace-pre-wrap">{dc.comment1}</p>
+                            </div>
+                          )}
+                          {dc.comment2 && (
+                            <div>
+                              <span className="text-xs font-bold text-teal-600">치료</span>
+                              <p className="text-gray-700 text-sm whitespace-pre-wrap">{dc.comment2}</p>
+                            </div>
                           )}
                         </div>
-                        {t.diagnosis && (
-                          <p className="text-base text-gray-700 mt-2">진단: {t.diagnosis}</p>
-                        )}
-                        {t.treatment && (
-                          <p className="text-base text-gray-700">처치: {t.treatment}</p>
-                        )}
-                        {t.note && (
-                          <p className="text-base text-gray-500 mt-2 bg-gray-50 p-2 rounded">{t.note}</p>
-                        )}
                       </div>
                     ))
                   ) : (
-                    <div className="text-center py-12 text-gray-400 text-lg">진료내역이 없습니다</div>
+                    <p className="text-gray-400 text-center py-4">진료내역이 없습니다</p>
                   )}
                 </div>
-              )}
-
-              {/* 수납내역 탭 */}
-              {activeTab === 'receipt' && (
-                <div className="space-y-4">
-                  {receipts.length > 0 ? (
-                    receipts.map((r, idx) => (
-                      <div key={idx} className="bg-white border-2 border-gray-200 rounded-xl p-4">
-                        <div className="flex justify-between items-center">
-                          <span className="text-lg font-bold text-gray-800">{r.receipt_date}</span>
-                          <span className="text-2xl font-bold text-blue-600">
-                            {(r.amount || 0).toLocaleString()}원
-                          </span>
-                        </div>
-                        {r.payment_type && (
-                          <p className="text-base text-gray-600 mt-2">{r.payment_type}</p>
-                        )}
-                        {r.memo && (
-                          <p className="text-base text-gray-500 mt-1">{r.memo}</p>
-                        )}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-12 text-gray-400 text-lg">수납내역이 없습니다</div>
-                  )}
-                </div>
-              )}
-
-              {/* 오늘치료 탭 */}
-              {activeTab === 'today' && (
-                <div className="space-y-5">
-                  {(treatmentItems.length > 0 || yakchimInfo) ? (
-                    <>
-                      <div className="flex flex-wrap gap-3">
-                        {treatmentItems.map(item => (
-                          <span
-                            key={item.key}
-                            className={`px-5 py-2.5 rounded-full text-lg font-bold ${
-                              item.isActing
-                                ? 'bg-orange-100 text-orange-700 border-2 border-orange-400'
-                                : 'bg-purple-100 text-purple-700 border-2 border-purple-300'
-                            }`}
-                          >
-                            {item.label}
-                            {item.isActing && <span className="ml-1 text-orange-500">★</span>}
-                          </span>
-                        ))}
-                        {yakchimInfo && (
-                          <span className="px-5 py-2.5 bg-lime-100 text-lime-700 rounded-full text-lg font-bold border-2 border-lime-400">
-                            💉 약침: {yakchimInfo}
-                          </span>
-                        )}
-                      </div>
-                      {defaultTreatments?.memo && (
-                        <div className="bg-white border-2 border-gray-200 rounded-xl p-4">
-                          <span className="font-bold text-gray-700 text-lg">메모:</span>
-                          <span className="text-lg text-gray-800 ml-2">{defaultTreatments.memo}</span>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="text-center py-12 text-gray-400 text-lg">오늘 치료 정보가 없습니다</div>
-                  )}
-                </div>
-              )}
-            </>
+              </section>
+            </div>
           )}
         </div>
 
@@ -435,6 +462,7 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
   const [selectedActing, setSelectedActing] = useState<ActingQueueItem | null>(null);
   const [patientMemo, setPatientMemo] = useState<PatientMemo | null>(null);
   const [patientTreatments, setPatientTreatments] = useState<TreatmentHistory[]>([]);
+  const [patientDetailComments, setPatientDetailComments] = useState<DetailComment[]>([]);
   const [patientReceipts, setPatientReceipts] = useState<any[]>([]);
   const [patientDefaultTreatments, setPatientDefaultTreatments] = useState<PatientDefaultTreatments | null>(null);
   const [patientDailyRecord, setPatientDailyRecord] = useState<DailyTreatmentRecord | null>(null);
@@ -514,6 +542,7 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
     setLoadingPatientInfo(true);
     setPatientMemo(null);
     setPatientTreatments([]);
+    setPatientDetailComments([]);
     setPatientReceipts([]);
     setPatientDefaultTreatments(null);
     setPatientDailyRecord(null);
@@ -521,15 +550,17 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
     const today = new Date().toISOString().split('T')[0];
 
     try {
-      const [memo, treatments, defaultTreatments, dailyRecord] = await Promise.all([
+      const [memo, treatments, detailComments, defaultTreatments, dailyRecord] = await Promise.all([
         actingApi.fetchPatientMemo(acting.patientId),
         actingApi.fetchPatientTreatments(acting.patientId, 3),
+        fetchPatientDetailComments(acting.patientId, 10),
         fetchPatientDefaultTreatments(acting.patientId),
         fetchDailyTreatmentRecord(acting.patientId, today),
       ]);
 
       setPatientMemo(memo);
       setPatientTreatments(treatments);
+      setPatientDetailComments(detailComments);
       setPatientDefaultTreatments(defaultTreatments);
       setPatientDailyRecord(dailyRecord);
 
@@ -561,6 +592,7 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
     setSelectedActing(null);
     setPatientMemo(null);
     setPatientTreatments([]);
+    setPatientDetailComments([]);
     setPatientReceipts([]);
     setPatientDefaultTreatments(null);
     setPatientDailyRecord(null);
@@ -704,6 +736,7 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
           acting={selectedActing}
           memo={patientMemo}
           treatments={patientTreatments}
+          detailComments={patientDetailComments}
           receipts={patientReceipts}
           defaultTreatments={patientDefaultTreatments}
           dailyRecord={patientDailyRecord}

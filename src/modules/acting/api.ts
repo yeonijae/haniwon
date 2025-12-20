@@ -778,3 +778,31 @@ export async function fetchPatientTreatments(patientId: number, limit = 5): Prom
     return [];
   }
 }
+
+// 날짜별 진료메모 (DetailComment 테이블)
+export interface DetailComment {
+  patientId: number;
+  date: string;
+  comment1: string;  // 진료메모1 (증상 기록)
+  comment2: string;  // 진료메모2 (치료 내용)
+}
+
+export async function fetchPatientDetailComments(patientId: number, limit = 20): Promise<DetailComment[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/patients/${patientId}/detail-comments?limit=${limit}`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.map((d: any) => ({
+      patientId: d.patient_id,
+      date: d.date,
+      comment1: d.comment1 || '',
+      comment2: d.comment2 || '',
+    }));
+  } catch (error) {
+    console.error('환자 진료메모 조회 오류:', error);
+    return [];
+  }
+}
