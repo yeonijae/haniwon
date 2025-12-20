@@ -80,6 +80,7 @@ interface PatientChartModalProps {
   loading: boolean;
   isActingInProgress: boolean;
   elapsedTime: number;
+  fontSize: number;
   onClose: () => void;
   onStartActing: () => void;
   onCompleteActing: () => void;
@@ -96,6 +97,7 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
   loading,
   isActingInProgress,
   elapsedTime,
+  fontSize,
   onClose,
   onStartActing,
   onCompleteActing,
@@ -166,7 +168,7 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50" style={{ fontSize: `${fontSize}px` }}>
       <div className="bg-white w-full h-full overflow-hidden flex flex-col">
         {/* 헤더: 이름, 나이/성별, 차트번호 */}
         <div className="bg-blue-600 text-white px-6 py-4 flex items-center justify-between">
@@ -446,6 +448,14 @@ interface DoctorViewProps {
   onBack: () => void;
 }
 
+// 폰트 크기 설정
+const FONT_SIZES = [
+  { label: '작게', value: 14 },
+  { label: '보통', value: 16 },
+  { label: '크게', value: 18 },
+  { label: '매우 크게', value: 20 },
+];
+
 const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
   const [status, setStatus] = useState<DoctorStatus | null>(null);
   const [queue, setQueue] = useState<ActingQueueItem[]>([]);
@@ -453,6 +463,22 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
   const [myPatientRooms, setMyPatientRooms] = useState<TreatmentRoom[]>([]);
   const [loading, setLoading] = useState(true);
   const [elapsedTime, setElapsedTime] = useState(0);
+
+  // 폰트 크기 상태 (localStorage에서 복원)
+  const [fontSizeIndex, setFontSizeIndex] = useState(() => {
+    const saved = localStorage.getItem('doctorPadFontSize');
+    return saved ? parseInt(saved, 10) : 1; // 기본값: 보통(16px)
+  });
+
+  const fontSize = FONT_SIZES[fontSizeIndex].value;
+
+  const handleFontSizeChange = (delta: number) => {
+    setFontSizeIndex(prev => {
+      const next = Math.max(0, Math.min(FONT_SIZES.length - 1, prev + delta));
+      localStorage.setItem('doctorPadFontSize', next.toString());
+      return next;
+    });
+  };
 
   // 환자 차트 모달 상태
   const [selectedActing, setSelectedActing] = useState<ActingQueueItem | null>(null);
@@ -636,7 +662,7 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
   const statusStyle = STATUS_STYLES[status?.status || 'office'];
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className="min-h-screen bg-gray-100 flex flex-col" style={{ fontSize: `${fontSize}px` }}>
       {/* 헤더 */}
       <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
         <button onClick={onBack} className="text-gray-600 text-2xl p-2">←</button>
@@ -646,7 +672,24 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
             {statusStyle.label}
           </span>
         </div>
-        <button onClick={loadData} className="text-gray-600 text-xl p-2">↻</button>
+        <div className="flex items-center gap-1">
+          {/* 폰트 크기 조정 버튼 */}
+          <button
+            onClick={() => handleFontSizeChange(-1)}
+            disabled={fontSizeIndex === 0}
+            className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200"
+          >
+            A-
+          </button>
+          <button
+            onClick={() => handleFontSizeChange(1)}
+            disabled={fontSizeIndex === FONT_SIZES.length - 1}
+            className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200"
+          >
+            A+
+          </button>
+          <button onClick={loadData} className="text-gray-600 text-xl p-2 ml-1">↻</button>
+        </div>
       </header>
 
       {/* 메인 콘텐츠 - 3섹션 */}
@@ -743,6 +786,7 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
           loading={loadingPatientInfo}
           isActingInProgress={currentActing?.id === selectedActing.id}
           elapsedTime={currentActing?.id === selectedActing.id ? elapsedTime : 0}
+          fontSize={fontSize}
           onClose={handleCloseModal}
           onStartActing={handleStartActing}
           onCompleteActing={handleCompleteActing}
