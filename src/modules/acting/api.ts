@@ -717,6 +717,19 @@ export async function fetchPatientMainDoctor(patientId: number): Promise<MainDoc
   }
 }
 
+// 로컬 SQLite patient_id로 MSSQL Customer_PK 조회
+export async function getMssqlPatientId(localPatientId: number): Promise<number | null> {
+  try {
+    const patient = await queryOne<{ mssql_id: number | null }>(`
+      SELECT mssql_id FROM patients WHERE id = ${localPatientId}
+    `);
+    return patient?.mssql_id || null;
+  } catch (error) {
+    console.error('MSSQL ID 조회 오류:', error);
+    return null;
+  }
+}
+
 // 환자 메모 정보 조회 (MSSQL API 서버 경유)
 export async function fetchPatientMemo(patientId: number): Promise<PatientMemo | null> {
   try {

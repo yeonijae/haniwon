@@ -15,7 +15,7 @@ import type { ActingQueueItem, DoctorStatus } from '@modules/acting/types';
 import type { TreatmentRoom } from '@modules/treatment/types';
 import * as actingApi from '@modules/acting/api';
 import type { PatientMemo, TreatmentHistory, DetailComment } from '@modules/acting/api';
-import { fetchPatientDetailComments } from '@modules/acting/api';
+import { fetchPatientDetailComments, getMssqlPatientId } from '@modules/acting/api';
 import { fetchTreatmentRooms } from '@modules/manage/lib/api';
 import {
   fetchPatientDefaultTreatments,
@@ -550,12 +550,16 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
     const today = new Date().toISOString().split('T')[0];
 
     try {
+      // 로컬 SQLite patient_id -> MSSQL Customer_PK 변환
+      const mssqlPatientId = await getMssqlPatientId(acting.patientId);
+      const apiPatientId = mssqlPatientId || acting.patientId;
+
       const [memo, treatments, detailComments, defaultTreatments, dailyRecord] = await Promise.all([
-        actingApi.fetchPatientMemo(acting.patientId),
-        actingApi.fetchPatientTreatments(acting.patientId, 3),
-        fetchPatientDetailComments(acting.patientId, 10),
-        fetchPatientDefaultTreatments(acting.patientId),
-        fetchDailyTreatmentRecord(acting.patientId, today),
+        actingApi.fetchPatientMemo(apiPatientId),
+        actingApi.fetchPatientTreatments(apiPatientId, 3),
+        fetchPatientDetailComments(apiPatientId, 10),
+        fetchPatientDefaultTreatments(acting.patientId),  // 로컬 ID 사용 (SQLite)
+        fetchDailyTreatmentRecord(acting.patientId, today),  // 로컬 ID 사용 (SQLite)
       ]);
 
       setPatientMemo(memo);
