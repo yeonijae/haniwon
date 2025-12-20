@@ -336,21 +336,17 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
                   {detailComments.length > 0 ? (
                     detailComments.slice(0, 10).map((dc, idx) => (
                       <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
-                        <div className="bg-gray-100 px-4 py-2">
+                        <div className="bg-gray-100 px-4 py-2 flex items-center justify-between">
                           <span className="font-bold text-gray-800">{dc.date}</span>
-                        </div>
-                        <div className="p-4 space-y-2">
-                          {dc.comment1 && (
-                            <div>
-                              <span className="text-xs font-bold text-purple-600">증상</span>
-                              <p className="text-gray-700 text-sm whitespace-pre-wrap">{dc.comment1}</p>
-                            </div>
+                          {dc.doctor && (
+                            <span className="text-sm text-blue-600 font-medium">{dc.doctor}</span>
                           )}
-                          {dc.comment2 && (
-                            <div>
-                              <span className="text-xs font-bold text-teal-600">치료</span>
-                              <p className="text-gray-700 text-sm whitespace-pre-wrap">{dc.comment2}</p>
-                            </div>
+                        </div>
+                        <div className="p-4">
+                          {dc.comment1 ? (
+                            <p className="text-gray-700 text-sm whitespace-pre-wrap">{dc.comment1}</p>
+                          ) : (
+                            <p className="text-gray-400 text-sm">기록 없음</p>
                           )}
                         </div>
                       </div>

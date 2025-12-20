@@ -797,7 +797,7 @@ export interface DetailComment {
   patientId: number;
   date: string;
   comment1: string;  // 진료메모1 (증상 기록)
-  comment2: string;  // 진료메모2 (치료 내용)
+  doctor: string;    // 담당의
 }
 
 export async function fetchPatientDetailComments(patientId: number, limit = 20): Promise<DetailComment[]> {
@@ -812,7 +812,7 @@ export async function fetchPatientDetailComments(patientId: number, limit = 20):
       patientId: d.patient_id,
       date: d.date,
       comment1: d.comment1 || '',
-      comment2: d.comment2 || '',
+      doctor: d.doctor || '',
     }));
   } catch (error) {
     console.error('환자 진료메모 조회 오류:', error);
