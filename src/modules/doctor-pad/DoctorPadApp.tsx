@@ -108,6 +108,13 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
     yakchim: {},
   });
 
+  // 진료내역 펼침 상태 (인덱스별)
+  const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
+
+  const toggleComment2 = (idx: number) => {
+    setExpandedComments(prev => ({ ...prev, [idx]: !prev[idx] }));
+  };
+
   // 이전 치료 정보 불러오기 (재진 환자용)
   useEffect(() => {
     if (defaultTreatments) {
@@ -347,25 +354,57 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
                       const dateWithDay = `${dc.date}(${dayOfWeek})`;
 
                       // Comment1에서 날짜 패턴 제거 (예: [2025-12-16(화)] )
-                      const cleanComment = dc.comment1
+                      const cleanComment1 = dc.comment1
                         ? dc.comment1.replace(/^\[\d{4}-\d{2}-\d{2}\([월화수목금토일]\)\]\s*/g, '').trim()
                         : '';
+
+                      const isExpanded = expandedComments[idx];
+                      const hasComment2 = dc.comment2 && dc.comment2.trim().length > 0;
 
                       return (
                         <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
                           <div className="bg-gray-100 px-4 py-2 flex items-center justify-between">
-                            <span className="font-bold text-gray-800">{dateWithDay}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-gray-800">{dateWithDay}</span>
+                              {hasComment2 && (
+                                <button
+                                  onClick={() => toggleComment2(idx)}
+                                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                    isExpanded
+                                      ? 'bg-teal-500 text-white'
+                                      : 'bg-teal-100 text-teal-700 hover:bg-teal-200'
+                                  }`}
+                                >
+                                  치료 {isExpanded ? '▲' : '▼'}
+                                </button>
+                              )}
+                            </div>
                             {dc.doctor && (
                               <span className="text-blue-600 font-medium">{dc.doctor}</span>
                             )}
                           </div>
                           <div className="p-4">
-                            {cleanComment ? (
-                              <p className="text-gray-700 whitespace-pre-wrap">{cleanComment}</p>
+                            {cleanComment1 ? (
+                              <p className="text-gray-700 whitespace-pre-wrap">{cleanComment1}</p>
                             ) : (
                               <p className="text-gray-400">기록 없음</p>
                             )}
                           </div>
+                          {/* 진료메모2 아코디언 */}
+                          {hasComment2 && (
+                            <div
+                              className="overflow-hidden transition-all duration-300 ease-in-out"
+                              style={{
+                                maxHeight: isExpanded ? '500px' : '0',
+                                opacity: isExpanded ? 1 : 0,
+                              }}
+                            >
+                              <div className="px-4 pb-4 pt-2 border-t border-gray-200 bg-teal-50">
+                                <span className="font-bold text-teal-600" style={{ fontSize: '0.9em' }}>치료내용</span>
+                                <p className="text-gray-700 whitespace-pre-wrap mt-1">{dc.comment2}</p>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })
