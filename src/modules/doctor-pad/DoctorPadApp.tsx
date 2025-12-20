@@ -220,14 +220,14 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
             <div className="p-4 space-y-4">
               {/* 섹션 1: 메모 (readonly) */}
               <section className="bg-white rounded-xl shadow p-4">
-                <h3 className="text-lg font-bold text-gray-700 mb-3 flex items-center gap-2">
+                <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2" style={{ fontSize: '1.1em' }}>
                   <span>📋</span> 환자 메모
                 </h3>
                 <div className="space-y-3">
                   {/* 주소증 */}
                   {memo?.mainDisease && (
                     <div className="bg-orange-50 border-l-4 border-orange-400 p-3 rounded-r">
-                      <span className="text-sm font-bold text-orange-600">주소증</span>
+                      <span className="font-bold text-orange-600" style={{ fontSize: '0.9em' }}>주소증</span>
                       <p className="text-gray-800 mt-1">{memo.mainDisease}</p>
                     </div>
                   )}
@@ -235,7 +235,7 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
                   {/* 주치의메모 */}
                   {memo?.doctorMemo && (
                     <div className="bg-red-50 border-l-4 border-red-400 p-3 rounded-r">
-                      <span className="text-sm font-bold text-red-600">주치의메모</span>
+                      <span className="font-bold text-red-600" style={{ fontSize: '0.9em' }}>주치의메모</span>
                       <p className="text-gray-800 mt-1 whitespace-pre-wrap">{memo.doctorMemo}</p>
                     </div>
                   )}
@@ -243,7 +243,7 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
                   {/* 간호사메모 */}
                   {memo?.nurseMemo && (
                     <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded-r">
-                      <span className="text-sm font-bold text-blue-600">간호사메모</span>
+                      <span className="font-bold text-blue-600" style={{ fontSize: '0.9em' }}>간호사메모</span>
                       <p className="text-gray-800 mt-1 whitespace-pre-wrap">{memo.nurseMemo}</p>
                     </div>
                   )}
@@ -251,7 +251,7 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
                   {/* 기타메모 */}
                   {memo?.etcMemo && (
                     <div className="bg-gray-100 border-l-4 border-gray-400 p-3 rounded-r">
-                      <span className="text-sm font-bold text-gray-600">기타메모</span>
+                      <span className="font-bold text-gray-600" style={{ fontSize: '0.9em' }}>기타메모</span>
                       <p className="text-gray-800 mt-1">{memo.etcMemo}</p>
                     </div>
                   )}
@@ -264,23 +264,24 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
 
               {/* 섹션 2: 오늘 치료 입력 */}
               <section className="bg-white rounded-xl shadow p-4">
-                <h3 className="text-lg font-bold text-gray-700 mb-3 flex items-center gap-2">
+                <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2" style={{ fontSize: '1.1em' }}>
                   <span>💉</span> 오늘 치료
                 </h3>
 
                 {/* 침치료 토글 버튼 */}
                 <div className="mb-4">
-                  <p className="text-sm text-gray-500 mb-2">침치료</p>
+                  <p className="text-gray-500 mb-2" style={{ fontSize: '0.9em' }}>침치료</p>
                   <div className="flex flex-wrap gap-2">
                     {ACUPUNCTURE_ITEMS.map(item => (
                       <button
                         key={item.key}
                         onClick={() => toggleAcupuncture(item.key)}
-                        className={`px-5 py-3 rounded-xl text-lg font-bold transition-all ${
+                        className={`px-5 py-3 rounded-xl font-bold transition-all ${
                           todayTreatment.acupuncture[item.key]
                             ? 'bg-blue-600 text-white shadow-lg'
                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
+                        style={{ fontSize: '1.1em' }}
                       >
                         {item.label}
                       </button>
@@ -290,7 +291,7 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
 
                 {/* 약침 카운터 버튼 */}
                 <div>
-                  <p className="text-sm text-gray-500 mb-2">약침</p>
+                  <p className="text-gray-500 mb-2" style={{ fontSize: '0.9em' }}>약침</p>
                   <div className="grid grid-cols-2 gap-3">
                     {YAKCHIM_ITEMS.map(item => {
                       const count = todayTreatment.yakchim[item.key] || 0;
@@ -310,14 +311,16 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => adjustYakchim(item.key, -5)}
-                              className="w-10 h-10 rounded-full bg-gray-200 text-gray-700 text-xl font-bold hover:bg-gray-300"
+                              className="w-10 h-10 rounded-full bg-gray-200 text-gray-700 font-bold hover:bg-gray-300"
+                              style={{ fontSize: '1.2em' }}
                             >
                               -
                             </button>
-                            <span className="w-12 text-center text-xl font-bold">{count}cc</span>
+                            <span className="w-12 text-center font-bold" style={{ fontSize: '1.1em' }}>{count}cc</span>
                             <button
                               onClick={() => adjustYakchim(item.key, 5)}
-                              className="w-10 h-10 rounded-full bg-blue-500 text-white text-xl font-bold hover:bg-blue-600"
+                              className="w-10 h-10 rounded-full bg-blue-500 text-white font-bold hover:bg-blue-600"
+                              style={{ fontSize: '1.2em' }}
                             >
                               +
                             </button>
@@ -331,7 +334,7 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
 
               {/* 섹션 3: 진료내역 (날짜별 DetailComment) */}
               <section className="bg-white rounded-xl shadow p-4">
-                <h3 className="text-lg font-bold text-gray-700 mb-3 flex items-center gap-2">
+                <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2" style={{ fontSize: '1.1em' }}>
                   <span>📝</span> 진료내역
                 </h3>
                 <div className="space-y-3">
@@ -341,14 +344,14 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
                         <div className="bg-gray-100 px-4 py-2 flex items-center justify-between">
                           <span className="font-bold text-gray-800">{dc.date}</span>
                           {dc.doctor && (
-                            <span className="text-sm text-blue-600 font-medium">{dc.doctor}</span>
+                            <span className="text-blue-600 font-medium">{dc.doctor}</span>
                           )}
                         </div>
                         <div className="p-4">
                           {dc.comment1 ? (
-                            <p className="text-gray-700 text-sm whitespace-pre-wrap">{dc.comment1}</p>
+                            <p className="text-gray-700 whitespace-pre-wrap">{dc.comment1}</p>
                           ) : (
-                            <p className="text-gray-400 text-sm">기록 없음</p>
+                            <p className="text-gray-400">기록 없음</p>
                           )}
                         </div>
                       </div>
