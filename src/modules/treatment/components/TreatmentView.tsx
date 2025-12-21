@@ -8,7 +8,7 @@ import * as actingApi from '@acting/api';
 const getStatusClasses = (status: RoomStatus): { border: string, bg: string, text: string } => {
   switch (status) {
     case RoomStatus.IN_USE:
-      return { border: 'border-blue-500', bg: 'bg-blue-50', text: 'text-blue-700' };
+      return { border: 'border-blue-500', bg: 'bg-white', text: 'text-blue-700' };
     case RoomStatus.AVAILABLE:
       return { border: 'border-gray-300', bg: 'bg-white', text: 'text-gray-700' };
     case RoomStatus.NEED_CLEAN:
@@ -121,21 +121,25 @@ const TreatmentProgressItem: React.FC<TreatmentProgressItemProps> = memo(({ trea
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
+        e.stopPropagation();
     }, []);
 
     const handleDragEnter = useCallback((e: React.DragEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         if (draggedTreatmentRoomId === roomId) {
             setIsDragOver(true);
         }
     }, [draggedTreatmentRoomId, roomId]);
 
-    const handleDragLeave = useCallback(() => {
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+        e.stopPropagation();
         setIsDragOver(false);
     }, []);
 
     const handleDropInternal = useCallback((e: React.DragEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         setIsDragOver(false);
         onDrop(roomId, treatment.id);
     }, [onDrop, roomId, treatment.id]);
@@ -145,7 +149,9 @@ const TreatmentProgressItem: React.FC<TreatmentProgressItemProps> = memo(({ trea
         onDragEnd();
     }, [onDragEnd]);
 
-    const handleDragStart = useCallback(() => {
+    const handleDragStart = useCallback((e: React.DragEvent) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', treatment.id);
         onDragStart(roomId, treatment.id);
     }, [onDragStart, roomId, treatment.id]);
 
@@ -166,7 +172,12 @@ const TreatmentProgressItem: React.FC<TreatmentProgressItemProps> = memo(({ trea
                 style={{ width: `${progress}%` }}
             ></div>
             <div className="relative w-full flex items-center justify-between pl-3 pr-2">
-                <span className={`text-base font-semibold truncate ${isFinished ? 'text-gray-400 line-through' : 'text-clinic-text-primary'}`} title={treatment.memo}>
+                <span className={`text-base font-semibold truncate ${
+                    isFinished ? 'text-gray-400 line-through' :
+                    treatment.name === '핫팩' ? 'text-red-600' :
+                    treatment.name === '물치' ? 'text-blue-600' :
+                    'text-clinic-text-primary'
+                }`} title={treatment.memo}>
                     {treatment.name}
                 </span>
                 <div className="flex items-center gap-2 flex-grow min-w-0 justify-end">
@@ -922,7 +933,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                 treatments.splice(targetIndex, 0, movedItem);
             }
             return { ...room, sessionTreatments: treatments };
-        });
+        }, true);
     }, [draggedTreatment, updateRoom]);
 
     const handleAddTreatment = useCallback((roomId: number, treatment: { name: string; duration: number; }) => {
