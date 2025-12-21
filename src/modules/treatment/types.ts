@@ -39,6 +39,8 @@ export interface Patient {
   deletionDate?: string; // ISO string for when the patient was deleted
   defaultTreatments?: DefaultTreatment[];
   doctor?: string; // 담당의
+  treatmentClothing?: string; // 환자복 설정
+  treatmentNotes?: string; // 치료 주의사항
 }
 
 export enum RoomStatus {
@@ -72,6 +74,8 @@ export interface TreatmentRoom {
   doctorName?: string;
   inTime?: string; // ISO string for when patient was assigned
   sessionTreatments: SessionTreatment[];
+  patientClothing?: string; // 환자복
+  patientNotes?: string; // 주의사항
 }
 
 // 자침: 원장이 침 놓는 시간 (1~3분), 기존 '침'은 호환성 위해 유지

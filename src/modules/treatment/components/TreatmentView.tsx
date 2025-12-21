@@ -131,6 +131,29 @@ interface TreatmentProgressItemProps {
 const TreatmentProgressItem: React.FC<TreatmentProgressItemProps> = memo(({ treatment, roomId, onTreatmentAction, onTimeChange, onDelete, isBeingDragged, draggedTreatmentRoomId, onDragStart, onDragEnd, onDrop }) => {
     const { remainingSeconds, currentElapsedSeconds, progress } = useTimer(treatment);
     const [isDragOver, setIsDragOver] = useState(false);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    // 컨텍스트 메뉴 외부 클릭 감지
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setContextMenu(null);
+            }
+        };
+        if (contextMenu) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [contextMenu]);
+
+    const handleContextMenu = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+    }, []);
 
     // 침 치료는 경과 시간 표시, 그 외는 남은 시간 표시
     const isAcupuncture = treatment.name === '침' || treatment.name === '자침';
@@ -199,12 +222,13 @@ const TreatmentProgressItem: React.FC<TreatmentProgressItemProps> = memo(({ trea
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDrop={handleDropInternal}
+            onContextMenu={handleContextMenu}
         >
             <div
                 className="absolute top-0 left-0 h-full bg-blue-200 transition-all duration-300"
                 style={{ width: `${progress}%` }}
             ></div>
-            <div className="relative w-full flex items-center justify-between pl-3 pr-2">
+            <div className="relative w-full flex items-center justify-between pl-3 pr-[2px]">
                 <span className={`text-base font-semibold truncate ${
                     isFinished ? 'text-gray-400 line-through' :
                     treatment.name === '핫팩' ? 'text-red-600' :
@@ -252,11 +276,12 @@ const TreatmentProgressItem: React.FC<TreatmentProgressItemProps> = memo(({ trea
                             <div className="flex-grow text-center" onClick={treatment.status === 'pending' ? handleTimerClick : undefined}>
                                 {treatment.status === 'pending' ? (
                                     <div
-                                        className="text-xs text-gray-500 hover:text-clinic-primary truncate cursor-pointer h-full flex items-center justify-center"
-                                        title={treatment.memo || `${treatment.duration}분 예정`}
+                                        className="text-xs text-gray-500 hover:text-clinic-primary truncate cursor-pointer h-full flex items-center justify-center gap-1"
+                                        title={treatment.memo ? `${treatment.duration}분 - ${treatment.memo}` : `${treatment.duration}분 예정`}
                                         aria-label={`${treatment.name} 치료 시작`}
                                     >
-                                        {treatment.memo || `${treatment.duration}분 예정`}
+                                        <span className="flex-shrink-0">{treatment.duration}분</span>
+                                        {treatment.memo && <span className="truncate">- {treatment.memo}</span>}
                                     </div>
                                 ) : (
                                     <span className="text-xl font-mono font-semibold tabular-nums w-16 text-center flex items-center justify-center text-green-600" aria-label="완료됨">
@@ -264,16 +289,37 @@ const TreatmentProgressItem: React.FC<TreatmentProgressItemProps> = memo(({ trea
                                     </span>
                                 )}
                             </div>
-                             <div className="w-7 h-7 flex items-center justify-center flex-shrink-0">
-                                <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
-                                    {(treatment.status === 'completed' || isFinished) && <button onClick={(e) => { e.stopPropagation(); onTreatmentAction(roomId, treatment.id, 'reset'); }} className="text-gray-400 hover:text-gray-600 w-5 h-5 flex items-center justify-center" aria-label="타이머 초기화"><i className="fa-solid fa-rotate-left"></i></button>}
-                                    {treatment.status === 'pending' && <button onClick={(e) => { e.stopPropagation(); onDelete(roomId, treatment.id); }} className="text-red-500 hover:text-red-700 w-5 h-5 flex items-center justify-center" aria-label="치료 삭제"><i className="fa-solid fa-trash-can"></i></button>}
+                            {(treatment.status === 'completed' || isFinished) && (
+                                <div className="w-7 h-7 flex items-center justify-center flex-shrink-0">
+                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
+                                        <button onClick={(e) => { e.stopPropagation(); onTreatmentAction(roomId, treatment.id, 'reset'); }} className="text-gray-400 hover:text-gray-600 w-5 h-5 flex items-center justify-center" aria-label="타이머 초기화"><i className="fa-solid fa-rotate-left"></i></button>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </>
                     )}
                 </div>
             </div>
+            {/* 컨텍스트 메뉴 */}
+            {contextMenu && (
+                <div
+                    ref={menuRef}
+                    className="fixed bg-white rounded-lg shadow-lg border z-50 py-1 min-w-[120px]"
+                    style={{ top: contextMenu.y, left: contextMenu.x }}
+                >
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(roomId, treatment.id);
+                            setContextMenu(null);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                    >
+                        <i className="fa-solid fa-trash-can"></i>
+                        삭제
+                    </button>
+                </div>
+            )}
         </div>
     );
 }, (prevProps, nextProps) => {
@@ -327,9 +373,24 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
     const menuRef = useRef<HTMLDivElement>(null);
     const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
     const addMenuRef = useRef<HTMLDivElement>(null);
+    const [showClothingSnackbar, setShowClothingSnackbar] = useState(false);
+    const prevPatientIdRef = useRef<number | undefined>(undefined);
 
     // 타이머 만료 확인
     const hasExpiredTimer = useHasExpiredTimer(room.sessionTreatments);
+
+    // 환자 배정 시 환자복 스낵바 표시 (1분 후 자동 숨김)
+    useEffect(() => {
+        // 새로운 환자가 배정되었고, 환자복 정보가 있는 경우
+        if (room.patientId && room.patientId !== prevPatientIdRef.current && room.patientClothing) {
+            setShowClothingSnackbar(true);
+            const timer = setTimeout(() => {
+                setShowClothingSnackbar(false);
+            }, 60000);
+            return () => clearTimeout(timer);
+        }
+        prevPatientIdRef.current = room.patientId;
+    }, [room.patientId, room.patientClothing]);
 
     const availableTreatmentsToAdd = useMemo(() => {
         if (room.status !== RoomStatus.IN_USE) return [];
@@ -424,6 +485,13 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
                     .animate-timer-expired {
                         animation: timerExpiredBlink 1s ease-in-out infinite;
                     }
+                    @keyframes fadeIn {
+                        from { opacity: 0; transform: translateY(-5px); }
+                        to { opacity: 1; transform: translateY(0); }
+                    }
+                    .animate-fade-in {
+                        animation: fadeIn 0.3s ease-out;
+                    }
                 `}
             </style>
             <div
@@ -493,6 +561,16 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
                     )}
                   </div>
 
+                  {/* 환자복 스낵바 (배정 직후 5초간 표시) */}
+                  {showClothingSnackbar && room.patientClothing && (
+                    <div className="mx-2 mt-2 px-3 py-2 bg-amber-100 border border-amber-300 rounded-lg text-sm animate-fade-in">
+                      <div className="flex items-center gap-2">
+                        <i className="fa-solid fa-shirt text-amber-600"></i>
+                        <span className="font-medium text-amber-800">{room.patientClothing}</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex-grow my-2 flex flex-col gap-1 px-2 overflow-y-auto">
                     {room.sessionTreatments.map(tx => (
                         <TreatmentProgressItem
@@ -510,6 +588,14 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
                         />
                     ))}
                   </div>
+
+                  {/* 주의사항 (하단 고정) */}
+                  {room.patientNotes && (
+                    <div className="mx-2 -mb-2 px-2 py-1 text-xs text-red-600 font-medium flex items-center gap-1 bg-red-50 rounded border border-red-200">
+                      <i className="fa-solid fa-triangle-exclamation"></i>
+                      <span>{room.patientNotes}</span>
+                    </div>
+                  )}
                 </>
               ) : room.status === RoomStatus.AVAILABLE ? (
                 <div className={`flex flex-col items-center justify-center h-full text-center rounded-lg transition-colors ${isDragOver ? 'bg-blue-100' : ''}`}>
@@ -574,7 +660,7 @@ interface TreatmentViewProps {
     onAddToWaitingList: (patient: Patient) => void;
     onMovePatientToPayment: (patientId: number) => void;
     allPatients: Patient[];
-    onUpdatePatientDefaultTreatments: (patientId: number, treatments: DefaultTreatment[]) => void;
+    onUpdatePatientDefaultTreatments: (patientId: number, treatments: DefaultTreatment[], settings?: { clothing?: string; notes?: string }) => void;
     treatmentItems: TreatmentItem[];
     onTreatmentStart?: (patientId: number, roomName: string) => void;
 }
@@ -597,7 +683,11 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
     allPatientsRef.current = allPatients;
 
     const handlePatientMouseEnter = (e: React.MouseEvent<HTMLLIElement>, patient: Patient) => {
-        if (patient.defaultTreatments && patient.defaultTreatments.length > 0) {
+        // 기본치료 정보, 환자복, 주의사항 중 하나라도 있으면 팝오버 표시
+        const hasInfo = (patient.defaultTreatments && patient.defaultTreatments.length > 0) ||
+                        patient.treatmentClothing ||
+                        patient.treatmentNotes;
+        if (hasInfo) {
             const rect = e.currentTarget.getBoundingClientRect();
             setPopoverPosition({ x: rect.right + 5, y: rect.top });
             setHoveredPatient(patient);
@@ -730,6 +820,8 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                     doctorName: patient.doctor || '',
                     inTime: new Date().toISOString(),
                     sessionTreatments,
+                    patientClothing: patient.treatmentClothing,
+                    patientNotes: patient.treatmentNotes,
                 };
 
                 // 액팅 자동 추가 (비동기로 실행 - 담당 원장은 patient.doctor 우선 사용)
@@ -1006,11 +1098,18 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
         setInfoModalRoom(room);
     }, []);
 
-    const handleSaveTreatmentInfo = (roomId: number, updatedTreatments: SessionTreatment[]) => {
+    const handleSaveTreatmentInfo = (roomId: number, updatedTreatments: SessionTreatment[], settings: { clothing?: string; notes?: string }) => {
         updateRoom(roomId, room => ({
             ...room,
             sessionTreatments: updatedTreatments,
-        }));
+            patientClothing: settings.clothing,
+            patientNotes: settings.notes,
+        }), true); // DB에 저장
+        setInfoModalRoom(null);
+    };
+
+    const handleSaveDefaultTreatmentsFromModal = (patientId: number, treatments: { name: string; duration: number; memo?: string }[], settings: { clothing?: string; notes?: string }) => {
+        onUpdatePatientDefaultTreatments(patientId, treatments as DefaultTreatment[], settings);
         setInfoModalRoom(null);
     };
 
@@ -1099,23 +1198,45 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                   isOpen={true}
                   onClose={() => setInfoModalRoom(null)}
                   room={infoModalRoom}
-                  onSave={handleSaveTreatmentInfo}
+                  onSaveToday={handleSaveTreatmentInfo}
+                  onSaveDefault={handleSaveDefaultTreatmentsFromModal}
                   treatmentItems={treatmentItems}
               />
           )}
            {hoveredPatient && (
                 <div
-                    className="fixed z-50 w-64 p-3 bg-white rounded-lg shadow-xl border border-gray-200"
+                    className="fixed z-50 w-72 p-3 bg-white rounded-lg shadow-xl border border-gray-200"
                     style={{ top: popoverPosition.y, left: popoverPosition.x, pointerEvents: 'none' }}
                 >
                     <h4 className="font-bold text-clinic-primary mb-2 border-b pb-1">
-                        {hoveredPatient.name}님 예정 치료
+                        {hoveredPatient.name}님 치료 정보
                     </h4>
+                    {/* 환자복 & 주의사항 */}
+                    {(hoveredPatient.treatmentClothing || hoveredPatient.treatmentNotes) && (
+                        <div className="mb-2 pb-2 border-b border-gray-100 text-sm space-y-1">
+                            {hoveredPatient.treatmentClothing && (
+                                <div className="flex gap-2">
+                                    <span className="text-gray-500">환자복:</span>
+                                    <span className="font-medium">{hoveredPatient.treatmentClothing}</span>
+                                </div>
+                            )}
+                            {hoveredPatient.treatmentNotes && (
+                                <div className="flex gap-2">
+                                    <span className="text-gray-500">주의:</span>
+                                    <span className="font-medium text-red-600">{hoveredPatient.treatmentNotes}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {/* 치료 항목 */}
                     <ul className="space-y-1">
                         {hoveredPatient.defaultTreatments?.map((tx, index) => (
-                            <li key={index} className="text-sm">
-                                <strong className="text-clinic-text-primary">{tx.name}</strong>
-                                {tx.memo && <span className="text-clinic-text-secondary ml-2">- {tx.memo}</span>}
+                            <li key={index} className="text-sm flex justify-between gap-2">
+                                <span>
+                                    <strong className="text-clinic-text-primary">{tx.name}</strong>
+                                    {tx.memo && <span className="text-clinic-text-secondary ml-1">- {tx.memo}</span>}
+                                </span>
+                                <span className="text-gray-500">{tx.duration}분</span>
                             </li>
                         ))}
                     </ul>

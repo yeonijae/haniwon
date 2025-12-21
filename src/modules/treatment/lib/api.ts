@@ -78,6 +78,8 @@ export async function fetchPatientById(patientId: number): Promise<Patient | nul
     address: undefined,
     referralPath: undefined,
     registrationDate: data.created_at || undefined,
+    treatmentClothing: data.treatment_clothing || undefined,
+    treatmentNotes: data.treatment_notes || undefined,
   };
 }
 
@@ -96,7 +98,7 @@ export async function fetchPatientDefaultTreatments(patientId: number): Promise<
   return data.map((t) => ({
     name: t.treatment_name,
     duration: t.duration,
-    memo: '',
+    memo: t.memo || '',
   }));
 }
 
@@ -111,9 +113,26 @@ export async function savePatientDefaultTreatments(
   // 새 치료 추가
   for (const t of treatments) {
     await execute(`
-      INSERT INTO patient_default_treatments (patient_id, treatment_name, duration)
-      VALUES (${patientId}, ${escapeString(t.name)}, ${t.duration})
+      INSERT INTO patient_default_treatments (patient_id, treatment_name, duration, memo)
+      VALUES (${patientId}, ${escapeString(t.name)}, ${t.duration}, ${escapeString(t.memo || '')})
     `);
+  }
+}
+
+// 환자 치료 설정 저장 (환자복, 주의사항)
+export async function savePatientTreatmentSettings(
+  patientId: number,
+  settings: { clothing?: string; notes?: string }
+): Promise<void> {
+  const updateParts: string[] = [];
+  if (settings.clothing !== undefined) {
+    updateParts.push(`treatment_clothing = ${escapeString(settings.clothing)}`);
+  }
+  if (settings.notes !== undefined) {
+    updateParts.push(`treatment_notes = ${escapeString(settings.notes)}`);
+  }
+  if (updateParts.length > 0) {
+    await execute(`UPDATE patients SET ${updateParts.join(', ')} WHERE id = ${patientId}`);
   }
 }
 
@@ -171,6 +190,8 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
         elapsedSeconds: st.elapsed_seconds || 0,
         memo: st.memo,
       })),
+      patientClothing: room.patient_clothing || undefined,
+      patientNotes: room.patient_notes || undefined,
     });
   }
 
@@ -190,6 +211,8 @@ export async function updateTreatmentRoom(roomId: number, room: Partial<Treatmen
   if (room.patientDob !== undefined) updateParts.push(`patient_dob = ${escapeString(room.patientDob || '')}`);
   if (room.doctorName !== undefined) updateParts.push(`doctor_name = ${escapeString(room.doctorName || '')}`);
   if (room.inTime !== undefined) updateParts.push(`in_time = ${escapeString(room.inTime || '')}`);
+  if (room.patientClothing !== undefined) updateParts.push(`patient_clothing = ${escapeString(room.patientClothing || '')}`);
+  if (room.patientNotes !== undefined) updateParts.push(`patient_notes = ${escapeString(room.patientNotes || '')}`);
   updateParts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
 
   if (updateParts.length > 0) {
@@ -204,9 +227,9 @@ export async function updateTreatmentRoom(roomId: number, room: Partial<Treatmen
     for (let i = 0; i < room.sessionTreatments.length; i++) {
       const st = room.sessionTreatments[i];
       await execute(`
-        INSERT INTO session_treatments (room_id, treatment_name, duration, status, started_at, completed_at, elapsed_seconds, display_order)
+        INSERT INTO session_treatments (room_id, treatment_name, duration, status, started_at, completed_at, elapsed_seconds, display_order, memo)
         VALUES (${roomId}, ${escapeString(st.name)}, ${st.duration}, ${escapeString(st.status)},
-                ${st.startTime ? escapeString(st.startTime) : 'NULL'}, NULL, ${st.elapsedSeconds || 0}, ${i})
+                ${st.startTime ? escapeString(st.startTime) : 'NULL'}, NULL, ${st.elapsedSeconds || 0}, ${i}, ${escapeString(st.memo || '')})
       `);
     }
   }

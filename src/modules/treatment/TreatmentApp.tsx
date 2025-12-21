@@ -143,7 +143,18 @@ function TreatmentApp({ user }: TreatmentAppProps) {
         position: waitingList.length,
         doctor: patient.doctor,
       });
-      setWaitingList(prev => [...prev, patient]);
+      // DB에서 최신 기본치료 정보 및 환자 설정 가져오기
+      const [defaultTreatments, patientData] = await Promise.all([
+        api.fetchPatientDefaultTreatments(patient.id),
+        api.fetchPatientById(patient.id),
+      ]);
+      const patientWithDefaults = {
+        ...patient,
+        defaultTreatments,
+        treatmentClothing: patientData?.treatmentClothing,
+        treatmentNotes: patientData?.treatmentNotes,
+      };
+      setWaitingList(prev => [...prev, patientWithDefaults]);
       lastLocalUpdateRef.current = Date.now(); // DB 작업 완료 후 갱신
     } catch (error) {
       console.error('대기 목록 추가 오류:', error);
@@ -164,15 +175,19 @@ function TreatmentApp({ user }: TreatmentAppProps) {
     }
   }, [treatmentRecordHook]);
 
-  const handleUpdatePatientDefaultTreatments = useCallback(async (patientId: number, treatments: DefaultTreatment[]) => {
+  const handleUpdatePatientDefaultTreatments = useCallback(async (patientId: number, treatments: DefaultTreatment[], settings?: { clothing?: string; notes?: string }) => {
     try {
       await api.savePatientDefaultTreatments(patientId, treatments);
+      // 환자복/주의사항 설정도 저장
+      if (settings) {
+        await api.savePatientTreatmentSettings(patientId, settings);
+      }
       // Update local state
       setWaitingList(prev => prev.map(p =>
-        p.id === patientId ? { ...p, defaultTreatments: treatments } : p
+        p.id === patientId ? { ...p, defaultTreatments: treatments, treatmentClothing: settings?.clothing, treatmentNotes: settings?.notes } : p
       ));
       setAllPatients(prev => prev.map(p =>
-        p.id === patientId ? { ...p, defaultTreatments: treatments } : p
+        p.id === patientId ? { ...p, defaultTreatments: treatments, treatmentClothing: settings?.clothing, treatmentNotes: settings?.notes } : p
       ));
     } catch (error) {
       console.error('기본 치료 저장 오류:', error);
