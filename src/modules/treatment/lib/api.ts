@@ -45,6 +45,26 @@ export async function fetchPatientById(patientId: number): Promise<Patient | nul
 
   if (!data) return null;
 
+  let gender = data.gender as 'male' | 'female' | undefined;
+
+  // 성별이 없으면 MSSQL에서 가져와서 업데이트
+  if (!gender && data.chart_number) {
+    try {
+      const mssqlRes = await fetch(`http://192.168.0.173:3100/api/patients/search?q=${data.chart_number}`);
+      if (mssqlRes.ok) {
+        const mssqlData = await mssqlRes.json();
+        const sex = mssqlData[0]?.sex;
+        if (sex === 'M' || sex === 'F') {
+          gender = sex === 'M' ? 'male' : 'female';
+          // SQLite 업데이트 (비동기)
+          execute(`UPDATE patients SET gender = ${escapeString(gender)} WHERE id = ${patientId}`).catch(() => {});
+        }
+      }
+    } catch {
+      // MSSQL 조회 실패 시 무시
+    }
+  }
+
   return {
     id: data.id,
     name: data.name,
@@ -53,7 +73,7 @@ export async function fetchPatientById(patientId: number): Promise<Patient | nul
     time: '',
     details: '',
     dob: data.birth_date || undefined,
-    gender: data.gender as 'male' | 'female' | undefined,
+    gender,
     phone: data.phone || undefined,
     address: undefined,
     referralPath: undefined,
@@ -103,8 +123,12 @@ export async function savePatientDefaultTreatments(
 
 // 모든 치료실 조회 (session_treatments 별도 테이블에서 조인)
 export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
+  // patients 테이블과 LEFT JOIN하여 성별 정보를 보완
   const rooms = await query<any>(`
-    SELECT * FROM treatment_rooms ORDER BY display_order ASC, id ASC
+    SELECT tr.*, p.gender as patient_gender_from_patients
+    FROM treatment_rooms tr
+    LEFT JOIN patients p ON tr.patient_id = p.id
+    ORDER BY tr.display_order ASC, tr.id ASC
   `);
 
   // 각 room에 대해 session_treatments 조회
@@ -115,6 +139,17 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
       SELECT * FROM session_treatments WHERE room_id = ${room.id} ORDER BY display_order ASC
     `);
 
+    // 치료실의 patient_gender가 없으면 patients 테이블에서 가져온 값 사용
+    const patientGender = room.patient_gender || room.patient_gender_from_patients;
+
+    // 성별이 누락된 경우 DB 업데이트 (다음 폴링부터는 정상)
+    if (!room.patient_gender && room.patient_gender_from_patients && room.patient_id) {
+      execute(`
+        UPDATE treatment_rooms SET patient_gender = ${escapeString(room.patient_gender_from_patients)}
+        WHERE id = ${room.id}
+      `).catch(() => {}); // 백그라운드로 업데이트
+    }
+
     result.push({
       id: room.id,
       name: room.name,
@@ -123,7 +158,7 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
       patientId: room.patient_id,
       patientName: room.patient_name,
       patientChartNumber: room.patient_chart_number,
-      patientGender: room.patient_gender,
+      patientGender: patientGender,
       patientDob: room.patient_dob,
       doctorName: room.doctor_name,
       inTime: room.in_time,

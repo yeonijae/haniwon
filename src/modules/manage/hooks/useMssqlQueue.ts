@@ -168,15 +168,15 @@ export const useMssqlQueue = () => {
       try {
         // SQLite 환자 ID 찾기
         let patientId = patientByChartNo.get(chartNo) || patientByMssqlId.get(patient.patient_id);
+        const gender = patient.sex === 'M' ? 'male' : patient.sex === 'F' ? 'female' : null;
 
         // SQLite에 환자가 없으면 자동으로 생성
         if (!patientId) {
           try {
             patientId = await insert(`
-              INSERT INTO patients (name, chart_number, mssql_id)
-              VALUES (${escapeString(patient.patient_name)}, ${escapeString(chartNo)}, ${patient.patient_id})
+              INSERT INTO patients (name, chart_number, mssql_id, gender)
+              VALUES (${escapeString(patient.patient_name)}, ${escapeString(chartNo)}, ${patient.patient_id}, ${gender ? escapeString(gender) : 'NULL'})
             `);
-            console.log(`✅ ${patient.patient_name} (${chartNo}) SQLite 환자 생성 완료`);
           } catch (insertErr) {
             // UNIQUE constraint 오류 시 다시 조회
             const retryPatient = await queryOne<{ id: number }>(`
@@ -189,6 +189,12 @@ export const useMssqlQueue = () => {
               continue;
             }
           }
+        } else if (gender) {
+          // 기존 환자의 성별이 없으면 업데이트
+          await execute(`
+            UPDATE patients SET gender = ${escapeString(gender)}
+            WHERE id = ${patientId} AND (gender IS NULL OR gender = '')
+          `);
         }
 
         // 이미 대기열에 있으면 스킵
@@ -207,7 +213,6 @@ export const useMssqlQueue = () => {
 
         existingQueuePatientIds.add(patientId); // 다음 루프에서 중복 방지
         processedTreatingChartNosRef.current.add(chartNo);
-        console.log(`✅ ${patient.patient_name} (${chartNo}) 치료대기 등록 완료`);
 
         // 치료 정보 처리 및 액팅 등록 (비동기로 처리, 메인 플로우 블로킹 안함)
         (async () => {
@@ -240,7 +245,6 @@ export const useMssqlQueue = () => {
                         source: 'treatment_queue',
                         memo: treatmentResult.isFirstVisit ? '초진' : '',
                       });
-                      console.log(`🎯 ${patient.patient_name} - ${acting.name} 액팅 등록 (${patient.doctor})`);
                     }
                   }
                 }
@@ -257,6 +261,25 @@ export const useMssqlQueue = () => {
       }
     }
   }, [assignedChartNumbers]);
+
+  // 모든 treating 환자의 성별을 SQLite에 업데이트 (기존 환자 포함)
+  const syncGenderFromMssql = useCallback(async (treatingPatients: MssqlTreatingPatient[]) => {
+    for (const patient of treatingPatients) {
+      if (!patient.sex) continue;
+
+      const chartNo = patient.chart_no?.replace(/^0+/, '') || '';
+      const gender = patient.sex === 'M' ? 'male' : patient.sex === 'F' ? 'female' : null;
+
+      if (gender && chartNo) {
+        // 성별이 없는 환자만 업데이트
+        await execute(`
+          UPDATE patients SET gender = ${escapeString(gender)}
+          WHERE (chart_number = ${escapeString(chartNo)} OR mssql_id = ${patient.patient_id})
+            AND (gender IS NULL OR gender = '')
+        `).catch(() => {});
+      }
+    }
+  }, []);
 
   const fetchQueueStatus = useCallback(async () => {
     try {
@@ -275,12 +298,14 @@ export const useMssqlQueue = () => {
       // MSSQL treating 환자를 SQLite에 동기화
       if (data.treating && data.treating.length > 0) {
         syncTreatingToSqlite(data.treating);
+        // 기존 환자들의 성별도 업데이트
+        syncGenderFromMssql(data.treating);
       }
     } catch (err) {
       setIsConnected(false);
       setError(err instanceof Error ? err.message : '연결 실패');
     }
-  }, [syncTreatingToSqlite]);
+  }, [syncTreatingToSqlite, syncGenderFromMssql]);
 
   // 치료실 배정 환자 목록 주기적 조회 (Polling)
   useEffect(() => {
@@ -318,11 +343,9 @@ export const useMssqlQueue = () => {
 
       return setTimeout(() => {
         processedTreatingChartNosRef.current.clear();
-        console.log('🔄 처리된 환자 목록 초기화 (자정)');
         // 다음 자정 타이머 설정
         const dailyInterval = setInterval(() => {
           processedTreatingChartNosRef.current.clear();
-          console.log('🔄 처리된 환자 목록 초기화 (자정)');
         }, 24 * 60 * 60 * 1000);
         return () => clearInterval(dailyInterval);
       }, msUntilMidnight);

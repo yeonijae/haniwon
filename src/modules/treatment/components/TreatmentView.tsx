@@ -5,10 +5,12 @@ import DefaultTreatmentEditModal from './DefaultTreatmentEditModal';
 import * as api from '../lib/api';
 import * as actingApi from '@acting/api';
 
-const getStatusClasses = (status: RoomStatus): { border: string, bg: string, text: string } => {
+const getStatusClasses = (status: RoomStatus, gender?: 'male' | 'female'): { border: string, bg: string, text: string } => {
   switch (status) {
     case RoomStatus.IN_USE:
-      return { border: 'border-blue-500', bg: 'bg-white', text: 'text-blue-700' };
+      // 성별에 따른 배경색: 남자 - 연한 하늘색, 여자 - 연한 분홍색
+      const genderBg = gender === 'male' ? 'bg-sky-50' : gender === 'female' ? 'bg-pink-50' : 'bg-white';
+      return { border: 'border-blue-500', bg: genderBg, text: 'text-blue-700' };
     case RoomStatus.AVAILABLE:
       return { border: 'border-gray-300', bg: 'bg-white', text: 'text-gray-700' };
     case RoomStatus.NEED_CLEAN:
@@ -318,7 +320,7 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
         };
     }, []);
 
-    const { border, bg } = getStatusClasses(room.status);
+    const { border, bg } = getStatusClasses(room.status, room.patientGender);
 
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
