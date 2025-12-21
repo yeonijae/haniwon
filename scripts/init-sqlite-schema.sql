@@ -447,3 +447,87 @@ INSERT OR IGNORE INTO treatment_rooms (name, room_type, display_order, is_active
   ('침구실 6', 'bed', 6, 1),
   ('침구실 7', 'bed', 7, 1),
   ('침구실 8', 'bed', 8, 1);
+
+-- =====================================================
+-- 11. 액팅 치료 항목 설정 (Acting Treatment Items Config)
+-- =====================================================
+
+-- 액팅별 치료 항목 설정
+CREATE TABLE IF NOT EXISTS acting_treatment_config (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  acting_type TEXT NOT NULL,           -- 침, 추나, 초음파, 약상담
+  item_name TEXT NOT NULL,
+  item_type TEXT DEFAULT 'toggle',     -- toggle (토글), cycle (탭사이클 0~5)
+  item_group TEXT DEFAULT 'default',   -- default, yakchim (약침)
+  max_value INTEGER DEFAULT 1,         -- toggle=1, cycle=5
+  display_order INTEGER DEFAULT 0,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_acting_treatment_config_type ON acting_treatment_config(acting_type);
+
+-- 기본 자침 항목
+INSERT OR IGNORE INTO acting_treatment_config (acting_type, item_name, item_type, item_group, max_value, display_order) VALUES
+  ('침', '투자', 'toggle', 'default', 1, 1),
+  ('침', '관절', 'toggle', 'default', 1, 2),
+  ('침', '척추', 'toggle', 'default', 1, 3),
+  ('침', '복강', 'toggle', 'default', 1, 4),
+  ('침', '자락', 'toggle', 'default', 1, 5),
+  ('침', '유관', 'toggle', 'default', 1, 6),
+  ('침', '습부', 'toggle', 'default', 1, 7),
+  ('침', '습부2', 'toggle', 'default', 1, 8),
+  ('침', '전침', 'toggle', 'default', 1, 9),
+  ('침', 'IR', 'toggle', 'default', 1, 10),
+  -- 약침 (탭사이클)
+  ('침', '경근', 'cycle', 'yakchim', 5, 11),
+  ('침', '녹용', 'cycle', 'yakchim', 5, 12),
+  ('침', '태반', 'cycle', 'yakchim', 5, 13),
+  ('침', '라인', 'cycle', 'yakchim', 5, 14),
+  ('침', '화타', 'cycle', 'yakchim', 5, 15),
+  ('침', '초음파', 'cycle', 'yakchim', 5, 16);
+
+-- 기본 추나 항목
+INSERT OR IGNORE INTO acting_treatment_config (acting_type, item_name, item_type, item_group, max_value, display_order) VALUES
+  ('추나', '단추', 'toggle', 'default', 1, 1),
+  ('추나', '복추', 'toggle', 'default', 1, 2),
+  ('추나', '충격파', 'toggle', 'default', 1, 3),
+  ('추나', '경추', 'toggle', 'default', 1, 4),
+  ('추나', '흉추', 'toggle', 'default', 1, 5),
+  ('추나', '요추', 'toggle', 'default', 1, 6),
+  ('추나', '골반', 'toggle', 'default', 1, 7);
+
+-- 기본 초음파 항목
+INSERT OR IGNORE INTO acting_treatment_config (acting_type, item_name, item_type, item_group, max_value, display_order) VALUES
+  ('초음파', '부위1', 'toggle', 'default', 1, 1),
+  ('초음파', '부위2', 'toggle', 'default', 1, 2),
+  ('초음파', '부위3', 'toggle', 'default', 1, 3),
+  ('초음파', '부위4', 'toggle', 'default', 1, 4),
+  ('초음파', '부위5', 'toggle', 'default', 1, 5);
+
+-- 기본 약상담 항목
+INSERT OR IGNORE INTO acting_treatment_config (acting_type, item_name, item_type, item_group, max_value, display_order) VALUES
+  ('약상담', '1개월', 'toggle', 'default', 1, 1),
+  ('약상담', '3개월', 'toggle', 'default', 1, 2),
+  ('약상담', '6개월', 'toggle', 'default', 1, 3),
+  ('약상담', '1년', 'toggle', 'default', 1, 4),
+  ('약상담', '녹용추가', 'toggle', 'default', 1, 5);
+
+-- 액팅 치료 기록 (완료된 치료 상세)
+CREATE TABLE IF NOT EXISTS acting_treatment_details (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  acting_record_id INTEGER REFERENCES acting_records(id) ON DELETE CASCADE,
+  patient_id INTEGER NOT NULL,
+  doctor_id INTEGER NOT NULL,
+  acting_type TEXT NOT NULL,
+  treatment_items TEXT,     -- JSON: {"투자": 1, "관절": 1, "경근": 2, "녹용": 1}
+  work_date TEXT NOT NULL,
+  started_at TEXT,
+  completed_at TEXT,
+  duration_sec INTEGER,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_acting_treatment_details_patient ON acting_treatment_details(patient_id);
+CREATE INDEX IF NOT EXISTS idx_acting_treatment_details_date ON acting_treatment_details(work_date);
+CREATE INDEX IF NOT EXISTS idx_acting_treatment_details_doctor ON acting_treatment_details(doctor_id);

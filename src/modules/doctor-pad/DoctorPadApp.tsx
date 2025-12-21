@@ -14,15 +14,20 @@ import type { PortalUser } from '@shared/types';
 import type { ActingQueueItem, DoctorStatus } from '@modules/acting/types';
 import type { TreatmentRoom } from '@modules/treatment/types';
 import * as actingApi from '@modules/acting/api';
-import type { PatientMemo, TreatmentHistory, DetailComment } from '@modules/acting/api';
-import { fetchPatientDetailComments, getMssqlPatientId } from '@modules/acting/api';
+import type { PatientMemo, TreatmentHistory, DetailComment, ActingTreatmentConfigItem, TreatmentItemSelection } from '@modules/acting/api';
+import {
+  fetchPatientDetailComments,
+  getMssqlPatientId,
+  fetchActingTreatmentConfig,
+  saveActingTreatmentDetails,
+  sendJandiWebhook,
+} from '@modules/acting/api';
 import { fetchTreatmentRooms } from '@modules/manage/lib/api';
 import {
   fetchPatientDefaultTreatments,
   fetchDailyTreatmentRecord,
 } from '@modules/manage/lib/treatmentApi';
 import type { PatientDefaultTreatments, DailyTreatmentRecord } from '@modules/manage/types';
-import { TREATMENT_CHECKBOX_ITEMS, YAKCHIM_SELECT_ITEMS } from '@modules/manage/hooks/useTreatmentInfo';
 
 interface DoctorPadAppProps {
   user: PortalUser;
@@ -44,33 +49,11 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }>
   away: { bg: 'bg-red-500', text: 'text-white', label: '부재' },
 };
 
-// 침치료 토글 버튼 항목
-const ACUPUNCTURE_ITEMS = [
-  { key: 'jachim', label: '자침' },
-  { key: 'jeonchim', label: '전침' },
-  { key: 'gigugu', label: '기기구' },
-  { key: 'buhang', label: '부항' },
-  { key: 'ddum', label: '뜸' },
-];
-
-// 약침 카운터 항목
-const YAKCHIM_ITEMS = [
-  { key: 'gyeonggeun', label: '경근', color: 'blue' },
-  { key: 'sinbaro', label: '신바로', color: 'green' },
-  { key: 'hwangryeon', label: '황련', color: 'yellow' },
-  { key: 'jungsongouhyul', label: '중성어혈', color: 'red' },
-  { key: 'bee', label: 'BV', color: 'orange' },
-];
-
-// 오늘 치료 선택 상태 타입
-interface TodayTreatmentSelection {
-  acupuncture: Record<string, boolean>;  // 침치료 토글
-  yakchim: Record<string, number>;       // 약침 cc 수량
-}
-
 // 환자 차트 모달 컴포넌트 (새 디자인)
 interface PatientChartModalProps {
   acting: ActingQueueItem;
+  doctorId: number;
+  doctorName: string;
   memo: PatientMemo | null;
   treatments: TreatmentHistory[];
   detailComments: DetailComment[];
@@ -80,14 +63,17 @@ interface PatientChartModalProps {
   loading: boolean;
   isActingInProgress: boolean;
   elapsedTime: number;
+  startedAt: string | null;
   fontSize: number;
   onClose: () => void;
   onStartActing: () => void;
-  onCompleteActing: () => void;
+  onCompleteActing: (treatmentItems: TreatmentItemSelection) => void;
 }
 
 const PatientChartModal: React.FC<PatientChartModalProps> = ({
   acting,
+  doctorId,
+  doctorName,
   memo,
   treatments,
   detailComments,
@@ -97,16 +83,16 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
   loading,
   isActingInProgress,
   elapsedTime,
+  startedAt,
   fontSize,
   onClose,
   onStartActing,
   onCompleteActing,
 }) => {
-  // 오늘 치료 선택 상태
-  const [todayTreatment, setTodayTreatment] = useState<TodayTreatmentSelection>({
-    acupuncture: {},
-    yakchim: {},
-  });
+  // 치료 항목 설정
+  const [treatmentConfig, setTreatmentConfig] = useState<ActingTreatmentConfigItem[]>([]);
+  // 치료 항목 선택 상태 (itemName -> value)
+  const [treatmentSelection, setTreatmentSelection] = useState<TreatmentItemSelection>({});
 
   // 진료내역 펼침 상태 (인덱스별)
   const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
@@ -115,63 +101,48 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
     setExpandedComments(prev => ({ ...prev, [idx]: !prev[idx] }));
   };
 
-  // 이전 치료 정보 불러오기 (재진 환자용)
+  // 액팅 타입에 맞는 치료 항목 설정 로드
   useEffect(() => {
-    if (defaultTreatments) {
-      const acupuncture: Record<string, boolean> = {};
-      const yakchim: Record<string, number> = {};
+    const loadConfig = async () => {
+      // 액팅 타입 매핑: '자침' -> '침', '침치료' -> '침' 등
+      let actingType = acting.actingType;
+      if (actingType.includes('침')) actingType = '침';
+      else if (actingType.includes('추나')) actingType = '추나';
+      else if (actingType.includes('초음파')) actingType = '초음파';
+      else if (actingType.includes('약')) actingType = '약상담';
 
-      // 기존 치료 항목에서 침치료 토글 값 설정
-      // 매핑: jachim=has_acupuncture, jeonchim=has_highfreq, buhang=has_cupping, ddum=has_moxa
-      if (defaultTreatments.has_acupuncture) acupuncture['jachim'] = true;
-      if (defaultTreatments.has_highfreq) acupuncture['jeonchim'] = true;  // 고주파 → 전침
-      if (defaultTreatments.has_cupping) acupuncture['buhang'] = true;
-      if (defaultTreatments.has_moxa) acupuncture['ddum'] = true;
+      const config = await fetchActingTreatmentConfig(actingType);
+      setTreatmentConfig(config);
+    };
+    loadConfig();
+  }, [acting.actingType]);
 
-      // 약침 수량 설정
-      if (defaultTreatments.yakchim_type && defaultTreatments.yakchim_quantity) {
-        const yakchimKey = YAKCHIM_ITEMS.find(y =>
-          defaultTreatments.yakchim_type?.includes(y.label)
-        )?.key;
-        if (yakchimKey) {
-          yakchim[yakchimKey] = defaultTreatments.yakchim_quantity;
-        }
-      }
+  // 토글 항목 클릭
+  const handleToggleItem = (itemName: string) => {
+    setTreatmentSelection(prev => ({
+      ...prev,
+      [itemName]: prev[itemName] ? 0 : 1,
+    }));
+  };
 
-      setTodayTreatment({ acupuncture, yakchim });
-    }
-  }, [defaultTreatments]);
+  // 탭사이클 항목 클릭 (0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 0)
+  const handleCycleItem = (itemName: string, maxValue: number) => {
+    setTreatmentSelection(prev => {
+      const current = prev[itemName] || 0;
+      const next = current >= maxValue ? 0 : current + 1;
+      return { ...prev, [itemName]: next };
+    });
+  };
+
+  // 완료 버튼 클릭
+  const handleComplete = () => {
+    onCompleteActing(treatmentSelection);
+  };
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // 침치료 토글
-  const toggleAcupuncture = (key: string) => {
-    setTodayTreatment(prev => ({
-      ...prev,
-      acupuncture: {
-        ...prev.acupuncture,
-        [key]: !prev.acupuncture[key],
-      },
-    }));
-  };
-
-  // 약침 수량 조절
-  const adjustYakchim = (key: string, delta: number) => {
-    setTodayTreatment(prev => {
-      const current = prev.yakchim[key] || 0;
-      const newValue = Math.max(0, current + delta);
-      return {
-        ...prev,
-        yakchim: {
-          ...prev.yakchim,
-          [key]: newValue,
-        },
-      };
-    });
   };
 
   return (
@@ -191,28 +162,86 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
           </button>
         </div>
 
-        {/* 액팅 시작/종료 버튼 영역 */}
-        <div className="bg-white border-b-2 px-6 py-4">
+        {/* 컨트롤 패널 */}
+        <div className="bg-white border-b-2 px-4 py-3">
           {isActingInProgress ? (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse"></div>
-                <span className="text-xl font-bold text-gray-800">{acting.actingType} 진행중</span>
-                <span className={`text-4xl font-mono font-bold ${elapsedTime > 180 ? 'text-red-600' : 'text-gray-800'}`}>
-                  {formatTime(elapsedTime)}
-                </span>
+            <div className="space-y-2">
+              {/* 상단: 타이머 + 완료 버튼 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                  <span className={`text-2xl font-mono font-bold ${elapsedTime > 180 ? 'text-red-600' : 'text-gray-800'}`}>
+                    {formatTime(elapsedTime)}
+                  </span>
+                </div>
+                <button
+                  onClick={handleComplete}
+                  className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  완료
+                </button>
               </div>
-              <button
-                onClick={onCompleteActing}
-                className="px-10 py-4 bg-blue-600 text-white text-xl font-bold rounded-xl hover:bg-blue-700 transition-colors"
-              >
-                {acting.actingType} 종료
-              </button>
+
+              {/* 치료 항목 버튼들 */}
+              {treatmentConfig.length > 0 && (
+                <div className="space-y-2">
+                  {/* 토글 항목 (default 그룹) */}
+                  <div className="flex flex-wrap gap-1">
+                    {treatmentConfig
+                      .filter(item => item.itemType === 'toggle')
+                      .map(item => {
+                        const isSelected = treatmentSelection[item.itemName] === 1;
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => handleToggleItem(item.itemName)}
+                            className={`px-3 py-2 rounded-lg font-medium transition-all ${
+                              isSelected
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            {item.itemName}
+                          </button>
+                        );
+                      })}
+                  </div>
+
+                  {/* 탭사이클 항목 (약침 그룹) */}
+                  {treatmentConfig.some(item => item.itemType === 'cycle') && (
+                    <div className="flex flex-wrap gap-1">
+                      {treatmentConfig
+                        .filter(item => item.itemType === 'cycle')
+                        .map(item => {
+                          const value = treatmentSelection[item.itemName] || 0;
+                          // 값에 따라 색상 진하기 조절
+                          const intensity = value > 0 ? Math.min(value * 20 + 40, 100) : 0;
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={() => handleCycleItem(item.itemName, item.maxValue)}
+                              className={`px-3 py-2 rounded-lg font-medium transition-all ${
+                                value > 0
+                                  ? 'text-white'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                              }`}
+                              style={value > 0 ? {
+                                backgroundColor: `hsl(160, 70%, ${70 - intensity * 0.3}%)`,
+                              } : undefined}
+                            >
+                              {item.itemName}{value > 0 && <sub className="ml-0.5">{value}</sub>}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <button
               onClick={onStartActing}
-              className="w-full py-5 bg-green-600 text-white text-2xl font-bold rounded-xl hover:bg-green-700 transition-colors"
+              className="w-full py-4 bg-green-600 text-white text-xl font-bold rounded-xl hover:bg-green-700 transition-colors"
             >
               {acting.actingType} 시작
             </button>
@@ -269,77 +298,7 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
                 </div>
               </section>
 
-              {/* 섹션 2: 오늘 치료 입력 */}
-              <section className="bg-white rounded-xl shadow p-4">
-                <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2" style={{ fontSize: '1.1em' }}>
-                  <span>💉</span> 오늘 치료
-                </h3>
-
-                {/* 침치료 토글 버튼 */}
-                <div className="mb-4">
-                  <p className="text-gray-500 mb-2" style={{ fontSize: '0.9em' }}>침치료</p>
-                  <div className="flex flex-wrap gap-2">
-                    {ACUPUNCTURE_ITEMS.map(item => (
-                      <button
-                        key={item.key}
-                        onClick={() => toggleAcupuncture(item.key)}
-                        className={`px-5 py-3 rounded-xl font-bold transition-all ${
-                          todayTreatment.acupuncture[item.key]
-                            ? 'bg-blue-600 text-white shadow-lg'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                        style={{ fontSize: '1.1em' }}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 약침 카운터 버튼 */}
-                <div>
-                  <p className="text-gray-500 mb-2" style={{ fontSize: '0.9em' }}>약침</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {YAKCHIM_ITEMS.map(item => {
-                      const count = todayTreatment.yakchim[item.key] || 0;
-                      const colorClasses: Record<string, string> = {
-                        blue: count > 0 ? 'bg-blue-100 border-blue-400' : 'bg-gray-50 border-gray-200',
-                        green: count > 0 ? 'bg-green-100 border-green-400' : 'bg-gray-50 border-gray-200',
-                        yellow: count > 0 ? 'bg-yellow-100 border-yellow-400' : 'bg-gray-50 border-gray-200',
-                        red: count > 0 ? 'bg-red-100 border-red-400' : 'bg-gray-50 border-gray-200',
-                        orange: count > 0 ? 'bg-orange-100 border-orange-400' : 'bg-gray-50 border-gray-200',
-                      };
-                      return (
-                        <div
-                          key={item.key}
-                          className={`flex items-center justify-between p-3 rounded-xl border-2 ${colorClasses[item.color]}`}
-                        >
-                          <span className="font-bold text-gray-700">{item.label}</span>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => adjustYakchim(item.key, -5)}
-                              className="w-10 h-10 rounded-full bg-gray-200 text-gray-700 font-bold hover:bg-gray-300"
-                              style={{ fontSize: '1.2em' }}
-                            >
-                              -
-                            </button>
-                            <span className="w-12 text-center font-bold" style={{ fontSize: '1.1em' }}>{count}cc</span>
-                            <button
-                              onClick={() => adjustYakchim(item.key, 5)}
-                              className="w-10 h-10 rounded-full bg-blue-500 text-white font-bold hover:bg-blue-600"
-                              style={{ fontSize: '1.2em' }}
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </section>
-
-              {/* 섹션 3: 진료내역 (날짜별 DetailComment) */}
+              {/* 섹션 2: 진료내역 (날짜별 DetailComment) */}
               <section className="bg-white rounded-xl shadow p-4">
                 <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2" style={{ fontSize: '1.1em' }}>
                   <span>📝</span> 진료내역
@@ -684,7 +643,7 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
 
     try {
       await actingApi.startActing(selectedActing.id, doctor.id, doctor.fullName);
-      handleCloseModal();
+      // 모달을 닫지 않고 데이터만 새로고침 (모달에서 타이머 + 치료항목 표시)
       await loadData();
     } catch (error) {
       console.error('진료 시작 오류:', error);
@@ -692,12 +651,50 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
     }
   };
 
-  const handleCompleteActing = async () => {
+  const handleCompleteActing = async (treatmentItems?: TreatmentItemSelection) => {
     const actingToComplete = selectedActing || currentActing;
     if (!actingToComplete) return;
 
     try {
+      // 1. 액팅 완료 처리
       await actingApi.completeActing(actingToComplete.id, doctor.id, doctor.fullName);
+
+      // 2. 치료 항목 저장 (선택된 항목이 있는 경우)
+      if (treatmentItems && Object.keys(treatmentItems).length > 0) {
+        const selectedItems: TreatmentItemSelection = Object.entries(treatmentItems)
+          .filter(([_, value]) => value > 0)
+          .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {} as TreatmentItemSelection);
+
+        if (Object.keys(selectedItems).length > 0) {
+          const now = new Date().toISOString();
+          const today = now.split('T')[0];
+
+          await saveActingTreatmentDetails({
+            patientId: actingToComplete.patientId,
+            doctorId: doctor.id,
+            actingType: actingToComplete.actingType,
+            treatmentItems: selectedItems,
+            workDate: today,
+            startedAt: actingToComplete.startedAt || now,
+            completedAt: now,
+            durationSec: elapsedTime,
+          });
+
+          // 3. 잔디 푸시 (선택된 항목이 있을 때만)
+          const itemsList = Object.entries(selectedItems)
+            .map(([name, value]) => value > 1 ? `${name}(${value})` : name)
+            .join(', ');
+
+          await sendJandiWebhook({
+            title: `${actingToComplete.actingType} 완료`,
+            description: `환자: ${actingToComplete.patientName}\n담당: ${doctor.fullName}\n치료: ${itemsList}\n시간: ${formatTime(elapsedTime)}`,
+            color: '#07C160',
+          });
+        }
+      }
+
+      // 4. 자침/침 완료 시 유침 자동 시작은 actingApi.completeActing 내부에서 처리됨
+
       handleCloseModal();
       await loadData();
     } catch (error) {
@@ -832,6 +829,8 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
       {selectedActing && (
         <PatientChartModal
           acting={selectedActing}
+          doctorId={doctor.id}
+          doctorName={doctor.fullName}
           memo={patientMemo}
           treatments={patientTreatments}
           detailComments={patientDetailComments}
@@ -841,6 +840,7 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
           loading={loadingPatientInfo}
           isActingInProgress={currentActing?.id === selectedActing.id}
           elapsedTime={currentActing?.id === selectedActing.id ? elapsedTime : 0}
+          startedAt={currentActing?.startedAt || null}
           fontSize={fontSize}
           onClose={handleCloseModal}
           onStartActing={handleStartActing}

@@ -35,6 +35,7 @@ const getHexColor = (borderColorClass: string): string => {
 
 const useTimer = (treatment: SessionTreatment) => {
     const [remainingSeconds, setRemainingSeconds] = useState(0);
+    const [currentElapsedSeconds, setCurrentElapsedSeconds] = useState(0);
     const [progress, setProgress] = useState(0);
 
     const { status, duration, startTime, elapsedSeconds } = treatment;
@@ -44,6 +45,7 @@ const useTimer = (treatment: SessionTreatment) => {
             const totalSeconds = duration * 60;
             if (totalSeconds <= 0) {
                 setRemainingSeconds(0);
+                setCurrentElapsedSeconds(0);
                 setProgress(status === 'completed' ? 100 : 0);
                 return;
             }
@@ -65,6 +67,7 @@ const useTimer = (treatment: SessionTreatment) => {
             const calculatedRemaining = totalSeconds - clampedElapsed;
 
             setRemainingSeconds(calculatedRemaining);
+            setCurrentElapsedSeconds(elapsed);
             setProgress((clampedElapsed / totalSeconds) * 100);
         };
 
@@ -76,7 +79,7 @@ const useTimer = (treatment: SessionTreatment) => {
         }
     }, [status, duration, startTime, elapsedSeconds]);
 
-    return { remainingSeconds, progress };
+    return { remainingSeconds, currentElapsedSeconds, progress };
 };
 
 interface TreatmentProgressItemProps {
@@ -93,23 +96,28 @@ interface TreatmentProgressItemProps {
 }
 
 const TreatmentProgressItem: React.FC<TreatmentProgressItemProps> = memo(({ treatment, roomId, onTreatmentAction, onTimeChange, onDelete, isBeingDragged, draggedTreatmentRoomId, onDragStart, onDragEnd, onDrop }) => {
-    const { remainingSeconds, progress } = useTimer(treatment);
+    const { remainingSeconds, currentElapsedSeconds, progress } = useTimer(treatment);
     const [isDragOver, setIsDragOver] = useState(false);
 
-    const minutes = Math.floor(remainingSeconds / 60);
-    const seconds = Math.floor(remainingSeconds % 60);
+    // 침 치료는 경과 시간 표시, 그 외는 남은 시간 표시
+    const isAcupuncture = treatment.name === '침' || treatment.name === '자침';
+    const displaySeconds = isAcupuncture ? currentElapsedSeconds : remainingSeconds;
+    const minutes = Math.floor(displaySeconds / 60);
+    const seconds = Math.floor(displaySeconds % 60);
 
     const isFinished = treatment.status === 'completed';
 
     const handleTimerClick = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
+        // 침/자침 치료는 닥터패드에서 제어하므로 클릭 비활성화
+        if (isAcupuncture) return;
         if (isFinished) return;
         if (treatment.status === 'running') {
             onTreatmentAction(roomId, treatment.id, 'pause');
         } else if (treatment.status === 'paused' || treatment.status === 'pending') {
             onTreatmentAction(roomId, treatment.id, 'start');
         }
-    }, [isFinished, treatment.status, treatment.id, roomId, onTreatmentAction]);
+    }, [isAcupuncture, isFinished, treatment.status, treatment.id, roomId, onTreatmentAction]);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -164,20 +172,24 @@ const TreatmentProgressItem: React.FC<TreatmentProgressItemProps> = memo(({ trea
                 <div className="flex items-center gap-2 flex-grow min-w-0 justify-end">
                     {treatment.status === 'running' && !isFinished ? (
                         <>
-                            <button onClick={(e) => { e.stopPropagation(); onTimeChange(roomId, treatment.id, -1); }} className="text-red-600 hover:text-red-700 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow hover:shadow-md transition-all" aria-label="1분 감소">
-                                <i className="fa-solid fa-minus"></i>
-                            </button>
+                            {!isAcupuncture && (
+                                <button onClick={(e) => { e.stopPropagation(); onTimeChange(roomId, treatment.id, -1); }} className="text-red-600 hover:text-red-700 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow hover:shadow-md transition-all" aria-label="1분 감소">
+                                    <i className="fa-solid fa-minus"></i>
+                                </button>
+                            )}
                             <span
-                                className={`text-xl font-mono font-semibold tabular-nums w-16 text-center cursor-pointer ${remainingSeconds <= 0 ? 'text-red-600 animate-pulse' : 'text-gray-700'}`}
-                                onClick={handleTimerClick}
-                                aria-label="타이머 일시정지"
-                                title={remainingSeconds <= 0 ? '시간이 종료되었습니다. 정지 후 완료 처리하세요.' : ''}
+                                className={`text-xl font-mono font-semibold tabular-nums w-16 text-center ${isAcupuncture ? 'cursor-default text-blue-600' : remainingSeconds <= 0 ? 'cursor-pointer text-red-600 animate-pulse' : 'cursor-pointer text-gray-700'}`}
+                                onClick={isAcupuncture ? undefined : handleTimerClick}
+                                aria-label={isAcupuncture ? '침 치료 경과 시간 (닥터패드에서 제어)' : '타이머 일시정지'}
+                                title={isAcupuncture ? '침 치료는 닥터패드에서 제어됩니다' : (remainingSeconds <= 0 ? '시간이 종료되었습니다. 정지 후 완료 처리하세요.' : '')}
                             >
-                                {remainingSeconds <= 0 ? '00:00' : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`}
+                                {`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`}
                             </span>
-                            <button onClick={(e) => { e.stopPropagation(); onTimeChange(roomId, treatment.id, 5); }} className="text-green-600 hover:text-green-700 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow hover:shadow-md transition-all" aria-label="5분 증가">
-                                <i className="fa-solid fa-plus"></i>
-                            </button>
+                            {!isAcupuncture && (
+                                <button onClick={(e) => { e.stopPropagation(); onTimeChange(roomId, treatment.id, 5); }} className="text-green-600 hover:text-green-700 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow hover:shadow-md transition-all" aria-label="5분 증가">
+                                    <i className="fa-solid fa-plus"></i>
+                                </button>
+                            )}
                         </>
                     ) : treatment.status === 'paused' && !isFinished ? (
                         <>
@@ -776,17 +788,40 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
 
         // allPatients에서 먼저 찾고, 없으면 room 정보로 Patient 객체 생성
         let patient = allPatientsRef.current.find(p => p.id === room.patientId);
+
+        // 기존 환자 details 복원 (MSSQL에서 가져온 "담당의 예약/시간" 형식 유지)
+        // 기존 details가 없을 때만 room 정보로 생성
+        const fallbackDetails = (() => {
+            const parts: string[] = [];
+            if (room.doctorName) parts.push(room.doctorName);
+            if (room.inTime) {
+                const inTimeDate = new Date(room.inTime);
+                const timeStr = inTimeDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                parts.push(`예약/${timeStr}`);
+            }
+            return parts.length > 0 ? parts.join(' ') : '';
+        })();
+
         if (!patient) {
-            console.log('[handleReturnToWaiting] allPatients에서 환자를 찾을 수 없어 room 정보로 생성');
             patient = {
                 id: room.patientId,
                 name: room.patientName || '알 수 없음',
                 chartNumber: room.patientChartNumber,
                 status: PatientStatus.WAITING_TREATMENT,
                 time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
-                details: '치료실→대기',
+                details: fallbackDetails,
                 gender: room.patientGender,
                 dob: room.patientDob,
+                doctor: room.doctorName,
+            };
+        } else {
+            // 기존 환자 정보 유지 (원래 MSSQL에서 가져온 details 복원)
+            patient = {
+                ...patient,
+                status: PatientStatus.WAITING_TREATMENT,
+                time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                details: patient.details || fallbackDetails,  // 기존 details 우선
+                doctor: patient.doctor || room.doctorName,    // 기존 doctor 우선
             };
         }
 
@@ -800,6 +835,13 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             } catch (error) {
                 console.error('❌ 치료실 정리 오류:', error);
             }
+        }
+
+        // 액팅큐에서 해당 환자의 대기 중/진행 중 액팅 취소
+        try {
+            await actingApi.cancelActingsByPatientId(room.patientId);
+        } catch (error) {
+            console.error('❌ 액팅 취소 오류:', error);
         }
 
         // 로컬 상태 업데이트
