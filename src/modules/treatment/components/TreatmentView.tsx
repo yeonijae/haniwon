@@ -9,7 +9,7 @@ const getStatusClasses = (status: RoomStatus, gender?: 'male' | 'female'): { bor
   switch (status) {
     case RoomStatus.IN_USE:
       // 성별에 따른 배경색: 남자 - 연한 하늘색, 여자 - 연한 분홍색
-      const genderBg = gender === 'male' ? 'bg-sky-50' : gender === 'female' ? 'bg-pink-50' : 'bg-white';
+      const genderBg = gender === 'male' ? 'bg-sky-50' : gender === 'female' ? 'bg-[#fff8f9]' : 'bg-white';
       return { border: 'border-blue-500', bg: genderBg, text: 'text-blue-700' };
     case RoomStatus.AVAILABLE:
       return { border: 'border-gray-300', bg: 'bg-white', text: 'text-gray-700' };
@@ -33,6 +33,37 @@ const colorMap: { [key: string]: string } = {
 const getHexColor = (borderColorClass: string): string => {
     const colorName = borderColorClass.replace('border-', '');
     return colorMap[colorName as keyof typeof colorMap] || '#6B7280';
+};
+
+// 치료 타이머가 만료되었는지 확인 (running 상태이면서 시간이 다 된 경우)
+const isTimerExpired = (treatment: SessionTreatment): boolean => {
+    if (treatment.status !== 'running' || !treatment.startTime) return false;
+
+    const totalSeconds = treatment.duration * 60;
+    const now = Date.now();
+    const start = new Date(treatment.startTime).getTime();
+    const currentSessionElapsed = (now - start) / 1000;
+    const elapsed = currentSessionElapsed + (treatment.elapsedSeconds || 0);
+
+    return elapsed >= totalSeconds;
+};
+
+// 베드에 만료된 타이머가 있는지 확인하는 훅
+const useHasExpiredTimer = (treatments: SessionTreatment[]) => {
+    const [hasExpired, setHasExpired] = useState(false);
+
+    useEffect(() => {
+        const checkExpired = () => {
+            const expired = treatments.some(tx => isTimerExpired(tx));
+            setHasExpired(expired);
+        };
+
+        checkExpired();
+        const interval = setInterval(checkExpired, 1000);
+        return () => clearInterval(interval);
+    }, [treatments]);
+
+    return hasExpired;
 };
 
 const useTimer = (treatment: SessionTreatment) => {
@@ -297,6 +328,9 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
     const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
     const addMenuRef = useRef<HTMLDivElement>(null);
 
+    // 타이머 만료 확인
+    const hasExpiredTimer = useHasExpiredTimer(room.sessionTreatments);
+
     const availableTreatmentsToAdd = useMemo(() => {
         if (room.status !== RoomStatus.IN_USE) return [];
         const existingTreatmentNames = new Set(room.sessionTreatments.map(tx => tx.name));
@@ -376,10 +410,24 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
         return '';
     };
 
+    // 타이머 만료 시 깜박임 효과
+    const blinkClass = hasExpiredTimer ? 'animate-timer-expired' : '';
+
     return (
         <>
+            <style>
+                {`
+                    @keyframes timerExpiredBlink {
+                        0%, 100% { background-color: inherit; }
+                        50% { background-color: rgb(254 215 170); }
+                    }
+                    .animate-timer-expired {
+                        animation: timerExpiredBlink 1s ease-in-out infinite;
+                    }
+                `}
+            </style>
             <div
-                className={`rounded-lg border py-3 shadow-sm flex flex-col justify-between h-full transition-all duration-200 ${border} ${bg} ${getCursorClass()}`}
+                className={`rounded-lg border py-3 shadow-sm flex flex-col justify-between h-full transition-all duration-200 ${border} ${bg} ${getCursorClass()} ${blinkClass}`}
                 onClick={handleCardClick}
                 onContextMenu={handleContextMenu}
                 onDragOver={handleDragOver}
@@ -951,7 +999,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                 ...room,
                 sessionTreatments: [...room.sessionTreatments, newTreatment]
             };
-        });
+        }, true); // DB에 저장
     }, [updateRoom]);
 
     const handleOpenInfoModal = useCallback((room: TreatmentRoom) => {
