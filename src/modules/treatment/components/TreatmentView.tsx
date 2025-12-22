@@ -76,10 +76,7 @@ const useIdleTime = (idleSeconds: number = 0, idleStartTime: string | null | und
 const formatIdleTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    if (mins > 0) {
-        return `${mins}분${secs}초`;
-    }
-    return `${secs}초`;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
 // 베드에 만료된 타이머가 있는지 확인하는 훅
@@ -510,12 +507,6 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
         if (room.status === RoomStatus.CLEANING) onFinishCleaning(roomId);
     };
 
-    const handlePatientNameRightClick = (event: React.MouseEvent) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onOpenInfoModal(room);
-    };
-
     const handleContextMenu = (event: React.MouseEvent) => {
         if (room.status !== RoomStatus.IN_USE) return;
         event.preventDefault();
@@ -609,11 +600,7 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
                             </ul>
                         </div>
                     )}
-                    <p
-                      className="font-bold text-lg text-clinic-text-primary cursor-pointer hover:underline"
-                      title={`${room.patientName}님 치료정보 수정 (우클릭)`}
-                      onContextMenu={handlePatientNameRightClick}
-                    >
+                    <p className="font-bold text-lg text-clinic-text-primary">
                         {room.patientName}
                     </p>
                     <p className="text-sm text-clinic-text-secondary relative">
@@ -626,7 +613,11 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
                     </p>
                     {/* 공백시간 표시 */}
                     {room.status === RoomStatus.IN_USE && (
-                        <p className={`text-sm flex items-center -mt-0.5 ${room.idleStartTime ? 'text-orange-500' : 'text-gray-500'}`}>
+                        <p className={`text-sm flex items-center -mt-0.5 ${
+                            totalIdleSeconds >= 1800 ? 'bg-red-500 text-white px-1 rounded' :
+                            totalIdleSeconds >= 900 ? 'text-red-500' :
+                            room.idleStartTime ? 'text-orange-500' : 'text-gray-500'
+                        }`}>
                             <i className="fa-solid fa-hourglass-half mr-1 text-xs"></i>
                             {formatIdleTime(totalIdleSeconds)}
                         </p>
@@ -693,6 +684,14 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
                     <ul className="py-1">
                         <li>
                             <button
+                                onClick={() => { onOpenInfoModal(room); setContextMenu(null); }}
+                                className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100"
+                            >
+                                치료정보
+                            </button>
+                        </li>
+                        <li>
+                            <button
                                 onClick={() => { onReturnToWaiting(roomId); setContextMenu(null); }}
                                 className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100"
                             >
@@ -746,6 +745,8 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
     const [hoveredPatient, setHoveredPatient] = useState<Patient | null>(null);
     const [popoverPosition, setPopoverPosition] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
     const [loadingRoomId, setLoadingRoomId] = useState<number | null>(null);
+    const [waitingContextMenu, setWaitingContextMenu] = useState<{ x: number; y: number; patient: Patient } | null>(null);
+    const waitingMenuRef = useRef<HTMLDivElement>(null);
 
     const treatmentRoomsRef = useRef(treatmentRooms);
     const waitingListRef = useRef(waitingList);
@@ -754,6 +755,19 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
     treatmentRoomsRef.current = treatmentRooms;
     waitingListRef.current = waitingList;
     allPatientsRef.current = allPatients;
+
+    // 대기목록 컨텍스트 메뉴 외부 클릭 감지
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (waitingMenuRef.current && !waitingMenuRef.current.contains(event.target as Node)) {
+                setWaitingContextMenu(null);
+            }
+        };
+        if (waitingContextMenu) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [waitingContextMenu]);
 
     const handlePatientMouseEnter = (e: React.MouseEvent<HTMLLIElement>, patient: Patient) => {
         // 기본치료 정보, 환자복, 주의사항 중 하나라도 있으면 팝오버 표시
@@ -772,6 +786,10 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
 
     const handlePatientContextMenu = (e: React.MouseEvent, patient: Patient) => {
         e.preventDefault();
+        setWaitingContextMenu({ x: e.clientX, y: e.clientY, patient });
+    };
+
+    const openPatientInfoModal = (patient: Patient) => {
         // 대기열 환자를 위한 가상 TreatmentRoom 생성
         const virtualRoom: TreatmentRoom = {
             id: 0, // 가상 룸 표시 (실제 룸이 아님)
@@ -1390,6 +1408,39 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                                 <span className="text-gray-500">{tx.duration}분</span>
                             </li>
                         ))}
+                    </ul>
+                </div>
+            )}
+            {/* 대기목록 컨텍스트 메뉴 */}
+            {waitingContextMenu && (
+                <div
+                    ref={waitingMenuRef}
+                    className="fixed z-50 w-28 bg-white rounded-md shadow-lg border text-sm"
+                    style={{ top: waitingContextMenu.y, left: waitingContextMenu.x }}
+                >
+                    <ul className="py-1">
+                        <li>
+                            <button
+                                onClick={() => {
+                                    openPatientInfoModal(waitingContextMenu.patient);
+                                    setWaitingContextMenu(null);
+                                }}
+                                className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100"
+                            >
+                                치료정보
+                            </button>
+                        </li>
+                        <li>
+                            <button
+                                onClick={() => {
+                                    onRemoveFromWaitingList(waitingContextMenu.patient.id);
+                                    setWaitingContextMenu(null);
+                                }}
+                                className="block w-full text-left px-4 py-2 text-red-600 hover:bg-red-50"
+                            >
+                                삭제
+                            </button>
+                        </li>
                     </ul>
                 </div>
             )}

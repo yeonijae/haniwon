@@ -349,7 +349,17 @@ export async function createTreatmentItem(item: Omit<TreatmentItem, 'id'>): Prom
     VALUES (${escapeString(item.name)}, ${item.defaultDuration}, ${item.displayOrder || 0}, 1)
   `);
 
-  const data = await queryOne<any>(`SELECT * FROM treatment_items WHERE id = ${id}`);
+  // id가 0이면 name으로 조회
+  let data: any;
+  if (id > 0) {
+    data = await queryOne<any>(`SELECT * FROM treatment_items WHERE id = ${id}`);
+  }
+  if (!data) {
+    data = await queryOne<any>(`SELECT * FROM treatment_items WHERE name = ${escapeString(item.name)} ORDER BY id DESC LIMIT 1`);
+  }
+  if (!data) {
+    throw new Error('치료항목 생성 실패: 데이터를 찾을 수 없습니다');
+  }
 
   return {
     id: data.id,
