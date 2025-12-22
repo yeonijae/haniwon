@@ -396,12 +396,13 @@ interface TreatmentBedCardProps {
     onTreatmentDragStart: (roomId: number, treatmentId: string) => void;
     onTreatmentDragEnd: () => void;
     onTreatmentDrop: (targetRoomId: number, targetTreatmentId: string) => void;
+    isLoading?: boolean;
 }
 
 const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
     room, onTreatmentAction, onTimeChange, onDeleteTreatment,
     onFinishSession, onReturnToWaiting, onClean, onFinishCleaning, onDrop, onAddTreatment, onOpenInfoModal, treatmentItems,
-    draggedTreatment, onTreatmentDragStart, onTreatmentDragEnd, onTreatmentDrop
+    draggedTreatment, onTreatmentDragStart, onTreatmentDragEnd, onTreatmentDrop, isLoading
 }) => {
     const roomId = room.id;
     const [isDragOver, setIsDragOver] = useState(false);
@@ -551,7 +552,7 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
                 `}
             </style>
             <div
-                className={`rounded-lg border py-3 shadow-sm flex flex-col justify-between h-full transition-all duration-200 ${border} ${bg} ${getCursorClass()} ${blinkClass}`}
+                className={`relative rounded-lg border py-3 shadow-sm flex flex-col justify-between h-full transition-all duration-200 ${border} ${bg} ${getCursorClass()} ${blinkClass}`}
                 onClick={handleCardClick}
                 onContextMenu={handleContextMenu}
                 onDragOver={handleDragOver}
@@ -559,6 +560,15 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
             >
+              {/* 로딩 오버레이 */}
+              {isLoading && (
+                <div className="absolute inset-0 bg-white bg-opacity-80 rounded-lg z-30 flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-2">
+                    <i className="fa-solid fa-spinner fa-spin text-2xl text-gray-500"></i>
+                    <span className="text-sm text-gray-600">처리 중...</span>
+                  </div>
+                </div>
+              )}
               {room.status === RoomStatus.IN_USE ? (
                 <>
                   <div className="relative flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3">
@@ -735,6 +745,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
     const [infoModalRoom, setInfoModalRoom] = useState<TreatmentRoom | null>(null);
     const [hoveredPatient, setHoveredPatient] = useState<Patient | null>(null);
     const [popoverPosition, setPopoverPosition] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
+    const [loadingRoomId, setLoadingRoomId] = useState<number | null>(null);
 
     const treatmentRoomsRef = useRef(treatmentRooms);
     const waitingListRef = useRef(waitingList);
@@ -1057,80 +1068,88 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             return;
         }
 
-        // allPatients에서 먼저 찾고, 없으면 room 정보로 Patient 객체 생성
-        let patient = allPatientsRef.current.find(p => p.id === room.patientId);
+        // 로딩 시작
+        setLoadingRoomId(roomId);
 
-        // 기존 환자 details 복원 (MSSQL에서 가져온 "담당의 예약/시간" 형식 유지)
-        // 기존 details가 없을 때만 room 정보로 생성
-        const fallbackDetails = (() => {
-            const parts: string[] = [];
-            if (room.doctorName) parts.push(room.doctorName);
-            if (room.inTime) {
-                const inTimeDate = new Date(room.inTime);
-                const timeStr = inTimeDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-                parts.push(`예약/${timeStr}`);
-            }
-            return parts.length > 0 ? parts.join(' ') : '';
-        })();
-
-        if (!patient) {
-            patient = {
-                id: room.patientId,
-                name: room.patientName || '알 수 없음',
-                chartNumber: room.patientChartNumber,
-                status: PatientStatus.WAITING_TREATMENT,
-                time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
-                details: fallbackDetails,
-                gender: room.patientGender,
-                dob: room.patientDob,
-                doctor: room.doctorName,
-            };
-        } else {
-            // 기존 환자 정보 유지 (원래 MSSQL에서 가져온 details 복원)
-            patient = {
-                ...patient,
-                status: PatientStatus.WAITING_TREATMENT,
-                time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
-                details: patient.details || fallbackDetails,  // 기존 details 우선
-                doctor: patient.doctor || room.doctorName,    // 기존 doctor 우선
-            };
-        }
-
-        // 대기 목록에 추가
-        onAddToWaitingList(patient);
-
-        // DB에서 세션 치료 항목 삭제
-        if (room.sessionId) {
-            try {
-                await api.clearTreatmentRoom(roomId);
-            } catch (error) {
-                console.error('❌ 치료실 정리 오류:', error);
-            }
-        }
-
-        // 액팅큐에서 해당 환자의 대기 중/진행 중 액팅 취소
         try {
-            await actingApi.cancelActingsByPatientId(room.patientId);
-        } catch (error) {
-            console.error('❌ 액팅 취소 오류:', error);
-        }
+            // allPatients에서 먼저 찾고, 없으면 room 정보로 Patient 객체 생성
+            let patient = allPatientsRef.current.find(p => p.id === room.patientId);
 
-        // 로컬 상태 업데이트
-        updateRoom(roomId, r => ({
-            ...r,
-            status: RoomStatus.AVAILABLE,
-            sessionId: undefined,
-            patientId: undefined,
-            patientName: undefined,
-            patientChartNumber: undefined,
-            patientGender: undefined,
-            patientDob: undefined,
-            doctorName: undefined,
-            inTime: undefined,
-            sessionTreatments: [],
-            idleSeconds: 0,
-            idleStartTime: null,
-        }), false);
+            // 기존 환자 details 복원 (MSSQL에서 가져온 "담당의 예약/시간" 형식 유지)
+            // 기존 details가 없을 때만 room 정보로 생성
+            const fallbackDetails = (() => {
+                const parts: string[] = [];
+                if (room.doctorName) parts.push(room.doctorName);
+                if (room.inTime) {
+                    const inTimeDate = new Date(room.inTime);
+                    const timeStr = inTimeDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                    parts.push(`예약/${timeStr}`);
+                }
+                return parts.length > 0 ? parts.join(' ') : '';
+            })();
+
+            if (!patient) {
+                patient = {
+                    id: room.patientId,
+                    name: room.patientName || '알 수 없음',
+                    chartNumber: room.patientChartNumber,
+                    status: PatientStatus.WAITING_TREATMENT,
+                    time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                    details: fallbackDetails,
+                    gender: room.patientGender,
+                    dob: room.patientDob,
+                    doctor: room.doctorName,
+                };
+            } else {
+                // 기존 환자 정보 유지 (원래 MSSQL에서 가져온 details 복원)
+                patient = {
+                    ...patient,
+                    status: PatientStatus.WAITING_TREATMENT,
+                    time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                    details: patient.details || fallbackDetails,  // 기존 details 우선
+                    doctor: patient.doctor || room.doctorName,    // 기존 doctor 우선
+                };
+            }
+
+            // 대기 목록에 추가
+            onAddToWaitingList(patient);
+
+            // DB에서 세션 치료 항목 삭제
+            if (room.sessionId) {
+                try {
+                    await api.clearTreatmentRoom(roomId);
+                } catch (error) {
+                    console.error('❌ 치료실 정리 오류:', error);
+                }
+            }
+
+            // 액팅큐에서 해당 환자의 대기 중/진행 중 액팅 취소
+            try {
+                await actingApi.cancelActingsByPatientId(room.patientId);
+            } catch (error) {
+                console.error('❌ 액팅 취소 오류:', error);
+            }
+
+            // 로컬 상태 업데이트
+            updateRoom(roomId, r => ({
+                ...r,
+                status: RoomStatus.AVAILABLE,
+                sessionId: undefined,
+                patientId: undefined,
+                patientName: undefined,
+                patientChartNumber: undefined,
+                patientGender: undefined,
+                patientDob: undefined,
+                doctorName: undefined,
+                inTime: undefined,
+                sessionTreatments: [],
+                idleSeconds: 0,
+                idleStartTime: null,
+            }), false);
+        } finally {
+            // 로딩 종료
+            setLoadingRoomId(null);
+        }
     }, [onAddToWaitingList, updateRoom]);
 
     const handleClean = useCallback((roomId: number) => {
@@ -1317,6 +1336,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                       onTreatmentDragStart={handleTreatmentDragStart}
                       onTreatmentDragEnd={handleTreatmentDragEnd}
                       onTreatmentDrop={handleTreatmentDrop}
+                      isLoading={loadingRoomId === room.id}
                     />
                     {room.name === '1-5' && <div />}
                   </React.Fragment>
