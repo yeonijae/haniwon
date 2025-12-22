@@ -255,6 +255,8 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
       })),
       patientClothing: room.patient_clothing || undefined,
       patientNotes: room.patient_notes || undefined,
+      idleSeconds: room.idle_seconds || 0,
+      idleStartTime: room.idle_start_time || null,
     });
   }
 
@@ -276,6 +278,8 @@ export async function updateTreatmentRoom(roomId: number, room: Partial<Treatmen
   if (room.inTime !== undefined) updateParts.push(`in_time = ${escapeString(room.inTime || '')}`);
   if (room.patientClothing !== undefined) updateParts.push(`patient_clothing = ${escapeString(room.patientClothing || '')}`);
   if (room.patientNotes !== undefined) updateParts.push(`patient_notes = ${escapeString(room.patientNotes || '')}`);
+  if (room.idleSeconds !== undefined) updateParts.push(`idle_seconds = ${room.idleSeconds}`);
+  if (room.idleStartTime !== undefined) updateParts.push(`idle_start_time = ${room.idleStartTime ? escapeString(room.idleStartTime) : 'NULL'}`);
   updateParts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
 
   if (updateParts.length > 0) {
@@ -313,6 +317,8 @@ export async function clearTreatmentRoom(roomId: number): Promise<void> {
       patient_chart_number = NULL,
       doctor_name = NULL,
       in_time = NULL,
+      idle_seconds = 0,
+      idle_start_time = NULL,
       updated_at = ${escapeString(getCurrentTimestamp())}
     WHERE id = ${roomId}
   `);

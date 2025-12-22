@@ -47,6 +47,41 @@ const isTimerExpired = (treatment: SessionTreatment): boolean => {
     return elapsed >= totalSeconds;
 };
 
+// 공백시간 계산 훅
+const useIdleTime = (idleSeconds: number = 0, idleStartTime: string | null | undefined) => {
+    const [totalIdleSeconds, setTotalIdleSeconds] = useState(idleSeconds);
+
+    useEffect(() => {
+        const calculate = () => {
+            if (idleStartTime) {
+                const elapsed = (Date.now() - new Date(idleStartTime).getTime()) / 1000;
+                setTotalIdleSeconds(Math.round(idleSeconds + elapsed));
+            } else {
+                setTotalIdleSeconds(idleSeconds);
+            }
+        };
+
+        calculate();
+        // 공백시간이 카운팅 중일 때만 인터벌 실행
+        if (idleStartTime) {
+            const interval = setInterval(calculate, 1000);
+            return () => clearInterval(interval);
+        }
+    }, [idleSeconds, idleStartTime]);
+
+    return totalIdleSeconds;
+};
+
+// 공백시간 포맷팅 (초 -> 분:초)
+const formatIdleTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins > 0) {
+        return `${mins}분 ${secs}초`;
+    }
+    return `${secs}초`;
+};
+
 // 베드에 만료된 타이머가 있는지 확인하는 훅
 const useHasExpiredTimer = (treatments: SessionTreatment[]) => {
     const [hasExpired, setHasExpired] = useState(false);
@@ -379,6 +414,9 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
     // 타이머 만료 확인
     const hasExpiredTimer = useHasExpiredTimer(room.sessionTreatments);
 
+    // 공백시간 추적
+    const totalIdleSeconds = useIdleTime(room.idleSeconds, room.idleStartTime);
+
     // 환자복 스낵바: 입실시간 기준 1분 이내면 표시
     useEffect(() => {
         if (!room.inTime || !room.patientClothing) {
@@ -580,6 +618,13 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
                         <p className="text-sm text-gray-500 flex items-center">
                             <i className="fa-regular fa-clock mr-1"></i>
                             {new Date(room.inTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                        </p>
+                    )}
+                    {/* 공백시간 표시 (10초 이상일 때만) */}
+                    {room.status === RoomStatus.IN_USE && totalIdleSeconds >= 10 && (
+                        <p className={`text-xs flex items-center ${room.idleStartTime ? 'text-orange-500' : 'text-gray-400'}`}>
+                            <i className="fa-solid fa-hourglass-half mr-1"></i>
+                            공백 {formatIdleTime(totalIdleSeconds)}
                         </p>
                     )}
                   </div>
@@ -853,6 +898,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                     memo: 'memo' in dt ? (dt.memo as string | undefined) : undefined,
                 }));
 
+                const assignTime = new Date().toISOString();
                 updatedRoom = {
                     ...room,
                     status: RoomStatus.IN_USE,
@@ -863,10 +909,13 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                     patientGender: patient.gender,
                     patientDob: patient.dob,
                     doctorName: patient.doctor || '',
-                    inTime: new Date().toISOString(),
+                    inTime: assignTime,
                     sessionTreatments,
                     patientClothing: patient.treatmentClothing,
                     patientNotes: patient.treatmentNotes,
+                    // 공백시간 추적 초기화 (배정 직후부터 공백시간 카운트 시작)
+                    idleSeconds: 0,
+                    idleStartTime: assignTime,
                 };
 
                 // 액팅 자동 추가 (비동기로 실행 - 담당 원장은 patient.doctor 우선 사용)
@@ -919,11 +968,27 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
         const shouldSave = action === 'start' || action === 'pause' || action === 'complete';
 
         updateRoom(roomId, room => {
+            const now = new Date();
+            const nowIso = now.toISOString();
+            let updatedIdleSeconds = room.idleSeconds || 0;
+            let updatedIdleStartTime = room.idleStartTime;
+
+            // 치료 시작 시: 공백시간 누적 후 공백 카운트 중지
+            if (action === 'start') {
+                // 현재 진행중인 치료가 없는 경우에만 공백시간 누적
+                const hasRunningTreatment = room.sessionTreatments.some(tx => tx.status === 'running');
+                if (!hasRunningTreatment && room.idleStartTime) {
+                    const idleElapsed = (now.getTime() - new Date(room.idleStartTime).getTime()) / 1000;
+                    updatedIdleSeconds = Math.round(updatedIdleSeconds + idleElapsed);
+                }
+                updatedIdleStartTime = null; // 치료 시작하면 공백시간 카운트 중지
+            }
+
             const newTreatments = room.sessionTreatments.map(tx => {
                 if (tx.id === treatmentId) {
                     switch(action) {
                         case 'start':
-                            const newStartTime = new Date().toISOString();
+                            const newStartTime = nowIso;
                             const newElapsedSeconds = tx.status === 'paused' ? (tx.elapsedSeconds || 0) : 0;
                             return {
                                 ...tx,
@@ -933,7 +998,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                             };
                         case 'pause':
                             if (!tx.startTime) return tx;
-                            const currentElapsed = (Date.now() - new Date(tx.startTime).getTime()) / 1000;
+                            const currentElapsed = (now.getTime() - new Date(tx.startTime).getTime()) / 1000;
                             const totalElapsed = Math.round((tx.elapsedSeconds || 0) + currentElapsed);
                             return {
                                 ...tx,
@@ -949,7 +1014,21 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                 }
                 return tx;
             });
-            return { ...room, sessionTreatments: newTreatments };
+
+            // 치료 일시정지/완료 후: 진행중인 치료가 없으면 공백시간 카운트 시작
+            if (action === 'pause' || action === 'complete' || action === 'reset') {
+                const hasRunningAfter = newTreatments.some(tx => tx.status === 'running');
+                if (!hasRunningAfter && !updatedIdleStartTime) {
+                    updatedIdleStartTime = nowIso;
+                }
+            }
+
+            return {
+                ...room,
+                sessionTreatments: newTreatments,
+                idleSeconds: updatedIdleSeconds,
+                idleStartTime: updatedIdleStartTime,
+            };
         }, shouldSave);
     }, [updateRoom]);
 
@@ -1054,7 +1133,9 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             patientDob: undefined,
             doctorName: undefined,
             inTime: undefined,
-            sessionTreatments: []
+            sessionTreatments: [],
+            idleSeconds: 0,
+            idleStartTime: null,
         }), false);
     }, [onAddToWaitingList, updateRoom]);
 
@@ -1085,7 +1166,9 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             patientDob: undefined,
             doctorName: undefined,
             inTime: undefined,
-            sessionTreatments: []
+            sessionTreatments: [],
+            idleSeconds: 0,
+            idleStartTime: null,
         }), true);
     }, [updateRoom]);
 

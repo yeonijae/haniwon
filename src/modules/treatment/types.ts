@@ -76,6 +76,9 @@ export interface TreatmentRoom {
   sessionTreatments: SessionTreatment[];
   patientClothing?: string; // 환자복
   patientNotes?: string; // 주의사항
+  // 공백시간 추적
+  idleSeconds?: number; // 누적된 공백시간 (초)
+  idleStartTime?: string | null; // 공백시간 시작 시각 (ISO string)
 }
 
 // 자침: 원장이 침 놓는 시간 (1~3분), 기존 '침'은 호환성 위해 유지
