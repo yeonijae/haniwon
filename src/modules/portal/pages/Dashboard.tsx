@@ -22,10 +22,6 @@ function Dashboard({ user, onLogout }: DashboardProps) {
   }
 
   function handleAppClick(app: AppInfo) {
-    if (!hasPermission(user, app.id)) {
-      alert('이 앱에 대한 접근 권한이 없습니다. 관리자에게 문의하세요.');
-      return;
-    }
     // 새 창으로 최대 크기로 열기
     const url = window.location.origin + app.path;
     const screenWidth = window.screen.availWidth;
@@ -76,24 +72,18 @@ function Dashboard({ user, onLogout }: DashboardProps) {
       <section className="apps-section">
         <h2 className="section-title">서비스 목록</h2>
         <div className="apps-grid">
-          {APPS.map((app) => {
-            const accessible = hasPermission(user, app.id);
-            return (
-              <div
-                key={app.id}
-                className={`app-card ${!accessible ? 'disabled' : ''}`}
-                onClick={() => handleAppClick(app)}
-                style={{ borderColor: accessible ? app.color : undefined }}
-              >
-                <div className="app-icon">{app.icon}</div>
-                <h3 className="app-name">{app.name}</h3>
-                <p className="app-description">{app.description}</p>
-                <span className={`app-status ${accessible ? 'accessible' : 'restricted'}`}>
-                  {accessible ? '✓ 접근 가능' : '🔒 권한 필요'}
-                </span>
-              </div>
-            );
-          })}
+          {APPS.filter((app) => hasPermission(user, app.id)).map((app) => (
+            <div
+              key={app.id}
+              className="app-card"
+              onClick={() => handleAppClick(app)}
+              style={{ borderColor: app.color }}
+            >
+              <div className="app-icon">{app.icon}</div>
+              <h3 className="app-name">{app.name}</h3>
+              <p className="app-description">{app.description}</p>
+            </div>
+          ))}
         </div>
       </section>
 
