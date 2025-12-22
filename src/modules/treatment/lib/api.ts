@@ -46,18 +46,41 @@ export async function fetchPatientById(patientId: number): Promise<Patient | nul
   if (!data) return null;
 
   let gender = data.gender as 'male' | 'female' | undefined;
+  let birthDate = data.birth_date || undefined;
 
-  // 성별이 없으면 MSSQL에서 가져와서 업데이트
-  if (!gender && data.chart_number) {
+  // 성별 또는 생년월일이 없으면 MSSQL에서 가져와서 업데이트
+  if ((!gender || !birthDate) && data.chart_number) {
     try {
       const mssqlRes = await fetch(`http://192.168.0.173:3100/api/patients/search?q=${data.chart_number}`);
       if (mssqlRes.ok) {
         const mssqlData = await mssqlRes.json();
-        const sex = mssqlData[0]?.sex;
-        if (sex === 'M' || sex === 'F') {
-          gender = sex === 'M' ? 'male' : 'female';
+        const patient = mssqlData[0];
+        if (patient) {
+          const updateParts: string[] = [];
+
+          // 성별 처리
+          if (!gender && (patient.sex === 'M' || patient.sex === 'F')) {
+            gender = patient.sex === 'M' ? 'male' : 'female';
+            updateParts.push(`gender = ${escapeString(gender)}`);
+          }
+
+          // 생년월일 처리 (MSSQL birth 형식: "Wed, 25 Dec 1985 00:00:00 GMT")
+          if (!birthDate && patient.birth) {
+            try {
+              const parsedDate = new Date(patient.birth);
+              if (!isNaN(parsedDate.getTime())) {
+                birthDate = parsedDate.toISOString().split('T')[0]; // YYYY-MM-DD 형식
+                updateParts.push(`birth_date = ${escapeString(birthDate)}`);
+              }
+            } catch {
+              // 날짜 파싱 실패 시 무시
+            }
+          }
+
           // SQLite 업데이트 (비동기)
-          execute(`UPDATE patients SET gender = ${escapeString(gender)} WHERE id = ${patientId}`).catch(() => {});
+          if (updateParts.length > 0) {
+            execute(`UPDATE patients SET ${updateParts.join(', ')} WHERE id = ${patientId}`).catch(() => {});
+          }
         }
       }
     } catch {
@@ -72,7 +95,7 @@ export async function fetchPatientById(patientId: number): Promise<Patient | nul
     status: 'COMPLETED' as any,
     time: '',
     details: '',
-    dob: data.birth_date || undefined,
+    dob: birthDate,
     gender,
     phone: data.phone || undefined,
     address: undefined,
@@ -142,9 +165,9 @@ export async function savePatientTreatmentSettings(
 
 // 모든 치료실 조회 (session_treatments 별도 테이블에서 조인)
 export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
-  // patients 테이블과 LEFT JOIN하여 성별 정보를 보완
+  // patients 테이블과 LEFT JOIN하여 성별/생년월일 정보를 보완
   const rooms = await query<any>(`
-    SELECT tr.*, p.gender as patient_gender_from_patients
+    SELECT tr.*, p.gender as patient_gender_from_patients, p.birth_date as patient_dob_from_patients
     FROM treatment_rooms tr
     LEFT JOIN patients p ON tr.patient_id = p.id
     ORDER BY tr.display_order ASC, tr.id ASC
@@ -160,13 +183,53 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
 
     // 치료실의 patient_gender가 없으면 patients 테이블에서 가져온 값 사용
     const patientGender = room.patient_gender || room.patient_gender_from_patients;
+    // 치료실의 patient_dob가 없으면 patients 테이블에서 가져온 값 사용
+    let patientDob = room.patient_dob || room.patient_dob_from_patients;
 
-    // 성별이 누락된 경우 DB 업데이트 (다음 폴링부터는 정상)
+    const updateParts: string[] = [];
+
+    // 성별이 누락된 경우
     if (!room.patient_gender && room.patient_gender_from_patients && room.patient_id) {
+      updateParts.push(`patient_gender = ${escapeString(room.patient_gender_from_patients)}`);
+    }
+
+    // 생년월일이 누락된 경우
+    if (!room.patient_dob && room.patient_dob_from_patients && room.patient_id) {
+      updateParts.push(`patient_dob = ${escapeString(room.patient_dob_from_patients)}`);
+    }
+
+    // DB 업데이트 (다음 폴링부터는 정상)
+    if (updateParts.length > 0) {
       execute(`
-        UPDATE treatment_rooms SET patient_gender = ${escapeString(room.patient_gender_from_patients)}
+        UPDATE treatment_rooms SET ${updateParts.join(', ')}
         WHERE id = ${room.id}
       `).catch(() => {}); // 백그라운드로 업데이트
+    }
+
+    // 생년월일이 여전히 없고 차트번호가 있으면 MSSQL에서 가져오기 시도
+    if (!patientDob && room.patient_chart_number && room.patient_id) {
+      try {
+        const mssqlRes = await fetch(`http://192.168.0.173:3100/api/patients/search?q=${room.patient_chart_number}`);
+        if (mssqlRes.ok) {
+          const mssqlData = await mssqlRes.json();
+          const patient = mssqlData[0];
+          if (patient?.birth) {
+            try {
+              const parsedDate = new Date(patient.birth);
+              if (!isNaN(parsedDate.getTime())) {
+                patientDob = parsedDate.toISOString().split('T')[0];
+                // SQLite patients 테이블과 치료실 테이블 모두 업데이트
+                execute(`UPDATE patients SET birth_date = ${escapeString(patientDob)} WHERE id = ${room.patient_id}`).catch(() => {});
+                execute(`UPDATE treatment_rooms SET patient_dob = ${escapeString(patientDob)} WHERE id = ${room.id}`).catch(() => {});
+              }
+            } catch {
+              // 날짜 파싱 실패
+            }
+          }
+        }
+      } catch {
+        // MSSQL 조회 실패
+      }
     }
 
     result.push({
@@ -178,7 +241,7 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
       patientName: room.patient_name,
       patientChartNumber: room.patient_chart_number,
       patientGender: patientGender,
-      patientDob: room.patient_dob,
+      patientDob: patientDob,
       doctorName: room.doctor_name,
       inTime: room.in_time,
       sessionTreatments: sessionTreatments.map((st: any) => ({

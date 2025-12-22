@@ -568,7 +568,12 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
                     >
                         {room.patientName}
                     </p>
-                    <p className="text-sm text-clinic-text-secondary">
+                    <p className="text-sm text-clinic-text-secondary relative">
+                        <span className="absolute bottom-full left-0 text-xs text-gray-400 whitespace-nowrap">
+                          {room.patientChartNumber || ''}
+                          {room.patientChartNumber && room.patientDob && ' / '}
+                          {room.patientDob && `${Math.floor((Date.now() - new Date(room.patientDob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))}세`}
+                        </span>
                         {room.doctorName?.replace(' 원장', '')}
                     </p>
                     {room.inTime && (
