@@ -627,7 +627,7 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
                     {/* 공백시간 표시 */}
                     {room.status === RoomStatus.IN_USE && (
                         <p className={`text-sm flex items-center ${room.idleStartTime ? 'text-orange-500' : 'text-gray-500'}`}>
-                            <i className="fa-solid fa-hourglass-half mr-1"></i>
+                            <i className="fa-solid fa-hourglass-half mr-1 text-xs"></i>
                             {formatIdleTime(totalIdleSeconds)}
                         </p>
                     )}
