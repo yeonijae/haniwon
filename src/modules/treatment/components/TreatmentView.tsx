@@ -669,6 +669,7 @@ interface TreatmentViewProps {
     treatmentRooms: TreatmentRoom[];
     waitingList: Patient[];
     onNavigateBack: () => void;
+    onNavigateToSettings: () => void;
     onUpdateRooms: (rooms: TreatmentRoom[]) => void;
     onSaveRoomToDB: (roomId: number, room: TreatmentRoom) => void;
     onUpdateWaitingList: (patients: Patient[]) => void;
@@ -682,7 +683,7 @@ interface TreatmentViewProps {
 }
 
 const TreatmentView: React.FC<TreatmentViewProps> = ({
-    treatmentRooms, waitingList, onNavigateBack, onUpdateRooms, onSaveRoomToDB, onUpdateWaitingList, onRemoveFromWaitingList, onAddToWaitingList, onMovePatientToPayment, allPatients, onUpdatePatientDefaultTreatments, treatmentItems, onTreatmentStart
+    treatmentRooms, waitingList, onNavigateBack, onNavigateToSettings, onUpdateRooms, onSaveRoomToDB, onUpdateWaitingList, onRemoveFromWaitingList, onAddToWaitingList, onMovePatientToPayment, allPatients, onUpdatePatientDefaultTreatments, treatmentItems, onTreatmentStart
 }) => {
     const [draggedTreatment, setDraggedTreatment] = useState<{ roomId: number; treatmentId: string } | null>(null);
     const [infoModalRoom, setInfoModalRoom] = useState<TreatmentRoom | null>(null);
@@ -1171,15 +1172,15 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                 <div className="flex items-center">
                     <i className="fa-solid fa-user-clock text-clinic-secondary text-xl mr-3"></i>
                     <h2 className="text-lg font-bold text-clinic-text-primary">
-                        치료 대기
+                        치료관리
                     </h2>
                 </div>
                 <button
-                  onClick={onNavigateBack}
-                  className="flex items-center justify-center w-10 h-10 rounded-lg bg-white border border-gray-300 text-clinic-primary hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-clinic-secondary"
-                  aria-label="메인 대시보드로 돌아가기"
+                  onClick={onNavigateToSettings}
+                  className="flex items-center justify-center w-10 h-10 rounded-lg bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-clinic-secondary"
+                  aria-label="설정"
                 >
-                  <i className="fa-solid fa-house text-xl"></i>
+                  <i className="fa-solid fa-gear text-lg"></i>
                 </button>
              </div>
              <div className="flex-grow overflow-y-auto p-2">

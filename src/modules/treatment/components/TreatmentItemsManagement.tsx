@@ -7,6 +7,7 @@ interface TreatmentItemsManagementProps {
     updateTreatmentItem: (id: number, item: Omit<TreatmentItem, 'id'>) => void;
     deleteTreatmentItem: (id: number) => void;
     reorderTreatmentItems: (items: TreatmentItem[]) => void;
+    onNavigateBack?: () => void;
 }
 
 const TreatmentItemsManagement: React.FC<TreatmentItemsManagementProps> = ({
@@ -14,7 +15,8 @@ const TreatmentItemsManagement: React.FC<TreatmentItemsManagementProps> = ({
     addTreatmentItem,
     updateTreatmentItem,
     deleteTreatmentItem,
-    reorderTreatmentItems
+    reorderTreatmentItems,
+    onNavigateBack
 }) => {
     const [editingItem, setEditingItem] = useState<TreatmentItem | null>(null);
     const [showAddModal, setShowAddModal] = useState(false);
@@ -103,10 +105,26 @@ const TreatmentItemsManagement: React.FC<TreatmentItemsManagementProps> = ({
     };
 
     return (
-        <div className="p-6">
-            <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-semibold mb-2">치료항목 관리</h3>
-                <p className="text-sm text-gray-600 mb-4">치료 시 사용할 수 있는 치료항목과 기본시간을 설정합니다.</p>
+        <div className="flex flex-col h-full max-h-[80vh]">
+            {/* 헤더 */}
+            <div className="flex items-center justify-between p-4 border-b bg-gray-50">
+                <div>
+                    <h3 className="text-lg font-semibold">치료항목 관리</h3>
+                    <p className="text-sm text-gray-600">치료 시 사용할 수 있는 치료항목과 기본시간을 설정합니다.</p>
+                </div>
+                {onNavigateBack && (
+                    <button
+                        onClick={onNavigateBack}
+                        className="flex items-center justify-center w-10 h-10 rounded-lg text-gray-500 hover:bg-gray-200 transition-colors"
+                        aria-label="닫기"
+                    >
+                        <i className="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                )}
+            </div>
+
+            {/* 컨텐츠 */}
+            <div className="flex-1 overflow-y-auto p-4">
 
                 <button
                     onClick={() => setShowAddModal(true)}

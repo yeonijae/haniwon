@@ -13,6 +13,7 @@ import ManageApp from '@manage/ManageApp';
 import ChartApp from '@chart/ChartApp';
 import InventoryApp from '@inventory/InventoryApp';
 import TreatmentApp from '@treatment/TreatmentApp';
+import ActingApp from '@acting/ActingApp';
 // PatientCareApp은 HerbalApp으로 통합됨 (patient-care → herbal 리다이렉트)
 import FunnelApp from './modules/funnel/FunnelApp';
 import ContentApp from './modules/content/ContentApp';
@@ -120,6 +121,12 @@ function App() {
       <Route
         path="/treatment/*"
         element={user ? <TreatmentApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Acting Module Routes */}
+      <Route
+        path="/acting/*"
+        element={user ? <ActingApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Patient Care Module Routes (레거시 - /herbal로 리다이렉트) */}

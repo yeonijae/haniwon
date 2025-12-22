@@ -5,7 +5,6 @@ import { Patient, DefaultTreatment, TreatmentRoom } from './types';
 import { useTreatmentRooms } from './hooks/useTreatmentRooms';
 import { useTreatmentItems } from './hooks/useTreatmentItems';
 import TreatmentView from './components/TreatmentView';
-import ActingManagementView from './components/ActingManagementView';
 import TreatmentItemsManagement from './components/TreatmentItemsManagement';
 import * as api from './lib/api';
 import { useTreatmentRecord } from '@shared/hooks/useTreatmentRecord';
@@ -14,11 +13,9 @@ interface TreatmentAppProps {
   user: PortalUser;
 }
 
-type ViewType = 'treatment' | 'acting' | 'settings';
-
 function TreatmentApp({ user }: TreatmentAppProps) {
   const navigate = useNavigate();
-  const [currentView, setCurrentView] = useState<ViewType>('treatment');
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   // State hooks
   const {
@@ -104,16 +101,12 @@ function TreatmentApp({ user }: TreatmentAppProps) {
     window.close();
   }, []);
 
-  const handleNavigateToActing = useCallback(() => {
-    setCurrentView('acting');
+  const handleOpenSettings = useCallback(() => {
+    setShowSettingsModal(true);
   }, []);
 
-  const handleNavigateToTreatment = useCallback(() => {
-    setCurrentView('treatment');
-  }, []);
-
-  const handleNavigateToSettings = useCallback(() => {
-    setCurrentView('settings');
+  const handleCloseSettings = useCallback(() => {
+    setShowSettingsModal(false);
   }, []);
 
   // Waiting list handlers
@@ -200,90 +193,39 @@ function TreatmentApp({ user }: TreatmentAppProps) {
   }, [treatmentRecordHook]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header with view toggle */}
-      <div className="bg-white border-b px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-clinic-text-primary">치료관리</h1>
-          <div className="flex gap-2">
-            <button
-              onClick={handleNavigateToTreatment}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                currentView === 'treatment'
-                  ? 'bg-clinic-primary text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              치료실
-            </button>
-            <button
-              onClick={handleNavigateToActing}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                currentView === 'acting'
-                  ? 'bg-clinic-primary text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              액팅관리
-            </button>
-            <button
-              onClick={handleNavigateToSettings}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                currentView === 'settings'
-                  ? 'bg-clinic-primary text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              설정
-            </button>
+    <div className="h-screen bg-gray-50 overflow-hidden">
+      <TreatmentView
+        treatmentRooms={treatmentRooms}
+        waitingList={waitingList}
+        onNavigateBack={handleNavigateBack}
+        onNavigateToSettings={handleOpenSettings}
+        onUpdateRooms={handleUpdateTreatmentRooms}
+        onSaveRoomToDB={saveTreatmentRoomToDB}
+        onUpdateWaitingList={setWaitingList}
+        onRemoveFromWaitingList={handleRemoveFromWaitingList}
+        onAddToWaitingList={handleAddToWaitingList}
+        onMovePatientToPayment={handleMovePatientToPayment}
+        allPatients={allPatients}
+        onUpdatePatientDefaultTreatments={handleUpdatePatientDefaultTreatments}
+        treatmentItems={treatmentItems}
+        onTreatmentStart={handleTreatmentStart}
+      />
+
+      {/* 설정 모달 */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+            <TreatmentItemsManagement
+              treatmentItems={treatmentItems}
+              addTreatmentItem={addTreatmentItem}
+              updateTreatmentItem={updateTreatmentItem}
+              deleteTreatmentItem={deleteTreatmentItem}
+              reorderTreatmentItems={reorderTreatmentItems}
+              onNavigateBack={handleCloseSettings}
+            />
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-600">{user.name}님</span>
-          <button
-            onClick={handleNavigateBack}
-            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-          >
-            닫기
-          </button>
-        </div>
-      </div>
-
-      {/* Main content */}
-      <div className={`h-[calc(100vh-60px)] ${currentView === 'treatment' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-        {currentView === 'treatment' && (
-          <TreatmentView
-            treatmentRooms={treatmentRooms}
-            waitingList={waitingList}
-            onNavigateBack={handleNavigateBack}
-            onUpdateRooms={handleUpdateTreatmentRooms}
-            onSaveRoomToDB={saveTreatmentRoomToDB}
-            onUpdateWaitingList={setWaitingList}
-            onRemoveFromWaitingList={handleRemoveFromWaitingList}
-            onAddToWaitingList={handleAddToWaitingList}
-            onMovePatientToPayment={handleMovePatientToPayment}
-            allPatients={allPatients}
-            onUpdatePatientDefaultTreatments={handleUpdatePatientDefaultTreatments}
-            treatmentItems={treatmentItems}
-            onTreatmentStart={handleTreatmentStart}
-          />
-        )}
-        {currentView === 'acting' && (
-          <ActingManagementView
-            treatmentRooms={treatmentRooms}
-            allPatients={allPatients}
-          />
-        )}
-        {currentView === 'settings' && (
-          <TreatmentItemsManagement
-            treatmentItems={treatmentItems}
-            addTreatmentItem={addTreatmentItem}
-            updateTreatmentItem={updateTreatmentItem}
-            deleteTreatmentItem={deleteTreatmentItem}
-            reorderTreatmentItems={reorderTreatmentItems}
-          />
-        )}
-      </div>
+      )}
     </div>
   );
 }
