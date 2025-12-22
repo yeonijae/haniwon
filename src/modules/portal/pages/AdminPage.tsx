@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '@shared/lib/supabase';
-import { createUser, deleteUser, changePassword } from '@shared/lib/auth';
+import { createUser, deleteUser, changePassword, getAllUsers } from '@shared/lib/auth';
+import { execute, escapeString, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { APPS } from '@shared/constants/apps';
 import type { PortalUser, AppType, UserRole } from '@shared/types';
 import '../styles/portal.css';
 
@@ -39,12 +40,7 @@ function AdminPage({ user: _currentUser }: AdminPageProps) {
 
   async function loadUsers() {
     try {
-      const { data, error } = await supabase
-        .from('portal_users')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const data = await getAllUsers();
       setUsers(data || []);
     } catch (error) {
       console.error('사용자 목록 로드 실패:', error);
@@ -58,22 +54,20 @@ function AdminPage({ user: _currentUser }: AdminPageProps) {
 
     setSaving(true);
     try {
-      const updateData: Record<string, unknown> = {
-        name: editingUser.name,
-        role: editingUser.role,
-        permissions: editingUser.permissions,
-        updated_at: new Date().toISOString(),
-      };
+      const now = getCurrentTimestamp();
+      const permissionsJson = JSON.stringify(editingUser.permissions);
 
-      const { error } = await supabase
-        .from('portal_users')
-        .update(updateData)
-        .eq('id', editingUser.id);
-
-      if (error) throw error;
+      await execute(`
+        UPDATE portal_users
+        SET name = ${escapeString(editingUser.name)},
+            role = ${escapeString(editingUser.role)},
+            permissions = ${escapeString(permissionsJson)},
+            updated_at = ${escapeString(now)}
+        WHERE id = ${editingUser.id}
+      `);
 
       if (editingUser.newPassword) {
-        await changePassword(editingUser.id, editingUser.newPassword);
+        await changePassword(Number(editingUser.id), editingUser.newPassword);
       }
 
       await loadUsers();
@@ -118,7 +112,7 @@ function AdminPage({ user: _currentUser }: AdminPageProps) {
     }
 
     try {
-      await deleteUser(userId);
+      await deleteUser(Number(userId));
       await loadUsers();
     } catch (error) {
       alert(error instanceof Error ? error.message : '사용자 삭제에 실패했습니다.');
@@ -159,16 +153,8 @@ function AdminPage({ user: _currentUser }: AdminPageProps) {
   }
 
   function getAppName(app: AppType): string {
-    switch (app) {
-      case 'manage':
-        return '운영관리';
-      case 'chart':
-        return '진료관리';
-      case 'inventory':
-        return '재고관리';
-      default:
-        return app;
-    }
+    const appInfo = APPS.find((a) => a.id === app);
+    return appInfo ? appInfo.name : app;
   }
 
   if (loading) {
@@ -341,30 +327,16 @@ function AdminPage({ user: _currentUser }: AdminPageProps) {
               <div className="portal-form-group">
                 <label className="portal-form-label">앱 접근 권한</label>
                 <div className="checkbox-group">
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={newUser.permissions.includes('manage')}
-                      onChange={() => togglePermission('manage', true)}
-                    />
-                    <span>📊 운영관리</span>
-                  </label>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={newUser.permissions.includes('chart')}
-                      onChange={() => togglePermission('chart', true)}
-                    />
-                    <span>📋 진료관리</span>
-                  </label>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={newUser.permissions.includes('inventory')}
-                      onChange={() => togglePermission('inventory', true)}
-                    />
-                    <span>📦 재고관리</span>
-                  </label>
+                  {APPS.map((app) => (
+                    <label key={app.id} className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={newUser.permissions.includes(app.id)}
+                        onChange={() => togglePermission(app.id, true)}
+                      />
+                      <span>{app.icon} {app.name}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
             )}
@@ -442,30 +414,16 @@ function AdminPage({ user: _currentUser }: AdminPageProps) {
               <div className="portal-form-group">
                 <label className="portal-form-label">앱 접근 권한</label>
                 <div className="checkbox-group">
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={editingUser.permissions.includes('manage')}
-                      onChange={() => togglePermission('manage')}
-                    />
-                    <span>📊 운영관리</span>
-                  </label>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={editingUser.permissions.includes('chart')}
-                      onChange={() => togglePermission('chart')}
-                    />
-                    <span>📋 진료관리</span>
-                  </label>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={editingUser.permissions.includes('inventory')}
-                      onChange={() => togglePermission('inventory')}
-                    />
-                    <span>📦 재고관리</span>
-                  </label>
+                  {APPS.map((app) => (
+                    <label key={app.id} className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={editingUser.permissions.includes(app.id)}
+                        onChange={() => togglePermission(app.id)}
+                      />
+                      <span>{app.icon} {app.name}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
             )}
