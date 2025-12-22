@@ -114,4 +114,12 @@ export const APPS: AppInfo[] = [
     icon: '👥',
     color: '#6366f1',
   },
+  {
+    id: 'wiki',
+    name: '운영매뉴얼',
+    description: '한의원 운영 매뉴얼입니다. 업무 프로세스, 가이드, 문서를 위키 형태로 관리합니다.',
+    path: '/wiki',
+    icon: '📖',
+    color: '#0ea5e9',
+  },
 ];

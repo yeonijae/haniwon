@@ -23,6 +23,7 @@ import StatisticsApp from './modules/statistics/StatisticsApp';
 import DbAdminApp from './modules/db-admin/DbAdminApp';
 import HerbalApp from './modules/herbal/HerbalApp';
 import StaffApp from './modules/staff/StaffApp';
+import WikiApp from './modules/wiki/WikiApp';
 
 // Public Blog Pages (공개 - 로그인 불필요)
 import BlogListPage from './modules/blog/pages/BlogListPage';
@@ -206,6 +207,12 @@ function App() {
       <Route
         path="/staff/*"
         element={user ? <StaffApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Wiki Routes (운영매뉴얼) */}
+      <Route
+        path="/wiki/*"
+        element={user ? <WikiApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Fallback */}

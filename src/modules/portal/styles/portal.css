@@ -544,3 +544,161 @@
   height: 18px;
   cursor: pointer;
 }
+
+/* 앱 순서 편집 */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.section-header .section-title {
+  margin-bottom: 0;
+}
+
+.edit-order-button {
+  background: #f3f4f6;
+  color: #374151;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.edit-order-button:hover {
+  background: #e5e7eb;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.reset-button,
+.cancel-button,
+.save-button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.reset-button {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.reset-button:hover {
+  background: #fde68a;
+}
+
+.cancel-button {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.cancel-button:hover {
+  background: #e5e7eb;
+}
+
+.save-button {
+  background: var(--clinic-primary);
+  color: white;
+}
+
+.save-button:hover {
+  background: var(--clinic-secondary);
+}
+
+.edit-hint {
+  background: #eff6ff;
+  color: #1e40af;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 편집 모드 그리드 */
+.apps-grid.edit-mode .app-card {
+  cursor: grab;
+  position: relative;
+}
+
+.apps-grid.edit-mode .app-card:active {
+  cursor: grabbing;
+}
+
+.app-card.draggable {
+  user-select: none;
+}
+
+.app-card.dragging {
+  opacity: 0.5;
+  transform: scale(0.98);
+}
+
+.app-card.drag-over {
+  border-color: var(--clinic-secondary) !important;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+/* 순서 컨트롤 */
+.order-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: white;
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.order-button {
+  background: #f3f4f6;
+  border: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.order-button:hover:not(:disabled) {
+  background: #e5e7eb;
+}
+
+.order-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.order-number {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--clinic-primary);
+  min-width: 20px;
+  text-align: center;
+}
