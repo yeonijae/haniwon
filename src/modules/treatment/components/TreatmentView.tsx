@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, memo, useCallback } from 'react';
 import { TreatmentRoom, RoomStatus, Patient, PatientStatus, SessionTreatment, DefaultTreatment, TreatmentItem } from '../types';
 import TreatmentInfoModal from './TreatmentInfoModal';
-import DefaultTreatmentEditModal from './DefaultTreatmentEditModal';
 import * as api from '../lib/api';
 import * as actingApi from '@acting/api';
 
@@ -374,23 +373,40 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
     const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
     const addMenuRef = useRef<HTMLDivElement>(null);
     const [showClothingSnackbar, setShowClothingSnackbar] = useState(false);
-    const prevPatientIdRef = useRef<number | undefined>(undefined);
 
     // 타이머 만료 확인
     const hasExpiredTimer = useHasExpiredTimer(room.sessionTreatments);
 
-    // 환자 배정 시 환자복 스낵바 표시 (1분 후 자동 숨김)
+    // 환자복 스낵바: 입실시간 기준 1분 이내면 표시
     useEffect(() => {
-        // 새로운 환자가 배정되었고, 환자복 정보가 있는 경우
-        if (room.patientId && room.patientId !== prevPatientIdRef.current && room.patientClothing) {
-            setShowClothingSnackbar(true);
-            const timer = setTimeout(() => {
-                setShowClothingSnackbar(false);
-            }, 60000);
-            return () => clearTimeout(timer);
+        if (!room.inTime || !room.patientClothing) {
+            setShowClothingSnackbar(false);
+            return;
         }
-        prevPatientIdRef.current = room.patientId;
-    }, [room.patientId, room.patientClothing]);
+
+        const checkSnackbar = () => {
+            const inTime = new Date(room.inTime!).getTime();
+            const now = Date.now();
+            const elapsedMs = now - inTime;
+            const oneMinute = 60 * 1000;
+
+            if (elapsedMs < oneMinute) {
+                setShowClothingSnackbar(true);
+                // 남은 시간 후 자동 숨김
+                const remainingMs = oneMinute - elapsedMs;
+                return setTimeout(() => {
+                    setShowClothingSnackbar(false);
+                }, remainingMs);
+            } else {
+                setShowClothingSnackbar(false);
+            }
+        };
+
+        const timerId = checkSnackbar();
+        return () => {
+            if (timerId) clearTimeout(timerId);
+        };
+    }, [room.inTime, room.patientClothing]);
 
     const availableTreatmentsToAdd = useMemo(() => {
         if (room.status !== RoomStatus.IN_USE) return [];
@@ -672,7 +688,6 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
     const [infoModalRoom, setInfoModalRoom] = useState<TreatmentRoom | null>(null);
     const [hoveredPatient, setHoveredPatient] = useState<Patient | null>(null);
     const [popoverPosition, setPopoverPosition] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
-    const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
 
     const treatmentRoomsRef = useRef(treatmentRooms);
     const waitingListRef = useRef(waitingList);
@@ -699,7 +714,29 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
 
     const handlePatientContextMenu = (e: React.MouseEvent, patient: Patient) => {
         e.preventDefault();
-        setEditingPatient(patient);
+        // 대기열 환자를 위한 가상 TreatmentRoom 생성
+        const virtualRoom: TreatmentRoom = {
+            id: 0, // 가상 룸 표시 (실제 룸이 아님)
+            name: '',
+            status: RoomStatus.AVAILABLE,
+            patientId: patient.id,
+            patientName: patient.name,
+            patientChartNumber: patient.chartNumber,
+            patientGender: patient.gender,
+            patientDob: patient.dob,
+            doctorName: patient.doctor,
+            sessionTreatments: (patient.defaultTreatments || []).map((dt, index) => ({
+                id: `tx-${patient.id}-${Date.now()}-${index}`,
+                name: dt.name,
+                duration: dt.duration,
+                status: 'pending' as const,
+                elapsedSeconds: 0,
+                memo: dt.memo,
+            })),
+            patientClothing: patient.treatmentClothing,
+            patientNotes: patient.treatmentNotes,
+        };
+        setInfoModalRoom(virtualRoom);
     };
 
     // 베드 배정 시 액팅 항목 자동 추가 (자침, 추나, 초음파, 향기요법)
@@ -1099,6 +1136,12 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
     }, []);
 
     const handleSaveTreatmentInfo = (roomId: number, updatedTreatments: SessionTreatment[], settings: { clothing?: string; notes?: string }) => {
+        // roomId가 0이면 가상 룸 (대기열 환자) - 룸 업데이트 건너뜀
+        if (roomId === 0) {
+            // 대기열 환자는 기본치료로 저장만 처리 (onSaveDefault에서 처리됨)
+            setInfoModalRoom(null);
+            return;
+        }
         updateRoom(roomId, room => ({
             ...room,
             sessionTreatments: updatedTreatments,
@@ -1110,16 +1153,19 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
 
     const handleSaveDefaultTreatmentsFromModal = (patientId: number, treatments: { name: string; duration: number; memo?: string }[], settings: { clothing?: string; notes?: string }) => {
         onUpdatePatientDefaultTreatments(patientId, treatments as DefaultTreatment[], settings);
+        // 대기열 환자의 경우 waitingList 상태도 업데이트
+        if (infoModalRoom?.id === 0) {
+            onUpdateWaitingList(waitingList.map(p =>
+                p.id === patientId
+                    ? { ...p, defaultTreatments: treatments as DefaultTreatment[], treatmentClothing: settings.clothing, treatmentNotes: settings.notes }
+                    : p
+            ));
+        }
         setInfoModalRoom(null);
     };
 
-    const handleSaveDefaultTreatments = (patientId: number, treatments: DefaultTreatment[]) => {
-        onUpdatePatientDefaultTreatments(patientId, treatments);
-        setEditingPatient(null);
-    };
-
     return (
-        <main className="h-screen p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-8 gap-6 bg-gray-50">
+        <main className="h-full p-2 grid grid-cols-1 lg:grid-cols-8 gap-2 bg-gray-50 overflow-hidden">
           <div className="lg:col-span-1 bg-white rounded-lg shadow-sm flex flex-col overflow-hidden border">
              <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
                 <div className="flex items-center">
@@ -1165,9 +1211,9 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
              </div>
           </div>
 
-          <div className="lg:col-span-7 flex flex-col min-h-0">
-            <div className="flex-grow overflow-y-auto p-1">
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-1 h-full auto-rows-fr">
+          <div className="lg:col-span-7 flex flex-col min-h-0 overflow-hidden">
+            <div className="flex-grow p-1 h-full">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 grid-rows-3 gap-1 h-full">
                 {treatmentRooms.map(room => (
                   <React.Fragment key={room.id}>
                     <TreatmentBedCard room={room}
@@ -1241,14 +1287,6 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                         ))}
                     </ul>
                 </div>
-            )}
-            {editingPatient && (
-                <DefaultTreatmentEditModal
-                    isOpen={!!editingPatient}
-                    onClose={() => setEditingPatient(null)}
-                    patient={editingPatient}
-                    onSave={handleSaveDefaultTreatments}
-                />
             )}
         </main>
     );

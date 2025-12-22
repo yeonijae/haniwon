@@ -250,7 +250,7 @@ function TreatmentApp({ user }: TreatmentAppProps) {
       </div>
 
       {/* Main content */}
-      <div className="h-[calc(100vh-60px)] overflow-y-auto">
+      <div className={`h-[calc(100vh-60px)] ${currentView === 'treatment' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         {currentView === 'treatment' && (
           <TreatmentView
             treatmentRooms={treatmentRooms}
