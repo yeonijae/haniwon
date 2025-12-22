@@ -53,7 +53,7 @@ function TreatmentApp({ user }: TreatmentAppProps) {
             return {
               ...patient,
               details: item.details,
-              time: item.created_at ? new Date(item.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+              time: item.created_at ? new Date(item.created_at + 'Z').toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
               defaultTreatments,
               doctor: item.doctor,
             };

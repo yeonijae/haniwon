@@ -4,6 +4,13 @@ import TreatmentInfoModal from './TreatmentInfoModal';
 import * as api from '../lib/api';
 import * as actingApi from '@acting/api';
 
+// SQLite UTC 시간을 로컬 타임스탬프로 변환
+const parseUtcTime = (timeStr: string | null | undefined): number => {
+    if (!timeStr) return 0;
+    const utcStr = timeStr.endsWith('Z') ? timeStr : timeStr + 'Z';
+    return new Date(utcStr).getTime();
+};
+
 const getStatusClasses = (status: RoomStatus, gender?: 'male' | 'female'): { border: string, bg: string, text: string } => {
   switch (status) {
     case RoomStatus.IN_USE:
@@ -40,7 +47,7 @@ const isTimerExpired = (treatment: SessionTreatment): boolean => {
 
     const totalSeconds = treatment.duration * 60;
     const now = Date.now();
-    const start = new Date(treatment.startTime).getTime();
+    const start = parseUtcTime(treatment.startTime);
     const currentSessionElapsed = (now - start) / 1000;
     const elapsed = currentSessionElapsed + (treatment.elapsedSeconds || 0);
 
@@ -54,7 +61,7 @@ const useIdleTime = (idleSeconds: number = 0, idleStartTime: string | null | und
     useEffect(() => {
         const calculate = () => {
             if (idleStartTime) {
-                const elapsed = (Date.now() - new Date(idleStartTime).getTime()) / 1000;
+                const elapsed = (Date.now() - parseUtcTime(idleStartTime)) / 1000;
                 setTotalIdleSeconds(Math.round(idleSeconds + elapsed));
             } else {
                 setTotalIdleSeconds(idleSeconds);
@@ -120,7 +127,7 @@ const useTimer = (treatment: SessionTreatment) => {
                 elapsed = totalSeconds;
             } else if (status === 'running' && startTime) {
                 const now = Date.now();
-                const start = new Date(startTime).getTime();
+                const start = parseUtcTime(startTime);
                 const currentSessionElapsed = (now - start) / 1000;
                 elapsed = currentSessionElapsed + (elapsedSeconds || 0);
             } else if (status === 'paused') {
@@ -423,7 +430,7 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
         }
 
         const checkSnackbar = () => {
-            const inTime = new Date(room.inTime!).getTime();
+            const inTime = parseUtcTime(room.inTime);
             const now = Date.now();
             const elapsedMs = now - inTime;
             const oneMinute = 60 * 1000;
@@ -1001,7 +1008,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                 // 현재 진행중인 치료가 없는 경우에만 공백시간 누적
                 const hasRunningTreatment = room.sessionTreatments.some(tx => tx.status === 'running');
                 if (!hasRunningTreatment && room.idleStartTime) {
-                    const idleElapsed = (now.getTime() - new Date(room.idleStartTime).getTime()) / 1000;
+                    const idleElapsed = (now.getTime() - parseUtcTime(room.idleStartTime)) / 1000;
                     updatedIdleSeconds = Math.round(updatedIdleSeconds + idleElapsed);
                 }
                 updatedIdleStartTime = null; // 치료 시작하면 공백시간 카운트 중지
@@ -1021,7 +1028,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                             };
                         case 'pause':
                             if (!tx.startTime) return tx;
-                            const currentElapsed = (now.getTime() - new Date(tx.startTime).getTime()) / 1000;
+                            const currentElapsed = (now.getTime() - parseUtcTime(tx.startTime)) / 1000;
                             const totalElapsed = Math.round((tx.elapsedSeconds || 0) + currentElapsed);
                             return {
                                 ...tx,

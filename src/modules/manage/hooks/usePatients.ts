@@ -93,7 +93,7 @@ export const usePatients = (currentUser: any) => {
             return {
               ...patient,
               status: PatientStatus.WAITING_CONSULTATION,
-              time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+              time: q.created_at ? new Date(q.created_at + 'Z').toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
               details: q.details,
               memo: q.memo,
               doctor: q.doctor,
@@ -109,7 +109,7 @@ export const usePatients = (currentUser: any) => {
             return {
               ...patient,
               status: PatientStatus.WAITING_TREATMENT,
-              time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+              time: q.created_at ? new Date(q.created_at + 'Z').toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
               details: q.details,
               memo: q.memo,
               doctor: q.doctor,
@@ -210,10 +210,12 @@ export const usePatients = (currentUser: any) => {
           .map(q => {
             const patient = patientMap.get(q.patient_id);
             if (!patient) return null;
+            // UTC 시간 변환
+            const convertedTime = q.created_at ? new Date(q.created_at + 'Z').toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
             return {
               ...patient,
               status: PatientStatus.WAITING_CONSULTATION,
-              time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+              time: convertedTime,
               details: q.details,
               memo: q.memo,
               doctor: q.doctor,
@@ -225,10 +227,12 @@ export const usePatients = (currentUser: any) => {
           .map(q => {
             const patient = patientMap.get(q.patient_id);
             if (!patient) return null;
+            // UTC 시간 변환
+            const convertedTime = q.created_at ? new Date(q.created_at + 'Z').toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
             return {
               ...patient,
               status: PatientStatus.WAITING_TREATMENT,
-              time: q.created_at ? new Date(q.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+              time: convertedTime,
               details: q.details,
               memo: q.memo,
               doctor: q.doctor,
