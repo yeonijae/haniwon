@@ -77,7 +77,7 @@ const formatIdleTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     if (mins > 0) {
-        return `${mins}분 ${secs}초`;
+        return `${mins}분${secs}초`;
     }
     return `${secs}초`;
 };
@@ -626,7 +626,7 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
                     </p>
                     {/* 공백시간 표시 */}
                     {room.status === RoomStatus.IN_USE && (
-                        <p className={`text-sm flex items-center ${room.idleStartTime ? 'text-orange-500' : 'text-gray-500'}`}>
+                        <p className={`text-sm flex items-center -mt-0.5 ${room.idleStartTime ? 'text-orange-500' : 'text-gray-500'}`}>
                             <i className="fa-solid fa-hourglass-half mr-1 text-xs"></i>
                             {formatIdleTime(totalIdleSeconds)}
                         </p>
