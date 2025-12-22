@@ -213,7 +213,7 @@ const TreatmentProgressItem: React.FC<TreatmentProgressItemProps> = memo(({ trea
 
     return (
         <div
-            className={`group relative w-full bg-gray-200 rounded-lg h-10 overflow-hidden flex items-center cursor-grab active:cursor-grabbing transition-all duration-150 ${isBeingDragged ? 'opacity-40 shadow-lg' : ''} ${isDragOver ? 'drag-over-indicator' : ''}`}
+            className={`group relative w-full rounded-lg h-10 overflow-hidden flex items-center cursor-grab active:cursor-grabbing transition-all duration-150 ${isFinished ? 'bg-gray-100 opacity-50' : 'bg-gray-200'} ${isBeingDragged ? 'opacity-40 shadow-lg' : ''} ${isDragOver ? 'drag-over-indicator' : ''}`}
             draggable
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
@@ -223,10 +223,12 @@ const TreatmentProgressItem: React.FC<TreatmentProgressItemProps> = memo(({ trea
             onDrop={handleDropInternal}
             onContextMenu={handleContextMenu}
         >
-            <div
-                className="absolute top-0 left-0 h-full bg-blue-200 transition-all duration-300"
-                style={{ width: `${progress}%` }}
-            ></div>
+            {!isFinished && (
+                <div
+                    className="absolute top-0 left-0 h-full bg-blue-200 transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                ></div>
+            )}
             <div className="relative w-full flex items-center justify-between pl-3 pr-[2px]">
                 <span className={`text-base font-semibold truncate ${
                     isFinished ? 'text-gray-400 line-through' :
