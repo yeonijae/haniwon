@@ -614,17 +614,11 @@ const TreatmentBedCard: React.FC<TreatmentBedCardProps> = memo(({
                         </span>
                         {room.doctorName?.replace(' 원장', '')}
                     </p>
-                    {room.inTime && (
-                        <p className="text-sm text-gray-500 flex items-center">
-                            <i className="fa-regular fa-clock mr-1"></i>
-                            {new Date(room.inTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                        </p>
-                    )}
-                    {/* 공백시간 표시 (10초 이상일 때만) */}
-                    {room.status === RoomStatus.IN_USE && totalIdleSeconds >= 10 && (
-                        <p className={`text-xs flex items-center ${room.idleStartTime ? 'text-orange-500' : 'text-gray-400'}`}>
+                    {/* 공백시간 표시 */}
+                    {room.status === RoomStatus.IN_USE && (
+                        <p className={`text-sm flex items-center ${room.idleStartTime ? 'text-orange-500' : 'text-gray-500'}`}>
                             <i className="fa-solid fa-hourglass-half mr-1"></i>
-                            공백 {formatIdleTime(totalIdleSeconds)}
+                            {formatIdleTime(totalIdleSeconds)}
                         </p>
                     )}
                   </div>
