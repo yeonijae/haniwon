@@ -2,22 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { PortalUser } from '@shared/types';
 import {
   ensureReceiptTables,
-  fetchMssqlReceipts,
   getPatientMemoData,
   upsertReceiptMemo,
-  createTreatmentPackage,
   useTreatmentPackage,
-  createHerbalPackage,
-  useHerbalPackage,
   earnPoints,
   usePoints,
-  getPointBalance,
-  createMembership,
-  useMembership,
-  createHerbalDispensing,
-  createGiftDispensing,
-  createDocumentIssue,
-  type MssqlReceiptItem,
 } from '../lib/api';
 import {
   type TreatmentPackage,
@@ -32,31 +21,58 @@ import {
   generateMemoSummary,
 } from '../types';
 import { ReservationStep1Modal, type ReservationDraft, type InitialPatient } from '../../reservation/components/ReservationStep1Modal';
-import { fetchDoctors } from '../../reservation/lib/api';
-import type { Doctor } from '../../reservation/types';
+import { fetchDoctors, fetchReservationsByDateRange } from '../../reservation/lib/api';
+import type { Doctor, Reservation } from '../../reservation/types';
+// manage 모듈의 API 사용
+import { fetchReceiptHistory, type ReceiptHistoryItem } from '../../manage/lib/api';
 
 interface ReceiptViewProps {
   user: PortalUser;
 }
 
 // 확장된 수납 아이템 (MSSQL + SQLite 데이터)
-interface ExpandedReceiptItem extends MssqlReceiptItem {
+interface ExpandedReceiptItem extends ReceiptHistoryItem {
   // SQLite 데이터
   treatmentPackages: TreatmentPackage[];
   herbalPackages: HerbalPackage[];
   pointBalance: number;
   todayPointUsed: number;
   todayPointEarned: number;
-  membership: Membership | null;
+  activeMembership: Membership | null;
   herbalDispensings: HerbalDispensing[];
   giftDispensings: GiftDispensing[];
   documentIssues: DocumentIssue[];
-  memo: ReceiptMemo | null;
+  receiptMemo: ReceiptMemo | null;
+  // 다음 예약 정보
+  nextReservation: Reservation | null;
   // UI 상태
   isExpanded: boolean;
   isLoading: boolean;
   memoSummary: string;
 }
+
+// 금액 포맷
+const formatMoney = (amount?: number | null): string => {
+  if (amount === undefined || amount === null || amount === 0) return '-';
+  return Math.floor(amount).toLocaleString();
+};
+
+// 시간 포맷 (HH:MM)
+const formatTime = (receiptTime?: string | null): string => {
+  if (!receiptTime) return '-';
+  // "2024-12-24 10:30:00" 또는 "2024-12-24T10:30:00" 형식에서 HH:MM 추출
+  const match = receiptTime.match(/(\d{2}):(\d{2})/);
+  return match ? `${match[1]}:${match[2]}` : '-';
+};
+
+// 수납 방식 아이콘
+const getPaymentMethodIcons = (receipt: ReceiptHistoryItem) => {
+  const methods: { icon: string; color: string; label: string }[] = [];
+  if (receipt.card > 0) methods.push({ icon: 'fa-credit-card', color: 'text-purple-600', label: '카드' });
+  if (receipt.cash > 0) methods.push({ icon: 'fa-money-bill', color: 'text-orange-600', label: '현금' });
+  if (receipt.transfer > 0) methods.push({ icon: 'fa-building-columns', color: 'text-teal-600', label: '이체' });
+  return methods;
+};
 
 function ReceiptView({ user }: ReceiptViewProps) {
   const [selectedDate, setSelectedDate] = useState<string>(() => {
@@ -88,12 +104,13 @@ function ReceiptView({ user }: ReceiptViewProps) {
     }
   };
 
-  // MSSQL 수납 내역 로드
+  // MSSQL 수납 내역 로드 (manage 모듈 API 사용)
   const loadReceipts = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const mssqlReceipts = await fetchMssqlReceipts(selectedDate);
+      const response = await fetchReceiptHistory(selectedDate);
+      const mssqlReceipts = response.receipts || [];
 
       // 각 수납 항목에 기본 UI 상태 추가
       const expandedReceipts: ExpandedReceiptItem[] = mssqlReceipts.map(r => ({
@@ -103,11 +120,12 @@ function ReceiptView({ user }: ReceiptViewProps) {
         pointBalance: 0,
         todayPointUsed: 0,
         todayPointEarned: 0,
-        membership: null,
+        activeMembership: null,
         herbalDispensings: [],
         giftDispensings: [],
         documentIssues: [],
-        memo: null,
+        receiptMemo: null,
+        nextReservation: null,
         isExpanded: false,
         isLoading: false,
         memoSummary: '',
@@ -115,8 +133,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
 
       setReceipts(expandedReceipts);
 
-      // 각 환자의 메모 요약만 먼저 로드
-      await loadAllMemoSummaries(expandedReceipts);
+      // 각 환자의 메모 요약 + 다음 예약 로드
+      await loadAllPatientData(expandedReceipts);
     } catch (err) {
       console.error('수납 내역 로드 실패:', err);
       setError('수납 내역을 불러오는데 실패했습니다.');
@@ -125,11 +143,51 @@ function ReceiptView({ user }: ReceiptViewProps) {
     }
   }, [selectedDate]);
 
-  // 모든 환자의 메모 요약 로드
-  const loadAllMemoSummaries = async (items: ExpandedReceiptItem[]) => {
+  // 다음 예약 찾기 헬퍼
+  const getNextReservation = (reservations: Reservation[]): Reservation | null => {
+    const today = new Date().toISOString().split('T')[0];
+    const futureReservations = reservations
+      .filter(r => !r.canceled && r.date >= today)
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return a.time.localeCompare(b.time);
+      });
+    return futureReservations[0] || null;
+  };
+
+  // 모든 환자의 메모 요약 + 다음 예약 로드
+  const loadAllPatientData = async (items: ExpandedReceiptItem[]) => {
+    // 1. 오늘부터 60일 후까지의 모든 예약을 한 번에 조회
+    const today = new Date().toISOString().split('T')[0];
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 60);
+    const endDate = futureDate.toISOString().split('T')[0];
+
+    let allReservations: Reservation[] = [];
+    try {
+      allReservations = await fetchReservationsByDateRange(today, endDate);
+      console.log(`[ReceiptView] 예약 ${allReservations.length}건 조회됨 (${today} ~ ${endDate})`);
+    } catch (err) {
+      console.error('예약 조회 실패:', err);
+    }
+
+    // 2. 환자별로 예약 그룹화
+    const reservationsByPatient = new Map<number, Reservation[]>();
+    allReservations.forEach(r => {
+      if (!r.canceled) {
+        const patientId = r.patientId;
+        if (!reservationsByPatient.has(patientId)) {
+          reservationsByPatient.set(patientId, []);
+        }
+        reservationsByPatient.get(patientId)!.push(r);
+      }
+    });
+
+    // 3. 각 환자의 메모 요약 + 다음 예약 매핑
     const updates = await Promise.all(
       items.map(async (item) => {
         try {
+          // 메모 데이터 로드
           const data = await getPatientMemoData(item.patient_id, selectedDate);
           const summary = generateMemoSummary({
             treatmentPackages: data.treatmentPackages,
@@ -141,14 +199,29 @@ function ReceiptView({ user }: ReceiptViewProps) {
             giftDispensings: data.giftDispensings,
             documentIssues: data.documentIssues,
           });
+
+          // 해당 환자의 다음 예약 찾기
+          const patientReservations = reservationsByPatient.get(item.patient_id) || [];
+          const nextReservation = getNextReservation(patientReservations);
+
           return {
             patient_id: item.patient_id,
             memoSummary: summary,
             reservationStatus: data.memo?.reservation_status || 'none',
             reservationDate: data.memo?.reservation_date,
+            nextReservation,
           };
         } catch (err) {
-          return { patient_id: item.patient_id, memoSummary: '', reservationStatus: 'none' as ReservationStatus };
+          // 해당 환자의 다음 예약 찾기 (메모 로드 실패해도)
+          const patientReservations = reservationsByPatient.get(item.patient_id) || [];
+          const nextReservation = getNextReservation(patientReservations);
+
+          return {
+            patient_id: item.patient_id,
+            memoSummary: '',
+            reservationStatus: 'none' as ReservationStatus,
+            nextReservation,
+          };
         }
       })
     );
@@ -159,8 +232,9 @@ function ReceiptView({ user }: ReceiptViewProps) {
         return {
           ...item,
           memoSummary: update.memoSummary,
-          memo: {
-            ...(item.memo || {}),
+          nextReservation: update.nextReservation,
+          receiptMemo: {
+            ...(item.receiptMemo || {}),
             reservation_status: update.reservationStatus as ReservationStatus,
             reservation_date: update.reservationDate,
           } as ReceiptMemo,
@@ -201,11 +275,11 @@ function ReceiptView({ user }: ReceiptViewProps) {
             pointBalance: data.pointBalance,
             todayPointUsed: data.todayPointUsed,
             todayPointEarned: data.todayPointEarned,
-            membership: data.membership,
+            activeMembership: data.membership,
             herbalDispensings: data.herbalDispensings,
             giftDispensings: data.giftDispensings,
             documentIssues: data.documentIssues,
-            memo: data.memo,
+            receiptMemo: data.memo,
             isLoading: false,
           } : r
         ));
@@ -227,7 +301,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
     try {
       await upsertReceiptMemo({
         patient_id: receipt.patient_id,
-        chart_number: receipt.chart_number,
+        chart_number: receipt.chart_no,
         patient_name: receipt.patient_name,
         mssql_receipt_id: receipt.id,
         receipt_date: selectedDate,
@@ -238,8 +312,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
       setReceipts(prev => prev.map(r =>
         r.id === receipt.id ? {
           ...r,
-          memo: {
-            ...(r.memo || {} as ReceiptMemo),
+          receiptMemo: {
+            ...(r.receiptMemo || {} as ReceiptMemo),
             reservation_status: status,
             reservation_date: reservationDate,
           } as ReceiptMemo,
@@ -255,59 +329,43 @@ function ReceiptView({ user }: ReceiptViewProps) {
   const handleReservationClick = (receipt: ExpandedReceiptItem) => {
     setSelectedPatientForReservation({
       id: receipt.patient_id,
-      chartNo: receipt.chart_number,
+      chartNo: receipt.chart_no,
       name: receipt.patient_name,
     });
     setShowReservationModal(true);
   };
 
-  // 예약 1단계 완료 (2단계로 이동 - 실제로는 캘린더 페이지로)
+  // 예약 1단계 완료
   const handleReservationNext = (draft: ReservationDraft) => {
     setShowReservationModal(false);
-    // TODO: 2단계 - 캘린더에서 시간 선택
-    // 현재는 예약 페이지로 이동하거나 모달로 처리
     alert(`예약 정보:\n환자: ${draft.patient.name}\n담당의: ${draft.doctor}\n진료: ${draft.selectedItems.join(', ')}\n슬롯: ${draft.requiredSlots}칸\n\n시간 선택을 위해 예약관리 페이지를 사용해주세요.`);
-  };
-
-  // 금액 포맷
-  const formatAmount = (amount: number) => {
-    if (amount === 0) return '-';
-    return amount.toLocaleString();
   };
 
   // 예약 상태 표시 렌더링
   const renderReservationStatus = (receipt: ExpandedReceiptItem) => {
-    const status = receipt.memo?.reservation_status || 'none';
-    const date = receipt.memo?.reservation_date;
-
-    if (status === 'none') {
+    // 1. 다음 예약이 있으면 표시
+    if (receipt.nextReservation) {
+      const r = receipt.nextReservation;
+      const d = new Date(r.date);
+      const formattedDate = `${d.getMonth() + 1}/${d.getDate()}`;
       return (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleReservationClick(receipt);
-          }}
-          className="reservation-btn empty"
-        >
-          예약
-        </button>
+        <span className="reservation-status confirmed" title={`${r.date} ${r.time} ${r.doctor}`}>
+          {formattedDate}
+        </span>
       );
     }
 
-    if (status === 'confirmed' && date) {
-      const formattedDate = new Date(date).toLocaleDateString('ko-KR', {
-        month: 'numeric',
-        day: 'numeric'
-      });
-      return (
-        <span className="reservation-status confirmed">{formattedDate}</span>
-      );
-    }
-
+    // 2. 다음 예약이 없으면 예약 버튼 표시
     return (
-      <span className={`reservation-status ${status}`}>
-        {RESERVATION_STATUS_LABELS[status]}
-      </span>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleReservationClick(receipt);
+        }}
+        className="reservation-btn empty"
+      >
+        예약
+      </button>
     );
   };
 
@@ -377,10 +435,10 @@ function ReceiptView({ user }: ReceiptViewProps) {
             <div className="col-num">#</div>
             <div className="col-time">시간</div>
             <div className="col-patient">환자</div>
-            <div className="col-doctor">담당</div>
             <div className="col-type">종별</div>
-            <div className="col-insurance">급여</div>
+            <div className="col-self">본인부담</div>
             <div className="col-general">비급여</div>
+            <div className="col-payment">수납/방식</div>
             <div className="col-memo">메모</div>
             <div className="col-reservation">예약</div>
           </div>
@@ -394,17 +452,31 @@ function ReceiptView({ user }: ReceiptViewProps) {
                 onClick={() => toggleExpand(receipt.id)}
               >
                 <div className="col-num">{index + 1}</div>
-                <div className="col-time">{receipt.receipt_time}</div>
+                <div className="col-time">{formatTime(receipt.receipt_time)}</div>
                 <div className="col-patient">
                   <span className="patient-name">{receipt.patient_name}</span>
                   <span className="patient-info">
-                    ({receipt.chart_number}{receipt.age ? `/${receipt.age}` : ''})
+                    ({receipt.chart_no})
                   </span>
                 </div>
-                <div className="col-doctor">{receipt.doctor}</div>
-                <div className="col-type">{receipt.insurance_type}</div>
-                <div className="col-insurance">{formatAmount(receipt.insurance_amount)}</div>
-                <div className="col-general">{formatAmount(receipt.general_amount)}</div>
+                <div className="col-type">
+                  <span className="type-badge">{receipt.insurance_type}</span>
+                </div>
+                <div className="col-self">{formatMoney(receipt.insurance_self)}</div>
+                <div className="col-general">{formatMoney(receipt.general_amount)}</div>
+                <div className="col-payment">
+                  <div className="payment-amount">{formatMoney(receipt.total_amount)}</div>
+                  <div className="payment-methods">
+                    {getPaymentMethodIcons(receipt).map((m, i) => (
+                      <span key={i} className={m.color} title={m.label}>
+                        <i className={`fa-solid ${m.icon}`}></i>
+                      </span>
+                    ))}
+                    {getPaymentMethodIcons(receipt).length === 0 && (
+                      <span className="text-gray-300">-</span>
+                    )}
+                  </div>
+                </div>
                 <div className="col-memo">
                   <span className="memo-summary">{receipt.memoSummary || '-'}</span>
                 </div>
@@ -425,7 +497,6 @@ function ReceiptView({ user }: ReceiptViewProps) {
                       receipt={receipt}
                       selectedDate={selectedDate}
                       onDataChange={() => {
-                        // 데이터 변경 후 해당 행 새로고침
                         toggleExpand(receipt.id);
                         setTimeout(() => toggleExpand(receipt.id), 100);
                       }}
@@ -461,7 +532,7 @@ interface ReceiptDetailPanelProps {
 
 function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservationStatusChange }: ReceiptDetailPanelProps) {
   const [activeTab, setActiveTab] = useState<'packages' | 'point' | 'dispensing' | 'memo'>('packages');
-  const [memoText, setMemoText] = useState(receipt.memo?.memo || '');
+  const [memoText, setMemoText] = useState(receipt.receiptMemo?.memo || '');
   const [pointBalance, setPointBalance] = useState(receipt.pointBalance);
 
   // 포인트 사용
@@ -470,7 +541,7 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
     try {
       await usePoints({
         patient_id: receipt.patient_id,
-        chart_number: receipt.chart_number,
+        chart_number: receipt.chart_no,
         patient_name: receipt.patient_name,
         amount,
         receipt_id: receipt.id,
@@ -489,7 +560,7 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
     try {
       await earnPoints({
         patient_id: receipt.patient_id,
-        chart_number: receipt.chart_number,
+        chart_number: receipt.chart_no,
         patient_name: receipt.patient_name,
         amount,
         receipt_id: receipt.id,
@@ -507,7 +578,7 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
     try {
       await upsertReceiptMemo({
         patient_id: receipt.patient_id,
-        chart_number: receipt.chart_number,
+        chart_number: receipt.chart_no,
         patient_name: receipt.patient_name,
         mssql_receipt_id: receipt.id,
         receipt_date: selectedDate,
@@ -620,14 +691,14 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
           {/* 멤버십 */}
           <div className="section">
             <h4>멤버십</h4>
-            {!receipt.membership ? (
+            {!receipt.activeMembership ? (
               <p className="empty-text">등록된 멤버십이 없습니다.</p>
             ) : (
               <div className="membership-info">
-                <span className="membership-type">{receipt.membership.membership_type}</span>
-                <span className="membership-count">{receipt.membership.remaining_count}회 남음</span>
+                <span className="membership-type">{receipt.activeMembership.membership_type}</span>
+                <span className="membership-count">{receipt.activeMembership.remaining_count}회 남음</span>
                 <span className="membership-expire">
-                  만료: {new Date(receipt.membership.expire_date).toLocaleDateString('ko-KR')}
+                  만료: {new Date(receipt.activeMembership.expire_date).toLocaleDateString('ko-KR')}
                 </span>
               </div>
             )}
@@ -656,14 +727,14 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
             <div className="point-input-group">
               <input
                 type="number"
-                id="point-use-amount"
+                id={`point-use-${receipt.id}`}
                 placeholder="사용 금액"
                 min="0"
                 step="1000"
               />
               <button
                 onClick={() => {
-                  const input = document.getElementById('point-use-amount') as HTMLInputElement;
+                  const input = document.getElementById(`point-use-${receipt.id}`) as HTMLInputElement;
                   handleUsePoints(Number(input.value));
                   input.value = '';
                 }}
@@ -674,14 +745,14 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
             <div className="point-input-group">
               <input
                 type="number"
-                id="point-earn-amount"
+                id={`point-earn-${receipt.id}`}
                 placeholder="적립 금액"
                 min="0"
                 step="1000"
               />
               <button
                 onClick={() => {
-                  const input = document.getElementById('point-earn-amount') as HTMLInputElement;
+                  const input = document.getElementById(`point-earn-${receipt.id}`) as HTMLInputElement;
                   handleEarnPoints(Number(input.value));
                   input.value = '';
                 }}
@@ -759,7 +830,7 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
               {(['none', 'pending_call', 'pending_kakao', 'pending_naver', 'pending_anytime'] as ReservationStatus[]).map(status => (
                 <button
                   key={status}
-                  className={receipt.memo?.reservation_status === status ? 'active' : ''}
+                  className={receipt.receiptMemo?.reservation_status === status ? 'active' : ''}
                   onClick={() => onReservationStatusChange(receipt, status)}
                 >
                   {status === 'none' ? '없음' : RESERVATION_STATUS_LABELS[status]}
@@ -769,7 +840,7 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
                 <input
                   type="date"
                   id={`reservation-date-${receipt.id}`}
-                  defaultValue={receipt.memo?.reservation_date || ''}
+                  defaultValue={receipt.receiptMemo?.reservation_date || ''}
                 />
                 <button
                   onClick={() => {

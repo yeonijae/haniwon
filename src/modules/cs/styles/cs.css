@@ -947,7 +947,7 @@
 /* 테이블 헤더 */
 .receipt-header-row {
   display: grid;
-  grid-template-columns: 40px 60px 1fr 70px 60px 80px 80px 1fr 80px;
+  grid-template-columns: 36px 50px 130px 70px 80px 80px 100px 1fr 70px;
   gap: 8px;
   padding: 12px 16px;
   background: #f9fafb;
@@ -960,7 +960,7 @@
 /* 데이터 행 */
 .receipt-row {
   display: grid;
-  grid-template-columns: 40px 60px 1fr 70px 60px 80px 80px 1fr 80px;
+  grid-template-columns: 36px 50px 130px 70px 80px 80px 100px 1fr 70px;
   gap: 8px;
   padding: 12px 16px;
   border-bottom: 1px solid #f3f4f6;
@@ -1008,25 +1008,53 @@
   color: #9ca3af;
 }
 
-.receipt-row .col-doctor {
-  font-size: 13px;
-}
-
 .receipt-row .col-type {
   font-size: 12px;
-  color: #6b7280;
 }
 
-.receipt-row .col-insurance,
+.receipt-row .col-type .type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #e0e7ff;
+  color: #4338ca;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.receipt-row .col-self,
 .receipt-row .col-general {
   text-align: right;
   font-family: monospace;
   font-size: 13px;
 }
 
+.receipt-row .col-self {
+  color: #0369a1;
+}
+
 .receipt-row .col-general {
   color: #059669;
   font-weight: 500;
+}
+
+.receipt-row .col-payment {
+  text-align: right;
+}
+
+.receipt-row .col-payment .payment-amount {
+  font-weight: 600;
+  font-size: 13px;
+  font-family: monospace;
+}
+
+.receipt-row .col-payment .payment-methods {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 12px;
 }
 
 .receipt-row .col-memo {
@@ -1035,6 +1063,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .receipt-row .col-memo .memo-summary {
