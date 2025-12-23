@@ -850,3 +850,609 @@
 .patient-detail-actions .action-btn.reservation:hover {
   background: #2563eb;
 }
+
+/* ============================================
+   수납관리 뷰 - 아코디언 스타일
+   ============================================ */
+
+/* 날짜 선택 바 */
+.receipt-date-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  background: white;
+  padding: 12px 16px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.receipt-date-bar .date-nav-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.receipt-date-bar .date-nav-btn:hover {
+  background: #e5e7eb;
+}
+
+.receipt-date-bar .date-input {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.receipt-date-bar .today-btn {
+  padding: 8px 16px;
+  background: #ec4899;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.receipt-date-bar .today-btn:hover {
+  background: #db2777;
+}
+
+.receipt-date-bar .refresh-btn {
+  padding: 8px 16px;
+  background: #f3f4f6;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-left: auto;
+}
+
+.receipt-date-bar .refresh-btn:hover {
+  background: #e5e7eb;
+}
+
+.receipt-date-bar .receipt-count {
+  font-size: 14px;
+  color: #6b7280;
+  margin-left: 8px;
+}
+
+.receipt-error {
+  padding: 12px 16px;
+  background: #fee2e2;
+  color: #dc2626;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+/* 아코디언 테이블 */
+.receipt-accordion-table {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* 테이블 헤더 */
+.receipt-header-row {
+  display: grid;
+  grid-template-columns: 40px 60px 1fr 70px 60px 80px 80px 1fr 80px;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border-bottom: 2px solid #e5e7eb;
+  font-weight: 600;
+  font-size: 13px;
+  color: #374151;
+}
+
+/* 데이터 행 */
+.receipt-row {
+  display: grid;
+  grid-template-columns: 40px 60px 1fr 70px 60px 80px 80px 1fr 80px;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+  align-items: center;
+}
+
+.receipt-row:hover {
+  background: #f9fafb;
+}
+
+.receipt-row.expanded {
+  background: #eff6ff;
+  border-bottom-color: transparent;
+}
+
+/* 열 스타일 */
+.receipt-row .col-num {
+  color: #9ca3af;
+  font-size: 13px;
+  text-align: center;
+}
+
+.receipt-row .col-time {
+  font-family: monospace;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.receipt-row .col-patient {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.receipt-row .col-patient .patient-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.receipt-row .col-patient .patient-info {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.receipt-row .col-doctor {
+  font-size: 13px;
+}
+
+.receipt-row .col-type {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.receipt-row .col-insurance,
+.receipt-row .col-general {
+  text-align: right;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.receipt-row .col-general {
+  color: #059669;
+  font-weight: 500;
+}
+
+.receipt-row .col-memo {
+  font-size: 12px;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receipt-row .col-memo .memo-summary {
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+/* 예약 상태 */
+.receipt-row .col-reservation {
+  text-align: center;
+}
+
+.reservation-btn {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.reservation-btn.empty {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.reservation-btn.empty:hover {
+  background: #3b82f6;
+  color: white;
+}
+
+.reservation-status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.reservation-status.pending_call {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.reservation-status.pending_kakao {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.reservation-status.pending_naver {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.reservation-status.pending_anytime {
+  background: #e0e7ff;
+  color: #4f46e5;
+}
+
+.reservation-status.confirmed {
+  background: #dbeafe;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+/* 상세 패널 */
+.receipt-detail-panel {
+  background: #f8fafc;
+  border-bottom: 2px solid #e5e7eb;
+  padding: 16px;
+}
+
+.detail-loading {
+  padding: 20px;
+  text-align: center;
+  color: #6b7280;
+}
+
+.detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 탭 네비게이션 */
+.detail-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 8px;
+}
+
+.detail-tabs button {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  font-size: 13px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.detail-tabs button:hover {
+  background: #f3f4f6;
+}
+
+.detail-tabs button.active {
+  background: white;
+  color: #1e40af;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* 탭 컨텐츠 */
+.tab-content {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.tab-content .section {
+  margin-bottom: 16px;
+}
+
+.tab-content .section:last-child {
+  margin-bottom: 0;
+}
+
+.tab-content .section h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.tab-content .empty-text {
+  font-size: 13px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* 패키지 목록 */
+.package-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.package-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.package-item .pkg-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.package-item .pkg-count {
+  color: #3b82f6;
+  font-family: monospace;
+}
+
+.package-item .pkg-includes {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.package-item .pkg-delivery {
+  color: #6b7280;
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.package-item .pkg-completed {
+  color: #10b981;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.package-item .use-btn {
+  padding: 4px 10px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.package-item .use-btn:hover {
+  background: #2563eb;
+}
+
+/* 멤버십 정보 */
+.membership-info {
+  display: flex;
+  gap: 16px;
+  padding: 12px;
+  background: #fef3c7;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.membership-info .membership-type {
+  font-weight: 600;
+  color: #d97706;
+}
+
+.membership-info .membership-count {
+  color: #92400e;
+}
+
+.membership-info .membership-expire {
+  color: #78716c;
+  margin-left: auto;
+}
+
+/* 포인트 탭 */
+.point-tab .point-balance {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.point-tab .point-balance .label {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+}
+
+.point-tab .point-balance .amount {
+  color: white;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.point-tab .point-today {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.point-tab .point-today .used {
+  color: #dc2626;
+}
+
+.point-tab .point-today .earned {
+  color: #059669;
+}
+
+.point-tab .point-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.point-tab .point-input-group {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.point-tab .point-input-group input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.point-tab .point-input-group button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.point-tab .point-input-group:first-child button {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.point-tab .point-input-group:last-child button {
+  background: #d1fae5;
+  color: #059669;
+}
+
+/* 출납 목록 */
+.dispensing-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.dispensing-list li {
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.dispensing-list li:last-child {
+  margin-bottom: 0;
+}
+
+/* 메모/예약 탭 */
+.memo-tab .reservation-status-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.memo-tab .reservation-status-buttons button {
+  padding: 8px 14px;
+  background: #f3f4f6;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.memo-tab .reservation-status-buttons button:hover {
+  background: #e5e7eb;
+}
+
+.memo-tab .reservation-status-buttons button.active {
+  background: #dbeafe;
+  border-color: #3b82f6;
+  color: #1e40af;
+  font-weight: 500;
+}
+
+.memo-tab .confirmed-date-input {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.memo-tab .confirmed-date-input input {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.memo-tab .confirmed-date-input button {
+  padding: 6px 14px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.memo-tab textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.memo-tab textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.memo-tab .save-memo-btn {
+  margin-top: 8px;
+  padding: 8px 20px;
+  background: #ec4899;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.memo-tab .save-memo-btn:hover {
+  background: #db2777;
+}
+
+/* 빈 상태 */
+.receipt-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 12px;
+  color: #9ca3af;
+}
+
+.receipt-empty i {
+  font-size: 48px;
+  margin-bottom: 16px;
+}

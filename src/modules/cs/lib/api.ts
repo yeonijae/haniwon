@@ -1,5 +1,22 @@
-import { query, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
-import type { Inquiry, CreateInquiryRequest, UpdateInquiryRequest } from '../types';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
+import type {
+  Inquiry,
+  CreateInquiryRequest,
+  UpdateInquiryRequest,
+  TreatmentPackage,
+  HerbalPackage,
+  PointTransaction,
+  PatientPointBalance,
+  Membership,
+  HerbalDispensing,
+  GiftDispensing,
+  DocumentIssue,
+  ReceiptMemo,
+  ReservationStatus,
+} from '../types';
+
+// MSSQL API 기본 URL
+const MSSQL_API_BASE_URL = 'http://192.168.0.173:3100';
 
 /**
  * 문의 목록 조회
@@ -131,4 +148,635 @@ export async function ensureInquiriesTable(): Promise<void> {
     )
   `;
   await execute(sql);
+}
+
+// ============================================
+// 수납관리 테이블 생성
+// ============================================
+
+export async function ensureReceiptTables(): Promise<void> {
+  // 시술패키지 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_treatment_packages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT,
+      patient_name TEXT,
+      package_name TEXT NOT NULL,
+      total_count INTEGER NOT NULL,
+      used_count INTEGER DEFAULT 0,
+      remaining_count INTEGER NOT NULL,
+      includes TEXT,
+      start_date TEXT NOT NULL,
+      expire_date TEXT,
+      memo TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // 한약패키지 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_herbal_packages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT,
+      patient_name TEXT,
+      package_type TEXT NOT NULL,
+      total_count INTEGER NOT NULL,
+      used_count INTEGER DEFAULT 0,
+      remaining_count INTEGER NOT NULL,
+      start_date TEXT NOT NULL,
+      next_delivery_date TEXT,
+      memo TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // 포인트 거래 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_point_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT,
+      patient_name TEXT,
+      transaction_type TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      balance_after INTEGER NOT NULL,
+      description TEXT,
+      receipt_id INTEGER,
+      transaction_date TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // 멤버십 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_memberships (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT,
+      patient_name TEXT,
+      membership_type TEXT NOT NULL,
+      remaining_count INTEGER NOT NULL,
+      start_date TEXT NOT NULL,
+      expire_date TEXT NOT NULL,
+      memo TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // 한약 출납 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_herbal_dispensings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT,
+      patient_name TEXT,
+      herbal_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      dispensing_type TEXT NOT NULL,
+      delivery_method TEXT NOT NULL,
+      receipt_id INTEGER,
+      memo TEXT,
+      dispensing_date TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // 증정품 출납 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_gift_dispensings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT,
+      patient_name TEXT,
+      item_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      reason TEXT,
+      receipt_id INTEGER,
+      dispensing_date TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // 서류발급 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_document_issues (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT,
+      patient_name TEXT,
+      document_type TEXT NOT NULL,
+      quantity INTEGER DEFAULT 1,
+      receipt_id INTEGER,
+      issue_date TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // 수납 메모 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_receipt_memos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT,
+      patient_name TEXT,
+      mssql_receipt_id INTEGER,
+      receipt_date TEXT NOT NULL,
+      memo TEXT,
+      reservation_status TEXT DEFAULT 'none',
+      reservation_date TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+}
+
+// ============================================
+// MSSQL 수납 내역 조회
+// ============================================
+
+export interface MssqlReceiptItem {
+  id: number;
+  receipt_time: string;
+  patient_id: number;
+  patient_name: string;
+  chart_number: string;
+  age?: number;
+  doctor: string;
+  insurance_type: string;
+  insurance_amount: number;
+  general_amount: number;
+  payment_method?: string;
+  treatment_summary?: string;
+}
+
+/**
+ * MSSQL에서 날짜별 수납 내역 조회
+ */
+export async function fetchMssqlReceipts(date: string): Promise<MssqlReceiptItem[]> {
+  try {
+    const response = await fetch(`${MSSQL_API_BASE_URL}/api/receipts/by-date?date=${date}`);
+    if (!response.ok) {
+      throw new Error(`MSSQL API 오류: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.receipts || [];
+  } catch (error) {
+    console.error('❌ MSSQL 수납 내역 조회 오류:', error);
+    return [];
+  }
+}
+
+// ============================================
+// 시술패키지 API
+// ============================================
+
+export async function getTreatmentPackages(patientId: number): Promise<TreatmentPackage[]> {
+  return query<TreatmentPackage>(
+    `SELECT * FROM cs_treatment_packages WHERE patient_id = ${patientId} ORDER BY created_at DESC`
+  );
+}
+
+export async function getActiveTreatmentPackages(patientId: number): Promise<TreatmentPackage[]> {
+  return query<TreatmentPackage>(
+    `SELECT * FROM cs_treatment_packages WHERE patient_id = ${patientId} AND status = 'active' ORDER BY created_at DESC`
+  );
+}
+
+export async function createTreatmentPackage(pkg: Omit<TreatmentPackage, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
+  const now = getCurrentTimestamp();
+  return insert(`
+    INSERT INTO cs_treatment_packages (
+      patient_id, chart_number, patient_name, package_name, total_count, used_count, remaining_count,
+      includes, start_date, expire_date, memo, status, created_at, updated_at
+    ) VALUES (
+      ${pkg.patient_id}, ${toSqlValue(pkg.chart_number)}, ${toSqlValue(pkg.patient_name)},
+      ${escapeString(pkg.package_name)}, ${pkg.total_count}, ${pkg.used_count}, ${pkg.remaining_count},
+      ${toSqlValue(pkg.includes)}, ${escapeString(pkg.start_date)}, ${toSqlValue(pkg.expire_date)},
+      ${toSqlValue(pkg.memo)}, ${escapeString(pkg.status)}, ${escapeString(now)}, ${escapeString(now)}
+    )
+  `);
+}
+
+export async function useTreatmentPackage(id: number): Promise<void> {
+  const now = getCurrentTimestamp();
+  await execute(`
+    UPDATE cs_treatment_packages SET
+      used_count = used_count + 1,
+      remaining_count = remaining_count - 1,
+      status = CASE WHEN remaining_count - 1 <= 0 THEN 'completed' ELSE status END,
+      updated_at = ${escapeString(now)}
+    WHERE id = ${id}
+  `);
+}
+
+export async function updateTreatmentPackage(id: number, updates: Partial<TreatmentPackage>): Promise<void> {
+  const parts: string[] = [];
+  if (updates.package_name !== undefined) parts.push(`package_name = ${escapeString(updates.package_name)}`);
+  if (updates.total_count !== undefined) parts.push(`total_count = ${updates.total_count}`);
+  if (updates.used_count !== undefined) parts.push(`used_count = ${updates.used_count}`);
+  if (updates.remaining_count !== undefined) parts.push(`remaining_count = ${updates.remaining_count}`);
+  if (updates.includes !== undefined) parts.push(`includes = ${toSqlValue(updates.includes)}`);
+  if (updates.expire_date !== undefined) parts.push(`expire_date = ${toSqlValue(updates.expire_date)}`);
+  if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
+  if (updates.status !== undefined) parts.push(`status = ${escapeString(updates.status)}`);
+  parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
+
+  await execute(`UPDATE cs_treatment_packages SET ${parts.join(', ')} WHERE id = ${id}`);
+}
+
+// ============================================
+// 한약패키지 API
+// ============================================
+
+export async function getHerbalPackages(patientId: number): Promise<HerbalPackage[]> {
+  return query<HerbalPackage>(
+    `SELECT * FROM cs_herbal_packages WHERE patient_id = ${patientId} ORDER BY created_at DESC`
+  );
+}
+
+export async function getActiveHerbalPackages(patientId: number): Promise<HerbalPackage[]> {
+  return query<HerbalPackage>(
+    `SELECT * FROM cs_herbal_packages WHERE patient_id = ${patientId} AND status = 'active' ORDER BY created_at DESC`
+  );
+}
+
+export async function createHerbalPackage(pkg: Omit<HerbalPackage, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
+  const now = getCurrentTimestamp();
+  return insert(`
+    INSERT INTO cs_herbal_packages (
+      patient_id, chart_number, patient_name, package_type, total_count, used_count, remaining_count,
+      start_date, next_delivery_date, memo, status, created_at, updated_at
+    ) VALUES (
+      ${pkg.patient_id}, ${toSqlValue(pkg.chart_number)}, ${toSqlValue(pkg.patient_name)},
+      ${escapeString(pkg.package_type)}, ${pkg.total_count}, ${pkg.used_count}, ${pkg.remaining_count},
+      ${escapeString(pkg.start_date)}, ${toSqlValue(pkg.next_delivery_date)},
+      ${toSqlValue(pkg.memo)}, ${escapeString(pkg.status)}, ${escapeString(now)}, ${escapeString(now)}
+    )
+  `);
+}
+
+export async function useHerbalPackage(id: number, nextDeliveryDate?: string): Promise<void> {
+  const now = getCurrentTimestamp();
+  await execute(`
+    UPDATE cs_herbal_packages SET
+      used_count = used_count + 1,
+      remaining_count = remaining_count - 1,
+      next_delivery_date = ${toSqlValue(nextDeliveryDate)},
+      status = CASE WHEN remaining_count - 1 <= 0 THEN 'completed' ELSE status END,
+      updated_at = ${escapeString(now)}
+    WHERE id = ${id}
+  `);
+}
+
+// ============================================
+// 포인트 API
+// ============================================
+
+export async function getPointBalance(patientId: number): Promise<number> {
+  const result = await queryOne<{ balance: number }>(
+    `SELECT balance_after as balance FROM cs_point_transactions
+     WHERE patient_id = ${patientId}
+     ORDER BY created_at DESC LIMIT 1`
+  );
+  return result?.balance || 0;
+}
+
+export async function getPointTransactions(patientId: number, limit: number = 20): Promise<PointTransaction[]> {
+  return query<PointTransaction>(
+    `SELECT * FROM cs_point_transactions WHERE patient_id = ${patientId} ORDER BY created_at DESC LIMIT ${limit}`
+  );
+}
+
+export async function earnPoints(data: {
+  patient_id: number;
+  chart_number?: string;
+  patient_name?: string;
+  amount: number;
+  description?: string;
+  receipt_id?: number;
+}): Promise<number> {
+  const currentBalance = await getPointBalance(data.patient_id);
+  const newBalance = currentBalance + data.amount;
+  const today = new Date().toISOString().split('T')[0];
+
+  return insert(`
+    INSERT INTO cs_point_transactions (
+      patient_id, chart_number, patient_name, transaction_type, amount, balance_after,
+      description, receipt_id, transaction_date, created_at
+    ) VALUES (
+      ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
+      'earn', ${data.amount}, ${newBalance}, ${toSqlValue(data.description)},
+      ${data.receipt_id || 'NULL'}, ${escapeString(today)}, ${escapeString(getCurrentTimestamp())}
+    )
+  `);
+}
+
+export async function usePoints(data: {
+  patient_id: number;
+  chart_number?: string;
+  patient_name?: string;
+  amount: number;
+  description?: string;
+  receipt_id?: number;
+}): Promise<number> {
+  const currentBalance = await getPointBalance(data.patient_id);
+  if (currentBalance < data.amount) {
+    throw new Error(`포인트 부족: 현재 ${currentBalance}P, 사용 요청 ${data.amount}P`);
+  }
+  const newBalance = currentBalance - data.amount;
+  const today = new Date().toISOString().split('T')[0];
+
+  return insert(`
+    INSERT INTO cs_point_transactions (
+      patient_id, chart_number, patient_name, transaction_type, amount, balance_after,
+      description, receipt_id, transaction_date, created_at
+    ) VALUES (
+      ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
+      'use', ${data.amount}, ${newBalance}, ${toSqlValue(data.description)},
+      ${data.receipt_id || 'NULL'}, ${escapeString(today)}, ${escapeString(getCurrentTimestamp())}
+    )
+  `);
+}
+
+// ============================================
+// 멤버십 API
+// ============================================
+
+export async function getMemberships(patientId: number): Promise<Membership[]> {
+  return query<Membership>(
+    `SELECT * FROM cs_memberships WHERE patient_id = ${patientId} ORDER BY created_at DESC`
+  );
+}
+
+export async function getActiveMembership(patientId: number): Promise<Membership | null> {
+  const results = await query<Membership>(
+    `SELECT * FROM cs_memberships WHERE patient_id = ${patientId} AND status = 'active' ORDER BY expire_date DESC LIMIT 1`
+  );
+  return results.length > 0 ? results[0] : null;
+}
+
+export async function createMembership(membership: Omit<Membership, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
+  const now = getCurrentTimestamp();
+  return insert(`
+    INSERT INTO cs_memberships (
+      patient_id, chart_number, patient_name, membership_type, remaining_count,
+      start_date, expire_date, memo, status, created_at, updated_at
+    ) VALUES (
+      ${membership.patient_id}, ${toSqlValue(membership.chart_number)}, ${toSqlValue(membership.patient_name)},
+      ${escapeString(membership.membership_type)}, ${membership.remaining_count},
+      ${escapeString(membership.start_date)}, ${escapeString(membership.expire_date)},
+      ${toSqlValue(membership.memo)}, ${escapeString(membership.status)}, ${escapeString(now)}, ${escapeString(now)}
+    )
+  `);
+}
+
+export async function useMembership(id: number): Promise<void> {
+  const now = getCurrentTimestamp();
+  await execute(`
+    UPDATE cs_memberships SET
+      remaining_count = remaining_count - 1,
+      status = CASE WHEN remaining_count - 1 <= 0 THEN 'expired' ELSE status END,
+      updated_at = ${escapeString(now)}
+    WHERE id = ${id}
+  `);
+}
+
+// ============================================
+// 한약 출납 API
+// ============================================
+
+export async function getHerbalDispensings(patientId: number, date?: string): Promise<HerbalDispensing[]> {
+  let sql = `SELECT * FROM cs_herbal_dispensings WHERE patient_id = ${patientId}`;
+  if (date) {
+    sql += ` AND dispensing_date = ${escapeString(date)}`;
+  }
+  sql += ' ORDER BY created_at DESC';
+  return query<HerbalDispensing>(sql);
+}
+
+export async function getHerbalDispensingsByDate(date: string): Promise<HerbalDispensing[]> {
+  return query<HerbalDispensing>(
+    `SELECT * FROM cs_herbal_dispensings WHERE dispensing_date = ${escapeString(date)} ORDER BY created_at DESC`
+  );
+}
+
+export async function createHerbalDispensing(data: Omit<HerbalDispensing, 'id' | 'created_at'>): Promise<number> {
+  return insert(`
+    INSERT INTO cs_herbal_dispensings (
+      patient_id, chart_number, patient_name, herbal_name, quantity, dispensing_type,
+      delivery_method, receipt_id, memo, dispensing_date, created_at
+    ) VALUES (
+      ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
+      ${escapeString(data.herbal_name)}, ${data.quantity}, ${escapeString(data.dispensing_type)},
+      ${escapeString(data.delivery_method)}, ${data.receipt_id || 'NULL'},
+      ${toSqlValue(data.memo)}, ${escapeString(data.dispensing_date)}, ${escapeString(getCurrentTimestamp())}
+    )
+  `);
+}
+
+// ============================================
+// 증정품 출납 API
+// ============================================
+
+export async function getGiftDispensings(patientId: number, date?: string): Promise<GiftDispensing[]> {
+  let sql = `SELECT * FROM cs_gift_dispensings WHERE patient_id = ${patientId}`;
+  if (date) {
+    sql += ` AND dispensing_date = ${escapeString(date)}`;
+  }
+  sql += ' ORDER BY created_at DESC';
+  return query<GiftDispensing>(sql);
+}
+
+export async function getGiftDispensingsByDate(date: string): Promise<GiftDispensing[]> {
+  return query<GiftDispensing>(
+    `SELECT * FROM cs_gift_dispensings WHERE dispensing_date = ${escapeString(date)} ORDER BY created_at DESC`
+  );
+}
+
+export async function createGiftDispensing(data: Omit<GiftDispensing, 'id' | 'created_at'>): Promise<number> {
+  return insert(`
+    INSERT INTO cs_gift_dispensings (
+      patient_id, chart_number, patient_name, item_name, quantity, reason,
+      receipt_id, dispensing_date, created_at
+    ) VALUES (
+      ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
+      ${escapeString(data.item_name)}, ${data.quantity}, ${toSqlValue(data.reason)},
+      ${data.receipt_id || 'NULL'}, ${escapeString(data.dispensing_date)}, ${escapeString(getCurrentTimestamp())}
+    )
+  `);
+}
+
+// ============================================
+// 서류발급 API
+// ============================================
+
+export async function getDocumentIssues(patientId: number, date?: string): Promise<DocumentIssue[]> {
+  let sql = `SELECT * FROM cs_document_issues WHERE patient_id = ${patientId}`;
+  if (date) {
+    sql += ` AND issue_date = ${escapeString(date)}`;
+  }
+  sql += ' ORDER BY created_at DESC';
+  return query<DocumentIssue>(sql);
+}
+
+export async function getDocumentIssuesByDate(date: string): Promise<DocumentIssue[]> {
+  return query<DocumentIssue>(
+    `SELECT * FROM cs_document_issues WHERE issue_date = ${escapeString(date)} ORDER BY created_at DESC`
+  );
+}
+
+export async function createDocumentIssue(data: Omit<DocumentIssue, 'id' | 'created_at'>): Promise<number> {
+  return insert(`
+    INSERT INTO cs_document_issues (
+      patient_id, chart_number, patient_name, document_type, quantity,
+      receipt_id, issue_date, created_at
+    ) VALUES (
+      ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
+      ${escapeString(data.document_type)}, ${data.quantity},
+      ${data.receipt_id || 'NULL'}, ${escapeString(data.issue_date)}, ${escapeString(getCurrentTimestamp())}
+    )
+  `);
+}
+
+// ============================================
+// 수납 메모 API
+// ============================================
+
+export async function getReceiptMemo(patientId: number, date: string): Promise<ReceiptMemo | null> {
+  const results = await query<ReceiptMemo>(
+    `SELECT * FROM cs_receipt_memos WHERE patient_id = ${patientId} AND receipt_date = ${escapeString(date)}`
+  );
+  return results.length > 0 ? results[0] : null;
+}
+
+export async function getReceiptMemoByReceiptId(receiptId: number): Promise<ReceiptMemo | null> {
+  const results = await query<ReceiptMemo>(
+    `SELECT * FROM cs_receipt_memos WHERE mssql_receipt_id = ${receiptId}`
+  );
+  return results.length > 0 ? results[0] : null;
+}
+
+export async function upsertReceiptMemo(data: {
+  patient_id: number;
+  chart_number?: string;
+  patient_name?: string;
+  mssql_receipt_id?: number;
+  receipt_date: string;
+  memo?: string;
+  reservation_status?: ReservationStatus;
+  reservation_date?: string;
+}): Promise<number> {
+  const now = getCurrentTimestamp();
+
+  // 기존 메모 확인
+  const existing = await getReceiptMemo(data.patient_id, data.receipt_date);
+
+  if (existing) {
+    // 업데이트
+    const parts: string[] = [];
+    if (data.memo !== undefined) parts.push(`memo = ${toSqlValue(data.memo)}`);
+    if (data.reservation_status !== undefined) parts.push(`reservation_status = ${escapeString(data.reservation_status)}`);
+    if (data.reservation_date !== undefined) parts.push(`reservation_date = ${toSqlValue(data.reservation_date)}`);
+    if (data.mssql_receipt_id !== undefined) parts.push(`mssql_receipt_id = ${data.mssql_receipt_id}`);
+    parts.push(`updated_at = ${escapeString(now)}`);
+
+    await execute(`UPDATE cs_receipt_memos SET ${parts.join(', ')} WHERE id = ${existing.id}`);
+    return existing.id!;
+  } else {
+    // 신규 생성
+    return insert(`
+      INSERT INTO cs_receipt_memos (
+        patient_id, chart_number, patient_name, mssql_receipt_id, receipt_date,
+        memo, reservation_status, reservation_date, created_at, updated_at
+      ) VALUES (
+        ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
+        ${data.mssql_receipt_id || 'NULL'}, ${escapeString(data.receipt_date)},
+        ${toSqlValue(data.memo)}, ${escapeString(data.reservation_status || 'none')},
+        ${toSqlValue(data.reservation_date)}, ${escapeString(now)}, ${escapeString(now)}
+      )
+    `);
+  }
+}
+
+export async function updateReservationStatus(
+  patientId: number,
+  date: string,
+  status: ReservationStatus,
+  reservationDate?: string
+): Promise<void> {
+  await upsertReceiptMemo({
+    patient_id: patientId,
+    receipt_date: date,
+    reservation_status: status,
+    reservation_date: reservationDate,
+  });
+}
+
+// ============================================
+// 환자별 메모 요약 데이터 조회
+// ============================================
+
+export async function getPatientMemoData(patientId: number, date: string): Promise<{
+  treatmentPackages: TreatmentPackage[];
+  herbalPackages: HerbalPackage[];
+  pointBalance: number;
+  todayPointUsed: number;
+  todayPointEarned: number;
+  membership: Membership | null;
+  herbalDispensings: HerbalDispensing[];
+  giftDispensings: GiftDispensing[];
+  documentIssues: DocumentIssue[];
+  memo: ReceiptMemo | null;
+}> {
+  const [
+    treatmentPackages,
+    herbalPackages,
+    pointBalance,
+    pointTransactions,
+    membership,
+    herbalDispensings,
+    giftDispensings,
+    documentIssues,
+    memo,
+  ] = await Promise.all([
+    getActiveTreatmentPackages(patientId),
+    getActiveHerbalPackages(patientId),
+    getPointBalance(patientId),
+    getPointTransactions(patientId, 10),
+    getActiveMembership(patientId),
+    getHerbalDispensings(patientId, date),
+    getGiftDispensings(patientId, date),
+    getDocumentIssues(patientId, date),
+    getReceiptMemo(patientId, date),
+  ]);
+
+  // 오늘 포인트 사용/적립 계산
+  const todayTransactions = pointTransactions.filter(t => t.transaction_date === date);
+  const todayPointUsed = todayTransactions
+    .filter(t => t.transaction_type === 'use')
+    .reduce((sum, t) => sum + t.amount, 0);
+  const todayPointEarned = todayTransactions
+    .filter(t => t.transaction_type === 'earn')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  return {
+    treatmentPackages,
+    herbalPackages,
+    pointBalance,
+    todayPointUsed,
+    todayPointEarned,
+    membership,
+    herbalDispensings,
+    giftDispensings,
+    documentIssues,
+    memo,
+  };
 }
