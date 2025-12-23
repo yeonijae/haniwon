@@ -24,6 +24,7 @@ import DbAdminApp from './modules/db-admin/DbAdminApp';
 import HerbalApp from './modules/herbal/HerbalApp';
 import StaffApp from './modules/staff/StaffApp';
 import WikiApp from './modules/wiki/WikiApp';
+import CSApp from './modules/cs/CSApp';
 
 // Public Blog Pages (공개 - 로그인 불필요)
 import BlogListPage from './modules/blog/pages/BlogListPage';
@@ -213,6 +214,12 @@ function App() {
       <Route
         path="/wiki/*"
         element={user ? <WikiApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* CS Management Routes (CS관리) */}
+      <Route
+        path="/cs/*"
+        element={user ? <CSApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Fallback */}
