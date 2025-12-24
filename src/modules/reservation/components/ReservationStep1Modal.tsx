@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { Doctor } from '../types';
 import { searchPatients, PatientSearchResult } from '../lib/api';
+import { fetchPatientDefaultTreatments } from '@modules/manage/lib/treatmentApi';
+import type { PatientDefaultTreatments } from '@modules/manage/types';
 
 // 외부에서 환자 정보를 넘겨받을 때 사용하는 타입
 export interface InitialPatient {
@@ -37,18 +39,11 @@ const TREATMENT_CATEGORIES = {
   '기본진료': [
     { name: '침', slots: 1 },
     { name: '추나', slots: 1 },
-    { name: '부항', slots: 1 },
-    { name: '뜸', slots: 1 },
-    { name: '약침', slots: 1 },
-  ],
-  '재초진': [
-    { name: '재초진', slots: 2 },
   ],
   '약상담': [
+    { name: '약초진', slots: 6 },
     { name: '약재진(내원)', slots: 3 },
     { name: '약재진(전화)', slots: 1 },
-    { name: '신규약상담', slots: 6 },
-    { name: '약초진', slots: 6 },
   ],
 };
 
@@ -65,22 +60,29 @@ const parseDetailsToItems = (details: string): string[] => {
   const items: string[] = [];
   const lowerDetails = details.toLowerCase();
 
-  // 치료 항목 파싱
+  // 기본 치료 항목 파싱
   if (lowerDetails.includes('침') && !lowerDetails.includes('약침')) items.push('침');
   if (lowerDetails.includes('추나')) items.push('추나');
-  if (lowerDetails.includes('부항')) items.push('부항');
-  if (lowerDetails.includes('뜸')) items.push('뜸');
-  if (lowerDetails.includes('약침')) items.push('약침');
 
   // 약상담 파싱
-  if (lowerDetails.includes('약재진') && lowerDetails.includes('내원')) items.push('약재진(내원)');
+  if (lowerDetails.includes('약초진')) items.push('약초진');
+  else if (lowerDetails.includes('약재진') && lowerDetails.includes('내원')) items.push('약재진(내원)');
   else if (lowerDetails.includes('약재진') && lowerDetails.includes('전화')) items.push('약재진(전화)');
-  else if (lowerDetails.includes('신규약상담') || lowerDetails.includes('신규') && lowerDetails.includes('약')) items.push('신규약상담');
-  else if (lowerDetails.includes('약초진')) items.push('약초진');
 
-  // 재초진 파싱
-  if (lowerDetails.includes('재초진') || lowerDetails.includes('재초')) items.push('재초진');
+  return items.length > 0 ? items : ['침'];
+};
 
+// 환자 기본치료 DB에서 항목 추출
+const getDefaultItemsFromTreatments = (treatments: PatientDefaultTreatments | null): string[] => {
+  if (!treatments) return ['침']; // 기본값
+
+  const items: string[] = [];
+
+  // 기본 치료 항목
+  if (treatments.has_acupuncture) items.push('침');
+  if (treatments.has_chuna) items.push('추나');
+
+  // 항목이 없으면 기본값으로 침
   return items.length > 0 ? items : ['침'];
 };
 
@@ -158,6 +160,26 @@ export const ReservationStep1Modal: React.FC<ReservationStep1ModalProps> = ({
     }
   }, [isOpen, initialPatient, doctors, selectedDoctor, defaultDoctor]);
 
+  // 환자 기본치료 정보 로드 (initialPatient가 있을 때)
+  useEffect(() => {
+    const loadPatientDefaultTreatments = async () => {
+      if (!isOpen || !initialPatient) return;
+
+      try {
+        const treatments = await fetchPatientDefaultTreatments(initialPatient.id);
+        if (treatments) {
+          const defaultItems = getDefaultItemsFromTreatments(treatments);
+          setSelectedItems(defaultItems);
+        }
+      } catch (err) {
+        console.error('환자 기본치료 정보 로드 실패:', err);
+        // 실패 시 기본값 유지
+      }
+    };
+
+    loadPatientDefaultTreatments();
+  }, [isOpen, initialPatient]);
+
   // 환자 검색 (디바운스 적용)
   const handleSearch = useCallback(async (term: string) => {
     if (term.trim().length < 2) {
@@ -192,11 +214,22 @@ export const ReservationStep1Modal: React.FC<ReservationStep1ModalProps> = ({
   };
 
   // 환자 선택 핸들러
-  const handleSelectPatient = (patient: PatientSearchResult) => {
+  const handleSelectPatient = async (patient: PatientSearchResult) => {
     setSelectedPatient(patient);
     setSearchTerm('');
     setSearchResults([]);
     setShowSearchResults(false);
+
+    // 환자 기본치료 정보 로드
+    try {
+      const treatments = await fetchPatientDefaultTreatments(patient.id);
+      if (treatments) {
+        const defaultItems = getDefaultItemsFromTreatments(treatments);
+        setSelectedItems(defaultItems);
+      }
+    } catch (err) {
+      console.error('환자 기본치료 정보 로드 실패:', err);
+    }
   };
 
   // 환자 선택 해제
@@ -231,22 +264,19 @@ export const ReservationStep1Modal: React.FC<ReservationStep1ModalProps> = ({
   };
 
   // 선택된 진료 항목들의 총 슬롯 사용량
-  // DayView의 getSlotUsage와 동일한 로직 적용
   const requiredSlots = useMemo(() => {
     // 복합 진료인 경우 (2개 이상 선택)
     if (selectedItems.length > 1) {
       let totalSlots = 0;
       selectedItems.forEach(item => {
-        if (item.includes('재초')) {
-          totalSlots += 1; // 재초진은 복합에서 1칸
-        } else if (item.includes('약재진') && item.includes('내원')) {
+        if (item.includes('약재진') && item.includes('내원')) {
           totalSlots += 3;
         } else if (item.includes('약재진') && item.includes('전화')) {
           totalSlots += 1;
-        } else if (item.includes('신규약상담') || item.includes('약초진')) {
+        } else if (item.includes('약초진')) {
           totalSlots += 6;
         } else {
-          totalSlots += 1; // 침, 추나, 부항, 뜸, 약침 등
+          totalSlots += 1; // 침, 추나
         }
       });
       return Math.min(totalSlots, 6); // 최대 6칸

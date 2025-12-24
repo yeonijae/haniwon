@@ -1484,19 +1484,58 @@ export async function deletePaymentMemo(memoId: number): Promise<void> {
   await execute(`DELETE FROM payment_memos WHERE id = ${memoId}`);
 }
 
+// 환자별 수납이력 조회 응답 타입
+export interface PatientReceiptHistoryResponse {
+  receipts: ReceiptHistoryItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    total_pages: number;
+    has_more: boolean;
+  };
+  summary: {
+    total_count: number;
+    total_amount: number;
+    insurance_self: number;
+    general_amount: number;
+  };
+}
+
+// 환자별 수납이력 조회 파라미터
+export interface PatientReceiptHistoryParams {
+  patientId?: number;
+  chartNo?: string;
+  page?: number;
+  limit?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
 // 환자별 수납 히스토리 조회 (MSSQL + SQLite 메모 병합)
-export async function fetchPatientReceiptHistory(chartNo: string, limit: number = 30): Promise<ReceiptHistoryItem[]> {
+export async function fetchPatientReceiptHistory(
+  params: PatientReceiptHistoryParams
+): Promise<PatientReceiptHistoryResponse> {
   try {
+    // URL 파라미터 구성
+    const urlParams = new URLSearchParams();
+    if (params.patientId) urlParams.append('patientId', params.patientId.toString());
+    if (params.chartNo) urlParams.append('chartNo', params.chartNo);
+    if (params.page) urlParams.append('page', params.page.toString());
+    if (params.limit) urlParams.append('limit', params.limit.toString());
+    if (params.startDate) urlParams.append('startDate', params.startDate);
+    if (params.endDate) urlParams.append('endDate', params.endDate);
+
     // MSSQL에서 환자별 수납 내역 조회
-    const response = await fetch(`${MSSQL_API_BASE_URL}/api/receipts/by-patient?chartNo=${encodeURIComponent(chartNo)}&limit=${limit}`);
+    const response = await fetch(`${MSSQL_API_BASE_URL}/api/receipts/by-patient?${urlParams.toString()}`);
     if (!response.ok) {
       throw new Error(`MSSQL API 오류: ${response.status}`);
     }
-    const receipts: ReceiptHistoryItem[] = await response.json();
+    const data: PatientReceiptHistoryResponse = await response.json();
 
     // SQLite 메모 병합
     const receiptsWithMemo: ReceiptHistoryItem[] = [];
-    for (const receipt of receipts) {
+    for (const receipt of data.receipts) {
       let packageInfo: string | undefined;
       let memo: string | undefined;
 
@@ -1520,10 +1559,17 @@ export async function fetchPatientReceiptHistory(chartNo: string, limit: number 
       });
     }
 
-    return receiptsWithMemo;
+    return {
+      ...data,
+      receipts: receiptsWithMemo,
+    };
   } catch (error) {
     console.error('❌ 환자별 수납 히스토리 조회 오류:', error);
-    return [];
+    return {
+      receipts: [],
+      pagination: { page: 1, limit: 30, total: 0, total_pages: 0, has_more: false },
+      summary: { total_count: 0, total_amount: 0, insurance_self: 0, general_amount: 0 },
+    };
   }
 }
 
@@ -1549,6 +1595,8 @@ export interface ReceiptHistoryItem {
   patient_id: number;
   patient_name: string;
   chart_no: string;
+  age: number | null;
+  receipt_date?: string;  // 환자별 조회 시 포함
   receipt_time: string | null;
   // 수납 금액
   insurance_self: number;

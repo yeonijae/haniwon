@@ -21,6 +21,8 @@ import {
   generateMemoSummary,
 } from '../types';
 import { ReservationStep1Modal, type ReservationDraft, type InitialPatient } from '../../reservation/components/ReservationStep1Modal';
+import { QuickReservationModal } from './QuickReservationModal';
+import { PatientReceiptHistoryModal } from './PatientReceiptHistoryModal';
 import { fetchDoctors, fetchReservationsByDateRange } from '../../reservation/lib/api';
 import type { Doctor, Reservation } from '../../reservation/types';
 // manage 모듈의 API 사용
@@ -29,6 +31,32 @@ import { fetchReceiptHistory, type ReceiptHistoryItem } from '../../manage/lib/a
 interface ReceiptViewProps {
   user: PortalUser;
 }
+
+// 현재 근무 중인 의사인지 확인
+const isActiveDoctor = (doc: Doctor): boolean => {
+  // 기타(DOCTOR) 제외
+  if (doc.isOther || doc.name === 'DOCTOR') return false;
+
+  // 퇴사자 제외
+  if (doc.resigned) return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // 입사일이 오늘 이후면 제외
+  if (doc.workStartDate) {
+    const startDate = new Date(doc.workStartDate);
+    if (startDate > today) return false;
+  }
+
+  // 퇴사일이 오늘 이전이면 제외
+  if (doc.workEndDate) {
+    const endDate = new Date(doc.workEndDate);
+    if (endDate < today) return false;
+  }
+
+  return true;
+};
 
 // 확장된 수납 아이템 (MSSQL + SQLite 데이터)
 interface ExpandedReceiptItem extends ReceiptHistoryItem {
@@ -74,6 +102,97 @@ const getPaymentMethodIcons = (receipt: ReceiptHistoryItem) => {
   return methods;
 };
 
+// 담당의 축약 (김원장 -> 김, 이승호 -> 이)
+const getDoctorShortName = (receipt: ReceiptHistoryItem): string => {
+  // treatments에서 첫 번째 의사 이름 가져오기
+  const doctorName = receipt.treatments?.[0]?.doctor;
+  if (!doctorName || doctorName === 'DOCTOR') return '-';
+  // "원장" 제거 후 첫 글자 반환
+  const cleaned = doctorName.replace(/원장$/g, '');
+  return cleaned.charAt(0) || '-';
+};
+
+// 종별 간소화 (건보(직장), 건보(지역) -> 건보)
+const formatInsuranceType = (type: string): string => {
+  if (type.startsWith('건보')) return '건보';
+  return type;
+};
+
+// 종별 색상 클래스
+const getInsuranceTypeClass = (type: string): string => {
+  if (type.startsWith('건보')) return 'type-gunbo';
+  if (type.startsWith('자보') || type.includes('자보')) return 'type-jabo';
+  return '';
+};
+
+// 진료명 간소화 매핑
+const TREATMENT_NAME_MAP: Record<string, string> = {
+  '진찰료(초진)': '초진',
+  '진찰료(재진)': '재진',
+  '경혈이체': '이체',
+  '투자침술': '투자',
+  '척추침술': '척추',
+  '복강침술': '복강',
+  '관절침술': '관절',
+  '침전기자극술': '전침',
+  '기기구술': '기기구',
+  '유관법': '유관',
+  '자락관법': '습부',
+  '자락관법이체': '습부이체',
+  '경피적외선조사': '적외선',
+};
+
+// 진료 항목 분류
+interface TreatmentSummary {
+  consultType: string | null;  // 초진/재진
+  coveredItems: string[];      // 급여 항목들
+  yakchim: { name: string; amount: number }[];  // 약침
+  sangbiyak: number;           // 상비약 금액
+}
+
+const summarizeTreatments = (treatments: { name: string; amount: number; is_covered: boolean }[]): TreatmentSummary => {
+  const result: TreatmentSummary = {
+    consultType: null,
+    coveredItems: [],
+    yakchim: [],
+    sangbiyak: 0,
+  };
+
+  for (const t of treatments) {
+    const name = t.name;
+
+    // 진찰료 (초진/재진)
+    if (name.includes('진찰료')) {
+      if (name.includes('초진')) result.consultType = '초진';
+      else if (name.includes('재진')) result.consultType = '재진';
+      continue;
+    }
+
+    // 약침 (비급여)
+    if (name.includes('약침')) {
+      const yakchimName = name.replace('약침', '').trim() || name;
+      result.yakchim.push({ name: yakchimName, amount: t.amount });
+      continue;
+    }
+
+    // 상비약
+    if (name.includes('상비약') || name.includes('상비')) {
+      result.sangbiyak += t.amount;
+      continue;
+    }
+
+    // 급여 항목 간소화
+    if (t.is_covered) {
+      const shortName = TREATMENT_NAME_MAP[name];
+      if (shortName && !result.coveredItems.includes(shortName)) {
+        result.coveredItems.push(shortName);
+      }
+    }
+  }
+
+  return result;
+};
+
 function ReceiptView({ user }: ReceiptViewProps) {
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const today = new Date();
@@ -88,17 +207,50 @@ function ReceiptView({ user }: ReceiptViewProps) {
   const [selectedPatientForReservation, setSelectedPatientForReservation] = useState<InitialPatient | null>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
 
+  // 빠른 예약 모달 상태
+  const [showQuickReservationModal, setShowQuickReservationModal] = useState(false);
+  const [quickReservationPatient, setQuickReservationPatient] = useState<{
+    patientId: number;
+    patientName: string;
+    chartNo: string;
+    defaultDoctor?: string;
+    // 1단계에서 선택한 정보
+    selectedItems?: string[];
+    requiredSlots?: number;
+    memo?: string;
+  } | null>(null);
+
+  // 환자 수납이력 모달 상태
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyPatient, setHistoryPatient] = useState<{
+    patientId: number;
+    patientName: string;
+    chartNo: string;
+  } | null>(null);
+
+  // 환자 클릭 시 이력 모달 열기
+  const handlePatientClick = (receipt: ExpandedReceiptItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setHistoryPatient({
+      patientId: receipt.patient_id,
+      patientName: receipt.patient_name,
+      chartNo: receipt.chart_no,
+    });
+    setShowHistoryModal(true);
+  };
+
   // 테이블 초기화
   useEffect(() => {
     ensureReceiptTables();
     loadDoctors();
   }, []);
 
-  // 의사 목록 로드
+  // 의사 목록 로드 (현재 근무 중인 원장만)
   const loadDoctors = async () => {
     try {
-      const docs = await fetchDoctors();
-      setDoctors(docs);
+      const allDocs = await fetchDoctors();
+      const activeDocs = allDocs.filter(isActiveDoctor);
+      setDoctors(activeDocs);
     } catch (err) {
       console.error('의사 목록 로드 실패:', err);
     }
@@ -143,11 +295,11 @@ function ReceiptView({ user }: ReceiptViewProps) {
     }
   }, [selectedDate]);
 
-  // 다음 예약 찾기 헬퍼
+  // 다음 예약 찾기 헬퍼 (오늘 이후만, 오늘은 이미 내원했으므로 제외)
   const getNextReservation = (reservations: Reservation[]): Reservation | null => {
     const today = new Date().toISOString().split('T')[0];
     const futureReservations = reservations
-      .filter(r => !r.canceled && r.date >= today)
+      .filter(r => !r.canceled && r.date > today)
       .sort((a, b) => {
         if (a.date !== b.date) return a.date.localeCompare(b.date);
         return a.time.localeCompare(b.time);
@@ -335,10 +487,39 @@ function ReceiptView({ user }: ReceiptViewProps) {
     setShowReservationModal(true);
   };
 
-  // 예약 1단계 완료
+  // 예약 1단계 완료 → 2단계(캘린더) 모달 열기
   const handleReservationNext = (draft: ReservationDraft) => {
     setShowReservationModal(false);
-    alert(`예약 정보:\n환자: ${draft.patient.name}\n담당의: ${draft.doctor}\n진료: ${draft.selectedItems.join(', ')}\n슬롯: ${draft.requiredSlots}칸\n\n시간 선택을 위해 예약관리 페이지를 사용해주세요.`);
+    // 1단계에서 선택한 정보를 가지고 캘린더 모달 열기
+    setQuickReservationPatient({
+      patientId: draft.patient.id,
+      patientName: draft.patient.name,
+      chartNo: draft.patient.chartNo,
+      defaultDoctor: draft.doctor,
+      selectedItems: draft.selectedItems,
+      requiredSlots: draft.requiredSlots,
+      memo: draft.memo,
+    });
+    setShowQuickReservationModal(true);
+  };
+
+  // 빠른 예약 열기
+  const handleQuickReservation = (receipt: ExpandedReceiptItem) => {
+    // 오늘 담당 의사 추출 (첫 번째 진료 항목에서)
+    const doctorName = receipt.treatments?.[0]?.doctor || undefined;
+    setQuickReservationPatient({
+      patientId: receipt.patient_id,
+      patientName: receipt.patient_name,
+      chartNo: receipt.chart_no,
+      defaultDoctor: doctorName,
+    });
+    setShowQuickReservationModal(true);
+  };
+
+  // 빠른 예약 성공
+  const handleQuickReservationSuccess = () => {
+    // 예약 생성 후 목록 새로고침
+    loadReceipts();
   };
 
   // 예약 상태 표시 렌더링
@@ -347,7 +528,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
     if (receipt.nextReservation) {
       const r = receipt.nextReservation;
       const d = new Date(r.date);
-      const formattedDate = `${d.getMonth() + 1}/${d.getDate()}`;
+      const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+      const formattedDate = `${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]})`;
       return (
         <span className="reservation-status confirmed" title={`${r.date} ${r.time} ${r.doctor}`}>
           {formattedDate}
@@ -355,12 +537,12 @@ function ReceiptView({ user }: ReceiptViewProps) {
       );
     }
 
-    // 2. 다음 예약이 없으면 예약 버튼 표시
+    // 2. 다음 예약이 없으면 예약 버튼 표시 (클릭 시 행 펼침)
     return (
       <button
         onClick={(e) => {
           e.stopPropagation();
-          handleReservationClick(receipt);
+          toggleExpand(receipt.id);
         }}
         className="reservation-btn empty"
       >
@@ -435,6 +617,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
             <div className="col-num">#</div>
             <div className="col-time">시간</div>
             <div className="col-patient">환자</div>
+            <div className="col-age">나이</div>
+            <div className="col-doctor">담당</div>
             <div className="col-type">종별</div>
             <div className="col-self">본인부담</div>
             <div className="col-general">비급여</div>
@@ -453,14 +637,20 @@ function ReceiptView({ user }: ReceiptViewProps) {
               >
                 <div className="col-num">{index + 1}</div>
                 <div className="col-time">{formatTime(receipt.receipt_time)}</div>
-                <div className="col-patient">
+                <div
+                  className="col-patient clickable"
+                  onClick={(e) => handlePatientClick(receipt, e)}
+                  title="수납이력 보기"
+                >
                   <span className="patient-name">{receipt.patient_name}</span>
                   <span className="patient-info">
-                    ({receipt.chart_no})
+                    ({receipt.chart_no.replace(/^0+/, '')})
                   </span>
                 </div>
+                <div className="col-age">{receipt.age || '-'}</div>
+                <div className="col-doctor">{getDoctorShortName(receipt)}</div>
                 <div className="col-type">
-                  <span className="type-badge">{receipt.insurance_type}</span>
+                  <span className={`type-badge ${getInsuranceTypeClass(receipt.insurance_type)}`}>{formatInsuranceType(receipt.insurance_type)}</span>
                 </div>
                 <div className="col-self">{formatMoney(receipt.insurance_self)}</div>
                 <div className="col-general">{formatMoney(receipt.general_amount)}</div>
@@ -501,6 +691,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
                         setTimeout(() => toggleExpand(receipt.id), 100);
                       }}
                       onReservationStatusChange={handleReservationStatusChange}
+                      onQuickReservation={handleQuickReservation}
                     />
                   )}
                 </div>
@@ -518,6 +709,39 @@ function ReceiptView({ user }: ReceiptViewProps) {
         doctors={doctors}
         initialPatient={selectedPatientForReservation}
       />
+
+      {/* 빠른 예약 모달 (2단계: 캘린더에서 시간 선택) */}
+      {quickReservationPatient && (
+        <QuickReservationModal
+          isOpen={showQuickReservationModal}
+          onClose={() => {
+            setShowQuickReservationModal(false);
+            setQuickReservationPatient(null);
+          }}
+          onSuccess={handleQuickReservationSuccess}
+          patientId={quickReservationPatient.patientId}
+          patientName={quickReservationPatient.patientName}
+          chartNo={quickReservationPatient.chartNo}
+          defaultDoctor={quickReservationPatient.defaultDoctor}
+          selectedItems={quickReservationPatient.selectedItems}
+          requiredSlots={quickReservationPatient.requiredSlots}
+          memo={quickReservationPatient.memo}
+        />
+      )}
+
+      {/* 환자 수납이력 모달 */}
+      {historyPatient && (
+        <PatientReceiptHistoryModal
+          isOpen={showHistoryModal}
+          onClose={() => {
+            setShowHistoryModal(false);
+            setHistoryPatient(null);
+          }}
+          patientId={historyPatient.patientId}
+          patientName={historyPatient.patientName}
+          chartNo={historyPatient.chartNo}
+        />
+      )}
     </div>
   );
 }
@@ -528,10 +752,10 @@ interface ReceiptDetailPanelProps {
   selectedDate: string;
   onDataChange: () => void;
   onReservationStatusChange: (receipt: ExpandedReceiptItem, status: ReservationStatus, date?: string) => void;
+  onQuickReservation: (receipt: ExpandedReceiptItem) => void;
 }
 
-function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservationStatusChange }: ReceiptDetailPanelProps) {
-  const [activeTab, setActiveTab] = useState<'packages' | 'point' | 'dispensing' | 'memo'>('packages');
+function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservationStatusChange, onQuickReservation }: ReceiptDetailPanelProps) {
   const [memoText, setMemoText] = useState(receipt.receiptMemo?.memo || '');
   const [pointBalance, setPointBalance] = useState(receipt.pointBalance);
 
@@ -600,277 +824,231 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
     }
   };
 
+  // 데이터 유무 체크
+  const hasPackages = receipt.treatmentPackages.length > 0 || receipt.herbalPackages.length > 0;
+  const hasMembership = !!receipt.activeMembership;
+  const hasDispensing = receipt.herbalDispensings.length > 0 || receipt.giftDispensings.length > 0 || receipt.documentIssues.length > 0;
+
+  // 진료상세 요약
+  const treatmentSummary = summarizeTreatments(receipt.treatments || []);
+
   return (
-    <div className="detail-content">
-      {/* 탭 네비게이션 */}
-      <div className="detail-tabs">
-        <button
-          className={activeTab === 'packages' ? 'active' : ''}
-          onClick={() => setActiveTab('packages')}
-        >
-          패키지/멤버십
-        </button>
-        <button
-          className={activeTab === 'point' ? 'active' : ''}
-          onClick={() => setActiveTab('point')}
-        >
-          포인트
-        </button>
-        <button
-          className={activeTab === 'dispensing' ? 'active' : ''}
-          onClick={() => setActiveTab('dispensing')}
-        >
-          출납/서류
-        </button>
-        <button
-          className={activeTab === 'memo' ? 'active' : ''}
-          onClick={() => setActiveTab('memo')}
-        >
-          메모/예약
-        </button>
+    <div className="receipt-detail-2col">
+      {/* 왼쪽: 진료상세 (진료항목 + 수납금액) */}
+      <div className="treatment-detail-col">
+        {/* 진료항목 */}
+        <div className="treatment-items">
+          <div className="treatment-badges">
+            {treatmentSummary.consultType && (
+              <span className="treatment-badge consult">{treatmentSummary.consultType}</span>
+            )}
+            {treatmentSummary.coveredItems.map((item, idx) => (
+              <span key={idx} className="treatment-badge covered">{item}</span>
+            ))}
+          </div>
+          <div className="treatment-extras">
+            {treatmentSummary.yakchim.length > 0 && (
+              <span className="treatment-extra yakchim">
+                <i className="fa-solid fa-syringe"></i>
+                {treatmentSummary.yakchim.map((y, idx) => (
+                  <span key={idx}>
+                    {y.name} {y.amount.toLocaleString()}원
+                    {idx < treatmentSummary.yakchim.length - 1 && ', '}
+                  </span>
+                ))}
+              </span>
+            )}
+            {treatmentSummary.sangbiyak > 0 && (
+              <span className="treatment-extra sangbiyak">
+                <i className="fa-solid fa-pills"></i>
+                상비약 {treatmentSummary.sangbiyak.toLocaleString()}원
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* 수납금액 */}
+        <div className="receipt-amount-section">
+          <div className="amount-row">
+            <span className="amount-label">본인부담</span>
+            <span className="amount-value insurance">{formatMoney(receipt.insurance_self)}</span>
+          </div>
+          <div className="amount-row">
+            <span className="amount-label">비급여</span>
+            <span className="amount-value general">{formatMoney(receipt.general_amount)}</span>
+          </div>
+          <div className="amount-row total">
+            <span className="amount-label">총 수납</span>
+            <span className="amount-value">{formatMoney(receipt.total_amount)}</span>
+          </div>
+          <div className="payment-method-row">
+            {receipt.card > 0 && <span className="method card"><i className="fa-solid fa-credit-card"></i> {receipt.card.toLocaleString()}</span>}
+            {receipt.cash > 0 && <span className="method cash"><i className="fa-solid fa-money-bill"></i> {receipt.cash.toLocaleString()}</span>}
+            {receipt.transfer > 0 && <span className="method transfer"><i className="fa-solid fa-building-columns"></i> {receipt.transfer.toLocaleString()}</span>}
+          </div>
+        </div>
       </div>
 
-      {/* 패키지/멤버십 탭 */}
-      {activeTab === 'packages' && (
-        <div className="tab-content packages-tab">
-          {/* 시술 패키지 */}
-          <div className="section">
-            <h4>시술 패키지</h4>
-            {receipt.treatmentPackages.length === 0 ? (
-              <p className="empty-text">등록된 패키지가 없습니다.</p>
-            ) : (
-              <div className="package-list">
-                {receipt.treatmentPackages.map(pkg => (
-                  <div key={pkg.id} className="package-item">
-                    <span className="pkg-name">{pkg.package_name}</span>
-                    <span className="pkg-count">
-                      [{pkg.total_count}-{pkg.used_count}={pkg.remaining_count}]
-                    </span>
-                    {pkg.includes && <span className="pkg-includes">({pkg.includes})</span>}
-                    {pkg.status === 'active' && (
-                      <button
-                        className="use-btn"
-                        onClick={() => handleUseTreatmentPackage(pkg.id!)}
-                      >
-                        사용
-                      </button>
-                    )}
-                    {pkg.status === 'completed' && (
-                      <span className="pkg-completed">완료</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 한약 패키지 (선결) */}
-          <div className="section">
-            <h4>한약 패키지 (선결)</h4>
-            {receipt.herbalPackages.length === 0 ? (
-              <p className="empty-text">등록된 선결이 없습니다.</p>
-            ) : (
-              <div className="package-list">
-                {receipt.herbalPackages.map(pkg => (
-                  <div key={pkg.id} className="package-item">
-                    <span className="pkg-name">선결 {pkg.package_type}</span>
-                    <span className="pkg-count">
-                      [{pkg.total_count}-{pkg.used_count}={pkg.remaining_count}]
-                    </span>
-                    {pkg.next_delivery_date && (
-                      <span className="pkg-delivery">
-                        다음배송: {new Date(pkg.next_delivery_date).toLocaleDateString('ko-KR')}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 멤버십 */}
-          <div className="section">
-            <h4>멤버십</h4>
-            {!receipt.activeMembership ? (
-              <p className="empty-text">등록된 멤버십이 없습니다.</p>
-            ) : (
-              <div className="membership-info">
-                <span className="membership-type">{receipt.activeMembership.membership_type}</span>
-                <span className="membership-count">{receipt.activeMembership.remaining_count}회 남음</span>
-                <span className="membership-expire">
-                  만료: {new Date(receipt.activeMembership.expire_date).toLocaleDateString('ko-KR')}
-                </span>
-              </div>
-            )}
-          </div>
+      {/* 오른쪽: 수납메모 3x2 그리드 */}
+      <div className="detail-grid-3x2">
+      {/* Row 1: 패키지, 멤버십, 포인트 */}
+      {/* 패키지 */}
+      <div className="grid-card">
+        <div className="grid-card-header">
+          <span className="grid-icon">📦</span>
+          <span className="grid-title">패키지</span>
+          <button className="grid-add-btn">+</button>
         </div>
-      )}
-
-      {/* 포인트 탭 */}
-      {activeTab === 'point' && (
-        <div className="tab-content point-tab">
-          <div className="point-balance">
-            <span className="label">현재 잔액</span>
-            <span className="amount">{pointBalance.toLocaleString()}P</span>
-          </div>
-
-          <div className="point-today">
-            {receipt.todayPointUsed > 0 && (
-              <span className="used">오늘 사용: -{receipt.todayPointUsed.toLocaleString()}P</span>
-            )}
-            {receipt.todayPointEarned > 0 && (
-              <span className="earned">오늘 적립: +{receipt.todayPointEarned.toLocaleString()}P</span>
-            )}
-          </div>
-
-          <div className="point-actions">
-            <div className="point-input-group">
-              <input
-                type="number"
-                id={`point-use-${receipt.id}`}
-                placeholder="사용 금액"
-                min="0"
-                step="1000"
-              />
-              <button
-                onClick={() => {
-                  const input = document.getElementById(`point-use-${receipt.id}`) as HTMLInputElement;
-                  handleUsePoints(Number(input.value));
-                  input.value = '';
-                }}
-              >
-                사용
-              </button>
-            </div>
-            <div className="point-input-group">
-              <input
-                type="number"
-                id={`point-earn-${receipt.id}`}
-                placeholder="적립 금액"
-                min="0"
-                step="1000"
-              />
-              <button
-                onClick={() => {
-                  const input = document.getElementById(`point-earn-${receipt.id}`) as HTMLInputElement;
-                  handleEarnPoints(Number(input.value));
-                  input.value = '';
-                }}
-              >
-                적립
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 출납/서류 탭 */}
-      {activeTab === 'dispensing' && (
-        <div className="tab-content dispensing-tab">
-          {/* 한약 출납 */}
-          <div className="section">
-            <h4>한약 출납</h4>
-            {receipt.herbalDispensings.length === 0 ? (
-              <p className="empty-text">오늘 한약 출납 내역이 없습니다.</p>
-            ) : (
-              <ul className="dispensing-list">
-                {receipt.herbalDispensings.map(d => (
-                  <li key={d.id}>
-                    {d.dispensing_type === 'gift' ? '[증정]' : '[판매]'}
-                    {d.herbal_name} ({d.quantity}봉)
-                    - {d.delivery_method === 'pickup' ? '내원' : d.delivery_method === 'local' ? '시내' : '시외'}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* 증정품 출납 */}
-          <div className="section">
-            <h4>증정품 출납</h4>
-            {receipt.giftDispensings.length === 0 ? (
-              <p className="empty-text">오늘 증정품 출납 내역이 없습니다.</p>
-            ) : (
-              <ul className="dispensing-list">
-                {receipt.giftDispensings.map(d => (
-                  <li key={d.id}>
-                    {d.item_name} ({d.quantity})
-                    {d.reason && ` - ${d.reason}`}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* 서류발급 */}
-          <div className="section">
-            <h4>서류발급</h4>
-            {receipt.documentIssues.length === 0 ? (
-              <p className="empty-text">오늘 서류발급 내역이 없습니다.</p>
-            ) : (
-              <ul className="dispensing-list">
-                {receipt.documentIssues.map(d => (
-                  <li key={d.id}>
-                    {d.document_type} {d.quantity > 1 ? `(${d.quantity}매)` : ''}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 메모/예약 탭 */}
-      {activeTab === 'memo' && (
-        <div className="tab-content memo-tab">
-          {/* 예약 상태 */}
-          <div className="section">
-            <h4>예약 상태</h4>
-            <div className="reservation-status-buttons">
-              {(['none', 'pending_call', 'pending_kakao', 'pending_naver', 'pending_anytime'] as ReservationStatus[]).map(status => (
-                <button
-                  key={status}
-                  className={receipt.receiptMemo?.reservation_status === status ? 'active' : ''}
-                  onClick={() => onReservationStatusChange(receipt, status)}
-                >
-                  {status === 'none' ? '없음' : RESERVATION_STATUS_LABELS[status]}
-                </button>
+        <div className="grid-card-body">
+          {hasPackages ? (
+            <div className="grid-tags">
+              {receipt.treatmentPackages.map(pkg => (
+                <div key={pkg.id} className="grid-tag pkg">
+                  <span className="tag-name">{pkg.package_name}</span>
+                  <span className="tag-count">{pkg.remaining_count}/{pkg.total_count}</span>
+                  {pkg.includes && <span className="tag-extra">({pkg.includes})</span>}
+                  {pkg.status === 'active' && (
+                    <button className="tag-use-btn" onClick={() => handleUseTreatmentPackage(pkg.id!)}>-1</button>
+                  )}
+                </div>
               ))}
-              <div className="confirmed-date-input">
-                <input
-                  type="date"
-                  id={`reservation-date-${receipt.id}`}
-                  defaultValue={receipt.receiptMemo?.reservation_date || ''}
-                />
-                <button
-                  onClick={() => {
-                    const input = document.getElementById(`reservation-date-${receipt.id}`) as HTMLInputElement;
-                    if (input.value) {
-                      onReservationStatusChange(receipt, 'confirmed', input.value);
-                    }
-                  }}
-                >
-                  확정
-                </button>
+              {receipt.herbalPackages.map(pkg => (
+                <div key={pkg.id} className="grid-tag herbal">
+                  <span className="tag-name">선결{pkg.package_type}</span>
+                  <span className="tag-count">{pkg.remaining_count}/{pkg.total_count}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span className="grid-empty">-</span>
+          )}
+        </div>
+      </div>
+
+      {/* 멤버십 */}
+      <div className="grid-card">
+        <div className="grid-card-header">
+          <span className="grid-icon">🎫</span>
+          <span className="grid-title">멤버십</span>
+          <button className="grid-add-btn">+</button>
+        </div>
+        <div className="grid-card-body">
+          {hasMembership ? (
+            <div className="grid-tags">
+              <div className="grid-tag membership">
+                <span className="tag-name">{receipt.activeMembership!.membership_type}</span>
+                <span className="tag-count">{receipt.activeMembership!.remaining_count}회</span>
+                <span className="tag-expire">~{new Date(receipt.activeMembership!.expire_date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</span>
               </div>
             </div>
-          </div>
+          ) : (
+            <span className="grid-empty">-</span>
+          )}
+        </div>
+      </div>
 
-          {/* 메모 */}
-          <div className="section">
-            <h4>특이사항 메모</h4>
-            <textarea
+      {/* 포인트 */}
+      <div className="grid-card">
+        <div className="grid-card-header">
+          <span className="grid-icon">💰</span>
+          <span className="grid-title">포인트</span>
+          <span className="grid-point-balance">{pointBalance.toLocaleString()}P</span>
+        </div>
+        <div className="grid-card-body">
+          <div className="grid-point-actions">
+            <input type="number" id={`point-${receipt.id}`} placeholder="금액" min="0" step="1000" />
+            <button className="point-btn use" onClick={() => {
+              const input = document.getElementById(`point-${receipt.id}`) as HTMLInputElement;
+              handleUsePoints(Number(input.value));
+              input.value = '';
+            }}>-</button>
+            <button className="point-btn earn" onClick={() => {
+              const input = document.getElementById(`point-${receipt.id}`) as HTMLInputElement;
+              handleEarnPoints(Number(input.value));
+              input.value = '';
+            }}>+</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Row 2: 출납, 예약, 메모 */}
+      {/* 출납 */}
+      <div className="grid-card">
+        <div className="grid-card-header">
+          <span className="grid-icon">📋</span>
+          <span className="grid-title">출납</span>
+          <button className="grid-add-btn">+</button>
+        </div>
+        <div className="grid-card-body">
+          {(receipt.herbalDispensings.length > 0 || receipt.giftDispensings.length > 0) ? (
+            <div className="grid-tags">
+              {receipt.herbalDispensings.map(d => (
+                <div key={d.id} className="grid-tag dispensing">
+                  <span className="tag-type">{d.dispensing_type === 'gift' ? '증' : '약'}</span>
+                  <span className="tag-name">{d.herbal_name}</span>
+                  <span className="tag-qty">{d.quantity}</span>
+                </div>
+              ))}
+              {receipt.giftDispensings.map(d => (
+                <div key={d.id} className="grid-tag gift">
+                  <span className="tag-type">증</span>
+                  <span className="tag-name">{d.item_name}</span>
+                  <span className="tag-qty">{d.quantity}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span className="grid-empty">-</span>
+          )}
+        </div>
+      </div>
+
+      {/* 예약 */}
+      <div className="grid-card">
+        <div className="grid-card-header">
+          <span className="grid-icon">📅</span>
+          <span className="grid-title">예약</span>
+          <button
+            className="grid-quick-res-btn"
+            onClick={() => onQuickReservation(receipt)}
+          >
+            지금 예약
+          </button>
+        </div>
+        <div className="grid-card-body">
+          <div className="grid-res-btns">
+            {(['none', 'pending_call', 'pending_kakao', 'pending_naver'] as ReservationStatus[]).map(status => (
+              <button
+                key={status}
+                className={`res-btn ${receipt.receiptMemo?.reservation_status === status ? 'active' : ''}`}
+                onClick={() => onReservationStatusChange(receipt, status)}
+              >
+                {status === 'none' ? '없음' : RESERVATION_STATUS_LABELS[status]}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 메모 */}
+      <div className="grid-card">
+        <div className="grid-card-header">
+          <span className="grid-icon">📝</span>
+          <span className="grid-title">메모</span>
+        </div>
+        <div className="grid-card-body">
+          <div className="grid-memo">
+            <input
+              type="text"
               value={memoText}
               onChange={(e) => setMemoText(e.target.value)}
-              placeholder="환자 관련 메모를 입력하세요..."
-              rows={4}
+              placeholder="메모 입력..."
             />
-            <button className="save-memo-btn" onClick={handleSaveMemo}>
-              메모 저장
-            </button>
+            <button onClick={handleSaveMemo}>저장</button>
           </div>
         </div>
-      )}
+      </div>
+      </div>
     </div>
   );
 }
