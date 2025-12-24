@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
@@ -27,13 +28,20 @@ interface ChartAppProps {
   user: PortalUser;
 }
 
+// 네비게이션 메뉴 아이템 정의
+const menuItems = [
+  { path: '/', label: '대시보드', icon: 'fa-chart-line' },
+  { path: '/treatment-records', label: '진료내역', icon: 'fa-history' },
+  { path: '/patients', label: '환자차트', icon: 'fa-users' },
+  { path: '/prescriptions', label: '처방관리', icon: 'fa-prescription' },
+  { path: '/prescription-definitions', label: '처방정의', icon: 'fa-book-medical' },
+  { path: '/dosage-instructions', label: '복용법', icon: 'fa-capsules' },
+];
+
 const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
   const navigate = useNavigate();
   const location = useLocation();
-
-  const handleMenuClick = (menu: string) => {
-    console.log(`${menu} 클릭됨`);
-  };
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const isActive = (path: string) => {
     const basePath = '/chart';
@@ -51,130 +59,116 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
   };
 
   return (
-    <div className="h-screen bg-clinic-background flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="bg-clinic-surface shadow-md flex items-center justify-between px-4 py-2 flex-shrink-0">
-        {/* 왼쪽 영역 - 로고 및 제목 */}
+    <div className="h-screen bg-clinic-background flex overflow-hidden">
+      {/* Left Sidebar */}
+      <aside
+        className={`bg-clinic-surface shadow-lg flex flex-col flex-shrink-0 transition-all duration-300 ${
+          isCollapsed ? 'w-16' : 'w-48'
+        }`}
+      >
+        {/* 로고 영역 */}
         <div
-          className="flex items-center cursor-pointer hover:opacity-80 transition-opacity"
+          className={`flex items-center cursor-pointer hover:bg-clinic-background transition-colors border-b border-gray-200 ${
+            isCollapsed ? 'justify-center px-2 py-4' : 'px-4 py-4'
+          }`}
           onClick={() => navigate('/')}
           role="button"
           aria-label="포털로 이동"
         >
-          <i className="fas fa-notes-medical text-3xl text-clinic-primary mr-3"></i>
-          <div className="flex flex-col">
-            <h1 className="text-2xl font-bold text-clinic-primary">진료 관리 시스템</h1>
-            <p className="text-xs text-gray-400 -mt-0.5">연이재한의원</p>
-          </div>
+          <i className="fas fa-notes-medical text-2xl text-clinic-primary"></i>
+          {!isCollapsed && (
+            <div className="ml-3 flex flex-col">
+              <h1 className="text-base font-bold text-clinic-primary leading-tight">진료관리</h1>
+              <p className="text-xs text-gray-400">연이재한의원</p>
+            </div>
+          )}
         </div>
 
-        {/* 오른쪽 영역 - 메뉴 + 사용자 정보 */}
-        <div className="flex items-center space-x-3">
-          {/* 네비게이션 메뉴 */}
-          <nav className="flex items-center space-x-2">
+        {/* 네비게이션 메뉴 */}
+        <nav className="flex-1 py-4 px-2 space-y-1">
+          {menuItems.map((item) => (
             <button
-              onClick={() => navigateTo('/')}
-              className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
-                isActive('/')
+              key={item.path}
+              onClick={() => navigateTo(item.path)}
+              className={`w-full flex items-center rounded-lg transition-colors duration-200 ${
+                isCollapsed ? 'justify-center px-2 py-3' : 'px-3 py-2.5'
+              } ${
+                isActive(item.path)
                   ? 'bg-clinic-primary text-white'
                   : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
               }`}
+              title={isCollapsed ? item.label : undefined}
             >
-              <i className="fas fa-chart-line text-xl mb-1"></i>
-              <span>대시보드</span>
+              <i className={`fas ${item.icon} text-lg ${isCollapsed ? '' : 'w-6'}`}></i>
+              {!isCollapsed && (
+                <span className="ml-3 text-sm font-medium">{item.label}</span>
+              )}
             </button>
+          ))}
 
+          {/* 설정 버튼 - 구분선 후 */}
+          <div className="pt-4 mt-4 border-t border-gray-200">
             <button
-              onClick={() => navigateTo('/treatment-records')}
-              className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
-                isActive('/treatment-records')
-                  ? 'bg-clinic-primary text-white'
-                  : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
-              }`}
+              onClick={() => console.log('설정 클릭됨')}
+              className={`w-full flex items-center rounded-lg transition-colors duration-200 ${
+                isCollapsed ? 'justify-center px-2 py-3' : 'px-3 py-2.5'
+              } text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary`}
+              title={isCollapsed ? '설정' : undefined}
             >
-              <i className="fas fa-history text-xl mb-1"></i>
-              <span>진료내역</span>
+              <i className={`fas fa-gear text-lg ${isCollapsed ? '' : 'w-6'}`}></i>
+              {!isCollapsed && (
+                <span className="ml-3 text-sm font-medium">설정</span>
+              )}
             </button>
+          </div>
+        </nav>
 
-            <button
-              onClick={() => navigateTo('/patients')}
-              className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
-                isActive('/patients')
-                  ? 'bg-clinic-primary text-white'
-                  : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
-              }`}
-            >
-              <i className="fas fa-users text-xl mb-1"></i>
-              <span>환자차트</span>
-            </button>
-
-            <button
-              onClick={() => navigateTo('/prescriptions')}
-              className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
-                isActive('/prescriptions')
-                  ? 'bg-clinic-primary text-white'
-                  : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
-              }`}
-            >
-              <i className="fas fa-prescription text-xl mb-1"></i>
-              <span>처방관리</span>
-            </button>
-
-            <button
-              onClick={() => navigateTo('/prescription-definitions')}
-              className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
-                isActive('/prescription-definitions')
-                  ? 'bg-clinic-primary text-white'
-                  : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
-              }`}
-            >
-              <i className="fas fa-book-medical text-xl mb-1"></i>
-              <span>처방정의</span>
-            </button>
-
-            <button
-              onClick={() => navigateTo('/dosage-instructions')}
-              className={`flex flex-col items-center justify-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 w-20 ${
-                isActive('/dosage-instructions')
-                  ? 'bg-clinic-primary text-white'
-                  : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
-              }`}
-            >
-              <i className="fas fa-capsules text-xl mb-1"></i>
-              <span>복용법</span>
-            </button>
-
-            <button
-              onClick={() => handleMenuClick('설정')}
-              className="flex flex-col items-center justify-center px-3 py-2 text-sm font-medium text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary rounded-lg transition-colors duration-200 w-20"
-            >
-              <i className="fas fa-gear text-xl mb-1"></i>
-              <span>설정</span>
-            </button>
-          </nav>
-
+        {/* 하단 영역 - 사용자 정보 + 접기/펼치기 + 닫기 */}
+        <div className="border-t border-gray-200 p-2">
           {/* 사용자 정보 */}
-          <div className="flex items-center space-x-3 border-l pl-3">
-            <div className="text-right">
-              <p className="font-semibold text-sm text-clinic-text-primary">{user?.name || '관리자'}</p>
+          {!isCollapsed && (
+            <div className="px-2 py-2 mb-2">
+              <p className="font-semibold text-sm text-clinic-text-primary truncate">
+                {user?.name || '관리자'}
+              </p>
               <p className="text-xs text-clinic-text-secondary">
                 {user?.role ? ROLE_LABELS[user.role] : '연이재한의원'}
               </p>
             </div>
-            <button
-              onClick={() => window.close()}
-              className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-600 transition-colors"
-              title="닫기"
-              aria-label="닫기"
-            >
-              <i className="fa-solid fa-xmark"></i>
-            </button>
-          </div>
+          )}
+
+          {/* 접기/펼치기 버튼 */}
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className={`w-full flex items-center rounded-lg transition-colors duration-200 py-2.5 text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary ${
+              isCollapsed ? 'justify-center px-2' : 'px-3'
+            }`}
+            title={isCollapsed ? '메뉴 펼치기' : '메뉴 접기'}
+          >
+            <i className={`fas ${isCollapsed ? 'fa-chevron-right' : 'fa-chevron-left'} text-sm ${isCollapsed ? '' : 'w-6'}`}></i>
+            {!isCollapsed && (
+              <span className="ml-3 text-sm">메뉴 접기</span>
+            )}
+          </button>
+
+          {/* 닫기 버튼 */}
+          <button
+            onClick={() => window.close()}
+            className={`w-full flex items-center rounded-lg transition-colors duration-200 py-2.5 text-gray-400 hover:bg-red-50 hover:text-red-500 ${
+              isCollapsed ? 'justify-center px-2' : 'px-3'
+            }`}
+            title="닫기"
+          >
+            <i className={`fas fa-xmark text-lg ${isCollapsed ? '' : 'w-6'}`}></i>
+            {!isCollapsed && (
+              <span className="ml-3 text-sm">닫기</span>
+            )}
+          </button>
         </div>
-      </header>
+      </aside>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-hidden">
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/treatment-records" element={<TreatmentRecordsPage />} />
@@ -185,7 +179,7 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
           <Route path="/dosage-instructions" element={<DosageInstructionManagement />} />
           <Route path="/dosage-instructions/create" element={<DosageInstructionCreator />} />
         </Routes>
-      </div>
+      </main>
     </div>
   );
 };
