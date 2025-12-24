@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/sqlite';
 import type { InitialChart } from '../types';
 
 interface Props {
@@ -160,15 +160,9 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
   const loadChart = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('initial_charts')
-        .select('*')
-        .eq('patient_id', patientId)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
+      const data = await queryOne<InitialChart>(
+        `SELECT * FROM initial_charts WHERE patient_id = ${patientId} ORDER BY created_at DESC LIMIT 1`
+      );
 
       if (data) {
         setChart(data);
@@ -198,46 +192,35 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
         return;
       }
 
-      const saveData = {
-        patient_id: Number(patientId),
-        notes: formData.notes.trim(),
-        chart_date: new Date(formData.chart_date).toISOString()
-      };
+      const now = getCurrentTimestamp();
+      const chartDate = new Date(formData.chart_date).toISOString();
+      const notes = formData.notes.trim();
 
       if (forceNew || !chart) {
         // 새 차트 생성
-        const { data, error } = await supabase
-          .from('initial_charts')
-          .insert([saveData])
-          .select();
+        const newId = await insert(`
+          INSERT INTO initial_charts (patient_id, notes, chart_date, created_at, updated_at)
+          VALUES (${patientId}, ${escapeString(notes)}, ${escapeString(chartDate)}, ${escapeString(now)}, ${escapeString(now)})
+        `);
 
-        if (error) {
-          console.error('자동저장 실패:', error);
-          setAutoSaveStatus('idle');
-          return;
-        }
-
-        if (data && data.length > 0) {
-          setChart(data[0]);
-          console.log('자동저장 완료 (새 차트)');
+        if (newId) {
+          const newChart = await queryOne<InitialChart>(
+            `SELECT * FROM initial_charts WHERE id = ${newId}`
+          );
+          if (newChart) {
+            setChart(newChart);
+            console.log('자동저장 완료 (새 차트)');
+          }
         }
       } else {
         // 기존 차트 업데이트
-        const { error } = await supabase
-          .from('initial_charts')
-          .update({
-            notes: saveData.notes,
-            chart_date: saveData.chart_date,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', chart.id);
-
-        if (error) {
-          console.error('자동저장 실패:', error);
-          setAutoSaveStatus('idle');
-          return;
-        }
-
+        await execute(`
+          UPDATE initial_charts SET
+            notes = ${escapeString(notes)},
+            chart_date = ${escapeString(chartDate)},
+            updated_at = ${escapeString(now)}
+          WHERE id = ${chart.id}
+        `);
         console.log('자동저장 완료 (업데이트)');
       }
 
@@ -266,97 +249,52 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
         return;
       }
 
-      // 저장할 데이터 구성
-      const saveData = {
-        patient_id: Number(patientId),
-        notes: formData.notes.trim(),
-        chart_date: new Date(formData.chart_date).toISOString()
-      };
+      const now = getCurrentTimestamp();
+      const chartDate = new Date(formData.chart_date).toISOString();
+      const notes = formData.notes.trim();
 
-      console.log('저장 데이터:', saveData);
+      console.log('저장 데이터:', { patientId, notes: notes.substring(0, 50), chartDate });
 
       if (forceNew) {
-        // 새진료 시작: 무조건 새로 insert (UNIQUE 제약조건 제거됨)
+        // 새진료 시작: 무조건 새로 insert
         console.log('새진료 차트 생성 시도...');
-        const { data, error } = await supabase
-          .from('initial_charts')
-          .insert([saveData])
-          .select();
+        await insert(`
+          INSERT INTO initial_charts (patient_id, notes, chart_date, created_at, updated_at)
+          VALUES (${patientId}, ${escapeString(notes)}, ${escapeString(chartDate)}, ${escapeString(now)}, ${escapeString(now)})
+        `);
 
-        if (error) {
-          console.error('생성 오류 상세:', {
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code
-          });
-
-          // 409 에러는 UNIQUE 제약조건 위반
-          if (error.code === '23505') {
-            alert('이 환자의 차트가 이미 존재합니다.\n\nSupabase SQL Editor에서 다음 SQL을 실행해주세요:\n\nALTER TABLE initial_charts DROP CONSTRAINT IF EXISTS initial_charts_patient_id_key;\n\n이렇게 하면 환자당 여러 차트를 저장할 수 있습니다.');
-            return;
-          }
-
-          throw error;
-        }
-
-        console.log('생성 성공:', data);
+        console.log('생성 성공');
         alert('새 진료차트가 생성되었습니다');
         onClose(); // 저장 후 닫기
       } else if (chart) {
         // 수정
-        const { error } = await supabase
-          .from('initial_charts')
-          .update({
-            notes: saveData.notes,
-            chart_date: saveData.chart_date,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', chart.id);
+        await execute(`
+          UPDATE initial_charts SET
+            notes = ${escapeString(notes)},
+            chart_date = ${escapeString(chartDate)},
+            updated_at = ${escapeString(now)}
+          WHERE id = ${chart.id}
+        `);
 
-        if (error) {
-          console.error('수정 오류:', error);
-          throw error;
-        }
         alert('초진차트가 수정되었습니다');
         setIsEditing(false);
         await loadChart();
       } else {
         // 신규 생성
         console.log('초진차트 신규 생성 시도...');
-        const { data, error } = await supabase
-          .from('initial_charts')
-          .insert([saveData])
-          .select();
+        await insert(`
+          INSERT INTO initial_charts (patient_id, notes, chart_date, created_at, updated_at)
+          VALUES (${patientId}, ${escapeString(notes)}, ${escapeString(chartDate)}, ${escapeString(now)}, ${escapeString(now)})
+        `);
 
-        if (error) {
-          console.error('생성 오류 상세:', {
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code
-          });
-          throw error;
-        }
-
-        console.log('생성 성공:', data);
+        console.log('생성 성공');
         alert('초진차트가 생성되었습니다');
         setIsEditing(false);
         await loadChart();
       }
     } catch (error: any) {
-      console.error('저장 실패 전체:', error);
-      let errorMsg = '저장에 실패했습니다.\n\n';
-      if (error.message) {
-        errorMsg += '오류: ' + error.message;
-      }
-      if (error.hint) {
-        errorMsg += '\n힌트: ' + error.hint;
-      }
-      if (error.details) {
-        errorMsg += '\n상세: ' + error.details;
-      }
-      alert(errorMsg);
+      console.error('저장 실패:', error);
+      alert('저장에 실패했습니다.\n\n오류: ' + (error.message || error));
     }
   };
 

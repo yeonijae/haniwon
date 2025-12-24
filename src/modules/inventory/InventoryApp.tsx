@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
+import { useFontScale } from '@shared/hooks/useFontScale';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -26,6 +27,9 @@ const InventoryApp: React.FC<InventoryAppProps> = ({ user }) => {
   const navigate = useNavigate();
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [showSettings, setShowSettings] = useState(false);
+
+  // 폰트 스케일
+  const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('inventory');
 
   const menuItems = [
     { id: 'dashboard' as ViewType, icon: 'fa-solid fa-house', label: '대시보드' },
@@ -88,6 +92,33 @@ const InventoryApp: React.FC<InventoryAppProps> = ({ user }) => {
           </nav>
 
           <div className="border-l pl-4 ml-2 flex items-center space-x-3">
+            {/* 폰트 스케일 컨트롤 */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={decreaseScale}
+                disabled={!canDecrease}
+                className="w-7 h-7 flex items-center justify-center bg-white border border-gray-300 rounded text-gray-600 text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                title="글씨 축소"
+              >
+                <i className="fa-solid fa-minus"></i>
+              </button>
+              <span
+                onClick={resetScale}
+                className="min-w-[40px] text-center text-xs font-medium text-gray-600 cursor-pointer hover:bg-gray-200 rounded px-1 py-1"
+                title="기본 크기로 복원"
+              >
+                {scalePercent}%
+              </span>
+              <button
+                onClick={increaseScale}
+                disabled={!canIncrease}
+                className="w-7 h-7 flex items-center justify-center bg-white border border-gray-300 rounded text-gray-600 text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                title="글씨 확대"
+              >
+                <i className="fa-solid fa-plus"></i>
+              </button>
+            </div>
+
             <button
               onClick={() => setShowSettings(true)}
               className="flex flex-col items-center justify-center px-3 py-2 text-sm font-medium text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary rounded-lg transition-colors duration-200 w-20"
@@ -116,7 +147,7 @@ const InventoryApp: React.FC<InventoryAppProps> = ({ user }) => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-hidden" style={{ zoom: scale }}>
         {renderView()}
       </main>
 

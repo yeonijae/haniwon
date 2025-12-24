@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
 import { getMultipleRecommendations, generateCustomDescription, type AIRecommendation, type AIGeneratedDescription } from '../services/aiDosageRecommendation';
 import type { DosageInstruction, Patient } from '../types';
 
@@ -229,16 +229,19 @@ const DosageInstructionCreator: React.FC = () => {
   const loadPresetsFromDB = async () => {
     try {
       setPresetsLoading(true);
-      const { data, error } = await supabase
-        .from('precaution_presets')
-        .select('name, items')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const data = await query<{ name: string; items: string }>(
+        `SELECT name, items FROM precaution_presets ORDER BY created_at DESC`
+      );
 
       const presetsMap: Record<string, string[]> = {};
-      data?.forEach((preset: { name: string; items: string[] }) => {
-        presetsMap[preset.name] = preset.items;
+      (data || []).forEach((preset) => {
+        let items: string[] = [];
+        if (typeof preset.items === 'string') {
+          try { items = JSON.parse(preset.items); } catch { items = []; }
+        } else if (Array.isArray(preset.items)) {
+          items = preset.items;
+        }
+        presetsMap[preset.name] = items;
       });
       setSavedPresets(presetsMap);
     } catch (error) {
@@ -251,16 +254,17 @@ const DosageInstructionCreator: React.FC = () => {
   // 기존 복용법 데이터 로드
   const loadExistingDosageInstruction = async (prescId: number) => {
     try {
-      const { data, error } = await supabase
-        .from('prescriptions')
-        .select('dosage_instruction_data')
-        .eq('id', prescId)
-        .single();
-
-      if (error) throw error;
+      const data = await queryOne<{ dosage_instruction_data: string }>(
+        `SELECT dosage_instruction_data FROM prescriptions WHERE id = ${prescId}`
+      );
 
       if (data?.dosage_instruction_data) {
-        const d = data.dosage_instruction_data;
+        let d: any;
+        if (typeof data.dosage_instruction_data === 'string') {
+          try { d = JSON.parse(data.dosage_instruction_data); } catch { return; }
+        } else {
+          d = data.dosage_instruction_data;
+        }
         if (d.description) setDescription(d.description);
         if (d.dosageMethod) setDosageMethod(d.dosageMethod);
         if (d.dosageNotice) setDosageNotice(d.dosageNotice);
@@ -278,14 +282,12 @@ const DosageInstructionCreator: React.FC = () => {
 
   const loadPatient = async (id: string) => {
     try {
-      const { data, error } = await supabase
-        .from('patients')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-      setPatient(data);
+      const data = await queryOne<Patient>(
+        `SELECT * FROM patients WHERE id = ${id}`
+      );
+      if (data) {
+        setPatient(data);
+      }
     } catch (error) {
       console.error('환자 정보 로드 실패:', error);
     }
@@ -294,15 +296,23 @@ const DosageInstructionCreator: React.FC = () => {
   const loadTemplates = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('dosage_instructions')
-        .select('*')
-        .order('category')
-        .order('disease_name');
+      const data = await query<DosageInstruction>(
+        `SELECT * FROM dosage_instructions ORDER BY category, disease_name`
+      );
 
-      if (error) throw error;
-      console.log('템플릿 로드 완료:', data?.length, '개');
-      setTemplates(data || []);
+      // keywords가 JSON 문자열일 수 있으므로 파싱
+      const templates = (data || []).map(t => {
+        let keywords: string[] = [];
+        if (typeof t.keywords === 'string') {
+          try { keywords = JSON.parse(t.keywords); } catch { keywords = []; }
+        } else if (Array.isArray(t.keywords)) {
+          keywords = t.keywords;
+        }
+        return { ...t, keywords };
+      });
+
+      console.log('템플릿 로드 완료:', templates.length, '개');
+      setTemplates(templates);
     } catch (error) {
       console.error('복용법 템플릿 로드 실패:', error);
     } finally {
@@ -398,20 +408,23 @@ const DosageInstructionCreator: React.FC = () => {
 
     setSaving(true);
     try {
-      const newRecord = {
-        category: saveForm.category,
-        disease_name: saveForm.diseaseName,
-        condition_detail: saveForm.conditionDetail || null,
-        description: aiGenerated.description,
-        keywords: [saveForm.diseaseName, ...aiInputComplaint.split(/[\s,]+/).filter(k => k.length >= 2)],
-        source_filename: 'AI 생성'
-      };
+      const now = getCurrentTimestamp();
+      const keywordsArray = [saveForm.diseaseName, ...aiInputComplaint.split(/[\s,]+/).filter(k => k.length >= 2)];
+      const keywordsJson = JSON.stringify(keywordsArray);
 
-      const { error } = await supabase
-        .from('dosage_instructions')
-        .insert([newRecord]);
-
-      if (error) throw error;
+      await insert(`
+        INSERT INTO dosage_instructions (category, disease_name, condition_detail, description, keywords, source_filename, created_at, updated_at)
+        VALUES (
+          ${escapeString(saveForm.category)},
+          ${escapeString(saveForm.diseaseName)},
+          ${toSqlValue(saveForm.conditionDetail)},
+          ${escapeString(aiGenerated.description)},
+          ${escapeString(keywordsJson)},
+          ${escapeString('AI 생성')},
+          ${escapeString(now)},
+          ${escapeString(now)}
+        )
+      `);
 
       alert('AI 생성 설명이 템플릿으로 저장되었습니다.');
       setShowSaveModal(false);
@@ -516,24 +529,37 @@ const DosageInstructionCreator: React.FC = () => {
     }
 
     try {
-      // upsert: 같은 이름이 있으면 업데이트, 없으면 삽입
-      const { error } = await supabase
-        .from('precaution_presets')
-        .upsert(
-          { name: presetName.trim(), items: selectedFoods },
-          { onConflict: 'name' }
-        );
+      const now = getCurrentTimestamp();
+      const itemsJson = JSON.stringify(selectedFoods);
+      const trimmedName = presetName.trim();
 
-      if (error) throw error;
+      // 기존 프리셋이 있는지 확인
+      const existing = await queryOne<{ id: number }>(
+        `SELECT id FROM precaution_presets WHERE name = ${escapeString(trimmedName)}`
+      );
+
+      if (existing) {
+        // 업데이트
+        await execute(`
+          UPDATE precaution_presets SET items = ${escapeString(itemsJson)}, updated_at = ${escapeString(now)}
+          WHERE name = ${escapeString(trimmedName)}
+        `);
+      } else {
+        // 삽입
+        await insert(`
+          INSERT INTO precaution_presets (name, items, created_at, updated_at)
+          VALUES (${escapeString(trimmedName)}, ${escapeString(itemsJson)}, ${escapeString(now)}, ${escapeString(now)})
+        `);
+      }
 
       // 로컬 상태 업데이트
       setSavedPresets(prev => ({
         ...prev,
-        [presetName.trim()]: selectedFoods
+        [trimmedName]: selectedFoods
       }));
       setShowPresetModal(false);
       setPresetName('');
-      alert(`"${presetName.trim()}" 프리셋이 저장되었습니다.`);
+      alert(`"${trimmedName}" 프리셋이 저장되었습니다.`);
     } catch (error) {
       console.error('프리셋 저장 실패:', error);
       alert('프리셋 저장에 실패했습니다.');
@@ -552,12 +578,7 @@ const DosageInstructionCreator: React.FC = () => {
   const deleteSavedPreset = async (name: string) => {
     if (confirm(`"${name}" 프리셋을 삭제하시겠습니까?`)) {
       try {
-        const { error } = await supabase
-          .from('precaution_presets')
-          .delete()
-          .eq('name', name);
-
-        if (error) throw error;
+        await execute(`DELETE FROM precaution_presets WHERE name = ${escapeString(name)}`);
 
         // 로컬 상태 업데이트
         setSavedPresets(prev => {
@@ -593,16 +614,17 @@ const DosageInstructionCreator: React.FC = () => {
     }
 
     try {
-      const { error } = await supabase
-        .from('prescriptions')
-        .update({
-          dosage_instruction_created: true,
-          dosage_instruction_created_at: new Date().toISOString(),
-          dosage_instruction_data: getDosageInstructionData()
-        })
-        .eq('id', prescriptionId);
+      const now = new Date().toISOString();
+      const dataJson = JSON.stringify(getDosageInstructionData());
 
-      if (error) throw error;
+      await execute(`
+        UPDATE prescriptions SET
+          dosage_instruction_created = 1,
+          dosage_instruction_created_at = ${escapeString(now)},
+          dosage_instruction_data = ${escapeString(dataJson)}
+        WHERE id = ${prescriptionId}
+      `);
+
       alert('복용법이 저장되었습니다.');
     } catch (error) {
       console.error('복용법 저장 실패:', error);
@@ -615,16 +637,16 @@ const DosageInstructionCreator: React.FC = () => {
     if (!prescriptionId) return;
 
     try {
-      const { error } = await supabase
-        .from('prescriptions')
-        .update({
-          dosage_instruction_created: true,
-          dosage_instruction_created_at: new Date().toISOString(),
-          dosage_instruction_data: getDosageInstructionData()
-        })
-        .eq('id', prescriptionId);
+      const now = new Date().toISOString();
+      const dataJson = JSON.stringify(getDosageInstructionData());
 
-      if (error) throw error;
+      await execute(`
+        UPDATE prescriptions SET
+          dosage_instruction_created = 1,
+          dosage_instruction_created_at = ${escapeString(now)},
+          dosage_instruction_data = ${escapeString(dataJson)}
+        WHERE id = ${prescriptionId}
+      `);
     } catch (error) {
       console.error('처방전 복용법 상태 업데이트 실패:', error);
     }

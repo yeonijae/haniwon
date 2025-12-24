@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
 import type { InitialChart } from '../types';
 import PrescriptionInput, { PrescriptionData } from './PrescriptionInput';
 
@@ -72,30 +72,33 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     try {
       setLoading(true);
 
-      // 초진차트 로드
-      const { data: chartData, error: chartError } = await supabase
-        .from('initial_charts')
-        .select('*')
-        .eq('id', recordId)
-        .single();
+      // 초진차트 로드 - SQLite
+      const chartData = await queryOne<InitialChart>(
+        `SELECT * FROM initial_charts WHERE id = ${recordId}`
+      );
 
-      if (chartError) throw chartError;
+      if (!chartData) {
+        console.error('초진차트를 찾을 수 없습니다');
+        return;
+      }
       setInitialChart(chartData);
       setInitialChartPrescriptionIssued(chartData.prescription_issued || false);
 
-      // 경과 기록 로드 (progress_notes 테이블에서)
-      const { data: progressData, error: progressError } = await supabase
-        .from('progress_notes')
-        .select('*')
-        .eq('patient_id', chartData.patient_id)
-        .order('note_date', { ascending: false });
-
-      if (progressError && progressError.code !== 'PGRST116') {
-        throw progressError;
-      }
+      // 경과 기록 로드 (progress_notes 테이블에서) - SQLite
+      const progressData = await query<{
+        id: number;
+        patient_id: number;
+        note_date: string;
+        objective: string;
+        assessment: string;
+        plan: string;
+        prescription_issued: boolean;
+        prescription_issued_at: string;
+        created_at: string;
+      }>(`SELECT * FROM progress_notes WHERE patient_id = ${chartData.patient_id} ORDER BY note_date DESC`);
 
       // 데이터 변환
-      const entries: ProgressEntry[] = progressData?.map(note => ({
+      const entries: ProgressEntry[] = (progressData || []).map(note => ({
         id: note.id,
         entry_date: note.note_date,
         treatment: note.objective || '',
@@ -104,7 +107,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
         prescription_issued: note.prescription_issued || false,
         prescription_issued_at: note.prescription_issued_at || undefined,
         created_at: note.created_at
-      })) || [];
+      }));
 
       setProgressEntries(entries);
     } catch (error) {
@@ -179,66 +182,52 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
       }
 
       const parsed = parseProgressText(progressText);
+      const now = getCurrentTimestamp();
+      const noteDate = new Date(progressDate).toISOString();
 
       // 수정 모드인 경우
       if (editingProgressId) {
-        const { error } = await supabase
-          .from('progress_notes')
-          .update({
-            note_date: new Date(progressDate).toISOString(),
-            objective: parsed.treatment,
-            assessment: parsed.diagnosis,
-            plan: parsed.prescription
-          })
-          .eq('id', editingProgressId);
-
-        if (error) {
-          console.error('자동저장 실패:', error);
-          setAutoSaveStatus('idle');
-          return;
-        }
+        await execute(`
+          UPDATE progress_notes SET
+            note_date = ${escapeString(noteDate)},
+            objective = ${toSqlValue(parsed.treatment)},
+            assessment = ${toSqlValue(parsed.diagnosis)},
+            plan = ${toSqlValue(parsed.prescription)},
+            updated_at = ${escapeString(now)}
+          WHERE id = ${editingProgressId}
+        `);
 
         console.log('경과 자동저장 완료 (수정 모드)');
       } else if (lastSavedId) {
         // 기존 경과 업데이트 (자동 저장으로 생성된 경우)
-        const { error } = await supabase
-          .from('progress_notes')
-          .update({
-            note_date: new Date(progressDate).toISOString(),
-            objective: parsed.treatment,
-            assessment: parsed.diagnosis,
-            plan: parsed.prescription
-          })
-          .eq('id', lastSavedId);
-
-        if (error) {
-          console.error('자동저장 실패:', error);
-          setAutoSaveStatus('idle');
-          return;
-        }
+        await execute(`
+          UPDATE progress_notes SET
+            note_date = ${escapeString(noteDate)},
+            objective = ${toSqlValue(parsed.treatment)},
+            assessment = ${toSqlValue(parsed.diagnosis)},
+            plan = ${toSqlValue(parsed.prescription)},
+            updated_at = ${escapeString(now)}
+          WHERE id = ${lastSavedId}
+        `);
 
         console.log('경과 자동저장 완료 (업데이트)');
       } else {
         // 새 경과 생성
-        const { data, error } = await supabase
-          .from('progress_notes')
-          .insert([{
-            patient_id: initialChart.patient_id,
-            note_date: new Date(progressDate).toISOString(),
-            objective: parsed.treatment,
-            assessment: parsed.diagnosis,
-            plan: parsed.prescription
-          }])
-          .select();
+        const newId = await insert(`
+          INSERT INTO progress_notes (patient_id, note_date, objective, assessment, plan, created_at, updated_at)
+          VALUES (
+            ${initialChart.patient_id},
+            ${escapeString(noteDate)},
+            ${toSqlValue(parsed.treatment)},
+            ${toSqlValue(parsed.diagnosis)},
+            ${toSqlValue(parsed.prescription)},
+            ${escapeString(now)},
+            ${escapeString(now)}
+          )
+        `);
 
-        if (error) {
-          console.error('자동저장 실패:', error);
-          setAutoSaveStatus('idle');
-          return;
-        }
-
-        if (data && data.length > 0) {
-          setLastSavedId(data[0].id);
+        if (newId) {
+          setLastSavedId(newId);
           console.log('경과 자동저장 완료 (신규)');
         }
       }
@@ -274,18 +263,21 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
 
       // 텍스트 파싱
       const parsed = parseProgressText(progressText);
+      const now = getCurrentTimestamp();
+      const noteDate = new Date(progressDate).toISOString();
 
-      const { error } = await supabase
-        .from('progress_notes')
-        .insert([{
-          patient_id: initialChart.patient_id,
-          note_date: new Date(progressDate).toISOString(),
-          objective: parsed.treatment,
-          assessment: parsed.diagnosis,
-          plan: parsed.prescription
-        }]);
-
-      if (error) throw error;
+      await insert(`
+        INSERT INTO progress_notes (patient_id, note_date, objective, assessment, plan, created_at, updated_at)
+        VALUES (
+          ${initialChart.patient_id},
+          ${escapeString(noteDate)},
+          ${toSqlValue(parsed.treatment)},
+          ${toSqlValue(parsed.diagnosis)},
+          ${toSqlValue(parsed.prescription)},
+          ${escapeString(now)},
+          ${escapeString(now)}
+        )
+      `);
 
       alert('경과가 추가되었습니다');
       setShowAddForm(false);
@@ -312,12 +304,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     try {
       setLoading(true);
 
-      const { error } = await supabase
-        .from('initial_charts')
-        .delete()
-        .eq('id', recordId);
-
-      if (error) throw error;
+      await execute(`DELETE FROM initial_charts WHERE id = ${recordId}`);
 
       alert('진료기록이 삭제되었습니다');
       onClose(); // 모달 닫기
@@ -339,15 +326,14 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     try {
       if (!initialChart) return;
 
-      const { error } = await supabase
-        .from('initial_charts')
-        .update({
-          notes: editedNotes,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', initialChart.id);
+      const now = getCurrentTimestamp();
 
-      if (error) throw error;
+      await execute(`
+        UPDATE initial_charts SET
+          notes = ${toSqlValue(editedNotes)},
+          updated_at = ${escapeString(now)}
+        WHERE id = ${initialChart.id}
+      `);
 
       alert('초진차트가 수정되었습니다');
       setIsEditingChart(false);
@@ -406,18 +392,18 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
       }
 
       const parsed = parseProgressText(progressText);
+      const now = getCurrentTimestamp();
+      const noteDate = new Date(progressDate).toISOString();
 
-      const { error } = await supabase
-        .from('progress_notes')
-        .update({
-          note_date: new Date(progressDate).toISOString(),
-          objective: parsed.treatment,
-          assessment: parsed.diagnosis,
-          plan: parsed.prescription
-        })
-        .eq('id', editingProgressId);
-
-      if (error) throw error;
+      await execute(`
+        UPDATE progress_notes SET
+          note_date = ${escapeString(noteDate)},
+          objective = ${toSqlValue(parsed.treatment)},
+          assessment = ${toSqlValue(parsed.diagnosis)},
+          plan = ${toSqlValue(parsed.prescription)},
+          updated_at = ${escapeString(now)}
+        WHERE id = ${editingProgressId}
+      `);
 
       alert('경과가 수정되었습니다');
       setShowAddForm(false);
@@ -463,70 +449,70 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     try {
       // 처방번호 생성 (RX-YYYYMMDD-HHMMSS-랜덤)
       const now = new Date();
+      const nowTimestamp = getCurrentTimestamp();
       const prescriptionNumber = `RX-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+      const prescriptionDate = now.toISOString().split('T')[0];
 
-      // prescriptions 테이블에 저장
-      const prescription = {
-        prescription_number: prescriptionNumber,
-        prescription_date: now.toISOString().split('T')[0],
-        patient_id: initialChart?.patient_id,
-        patient_name: patientName,
-        chart_number: patientInfo?.chartNumber || '',
-        patient_age: patientInfo?.age || null,
-        patient_gender: patientInfo?.gender || null,
-        source_type: prescriptionSourceType,
-        source_id: prescriptionSourceId,
-        formula: data.formula,
-        merged_herbs: data.mergedHerbs,
-        final_herbs: data.finalHerbs,
-        total_doses: data.totalDoses,
-        days: data.days,
-        doses_per_day: data.dosesPerDay,
-        total_packs: data.totalPacks,
-        pack_volume: data.packVolume,
-        water_amount: data.waterAmount,
-        herb_adjustment: data.herbAdjustment || null,
-        total_dosage: data.totalDosage,
-        final_total_amount: data.finalTotalAmount,
-        notes: data.notes || null,
-        status: 'issued',
-        issued_at: now.toISOString(),
-      };
-
-      const { error: prescriptionError } = await supabase
-        .from('prescriptions')
-        .insert([prescription]);
-
-      if (prescriptionError) throw prescriptionError;
+      // prescriptions 테이블에 저장 - SQLite
+      await insert(`
+        INSERT INTO prescriptions (
+          prescription_number, prescription_date, patient_id, patient_name, chart_number,
+          patient_age, patient_gender, source_type, source_id, formula,
+          merged_herbs, final_herbs, total_doses, days, doses_per_day,
+          total_packs, pack_volume, water_amount, herb_adjustment, total_dosage,
+          final_total_amount, notes, status, issued_at, created_at, updated_at
+        ) VALUES (
+          ${escapeString(prescriptionNumber)},
+          ${escapeString(prescriptionDate)},
+          ${initialChart?.patient_id || 'NULL'},
+          ${escapeString(patientName)},
+          ${toSqlValue(patientInfo?.chartNumber || '')},
+          ${patientInfo?.age || 'NULL'},
+          ${toSqlValue(patientInfo?.gender)},
+          ${escapeString(prescriptionSourceType)},
+          ${prescriptionSourceId || 'NULL'},
+          ${toSqlValue(data.formula)},
+          ${toSqlValue(JSON.stringify(data.mergedHerbs))},
+          ${toSqlValue(JSON.stringify(data.finalHerbs))},
+          ${data.totalDoses || 'NULL'},
+          ${data.days || 'NULL'},
+          ${data.dosesPerDay || 'NULL'},
+          ${data.totalPacks || 'NULL'},
+          ${data.packVolume || 'NULL'},
+          ${data.waterAmount || 'NULL'},
+          ${toSqlValue(data.herbAdjustment)},
+          ${data.totalDosage || 'NULL'},
+          ${data.finalTotalAmount || 'NULL'},
+          ${toSqlValue(data.notes)},
+          ${escapeString('issued')},
+          ${escapeString(nowTimestamp)},
+          ${escapeString(nowTimestamp)},
+          ${escapeString(nowTimestamp)}
+        )
+      `);
 
       // 처방발급 상태 업데이트 (초진차트 또는 경과기록)
       if (prescriptionSourceType === 'initial_chart' && prescriptionSourceId) {
-        const { error: chartError } = await supabase
-          .from('initial_charts')
-          .update({
-            prescription_issued: true,
-            prescription_issued_at: new Date().toISOString()
-          })
-          .eq('id', prescriptionSourceId);
-
-        if (chartError) throw chartError;
+        await execute(`
+          UPDATE initial_charts SET
+            prescription_issued = 1,
+            prescription_issued_at = ${escapeString(nowTimestamp)}
+          WHERE id = ${prescriptionSourceId}
+        `);
         setInitialChartPrescriptionIssued(true);
       } else if (prescriptionSourceType === 'progress_note' && prescriptionSourceId) {
-        const { error: progressError } = await supabase
-          .from('progress_notes')
-          .update({
-            prescription_issued: true,
-            prescription_issued_at: new Date().toISOString()
-          })
-          .eq('id', prescriptionSourceId);
-
-        if (progressError) throw progressError;
+        await execute(`
+          UPDATE progress_notes SET
+            prescription_issued = 1,
+            prescription_issued_at = ${escapeString(nowTimestamp)}
+          WHERE id = ${prescriptionSourceId}
+        `);
 
         // 로컬 상태 업데이트
         setProgressEntries(prev =>
           prev.map(entry =>
             entry.id === prescriptionSourceId
-              ? { ...entry, prescription_issued: true, prescription_issued_at: new Date().toISOString() }
+              ? { ...entry, prescription_issued: true, prescription_issued_at: nowTimestamp }
               : entry
           )
         );
@@ -566,12 +552,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase
-        .from('progress_notes')
-        .delete()
-        .eq('id', progressId);
-
-      if (error) throw error;
+      await execute(`DELETE FROM progress_notes WHERE id = ${progressId}`);
 
       alert('경과가 삭제되었습니다');
       await loadData();

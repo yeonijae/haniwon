@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
 
 // 오늘의 콜 대상 인터페이스
 interface TodayCallTarget {
@@ -165,15 +165,10 @@ const MedicationManagement: React.FC = () => {
     try {
       setLoadingTodayCalls(true);
 
-      // 발급 완료되었고 복약 완료되지 않은 처방 조회
-      const { data: prescriptions, error } = await supabase
-        .from('prescriptions')
-        .select('*')
-        .eq('status', 'issued')
-        .eq('medication_completed', false)
-        .order('issued_at', { ascending: false });
-
-      if (error) throw error;
+      // 발급 완료되었고 복약 완료되지 않은 처방 조회 - SQLite
+      const prescriptions = await query<any>(
+        `SELECT * FROM prescriptions WHERE status = 'issued' AND (medication_completed = 0 OR medication_completed IS NULL) ORDER BY issued_at DESC`
+      );
 
       const targetDate = new Date(selectedCallDate);
       targetDate.setHours(0, 0, 0, 0);
@@ -182,21 +177,21 @@ const MedicationManagement: React.FC = () => {
       const visitTargets: TodayCallTarget[] = [];
 
       for (const p of prescriptions || []) {
-        // 환자 정보 가져오기
-        const { data: patient } = await supabase
-          .from('patients')
-          .select('phone')
-          .eq('id', p.patient_id)
-          .single();
+        // 환자 정보 가져오기 - SQLite (patients 테이블이 없으면 스킵)
+        let phone = '';
+        try {
+          const patient = await queryOne<{ phone: string }>(
+            `SELECT phone FROM patients WHERE id = ${p.patient_id}`
+          );
+          phone = patient?.phone || '';
+        } catch { /* patients 테이블이 없을 수 있음 */ }
 
         // 주소증 가져오기
         let chiefComplaint = '';
         if (p.source_type === 'initial_chart' && p.source_id) {
-          const { data: chartData } = await supabase
-            .from('initial_charts')
-            .select('notes')
-            .eq('id', p.source_id)
-            .single();
+          const chartData = await queryOne<{ notes: string }>(
+            `SELECT notes FROM initial_charts WHERE id = ${p.source_id}`
+          );
           if (chartData?.notes) {
             const match = chartData.notes.match(/\[주소증\]([\s\S]*?)(?=\n\[|$)/);
             if (match) chiefComplaint = match[1].trim();
@@ -216,7 +211,7 @@ const MedicationManagement: React.FC = () => {
             patient_id: p.patient_id,
             patient_name: p.patient_name || '이름없음',
             chart_number: p.chart_number,
-            phone: patient?.phone,
+            phone: phone,
             formula: p.formula,
             issued_at: p.issued_at,
             days: p.days || 15,
@@ -241,7 +236,7 @@ const MedicationManagement: React.FC = () => {
             patient_id: p.patient_id,
             patient_name: p.patient_name || '이름없음',
             chart_number: p.chart_number,
-            phone: patient?.phone,
+            phone: phone,
             formula: p.formula,
             issued_at: p.issued_at,
             days: p.days || 15,
@@ -272,13 +267,13 @@ const MedicationManagement: React.FC = () => {
     try {
       setLoadingPatients(true);
 
-      const { data: prescriptions, error } = await supabase
-        .from('prescriptions')
-        .select('patient_id, patient_name, chart_number, issued_at')
-        .eq('status', 'issued')
-        .order('issued_at', { ascending: false });
-
-      if (error) throw error;
+      // SQLite에서 처방 목록 조회
+      const prescriptions = await query<{
+        patient_id: number;
+        patient_name: string;
+        chart_number: string;
+        issued_at: string;
+      }>(`SELECT patient_id, patient_name, chart_number, issued_at FROM prescriptions WHERE status = 'issued' ORDER BY issued_at DESC`);
 
       const patientMap = new Map<number, MedicationPatient>();
 
@@ -286,17 +281,20 @@ const MedicationManagement: React.FC = () => {
         if (!p.patient_id) continue;
 
         if (!patientMap.has(p.patient_id)) {
-          const { data: patientData } = await supabase
-            .from('patients')
-            .select('phone')
-            .eq('id', p.patient_id)
-            .single();
+          // 환자 정보 가져오기 (patients 테이블이 없으면 스킵)
+          let phone = '';
+          try {
+            const patientData = await queryOne<{ phone: string }>(
+              `SELECT phone FROM patients WHERE id = ${p.patient_id}`
+            );
+            phone = patientData?.phone || '';
+          } catch { /* patients 테이블이 없을 수 있음 */ }
 
           patientMap.set(p.patient_id, {
             patient_id: p.patient_id,
             patient_name: p.patient_name || '이름없음',
             chart_number: p.chart_number,
-            phone: patientData?.phone,
+            phone: phone,
             active_prescriptions: 1,
             last_prescription_date: p.issued_at
           });
@@ -322,25 +320,19 @@ const MedicationManagement: React.FC = () => {
       setSelectedTreatmentId(null);
       setPrescriptions([]);
 
-      const { data, error } = await supabase
-        .from('prescriptions')
-        .select('*')
-        .eq('patient_id', patientId)
-        .eq('status', 'issued')
-        .order('issued_at', { ascending: false });
-
-      if (error) throw error;
+      // SQLite에서 처방 조회
+      const data = await query<any>(
+        `SELECT * FROM prescriptions WHERE patient_id = ${patientId} AND status = 'issued' ORDER BY issued_at DESC`
+      );
 
       const treatmentList: Treatment[] = [];
 
       for (const prescription of data || []) {
         let chiefComplaint = '';
         if (prescription.source_type === 'initial_chart' && prescription.source_id) {
-          const { data: chartData } = await supabase
-            .from('initial_charts')
-            .select('notes')
-            .eq('id', prescription.source_id)
-            .single();
+          const chartData = await queryOne<{ notes: string }>(
+            `SELECT notes FROM initial_charts WHERE id = ${prescription.source_id}`
+          );
           if (chartData?.notes) {
             const match = chartData.notes.match(/\[주소증\]([\s\S]*?)(?=\n\[|$)/);
             if (match) chiefComplaint = match[1].trim();
@@ -388,13 +380,10 @@ const MedicationManagement: React.FC = () => {
       setLoadingPrescriptions(true);
       setSelectedTreatmentId(treatmentId);
 
-      const { data, error } = await supabase
-        .from('prescriptions')
-        .select('*')
-        .eq('id', treatmentId)
-        .single();
-
-      if (error) throw error;
+      // SQLite에서 처방 상세 조회
+      const data = await queryOne<any>(
+        `SELECT * FROM prescriptions WHERE id = ${treatmentId}`
+      );
 
       if (data) {
         const issuedDate = new Date(data.issued_at);
@@ -404,11 +393,9 @@ const MedicationManagement: React.FC = () => {
 
         let chiefComplaint = '';
         if (data.source_type === 'initial_chart' && data.source_id) {
-          const { data: chartData } = await supabase
-            .from('initial_charts')
-            .select('notes')
-            .eq('id', data.source_id)
-            .single();
+          const chartData = await queryOne<{ notes: string }>(
+            `SELECT notes FROM initial_charts WHERE id = ${data.source_id}`
+          );
           if (chartData?.notes) {
             const match = chartData.notes.match(/\[주소증\]([\s\S]*?)(?=\n\[|$)/);
             if (match) chiefComplaint = match[1].trim();
@@ -446,16 +433,23 @@ const MedicationManagement: React.FC = () => {
     if (!selectedCallTarget) return;
 
     try {
-      const updateData = callType === 'delivery'
-        ? { delivery_call_date: new Date().toISOString(), delivery_call_notes: callNotes }
-        : { visit_call_date: new Date().toISOString(), visit_call_notes: callNotes };
+      const now = getCurrentTimestamp();
 
-      const { error } = await supabase
-        .from('prescriptions')
-        .update(updateData)
-        .eq('id', selectedCallTarget.prescription_id);
-
-      if (error) throw error;
+      if (callType === 'delivery') {
+        await execute(`
+          UPDATE prescriptions SET
+            delivery_call_date = ${escapeString(now)},
+            delivery_call_notes = ${toSqlValue(callNotes)}
+          WHERE id = ${selectedCallTarget.prescription_id}
+        `);
+      } else {
+        await execute(`
+          UPDATE prescriptions SET
+            visit_call_date = ${escapeString(now)},
+            visit_call_notes = ${toSqlValue(callNotes)}
+          WHERE id = ${selectedCallTarget.prescription_id}
+        `);
+      }
 
       alert(`${callType === 'delivery' ? '배송' : '내원'}콜이 기록되었습니다.`);
       setShowCallModal(false);
@@ -475,16 +469,23 @@ const MedicationManagement: React.FC = () => {
     if (!selectedPrescription) return;
 
     try {
-      const updateData = callType === 'delivery'
-        ? { delivery_call_date: new Date().toISOString(), delivery_call_notes: callNotes }
-        : { visit_call_date: new Date().toISOString(), visit_call_notes: callNotes };
+      const now = getCurrentTimestamp();
 
-      const { error } = await supabase
-        .from('prescriptions')
-        .update(updateData)
-        .eq('id', selectedPrescription.id);
-
-      if (error) throw error;
+      if (callType === 'delivery') {
+        await execute(`
+          UPDATE prescriptions SET
+            delivery_call_date = ${escapeString(now)},
+            delivery_call_notes = ${toSqlValue(callNotes)}
+          WHERE id = ${selectedPrescription.id}
+        `);
+      } else {
+        await execute(`
+          UPDATE prescriptions SET
+            visit_call_date = ${escapeString(now)},
+            visit_call_notes = ${toSqlValue(callNotes)}
+          WHERE id = ${selectedPrescription.id}
+        `);
+      }
 
       alert(`${callType === 'delivery' ? '배송' : '내원'}콜이 기록되었습니다.`);
       setShowCallModal(false);
@@ -516,16 +517,13 @@ const MedicationManagement: React.FC = () => {
       const newScheduledDate = new Date();
       newScheduledDate.setDate(newScheduledDate.getDate() + postponeDays);
 
-      const { error } = await supabase
-        .from('prescriptions')
-        .update({
-          visit_call_scheduled_date: newScheduledDate.toISOString(),
-          visit_call_postponed_count: postponeCount + 1,
-          visit_call_postpone_reason: postponeReason || null
-        })
-        .eq('id', postponeTargetId);
-
-      if (error) throw error;
+      await execute(`
+        UPDATE prescriptions SET
+          visit_call_scheduled_date = ${escapeString(newScheduledDate.toISOString())},
+          visit_call_postponed_count = ${postponeCount + 1},
+          visit_call_postpone_reason = ${toSqlValue(postponeReason)}
+        WHERE id = ${postponeTargetId}
+      `);
 
       alert(`내원콜이 ${postponeDays}일 미루어졌습니다.`);
       setShowPostponeModal(false);
@@ -544,15 +542,10 @@ const MedicationManagement: React.FC = () => {
       const selectedDate = new Date(date);
       const dayOfWeek = selectedDate.getDay();
 
-      // 해당 요일의 원장 근무시간 조회
-      const { data: schedules, error: scheduleError } = await supabase
-        .from('doctor_schedules')
-        .select('*')
-        .eq('doctor_name', doctor)
-        .eq('day_of_week', dayOfWeek)
-        .eq('is_active', true);
-
-      if (scheduleError) throw scheduleError;
+      // 해당 요일의 원장 근무시간 조회 - SQLite
+      const schedules = await query<any>(
+        `SELECT * FROM doctor_schedules WHERE doctor_name = ${escapeString(doctor)} AND day_of_week = ${dayOfWeek} AND is_active = 1`
+      );
 
       if (!schedules || schedules.length === 0) {
         setAvailableSlots([]);
@@ -578,15 +571,12 @@ const MedicationManagement: React.FC = () => {
         const isBreakTime = breakStart && breakEnd && currentTime >= breakStart && currentTime < breakEnd;
 
         if (!isBreakTime) {
-          // 기존 예약 체크
+          // 기존 예약 체크 - SQLite
           const appointmentDateTime = new Date(date + 'T' + timeStr);
-          const { data: existingAppointments } = await supabase
-            .from('appointments')
-            .select('id')
-            .eq('doctor_name', doctor)
-            .gte('appointment_date', appointmentDateTime.toISOString())
-            .lt('appointment_date', new Date(appointmentDateTime.getTime() + slotDuration * 60000).toISOString())
-            .neq('status', 'cancelled');
+          const endDateTime = new Date(appointmentDateTime.getTime() + slotDuration * 60000);
+          const existingAppointments = await query<any>(
+            `SELECT id FROM appointments WHERE doctor_name = ${escapeString(doctor)} AND appointment_date >= ${escapeString(appointmentDateTime.toISOString())} AND appointment_date < ${escapeString(endDateTime.toISOString())} AND status != 'cancelled'`
+          );
 
           slots.push({
             time: timeStr,
@@ -613,19 +603,22 @@ const MedicationManagement: React.FC = () => {
 
     try {
       const appointmentDateTime = new Date(`${selectedDate}T${selectedSlot}`);
+      const now = getCurrentTimestamp();
 
-      const { error } = await supabase
-        .from('appointments')
-        .insert({
-          patient_id: selectedCallTarget.patient_id,
-          prescription_id: selectedCallTarget.prescription_id,
-          doctor_name: selectedDoctor,
-          appointment_date: appointmentDateTime.toISOString(),
-          appointment_type: '재진',
-          status: 'scheduled'
-        });
-
-      if (error) throw error;
+      // SQLite에 예약 저장
+      await insert(`
+        INSERT INTO appointments (patient_id, prescription_id, doctor_name, appointment_date, appointment_type, status, created_at, updated_at)
+        VALUES (
+          ${selectedCallTarget.patient_id},
+          ${selectedCallTarget.prescription_id},
+          ${escapeString(selectedDoctor)},
+          ${escapeString(appointmentDateTime.toISOString())},
+          ${escapeString('재진')},
+          ${escapeString('scheduled')},
+          ${escapeString(now)},
+          ${escapeString(now)}
+        )
+      `);
 
       alert('예약이 완료되었습니다.');
       setShowAppointmentModal(false);
@@ -643,15 +636,14 @@ const MedicationManagement: React.FC = () => {
     if (!confirm('복약완료로 처리하시겠습니까?')) return;
 
     try {
-      const { error } = await supabase
-        .from('prescriptions')
-        .update({
-          medication_completed: true,
-          medication_completed_at: new Date().toISOString()
-        })
-        .eq('id', prescriptionId);
+      const now = getCurrentTimestamp();
 
-      if (error) throw error;
+      await execute(`
+        UPDATE prescriptions SET
+          medication_completed = 1,
+          medication_completed_at = ${escapeString(now)}
+        WHERE id = ${prescriptionId}
+      `);
 
       alert('복약완료 처리되었습니다.');
 

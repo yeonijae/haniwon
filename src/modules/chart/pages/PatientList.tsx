@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { query } from '@shared/lib/sqlite';
 import type { Patient } from '../types';
+
+// MSSQL API URL
+const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
 interface RecentPatient extends Patient {
   last_visit_date?: string;
@@ -30,70 +33,50 @@ const PatientList: React.FC = () => {
     }
   }, [searchTerm]);
 
-  // 차팅이 필요한 약상담 환자 로드
+  // 차팅이 필요한 약상담 환자 로드 (SQLite + MSSQL)
   const loadPatientsNeedingCharting = async () => {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const todayStr = today.toISOString().split('T')[0];
 
-      // 1. 오늘 약상담 환자 조회 (acting_queue_items)
-      const { data: actingData, error: actingError } = await supabase
-        .from('acting_queue_items')
-        .select('patient_id, created_at')
-        .eq('acting_type', '약상담')
-        .gte('created_at', today.toISOString())
-        .order('created_at', { ascending: false });
+      // 1. 오늘 약상담 환자 조회 (acting_queue) - SQLite
+      const actingData = await query<{ patient_id: number; created_at: string }>(`
+        SELECT patient_id, created_at FROM acting_queue
+        WHERE acting_type = '약상담'
+        AND work_date = '${todayStr}'
+        ORDER BY created_at DESC
+      `);
 
-      if (actingError) throw actingError;
-
-      // 2. 오늘 약상담 예약 환자 조회 (reservations + reservation_treatments)
-      const { data: reservationsData, error: reservationError } = await supabase
-        .from('reservations')
-        .select(`
-          patient_id,
-          id,
-          reservation_treatments (
-            treatment_name
-          )
-        `)
-        .eq('reservation_date', todayStr)
-        .eq('status', 'arrived');
-
-      if (reservationError) throw reservationError;
-
-      // 약상담이 포함된 예약 필터링
-      const reservationPatientIds = new Set<number>();
-      reservationsData?.forEach((res: any) => {
-        const hasConsultation = res.reservation_treatments?.some(
-          (t: any) => t.treatment_name === '약상담'
-        );
-        if (hasConsultation && res.patient_id) {
-          reservationPatientIds.add(res.patient_id);
-        }
-      });
+      // 2. 오늘 약상담 예약 환자 조회 - SQLite
+      const reservationsData = await query<{ patient_id: number; id: number }>(`
+        SELECT r.patient_id, r.id FROM reservations r
+        INNER JOIN reservation_treatments rt ON r.id = rt.reservation_id
+        WHERE r.reservation_date = '${todayStr}'
+        AND r.status = 'arrived'
+        AND rt.treatment_name = '약상담'
+      `);
 
       // 전체 약상담 환자 ID 수집
       const consultationPatientIds = new Set<number>();
       actingData?.forEach(item => {
         if (item.patient_id) consultationPatientIds.add(item.patient_id);
       });
-      reservationPatientIds.forEach(id => consultationPatientIds.add(id));
+      reservationsData?.forEach(res => {
+        if (res.patient_id) consultationPatientIds.add(res.patient_id);
+      });
 
       if (consultationPatientIds.size === 0) {
         setNeedsChartingPatients([]);
         return;
       }
 
-      // 3. 해당 환자들의 차팅 여부 확인
+      // 3. 해당 환자들의 차팅 여부 확인 - SQLite
       const patientIdsArray = Array.from(consultationPatientIds);
-
-      const { data: chartedPatients, error: chartError } = await supabase
-        .from('initial_charts')
-        .select('patient_id')
-        .in('patient_id', patientIdsArray);
-
-      if (chartError) throw chartError;
+      const chartedPatients = await query<{ patient_id: number }>(`
+        SELECT DISTINCT patient_id FROM initial_charts
+        WHERE patient_id IN (${patientIdsArray.join(',')})
+      `);
 
       // 차팅이 완료된 환자 ID 세트
       const chartedPatientIds = new Set(
@@ -110,120 +93,112 @@ const PatientList: React.FC = () => {
         return;
       }
 
-      // 4. 차팅 필요 환자 정보 가져오기
-      const { data: patientsData, error: patientsError } = await supabase
-        .from('patients')
-        .select('*')
-        .in('id', needsChartingIds)
-        .is('deletion_date', null);
+      // 4. 차팅 필요 환자 정보 가져오기 - MSSQL
+      // 각 환자 ID로 MSSQL에서 정보 조회
+      const patients: Patient[] = [];
+      for (const patientId of needsChartingIds) {
+        try {
+          const response = await fetch(`${MSSQL_API_URL}/api/patients/${patientId}`);
+          if (response.ok) {
+            const p = await response.json();
+            patients.push({
+              id: p.id,
+              name: p.name,
+              chart_number: p.chart_no || '',
+              phone: p.phone || undefined,
+              dob: p.birth || undefined,
+              gender: p.sex === 'M' ? 'male' : p.sex === 'F' ? 'female' : undefined,
+            });
+          }
+        } catch (err) {
+          console.error(`환자 ${patientId} 정보 조회 실패:`, err);
+        }
+      }
 
-      if (patientsError) throw patientsError;
-
-      setNeedsChartingPatients(patientsData || []);
+      setNeedsChartingPatients(patients);
     } catch (error) {
       console.error('차팅 필요 환자 로드 실패:', error);
     }
   };
 
+  // 최근 진료 환자 로드 (SQLite + MSSQL)
   const loadRecentPatients = async () => {
     try {
       setLoading(true);
 
-      // 1. 초진차트에서 최근 진료 기록 가져오기
-      const { data: initialCharts, error: chartError } = await supabase
-        .from('initial_charts')
-        .select(`
-          patient_id,
-          chart_date,
-          updated_at,
-          patients (
-            id,
-            chart_number,
-            name,
-            dob,
-            gender,
-            phone,
-            address,
-            registration_date,
-            referral_path,
-            created_at,
-            deletion_date
-          )
-        `)
-        .order('updated_at', { ascending: false })
-        .limit(100);
+      // 1. 초진차트에서 최근 진료 기록 가져오기 - SQLite
+      const initialCharts = await query<{ patient_id: number; chart_date: string; updated_at: string }>(`
+        SELECT patient_id, chart_date, updated_at FROM initial_charts
+        ORDER BY updated_at DESC
+        LIMIT 100
+      `);
 
-      if (chartError) throw chartError;
-
-      // 2. 경과기록에서 최근 진료 기록 가져오기
-      const { data: progressNotes, error: progressError } = await supabase
-        .from('progress_notes')
-        .select(`
-          patient_id,
-          note_date,
-          updated_at,
-          patients (
-            id,
-            chart_number,
-            name,
-            dob,
-            gender,
-            phone,
-            address,
-            registration_date,
-            referral_path,
-            created_at,
-            deletion_date
-          )
-        `)
-        .order('updated_at', { ascending: false })
-        .limit(100);
-
-      if (progressError) throw progressError;
+      // 2. 경과기록에서 최근 진료 기록 가져오기 - SQLite
+      const progressNotes = await query<{ patient_id: number; note_date: string; updated_at: string }>(`
+        SELECT patient_id, note_date, updated_at FROM progress_notes
+        ORDER BY updated_at DESC
+        LIMIT 100
+      `);
 
       // 환자별로 가장 최근 진료 날짜 추출
-      const patientMap = new Map<number, RecentPatient>();
+      const patientDateMap = new Map<number, string>();
 
       // 초진차트 데이터 처리
-      initialCharts?.forEach((record: any) => {
-        if (record.patients && !record.patients.deletion_date) {
-          const existingPatient = patientMap.get(record.patient_id);
-          const recordDate = new Date(record.updated_at || record.chart_date);
+      initialCharts?.forEach((record) => {
+        const existingDate = patientDateMap.get(record.patient_id);
+        const recordDate = record.updated_at || record.chart_date;
 
-          if (!existingPatient || new Date(existingPatient.last_visit_date || '') < recordDate) {
-            patientMap.set(record.patient_id, {
-              ...record.patients,
-              last_visit_date: record.updated_at || record.chart_date
-            });
-          }
+        if (!existingDate || new Date(existingDate) < new Date(recordDate)) {
+          patientDateMap.set(record.patient_id, recordDate);
         }
       });
 
       // 경과기록 데이터 처리 (더 최근이면 업데이트)
-      progressNotes?.forEach((record: any) => {
-        if (record.patients && !record.patients.deletion_date) {
-          const existingPatient = patientMap.get(record.patient_id);
-          const recordDate = new Date(record.updated_at || record.note_date);
+      progressNotes?.forEach((record) => {
+        const existingDate = patientDateMap.get(record.patient_id);
+        const recordDate = record.updated_at || record.note_date;
 
-          if (!existingPatient || new Date(existingPatient.last_visit_date || '') < recordDate) {
-            patientMap.set(record.patient_id, {
-              ...record.patients,
-              last_visit_date: record.updated_at || record.note_date
-            });
-          }
+        if (!existingDate || new Date(existingDate) < new Date(recordDate)) {
+          patientDateMap.set(record.patient_id, recordDate);
         }
       });
 
-      // 최근 진료일 기준 정렬
-      const sortedPatients = Array.from(patientMap.values())
-        .sort((a, b) => {
-          const dateA = new Date(a.last_visit_date || '');
-          const dateB = new Date(b.last_visit_date || '');
-          return dateB.getTime() - dateA.getTime();
-        })
+      // 최근 진료일 기준 정렬 후 상위 50명
+      const sortedPatientIds = Array.from(patientDateMap.entries())
+        .sort((a, b) => new Date(b[1]).getTime() - new Date(a[1]).getTime())
         .slice(0, 50);
 
-      setRecentPatients(sortedPatients);
+      if (sortedPatientIds.length === 0) {
+        setRecentPatients([]);
+        setLoading(false);
+        return;
+      }
+
+      // 3. MSSQL에서 환자 정보 가져오기
+      const patients: RecentPatient[] = [];
+      for (const [patientId, lastVisitDate] of sortedPatientIds) {
+        try {
+          const response = await fetch(`${MSSQL_API_URL}/api/patients/${patientId}`);
+          if (response.ok) {
+            const p = await response.json();
+            patients.push({
+              id: p.id,
+              name: p.name,
+              chart_number: p.chart_no || '',
+              dob: p.birth || undefined,
+              gender: p.sex === 'M' ? 'male' : p.sex === 'F' ? 'female' : undefined,
+              phone: p.phone || undefined,
+              address: p.address || undefined,
+              registration_date: p.reg_date || undefined,
+              last_visit_date: lastVisitDate,
+            });
+          }
+        } catch (err) {
+          console.error(`환자 ${patientId} 정보 조회 실패:`, err);
+        }
+      }
+
+      setRecentPatients(patients);
     } catch (error) {
       console.error('최근 진료 환자 로드 실패:', error);
     } finally {
@@ -231,21 +206,34 @@ const PatientList: React.FC = () => {
     }
   };
 
+  // 환자 검색 (MSSQL에서 검색)
   const searchPatients = async () => {
     try {
       setIsSearching(true);
-      const { data, error } = await supabase
-        .from('patients')
-        .select('*')
-        .is('deletion_date', null)
-        .or(`name.ilike.%${searchTerm}%,chart_number.ilike.%${searchTerm}%,phone.like.%${searchTerm}%`)
-        .order('created_at', { ascending: false })
-        .limit(20);
 
-      if (error) throw error;
-      setSearchResults(data || []);
+      const response = await fetch(`${MSSQL_API_URL}/api/patients/search?q=${encodeURIComponent(searchTerm)}`);
+      if (!response.ok) {
+        throw new Error(`MSSQL API 오류: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // MSSQL 응답을 Patient 타입으로 변환
+      const patients: Patient[] = (data || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        chart_number: p.chart_no || '',
+        dob: p.birth || undefined,
+        gender: p.sex === 'M' ? 'male' : p.sex === 'F' ? 'female' : undefined,
+        phone: p.phone || undefined,
+        address: p.address || undefined,
+        registration_date: p.reg_date || undefined,
+      }));
+
+      setSearchResults(patients);
     } catch (error) {
       console.error('환자 검색 실패:', error);
+      setSearchResults([]);
     } finally {
       setIsSearching(false);
     }

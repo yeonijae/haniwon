@@ -392,6 +392,10 @@ export async function updateTreatmentPackage(id: number, updates: Partial<Treatm
   await execute(`UPDATE cs_treatment_packages SET ${parts.join(', ')} WHERE id = ${id}`);
 }
 
+export async function deleteTreatmentPackage(id: number): Promise<void> {
+  await execute(`DELETE FROM cs_treatment_packages WHERE id = ${id}`);
+}
+
 // ============================================
 // 한약패키지 API
 // ============================================
@@ -549,6 +553,23 @@ export async function useMembership(id: number): Promise<void> {
   `);
 }
 
+export async function updateMembership(id: number, updates: Partial<Membership>): Promise<void> {
+  const parts: string[] = [];
+  if (updates.membership_type !== undefined) parts.push(`membership_type = ${escapeString(updates.membership_type)}`);
+  if (updates.remaining_count !== undefined) parts.push(`remaining_count = ${updates.remaining_count}`);
+  if (updates.start_date !== undefined) parts.push(`start_date = ${escapeString(updates.start_date)}`);
+  if (updates.expire_date !== undefined) parts.push(`expire_date = ${escapeString(updates.expire_date)}`);
+  if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
+  if (updates.status !== undefined) parts.push(`status = ${escapeString(updates.status)}`);
+  parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
+
+  await execute(`UPDATE cs_memberships SET ${parts.join(', ')} WHERE id = ${id}`);
+}
+
+export async function deleteMembership(id: number): Promise<void> {
+  await execute(`DELETE FROM cs_memberships WHERE id = ${id}`);
+}
+
 // ============================================
 // 한약 출납 API
 // ============================================
@@ -582,6 +603,23 @@ export async function createHerbalDispensing(data: Omit<HerbalDispensing, 'id' |
   `);
 }
 
+export async function updateHerbalDispensing(id: number, updates: Partial<HerbalDispensing>): Promise<void> {
+  const parts: string[] = [];
+  if (updates.herbal_name !== undefined) parts.push(`herbal_name = ${escapeString(updates.herbal_name)}`);
+  if (updates.quantity !== undefined) parts.push(`quantity = ${updates.quantity}`);
+  if (updates.dispensing_type !== undefined) parts.push(`dispensing_type = ${escapeString(updates.dispensing_type)}`);
+  if (updates.delivery_method !== undefined) parts.push(`delivery_method = ${escapeString(updates.delivery_method)}`);
+  if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
+
+  if (parts.length > 0) {
+    await execute(`UPDATE cs_herbal_dispensings SET ${parts.join(', ')} WHERE id = ${id}`);
+  }
+}
+
+export async function deleteHerbalDispensing(id: number): Promise<void> {
+  await execute(`DELETE FROM cs_herbal_dispensings WHERE id = ${id}`);
+}
+
 // ============================================
 // 증정품 출납 API
 // ============================================
@@ -612,6 +650,21 @@ export async function createGiftDispensing(data: Omit<GiftDispensing, 'id' | 'cr
       ${data.receipt_id || 'NULL'}, ${escapeString(data.dispensing_date)}, ${escapeString(getCurrentTimestamp())}
     )
   `);
+}
+
+export async function updateGiftDispensing(id: number, updates: Partial<GiftDispensing>): Promise<void> {
+  const parts: string[] = [];
+  if (updates.item_name !== undefined) parts.push(`item_name = ${escapeString(updates.item_name)}`);
+  if (updates.quantity !== undefined) parts.push(`quantity = ${updates.quantity}`);
+  if (updates.reason !== undefined) parts.push(`reason = ${toSqlValue(updates.reason)}`);
+
+  if (parts.length > 0) {
+    await execute(`UPDATE cs_gift_dispensings SET ${parts.join(', ')} WHERE id = ${id}`);
+  }
+}
+
+export async function deleteGiftDispensing(id: number): Promise<void> {
+  await execute(`DELETE FROM cs_gift_dispensings WHERE id = ${id}`);
 }
 
 // ============================================

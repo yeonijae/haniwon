@@ -11,6 +11,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
+import { useFontScale } from '@shared/hooks/useFontScale';
 import type { HerbalTask, HerbalTasksResponse, FirstVisitTemplateType } from './types';
 import { fetchAllHerbalTasks, markEventBenefitSent, markFirstVisitMessageSent } from './api/herbalApi';
 
@@ -27,6 +28,9 @@ export type TabType = 'dashboard' | 'firstvisit' | 'setup' | 'active' | 'calls' 
 
 const HerbalApp: React.FC<HerbalAppProps> = ({ user }) => {
   const navigate = useNavigate();
+
+  // 폰트 스케일
+  const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('herbal');
 
   // 상태
   const [tasks, setTasks] = useState<HerbalTasksResponse | null>(null);
@@ -221,8 +225,35 @@ const HerbalApp: React.FC<HerbalAppProps> = ({ user }) => {
           )}
         </div>
 
-        {/* 오른쪽 - 새로고침 및 사용자 정보 */}
+        {/* 오른쪽 - 폰트 스케일, 새로고침 및 사용자 정보 */}
         <div className="flex items-center ml-auto gap-4">
+          {/* 폰트 스케일 컨트롤 */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={decreaseScale}
+              disabled={!canDecrease}
+              className="w-7 h-7 flex items-center justify-center bg-white border border-gray-300 rounded text-gray-600 text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+              title="글씨 축소"
+            >
+              <i className="fa-solid fa-minus"></i>
+            </button>
+            <span
+              onClick={resetScale}
+              className="min-w-[40px] text-center text-xs font-medium text-gray-600 cursor-pointer hover:bg-gray-200 rounded px-1 py-1"
+              title="기본 크기로 복원"
+            >
+              {scalePercent}%
+            </span>
+            <button
+              onClick={increaseScale}
+              disabled={!canIncrease}
+              className="w-7 h-7 flex items-center justify-center bg-white border border-gray-300 rounded text-gray-600 text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+              title="글씨 확대"
+            >
+              <i className="fa-solid fa-plus"></i>
+            </button>
+          </div>
+
           <button
             onClick={loadTasks}
             disabled={loading}
@@ -250,7 +281,7 @@ const HerbalApp: React.FC<HerbalAppProps> = ({ user }) => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-hidden bg-gray-50">
+      <main className="flex-1 overflow-hidden bg-gray-50" style={{ zoom: scale }}>
         <HerbalTaskList
           tasks={tasks}
           loading={loading}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { PortalUser } from '@shared/types';
+import { useFontScale } from '@shared/hooks/useFontScale';
 
 const API_BASE = 'http://192.168.0.173:3100';
 
@@ -163,6 +164,9 @@ function formatMoney(amount: number): string {
 }
 
 function StatisticsApp({ user }: StatisticsAppProps) {
+  // 폰트 스케일
+  const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('statistics');
+
   const [period, setPeriod] = useState<PeriodType>('daily');
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
@@ -731,6 +735,32 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                 </svg>
               </button>
             </div>
+            {/* 폰트 스케일 컨트롤 */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={decreaseScale}
+                disabled={!canDecrease}
+                className="w-7 h-7 flex items-center justify-center bg-white border border-gray-300 rounded text-gray-600 text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                title="글씨 축소"
+              >
+                -
+              </button>
+              <span
+                onClick={resetScale}
+                className="min-w-[40px] text-center text-xs font-medium text-gray-600 cursor-pointer hover:bg-gray-200 rounded px-1 py-1"
+                title="기본 크기로 복원"
+              >
+                {scalePercent}%
+              </span>
+              <button
+                onClick={increaseScale}
+                disabled={!canIncrease}
+                className="w-7 h-7 flex items-center justify-center bg-white border border-gray-300 rounded text-gray-600 text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+                title="글씨 확대"
+              >
+                +
+              </button>
+            </div>
             <button
               onClick={fetchAllStats}
               disabled={loading}
@@ -743,7 +773,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
       </header>
 
       {/* Main Content */}
-      <main className="w-full px-6 py-6">
+      <main className="w-full px-6 py-6" style={{ zoom: scale }}>
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
             {error}

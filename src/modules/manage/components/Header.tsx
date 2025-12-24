@@ -7,6 +7,13 @@ export type ModalType = 'reservation' | 'patientSearch' | 'stats' | 'settings' |
 interface HeaderProps {
   onOpenModal: (type: ModalType, title: string, wide?: boolean) => void;
   currentUser: User;
+  // 폰트 스케일
+  scalePercent?: number;
+  onIncreaseScale?: () => void;
+  onDecreaseScale?: () => void;
+  onResetScale?: () => void;
+  canIncrease?: boolean;
+  canDecrease?: boolean;
 }
 
 interface ButtonConfig {
@@ -21,6 +28,12 @@ interface ButtonConfig {
 const Header: React.FC<HeaderProps> = ({
     onOpenModal,
     currentUser,
+    scalePercent,
+    onIncreaseScale,
+    onDecreaseScale,
+    onResetScale,
+    canIncrease,
+    canDecrease,
 }) => {
   const buttons: ButtonConfig[] = [
     {
@@ -91,6 +104,36 @@ const Header: React.FC<HeaderProps> = ({
             </button>
           ))}
         </nav>
+
+        {/* 폰트 스케일 컨트롤 */}
+        {scalePercent !== undefined && (
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 ml-2">
+            <button
+              onClick={onDecreaseScale}
+              disabled={!canDecrease}
+              className="w-7 h-7 flex items-center justify-center bg-white border border-gray-300 rounded text-gray-600 text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+              title="글씨 축소"
+            >
+              <i className="fa-solid fa-minus"></i>
+            </button>
+            <span
+              onClick={onResetScale}
+              className="min-w-[40px] text-center text-xs font-medium text-gray-600 cursor-pointer hover:bg-gray-200 rounded px-1 py-1"
+              title="기본 크기로 복원"
+            >
+              {scalePercent}%
+            </span>
+            <button
+              onClick={onIncreaseScale}
+              disabled={!canIncrease}
+              className="w-7 h-7 flex items-center justify-center bg-white border border-gray-300 rounded text-gray-600 text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+              title="글씨 확대"
+            >
+              <i className="fa-solid fa-plus"></i>
+            </button>
+          </div>
+        )}
+
         <div className="border-l pl-4 ml-2 flex items-center space-x-3">
           <div className="text-right">
             <p className="font-semibold text-sm text-clinic-text-primary">{currentUser.name}</p>

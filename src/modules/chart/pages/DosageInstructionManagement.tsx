@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
 import { parsePDFToTemplate } from '../services/pdfParser';
 import type { DosageInstruction, Prescription } from '../types';
 
@@ -56,25 +56,25 @@ const DosageInstructionManagement: React.FC = () => {
   const loadCreatedInstructions = async () => {
     try {
       setLoadingCreated(true);
-      const { data, error } = await supabase
-        .from('prescriptions')
-        .select('*')
-        .eq('dosage_instruction_created', true)
-        .order('dosage_instruction_created_at', { ascending: false });
-
-      if (error) throw error;
+      const data = await query<Prescription>(
+        `SELECT * FROM prescriptions WHERE dosage_instruction_created = 1 ORDER BY dosage_instruction_created_at DESC`
+      );
 
       // 각 처방전에 대해 주소증 가져오기
       const prescriptionsWithChiefComplaint = await Promise.all(
         (data || []).map(async (prescription) => {
           let chiefComplaint = '';
 
+          // dosage_instruction_data 파싱
+          let dosage_instruction_data = prescription.dosage_instruction_data;
+          if (typeof dosage_instruction_data === 'string') {
+            try { dosage_instruction_data = JSON.parse(dosage_instruction_data); } catch { dosage_instruction_data = null; }
+          }
+
           if (prescription.source_type === 'initial_chart' && prescription.source_id) {
-            const { data: chartData } = await supabase
-              .from('initial_charts')
-              .select('notes')
-              .eq('id', prescription.source_id)
-              .single();
+            const chartData = await queryOne<{ notes: string }>(
+              `SELECT notes FROM initial_charts WHERE id = ${prescription.source_id}`
+            );
 
             // notes에서 [주소증] 섹션 추출
             if (chartData?.notes) {
@@ -84,18 +84,16 @@ const DosageInstructionManagement: React.FC = () => {
               }
             }
           } else if (prescription.source_type === 'progress_note' && prescription.source_id) {
-            const { data: noteData } = await supabase
-              .from('progress_notes')
-              .select('subjective')
-              .eq('id', prescription.source_id)
-              .single();
+            const noteData = await queryOne<{ subjective: string }>(
+              `SELECT subjective FROM progress_notes WHERE id = ${prescription.source_id}`
+            );
 
             if (noteData?.subjective) {
               chiefComplaint = noteData.subjective;
             }
           }
 
-          return { ...prescription, chief_complaint: chiefComplaint };
+          return { ...prescription, chief_complaint: chiefComplaint, dosage_instruction_data };
         })
       );
 
@@ -111,14 +109,22 @@ const DosageInstructionManagement: React.FC = () => {
   const loadTemplates = async () => {
     try {
       setLoadingTemplates(true);
-      const { data, error } = await supabase
-        .from('dosage_instructions')
-        .select('*')
-        .order('category')
-        .order('disease_name');
+      const data = await query<DosageInstruction>(
+        `SELECT * FROM dosage_instructions ORDER BY category, disease_name`
+      );
 
-      if (error) throw error;
-      setTemplates(data || []);
+      // keywords 파싱
+      const templates = (data || []).map(t => {
+        let keywords: string[] = [];
+        if (typeof t.keywords === 'string') {
+          try { keywords = JSON.parse(t.keywords); } catch { keywords = []; }
+        } else if (Array.isArray(t.keywords)) {
+          keywords = t.keywords;
+        }
+        return { ...t, keywords };
+      });
+
+      setTemplates(templates);
     } catch (error) {
       console.error('복용법 템플릿 로드 실패:', error);
     } finally {
@@ -178,16 +184,13 @@ const DosageInstructionManagement: React.FC = () => {
     }
 
     try {
-      const { error } = await supabase
-        .from('prescriptions')
-        .update({
-          dosage_instruction_created: false,
-          dosage_instruction_created_at: null,
-          dosage_instruction_data: null
-        })
-        .eq('id', prescription.id);
-
-      if (error) throw error;
+      await execute(`
+        UPDATE prescriptions SET
+          dosage_instruction_created = 0,
+          dosage_instruction_created_at = NULL,
+          dosage_instruction_data = NULL
+        WHERE id = ${prescription.id}
+      `);
 
       // 목록 새로고침
       setCreatedInstructions(prev => prev.filter(p => p.id !== prescription.id));
@@ -370,38 +373,48 @@ const DosageInstructionManagement: React.FC = () => {
 
     setSavingTemplate(true);
     try {
+      const now = getCurrentTimestamp();
       const keywordsArray = templateForm.keywords
         .split(',')
         .map(k => k.trim())
         .filter(k => k.length > 0);
-
-      const templateData = {
-        category: templateForm.category,
-        subcategory: templateForm.subcategory || null,
-        disease_name: templateForm.disease_name,
-        condition_detail: templateForm.condition_detail || null,
-        description: templateForm.description || null,
-        dosage_method: templateForm.dosage_method || null,
-        precautions: templateForm.precautions || null,
-        keywords: keywordsArray.length > 0 ? keywordsArray : null
-      };
+      const keywordsJson = keywordsArray.length > 0 ? JSON.stringify(keywordsArray) : null;
 
       if (editingTemplate) {
         // 수정
-        const { error } = await supabase
-          .from('dosage_instructions')
-          .update(templateData)
-          .eq('id', editingTemplate.id);
+        await execute(`
+          UPDATE dosage_instructions SET
+            category = ${escapeString(templateForm.category)},
+            subcategory = ${toSqlValue(templateForm.subcategory)},
+            disease_name = ${escapeString(templateForm.disease_name)},
+            condition_detail = ${toSqlValue(templateForm.condition_detail)},
+            description = ${toSqlValue(templateForm.description)},
+            dosage_method = ${toSqlValue(templateForm.dosage_method)},
+            precautions = ${toSqlValue(templateForm.precautions)},
+            keywords = ${keywordsJson ? escapeString(keywordsJson) : 'NULL'},
+            updated_at = ${escapeString(now)}
+          WHERE id = ${editingTemplate.id}
+        `);
 
-        if (error) throw error;
         alert('템플릿이 수정되었습니다.');
       } else {
         // 추가
-        const { error } = await supabase
-          .from('dosage_instructions')
-          .insert([templateData]);
+        await insert(`
+          INSERT INTO dosage_instructions (category, subcategory, disease_name, condition_detail, description, dosage_method, precautions, keywords, created_at, updated_at)
+          VALUES (
+            ${escapeString(templateForm.category)},
+            ${toSqlValue(templateForm.subcategory)},
+            ${escapeString(templateForm.disease_name)},
+            ${toSqlValue(templateForm.condition_detail)},
+            ${toSqlValue(templateForm.description)},
+            ${toSqlValue(templateForm.dosage_method)},
+            ${toSqlValue(templateForm.precautions)},
+            ${keywordsJson ? escapeString(keywordsJson) : 'NULL'},
+            ${escapeString(now)},
+            ${escapeString(now)}
+          )
+        `);
 
-        if (error) throw error;
         alert('템플릿이 추가되었습니다.');
       }
 
@@ -423,12 +436,7 @@ const DosageInstructionManagement: React.FC = () => {
     }
 
     try {
-      const { error } = await supabase
-        .from('dosage_instructions')
-        .delete()
-        .eq('id', template.id);
-
-      if (error) throw error;
+      await execute(`DELETE FROM dosage_instructions WHERE id = ${template.id}`);
 
       setTemplates(prev => prev.filter(t => t.id !== template.id));
       setSelectedTemplate(null);

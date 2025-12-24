@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { query, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
 import type { ProgressNote } from '../types';
 
 interface Props {
@@ -30,13 +30,9 @@ const ProgressNoteView: React.FC<Props> = ({ patientId, patientName, onClose }) 
   const loadNotes = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('progress_notes')
-        .select('*')
-        .eq('patient_id', patientId)
-        .order('note_date', { ascending: false });
-
-      if (error) throw error;
+      const data = await query<ProgressNote>(
+        `SELECT * FROM progress_notes WHERE patient_id = ${patientId} ORDER BY note_date DESC`
+      );
       setNotes(data || []);
     } catch (error) {
       console.error('경과기록 로드 실패:', error);
@@ -47,20 +43,38 @@ const ProgressNoteView: React.FC<Props> = ({ patientId, patientName, onClose }) 
 
   const handleSave = async () => {
     try {
-      const data = { ...formData, patient_id: patientId };
+      const now = getCurrentTimestamp();
+      const noteDate = formData.note_date || new Date().toISOString();
 
       if (editingNote) {
-        const { error } = await supabase
-          .from('progress_notes')
-          .update(data)
-          .eq('id', editingNote.id);
-        if (error) throw error;
+        await execute(`
+          UPDATE progress_notes SET
+            subjective = ${toSqlValue(formData.subjective)},
+            objective = ${toSqlValue(formData.objective)},
+            assessment = ${toSqlValue(formData.assessment)},
+            plan = ${toSqlValue(formData.plan)},
+            follow_up_plan = ${toSqlValue(formData.follow_up_plan)},
+            notes = ${toSqlValue(formData.notes)},
+            updated_at = ${escapeString(now)}
+          WHERE id = ${editingNote.id}
+        `);
         alert('경과기록이 수정되었습니다');
       } else {
-        const { error } = await supabase
-          .from('progress_notes')
-          .insert([data]);
-        if (error) throw error;
+        await insert(`
+          INSERT INTO progress_notes (patient_id, note_date, subjective, objective, assessment, plan, follow_up_plan, notes, created_at, updated_at)
+          VALUES (
+            ${patientId},
+            ${escapeString(noteDate)},
+            ${toSqlValue(formData.subjective)},
+            ${toSqlValue(formData.objective)},
+            ${toSqlValue(formData.assessment)},
+            ${toSqlValue(formData.plan)},
+            ${toSqlValue(formData.follow_up_plan)},
+            ${toSqlValue(formData.notes)},
+            ${escapeString(now)},
+            ${escapeString(now)}
+          )
+        `);
         alert('경과기록이 추가되었습니다');
       }
 
@@ -78,12 +92,7 @@ const ProgressNoteView: React.FC<Props> = ({ patientId, patientName, onClose }) 
     if (!confirm('이 경과기록을 삭제하시겠습니까?')) return;
 
     try {
-      const { error } = await supabase
-        .from('progress_notes')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      await execute(`DELETE FROM progress_notes WHERE id = ${id}`);
       alert('경과기록이 삭제되었습니다');
       setSelectedNote(null);
       loadNotes();

@@ -23,6 +23,9 @@ import {
 import { ReservationStep1Modal, type ReservationDraft, type InitialPatient } from '../../reservation/components/ReservationStep1Modal';
 import { QuickReservationModal } from './QuickReservationModal';
 import { PatientReceiptHistoryModal } from './PatientReceiptHistoryModal';
+import { PackageAddModal } from './PackageAddModal';
+import { MembershipAddModal } from './MembershipAddModal';
+import { DispensingAddModal } from './DispensingAddModal';
 import { fetchDoctors, fetchReservationsByDateRange } from '../../reservation/lib/api';
 import type { Doctor, Reservation } from '../../reservation/types';
 // manage 모듈의 API 사용
@@ -759,6 +762,60 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
   const [memoText, setMemoText] = useState(receipt.receiptMemo?.memo || '');
   const [pointBalance, setPointBalance] = useState(receipt.pointBalance);
 
+  // 모달 상태
+  const [showPackageModal, setShowPackageModal] = useState(false);
+  const [showMembershipModal, setShowMembershipModal] = useState(false);
+  const [showDispensingModal, setShowDispensingModal] = useState(false);
+
+  // 수정 모드 데이터
+  const [editPackageData, setEditPackageData] = useState<TreatmentPackage | undefined>(undefined);
+  const [editMembershipData, setEditMembershipData] = useState<Membership | undefined>(undefined);
+  const [editHerbalData, setEditHerbalData] = useState<HerbalDispensing | undefined>(undefined);
+  const [editGiftData, setEditGiftData] = useState<GiftDispensing | undefined>(undefined);
+
+  // 패키지 수정 모달 열기
+  const openPackageEdit = (pkg: TreatmentPackage) => {
+    setEditPackageData(pkg);
+    setShowPackageModal(true);
+  };
+
+  // 멤버십 수정 모달 열기
+  const openMembershipEdit = (membership: Membership) => {
+    setEditMembershipData(membership);
+    setShowMembershipModal(true);
+  };
+
+  // 한약 출납 수정 모달 열기
+  const openHerbalEdit = (herbal: HerbalDispensing) => {
+    setEditHerbalData(herbal);
+    setEditGiftData(undefined);
+    setShowDispensingModal(true);
+  };
+
+  // 증정품 출납 수정 모달 열기
+  const openGiftEdit = (gift: GiftDispensing) => {
+    setEditGiftData(gift);
+    setEditHerbalData(undefined);
+    setShowDispensingModal(true);
+  };
+
+  // 모달 닫을 때 수정 데이터 초기화
+  const handlePackageModalClose = () => {
+    setShowPackageModal(false);
+    setEditPackageData(undefined);
+  };
+
+  const handleMembershipModalClose = () => {
+    setShowMembershipModal(false);
+    setEditMembershipData(undefined);
+  };
+
+  const handleDispensingModalClose = () => {
+    setShowDispensingModal(false);
+    setEditHerbalData(undefined);
+    setEditGiftData(undefined);
+  };
+
   // 포인트 사용
   const handleUsePoints = async (amount: number) => {
     if (amount <= 0) return;
@@ -897,18 +954,18 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
         <div className="grid-card-header">
           <span className="grid-icon">📦</span>
           <span className="grid-title">패키지</span>
-          <button className="grid-add-btn">+</button>
+          <button className="grid-add-btn" onClick={() => setShowPackageModal(true)}>+</button>
         </div>
         <div className="grid-card-body">
           {hasPackages ? (
             <div className="grid-tags">
               {receipt.treatmentPackages.map(pkg => (
-                <div key={pkg.id} className="grid-tag pkg">
+                <div key={pkg.id} className="grid-tag pkg clickable" onClick={() => openPackageEdit(pkg)}>
                   <span className="tag-name">{pkg.package_name}</span>
                   <span className="tag-count">{pkg.remaining_count}/{pkg.total_count}</span>
                   {pkg.includes && <span className="tag-extra">({pkg.includes})</span>}
                   {pkg.status === 'active' && (
-                    <button className="tag-use-btn" onClick={() => handleUseTreatmentPackage(pkg.id!)}>-1</button>
+                    <button className="tag-use-btn" onClick={(e) => { e.stopPropagation(); handleUseTreatmentPackage(pkg.id!); }}>-1</button>
                   )}
                 </div>
               ))}
@@ -930,12 +987,12 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
         <div className="grid-card-header">
           <span className="grid-icon">🎫</span>
           <span className="grid-title">멤버십</span>
-          <button className="grid-add-btn">+</button>
+          <button className="grid-add-btn" onClick={() => setShowMembershipModal(true)}>+</button>
         </div>
         <div className="grid-card-body">
           {hasMembership ? (
             <div className="grid-tags">
-              <div className="grid-tag membership">
+              <div className="grid-tag membership clickable" onClick={() => openMembershipEdit(receipt.activeMembership!)}>
                 <span className="tag-name">{receipt.activeMembership!.membership_type}</span>
                 <span className="tag-count">{receipt.activeMembership!.remaining_count}회</span>
                 <span className="tag-expire">~{new Date(receipt.activeMembership!.expire_date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</span>
@@ -977,20 +1034,20 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
         <div className="grid-card-header">
           <span className="grid-icon">📋</span>
           <span className="grid-title">출납</span>
-          <button className="grid-add-btn">+</button>
+          <button className="grid-add-btn" onClick={() => setShowDispensingModal(true)}>+</button>
         </div>
         <div className="grid-card-body">
           {(receipt.herbalDispensings.length > 0 || receipt.giftDispensings.length > 0) ? (
             <div className="grid-tags">
               {receipt.herbalDispensings.map(d => (
-                <div key={d.id} className="grid-tag dispensing">
+                <div key={d.id} className="grid-tag dispensing clickable" onClick={() => openHerbalEdit(d)}>
                   <span className="tag-type">{d.dispensing_type === 'gift' ? '증' : '약'}</span>
                   <span className="tag-name">{d.herbal_name}</span>
                   <span className="tag-qty">{d.quantity}</span>
                 </div>
               ))}
               {receipt.giftDispensings.map(d => (
-                <div key={d.id} className="grid-tag gift">
+                <div key={d.id} className="grid-tag gift clickable" onClick={() => openGiftEdit(d)}>
                   <span className="tag-type">증</span>
                   <span className="tag-name">{d.item_name}</span>
                   <span className="tag-qty">{d.quantity}</span>
@@ -1049,6 +1106,40 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
         </div>
       </div>
       </div>
+
+      {/* 모달들 */}
+      <PackageAddModal
+        isOpen={showPackageModal}
+        onClose={handlePackageModalClose}
+        onSuccess={onDataChange}
+        patientId={receipt.patient_id}
+        patientName={receipt.patient_name}
+        chartNo={receipt.chart_no}
+        editData={editPackageData}
+      />
+
+      <MembershipAddModal
+        isOpen={showMembershipModal}
+        onClose={handleMembershipModalClose}
+        onSuccess={onDataChange}
+        patientId={receipt.patient_id}
+        patientName={receipt.patient_name}
+        chartNo={receipt.chart_no}
+        editData={editMembershipData}
+      />
+
+      <DispensingAddModal
+        isOpen={showDispensingModal}
+        onClose={handleDispensingModalClose}
+        onSuccess={onDataChange}
+        patientId={receipt.patient_id}
+        patientName={receipt.patient_name}
+        chartNo={receipt.chart_no}
+        receiptId={receipt.id}
+        selectedDate={selectedDate}
+        editHerbalData={editHerbalData}
+        editGiftData={editGiftData}
+      />
     </div>
   );
 }

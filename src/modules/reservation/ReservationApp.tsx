@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useReservations } from './hooks/useReservations';
 import { useReservationSettings } from './hooks/useReservationSettings';
+import { useFontScale } from '@shared/hooks/useFontScale';
 import { CalendarHeader } from './components/CalendarHeader';
 import { DayView } from './components/DayView';
 import { MonthView } from './components/MonthView';
@@ -19,6 +20,9 @@ interface ReservationAppProps {
 }
 
 const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
+  // 폰트 스케일
+  const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('reservation');
+
   const {
     selectedDate,
     viewType,
@@ -275,6 +279,32 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
             <h1 className="text-xl font-bold">예약 관리</h1>
           </div>
           <div className="flex items-center gap-4">
+            {/* 폰트 스케일 컨트롤 */}
+            <div className="flex items-center gap-1 bg-white/20 rounded-lg p-1">
+              <button
+                onClick={decreaseScale}
+                disabled={!canDecrease}
+                className="w-7 h-7 flex items-center justify-center bg-white/20 rounded text-white text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/30"
+                title="글씨 축소"
+              >
+                <i className="fa-solid fa-minus"></i>
+              </button>
+              <span
+                onClick={resetScale}
+                className="min-w-[40px] text-center text-xs font-medium text-white cursor-pointer hover:bg-white/20 rounded px-1 py-1"
+                title="기본 크기로 복원"
+              >
+                {scalePercent}%
+              </span>
+              <button
+                onClick={increaseScale}
+                disabled={!canIncrease}
+                className="w-7 h-7 flex items-center justify-center bg-white/20 rounded text-white text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/30"
+                title="글씨 확대"
+              >
+                <i className="fa-solid fa-plus"></i>
+              </button>
+            </div>
             <button
               onClick={() => setShowSettingsModal(true)}
               className="p-2 hover:bg-white/20 rounded-lg transition-colors"
@@ -300,20 +330,22 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
         </div>
       </header>
 
-      {/* 캘린더 헤더 */}
-      <CalendarHeader
-        selectedDate={selectedDate}
-        viewType={viewType}
-        doctors={doctors}
-        selectedDoctor={selectedDoctor}
-        reservations={reservations}
-        onViewTypeChange={setViewType}
-        onDoctorChange={setSelectedDoctor}
-        onPrevious={goToPrevious}
-        onNext={goToNext}
-        onToday={goToToday}
-        onDateChange={goToDate}
-      />
+      {/* 캘린더 영역 (폰트 스케일 적용) */}
+      <div className="flex-1 flex flex-col min-h-0" style={{ zoom: scale }}>
+        {/* 캘린더 헤더 */}
+        <CalendarHeader
+          selectedDate={selectedDate}
+          viewType={viewType}
+          doctors={doctors}
+          selectedDoctor={selectedDoctor}
+          reservations={reservations}
+          onViewTypeChange={setViewType}
+          onDoctorChange={setSelectedDoctor}
+          onPrevious={goToPrevious}
+          onNext={goToNext}
+          onToday={goToToday}
+          onDateChange={goToDate}
+        />
 
       {/* 로딩/에러 상태 */}
       {isLoading && (
@@ -437,6 +469,7 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
           )}
         </>
       )}
+      </div>
 
       {/* 예약 상세 모달 */}
       {selectedReservation && (

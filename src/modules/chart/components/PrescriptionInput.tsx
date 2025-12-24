@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { query } from '@shared/lib/sqlite';
 import type { PrescriptionTemplate, PrescriptionHerb } from '../types';
 
 // 최종 약재 타입
@@ -45,6 +45,79 @@ export interface PrescriptionInputProps {
   initialPackVolume?: number;
   compact?: boolean; // 컴팩트 모드 (미리보기 숨김)
 }
+
+// 합방(+) 처방 해결 함수 - 재귀적으로 처방 참조를 해결하고 약재를 merge
+const resolveMergedComposition = (
+  composition: string,
+  allPrescriptions: { name: string; alias?: string; composition?: string }[],
+  visited: Set<string> = new Set()
+): string => {
+  if (!composition) return '';
+
+  // + 가 없으면 그대로 반환
+  if (!composition.includes('+')) {
+    return composition;
+  }
+
+  // + 로 구분된 처방명들 추출
+  const prescriptionNames = composition.split('+').map(name => name.trim());
+  const herbMap = new Map<string, number>();
+  const suffixes = ['', '탕', '산', '환', '음']; // 접미사 목록
+
+  for (const name of prescriptionNames) {
+    // 순환 참조 방지
+    if (visited.has(name)) {
+      console.warn(`순환 참조 감지: ${name}`);
+      continue;
+    }
+    visited.add(name);
+
+    // 처방 찾기 - 정확한 이름 또는 접미사 붙여서 검색
+    let prescription = allPrescriptions.find(
+      p => p.name === name || p.alias === name
+    );
+
+    // 못 찾으면 접미사 붙여서 검색
+    if (!prescription) {
+      for (const suffix of suffixes) {
+        if (suffix === '') continue;
+        const nameWithSuffix = name + suffix;
+        prescription = allPrescriptions.find(
+          p => p.name === nameWithSuffix || p.alias === nameWithSuffix
+        );
+        if (prescription) break;
+      }
+    }
+
+    if (!prescription || !prescription.composition) {
+      console.warn(`처방을 찾을 수 없거나 구성이 없음: ${name}`);
+      continue;
+    }
+
+    // 재귀적으로 해결
+    const resolvedComposition = resolveMergedComposition(
+      prescription.composition,
+      allPrescriptions,
+      new Set(visited)
+    );
+
+    // 약재 파싱 후 merge (큰 값 취함)
+    const herbParts = resolvedComposition.split('/').filter(s => s.trim());
+    for (const part of herbParts) {
+      const [herbName, dosageStr] = part.split(':');
+      if (herbName && dosageStr) {
+        const amount = parseFloat(dosageStr) || 0;
+        const currentMax = herbMap.get(herbName.trim()) || 0;
+        herbMap.set(herbName.trim(), Math.max(currentMax, amount));
+      }
+    }
+  }
+
+  // 병합된 약재를 composition 문자열로 변환
+  return Array.from(herbMap.entries())
+    .map(([herb, amount]) => `${herb}:${amount}`)
+    .join('/');
+};
 
 const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
   onSave,
@@ -92,35 +165,44 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
     try {
       setLoading(true);
 
-      // 약재 목록 로드 (ID 매핑용)
-      const { data: herbsData, error: herbsError } = await supabase
-        .from('herbs')
-        .select('id, name')
-        .order('id');
+      // 약재 목록 로드 (ID 매핑용) - SQLite
+      const herbsData = await query<{ id: number; name: string }>(
+        `SELECT id, name FROM herbs ORDER BY id`
+      );
 
-      if (herbsError) {
-        console.error('약재 목록 로드 실패:', herbsError);
-      } else {
-        const idMap = new Map<string, number>();
-        (herbsData || []).forEach((herb: any) => {
-          idMap.set(herb.name, herb.id);
-        });
-        setHerbIdMap(idMap);
-      }
+      const idMap = new Map<string, number>();
+      (herbsData || []).forEach((herb) => {
+        idMap.set(herb.name, herb.id);
+      });
+      setHerbIdMap(idMap);
 
-      // 처방 템플릿 로드
-      const { data, error } = await supabase
-        .from('prescription_definitions')
-        .select('*')
-        .order('name');
+      // 처방 템플릿 로드 - SQLite
+      const data = await query<{
+        id: number;
+        name: string;
+        alias: string;
+        short_name: string;
+        composition: string;
+        description: string;
+      }>(`SELECT * FROM prescription_definitions ORDER BY name`);
 
-      if (error) throw error;
+      // 먼저 raw 데이터로 배열 생성 (합방 해결용)
+      const rawPrescriptions = (data || []).map(item => ({
+        name: item.name,
+        alias: item.alias || item.short_name || '',
+        composition: item.composition || ''
+      }));
 
-      const loadedTemplates: PrescriptionTemplate[] = (data || []).map((item: any) => {
+      const loadedTemplates: PrescriptionTemplate[] = (data || []).map((item) => {
         const normalizedHerbs: PrescriptionHerb[] = [];
 
         if (item.composition) {
-          const herbParts = item.composition.split('/').filter((s: string) => s.trim());
+          // 합방(+) 처방인 경우 먼저 해결
+          const resolvedComposition = item.composition.includes('+')
+            ? resolveMergedComposition(item.composition, rawPrescriptions)
+            : item.composition;
+
+          const herbParts = resolvedComposition.split('/').filter((s: string) => s.trim());
           herbParts.forEach((part: string, index: number) => {
             const [herbName, dosageStr] = part.split(':');
             if (herbName && dosageStr) {

@@ -23,6 +23,114 @@ export interface AIGeneratedDescription {
   basedOn: string[]; // 참고한 템플릿들
 }
 
+// 증상-카테고리 매핑 (로컬 필터링용)
+const SYMPTOM_CATEGORY_MAP: Record<string, string[]> = {
+  '소아&청소년': ['ADHD', 'TIC', '틱', '성장', '야뇨', '비염', '아토피', '식욕', '소아'],
+  '부인과&산과': ['생리', '월경', '임신', '출산', '갱년기', '폐경', '자궁', '난소', '유방', '냉대하', '불임'],
+  '피부': ['아토피', '습진', '두드러기', '가려움', '건선', '여드름', '피부염', '탈모'],
+  '소화기': ['소화', '위장', '복통', '변비', '설사', '역류', '위염', '장염', '복부', '식욕'],
+  '호흡기,안이비': ['기침', '천식', '비염', '축농', '감기', '호흡', '코막힘', '인후', '편도', '이명'],
+  '신경정신': ['불면', '우울', '불안', '스트레스', '두통', '어지러움', '공황', '신경'],
+  '순환': ['혈압', '어혈', '부종', '수족냉증', '저림', '순환', '혈액'],
+  '비뇨기': ['소변', '방광', '전립선', '요로', '배뇨'],
+  '다이어트': ['비만', '다이어트', '체중', '복부비만'],
+  '보약,피로,면역': ['피로', '면역', '보약', '기력', '체력', '허약', '보양'],
+  '교통사고,상해': ['교통사고', '사고', '타박', '염좌', '골절'],
+  '호르몬,대사': ['당뇨', '갑상선', '호르몬', '대사']
+};
+
+// 로컬 필터링: 환자 정보 기반으로 관련 템플릿 추출 (최대 15개)
+function preFilterTemplates(
+  patient: PatientContext,
+  templates: DosageInstruction[],
+  maxCount: number = 15
+): DosageInstruction[] {
+  const chiefComplaint = patient.chiefComplaint.toLowerCase();
+  const keywords = chiefComplaint.split(/[\s,、]+/).filter(k => k.length >= 2);
+
+  // 점수 계산
+  const scored = templates.map(template => {
+    let score = 0;
+
+    const searchText = `${template.disease_name || ''} ${template.condition_detail || ''} ${template.category || ''} ${template.subcategory || ''}`.toLowerCase();
+    const keywordsText = Array.isArray(template.keywords)
+      ? template.keywords.join(' ').toLowerCase()
+      : (template.keywords || '').toLowerCase();
+    const fullSearchText = searchText + ' ' + keywordsText;
+
+    // 1. 나이 기반 카테고리 매칭
+    if (patient.age !== undefined) {
+      if (patient.age <= 12 && template.category === '소아&청소년') {
+        score += 30;
+      } else if (patient.age > 12 && patient.age < 20 && template.subcategory === '청소년') {
+        score += 25;
+      } else if (patient.age <= 12 && template.category !== '소아&청소년') {
+        score -= 10; // 소아인데 소아 카테고리가 아니면 감점
+      }
+    }
+
+    // 2. 성별 기반 카테고리 매칭
+    if (patient.gender === 'female') {
+      const femaleKeywords = ['생리', '월경', '임신', '출산', '갱년기', '자궁', '난소'];
+      if (femaleKeywords.some(k => chiefComplaint.includes(k))) {
+        if (template.category === '부인과&산과') {
+          score += 30;
+        }
+      }
+    }
+
+    // 3. 주소증 키워드 매칭
+    for (const keyword of keywords) {
+      if (fullSearchText.includes(keyword)) {
+        score += 20;
+      }
+      // 부분 매칭
+      if (template.disease_name?.toLowerCase().includes(keyword)) {
+        score += 15;
+      }
+    }
+
+    // 4. 카테고리-증상 매핑 매칭
+    for (const [category, symptoms] of Object.entries(SYMPTOM_CATEGORY_MAP)) {
+      if (symptoms.some(s => chiefComplaint.includes(s))) {
+        if (template.category === category) {
+          score += 25;
+        }
+      }
+    }
+
+    return { template, score };
+  });
+
+  // 점수순 정렬 후 상위 N개 반환
+  return scored
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxCount)
+    .map(s => s.template);
+}
+
+// 로컬 필터링 결과가 없을 때 폴백: 카테고리 기반 필터링
+function fallbackFilter(
+  patient: PatientContext,
+  templates: DosageInstruction[],
+  maxCount: number = 10
+): DosageInstruction[] {
+  let category = '일반';
+
+  if (patient.age !== undefined && patient.age <= 12) {
+    category = '소아&청소년';
+  } else if (patient.gender === 'female') {
+    const femaleKeywords = ['생리', '월경', '임신', '출산', '갱년기'];
+    if (femaleKeywords.some(k => patient.chiefComplaint.includes(k))) {
+      category = '부인과&산과';
+    }
+  }
+
+  const filtered = templates.filter(t => t.category === category);
+  return filtered.length > 0 ? filtered.slice(0, maxCount) : templates.slice(0, maxCount);
+}
+
 const SYSTEM_PROMPT = `당신은 한의원의 복용법 설명 전문가입니다.
 
 [역할]
@@ -57,15 +165,21 @@ export async function getAIRecommendation(
     return null;
   }
 
+  // 로컬 필터링으로 후보군 축소 (304개 → 최대 15개)
+  let filteredTemplates = preFilterTemplates(patient, templates, 15);
+  if (filteredTemplates.length === 0) {
+    filteredTemplates = fallbackFilter(patient, templates, 10);
+  }
+  console.log(`AI 추천: ${templates.length}개 → ${filteredTemplates.length}개로 필터링됨`);
+
   // 템플릿 목록을 간략화하여 프롬프트에 포함
-  const templateList = templates.map((t, idx) => ({
+  const templateList = filteredTemplates.map((t, idx) => ({
     index: idx,
     id: t.id,
     category: t.category,
     diseaseName: t.disease_name,
     conditionDetail: t.condition_detail,
-    keywords: t.keywords,
-    descriptionPreview: t.description?.substring(0, 100) + '...'
+    keywords: t.keywords
   }));
 
   const patientInfo = `
@@ -99,7 +213,7 @@ JSON 형식으로만 응답하세요.`;
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
-    const selectedTemplate = templates[parsed.recommendedIndex];
+    const selectedTemplate = filteredTemplates[parsed.recommendedIndex];
 
     if (!selectedTemplate) {
       console.error('잘못된 템플릿 인덱스:', parsed.recommendedIndex);
@@ -132,7 +246,14 @@ export async function getMultipleRecommendations(
     return [];
   }
 
-  const templateList = templates.map((t, idx) => ({
+  // 로컬 필터링으로 후보군 축소
+  let filteredTemplates = preFilterTemplates(patient, templates, 15);
+  if (filteredTemplates.length === 0) {
+    filteredTemplates = fallbackFilter(patient, templates, 10);
+  }
+  console.log(`AI 다중 추천: ${templates.length}개 → ${filteredTemplates.length}개로 필터링됨`);
+
+  const templateList = filteredTemplates.map((t, idx) => ({
     index: idx,
     id: t.id,
     category: t.category,
@@ -181,9 +302,9 @@ ${JSON.stringify(templateList, null, 2)}
     const parsed = JSON.parse(jsonMatch[0]);
 
     return parsed
-      .filter((item: any) => templates[item.recommendedIndex])
+      .filter((item: any) => filteredTemplates[item.recommendedIndex])
       .map((item: any) => {
-        const template = templates[item.recommendedIndex];
+        const template = filteredTemplates[item.recommendedIndex];
         return {
           recommendedId: template.id,
           diseaseName: template.disease_name,

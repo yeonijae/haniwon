@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '@shared/lib/supabase'
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite'
 
 interface PrescriptionDefinition {
   id: number
@@ -23,118 +23,100 @@ interface PrescriptionCategory {
 // API 함수들
 const prescriptionDefinitionsApi = {
   getAll: async (): Promise<PrescriptionDefinition[]> => {
-    const { data, error } = await supabase
-      .from('prescription_definitions')
-      .select('*')
-      .eq('is_active', true)
-      .order('name', { ascending: true })
-
-    if (error) throw new Error(error.message)
+    const data = await query<PrescriptionDefinition>(
+      `SELECT * FROM prescription_definitions WHERE is_active = 1 ORDER BY name ASC`
+    )
     return data || []
   },
 
   create: async (data: Partial<PrescriptionDefinition>): Promise<PrescriptionDefinition> => {
-    const { data: result, error } = await supabase
-      .from('prescription_definitions')
-      .insert({
-        name: data.name,
-        alias: data.alias,
-        category: data.category,
-        source: data.source,
-        composition: data.composition,
-        created_by: data.created_by || '관리자',
-        is_active: true,
-        created_at: new Date().toISOString()
-      })
-      .select()
-      .single()
+    const now = getCurrentTimestamp()
+    const insertId = await insert(`
+      INSERT INTO prescription_definitions (name, alias, category, source, composition, created_by, is_active, created_at)
+      VALUES (
+        ${escapeString(data.name || '')},
+        ${toSqlValue(data.alias)},
+        ${toSqlValue(data.category)},
+        ${toSqlValue(data.source)},
+        ${escapeString(data.composition || '')},
+        ${escapeString(data.created_by || '관리자')},
+        1,
+        ${escapeString(now)}
+      )
+    `)
 
-    if (error) throw new Error(error.message)
+    const result = await queryOne<PrescriptionDefinition>(
+      `SELECT * FROM prescription_definitions WHERE id = ${insertId}`
+    )
+    if (!result) throw new Error('생성된 처방을 찾을 수 없습니다')
     return result
   },
 
   update: async (id: number, data: Partial<PrescriptionDefinition>): Promise<PrescriptionDefinition> => {
-    const { data: result, error } = await supabase
-      .from('prescription_definitions')
-      .update({
-        name: data.name,
-        alias: data.alias,
-        category: data.category,
-        source: data.source,
-        composition: data.composition
-      })
-      .eq('id', id)
-      .select()
-      .single()
+    await execute(`
+      UPDATE prescription_definitions SET
+        name = ${escapeString(data.name || '')},
+        alias = ${toSqlValue(data.alias)},
+        category = ${toSqlValue(data.category)},
+        source = ${toSqlValue(data.source)},
+        composition = ${escapeString(data.composition || '')}
+      WHERE id = ${id}
+    `)
 
-    if (error) throw new Error(error.message)
+    const result = await queryOne<PrescriptionDefinition>(
+      `SELECT * FROM prescription_definitions WHERE id = ${id}`
+    )
+    if (!result) throw new Error('수정된 처방을 찾을 수 없습니다')
     return result
   },
 
   delete: async (id: number): Promise<void> => {
-    const { error } = await supabase
-      .from('prescription_definitions')
-      .update({ is_active: false })
-      .eq('id', id)
-
-    if (error) throw new Error(error.message)
+    await execute(`UPDATE prescription_definitions SET is_active = 0 WHERE id = ${id}`)
   }
 }
 
 const categoriesApi = {
   getAll: async (): Promise<PrescriptionCategory[]> => {
-    const { data, error } = await supabase
-      .from('prescription_categories')
-      .select('*')
-      .order('sort_order', { ascending: true })
-
-    if (error) {
+    try {
+      const data = await query<PrescriptionCategory>(
+        `SELECT * FROM prescription_categories ORDER BY sort_order ASC`
+      )
+      return data || []
+    } catch (error: any) {
       console.warn('prescription_categories 테이블이 없거나 접근 불가:', error.message)
       return []
     }
-    return data || []
   },
 
   create: async (name: string): Promise<PrescriptionCategory> => {
-    const { data: maxOrder } = await supabase
-      .from('prescription_categories')
-      .select('sort_order')
-      .order('sort_order', { ascending: false })
-      .limit(1)
-      .single()
+    const maxOrderResult = await queryOne<{ sort_order: number }>(
+      `SELECT sort_order FROM prescription_categories ORDER BY sort_order DESC LIMIT 1`
+    )
 
-    const newOrder = (maxOrder?.sort_order || 0) + 1
+    const newOrder = (maxOrderResult?.sort_order || 0) + 1
 
-    const { data, error } = await supabase
-      .from('prescription_categories')
-      .insert({ name, sort_order: newOrder })
-      .select()
-      .single()
+    const insertId = await insert(`
+      INSERT INTO prescription_categories (name, sort_order)
+      VALUES (${escapeString(name)}, ${newOrder})
+    `)
 
-    if (error) throw new Error(error.message)
-    return data
+    const result = await queryOne<PrescriptionCategory>(
+      `SELECT * FROM prescription_categories WHERE id = ${insertId}`
+    )
+    if (!result) throw new Error('생성된 카테고리를 찾을 수 없습니다')
+    return result
   },
 
   update: async (id: number, name: string): Promise<void> => {
-    const { error } = await supabase
-      .from('prescription_categories')
-      .update({ name })
-      .eq('id', id)
-
-    if (error) throw new Error(error.message)
+    await execute(`UPDATE prescription_categories SET name = ${escapeString(name)} WHERE id = ${id}`)
   },
 
   delete: async (id: number): Promise<void> => {
-    const { error } = await supabase
-      .from('prescription_categories')
-      .delete()
-      .eq('id', id)
-
-    if (error) throw new Error(error.message)
+    await execute(`DELETE FROM prescription_categories WHERE id = ${id}`)
   }
 }
 
-// 약재 구성 파싱 함수
+// 약재 구성 파싱 함수 (단순 파싱)
 const parseComposition = (composition: string): { herb: string; amount: string }[] => {
   if (!composition) return []
 
@@ -142,6 +124,85 @@ const parseComposition = (composition: string): { herb: string; amount: string }
     const [herb, amount] = item.split(':')
     return { herb: herb?.trim() || '', amount: amount?.trim() || '' }
   }).filter(item => item.herb)
+}
+
+// 합방(+) 처방 해결 함수 - 재귀적으로 처방 참조를 해결하고 약재를 merge
+const resolveMergedComposition = (
+  composition: string,
+  allPrescriptions: PrescriptionDefinition[],
+  visited: Set<string> = new Set()
+): string => {
+  if (!composition) return ''
+
+  // + 가 없으면 그대로 반환
+  if (!composition.includes('+')) {
+    return composition
+  }
+
+  // + 로 분리된 처방명들
+  const prescriptionNames = composition.split('+').map(name => name.trim())
+
+  // 각 처방의 약재를 모아서 merge
+  const herbMap = new Map<string, number>()
+  const suffixes = ['', '탕', '산', '환', '음'] // 접미사 목록
+
+  for (const name of prescriptionNames) {
+    // 순환 참조 방지
+    if (visited.has(name)) {
+      console.warn(`순환 참조 감지: ${name}`)
+      continue
+    }
+    visited.add(name)
+
+    // 처방 찾기 - 정확한 이름 또는 접미사 붙여서 검색
+    let prescription = allPrescriptions.find(
+      p => p.name === name || p.alias === name
+    )
+
+    // 못 찾으면 접미사 붙여서 검색
+    if (!prescription) {
+      for (const suffix of suffixes) {
+        if (suffix === '') continue
+        const nameWithSuffix = name + suffix
+        prescription = allPrescriptions.find(
+          p => p.name === nameWithSuffix || p.alias === nameWithSuffix
+        )
+        if (prescription) break
+      }
+    }
+
+    if (!prescription) {
+      console.warn(`처방을 찾을 수 없음: ${name}`)
+      continue
+    }
+
+    // 해당 처방의 composition도 +가 있을 수 있으므로 재귀 호출
+    const resolvedComposition = resolveMergedComposition(
+      prescription.composition,
+      allPrescriptions,
+      new Set(visited)
+    )
+
+    // 약재 파싱 및 merge (큰 값 취함)
+    const herbs = parseComposition(resolvedComposition)
+    for (const { herb, amount } of herbs) {
+      const amountNum = parseFloat(amount) || 0
+      const currentMax = herbMap.get(herb) || 0
+      herbMap.set(herb, Math.max(currentMax, amountNum))
+    }
+  }
+
+  // Map을 composition 문자열로 변환
+  const mergedHerbs = Array.from(herbMap.entries())
+    .map(([herb, amount]) => `${herb}:${amount}`)
+    .join('/')
+
+  return mergedHerbs
+}
+
+// 합방 여부 확인
+const isMergedPrescription = (composition: string): boolean => {
+  return composition?.includes('+') || false
 }
 
 function PrescriptionDefinitions() {
@@ -205,9 +266,9 @@ function PrescriptionDefinitions() {
     if (search.trim()) {
       const searchLower = search.toLowerCase()
       filtered = filtered.filter(p =>
-        p.name.toLowerCase().includes(searchLower) ||
+        p.name?.toLowerCase().includes(searchLower) ||
         p.alias?.toLowerCase().includes(searchLower) ||
-        p.composition.toLowerCase().includes(searchLower)
+        p.composition?.toLowerCase().includes(searchLower)
       )
     }
 
@@ -292,13 +353,10 @@ function PrescriptionDefinitions() {
   // 처방의 카테고리명 일괄 변경
   const renameCategoryMutation = useMutation({
     mutationFn: async ({ oldName, newName }: { oldName: string; newName: string }) => {
-      const { error } = await supabase
-        .from('prescription_definitions')
-        .update({ category: newName })
-        .eq('category', oldName)
-        .eq('is_active', true)
-
-      if (error) throw new Error(error.message)
+      await execute(`
+        UPDATE prescription_definitions SET category = ${escapeString(newName)}
+        WHERE category = ${escapeString(oldName)} AND is_active = 1
+      `)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['prescription-definitions'] })
@@ -589,29 +647,61 @@ function PrescriptionDefinitions() {
 
               {/* 약재 구성 */}
               <div>
-                <h5 className="font-semibold text-gray-900 mb-3 flex items-center">
-                  <i className="fa-solid fa-leaf text-green-600 mr-2"></i>
-                  약재 구성 ({parseComposition(selectedPrescription.composition).length}종)
-                </h5>
-                {parseComposition(selectedPrescription.composition).length > 0 ? (
-                  <div className="space-y-2 max-h-80 overflow-y-auto">
-                    {parseComposition(selectedPrescription.composition).map((item, index) => (
-                      <div
-                        key={index}
-                        className="bg-gray-50 border border-gray-200 rounded p-2 flex items-center justify-between"
-                      >
-                        <span className="text-sm font-medium text-gray-900">{item.herb}</span>
-                        <span className="text-xs text-gray-600 bg-white px-2 py-0.5 rounded border border-gray-200">
-                          {item.amount}g
+                {/* 합방인 경우 원본 표시 */}
+                {isMergedPrescription(selectedPrescription.composition) && (
+                  <div className="mb-3 p-2 bg-purple-50 border border-purple-200 rounded">
+                    <p className="text-xs text-purple-700 font-medium mb-1">
+                      <i className="fa-solid fa-layer-group mr-1"></i>
+                      합방 구성
+                    </p>
+                    <p className="text-sm text-purple-900">
+                      {selectedPrescription.composition.split('+').map((name, idx) => (
+                        <span key={idx}>
+                          {idx > 0 && <span className="text-purple-400 mx-1">+</span>}
+                          <span className="font-medium">{name.trim()}</span>
                         </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-400">
-                    <p className="text-sm">약재 구성 정보가 없습니다</p>
+                      ))}
+                    </p>
                   </div>
                 )}
+
+                {(() => {
+                  const resolvedComposition = isMergedPrescription(selectedPrescription.composition)
+                    ? resolveMergedComposition(selectedPrescription.composition, prescriptions || [])
+                    : selectedPrescription.composition
+                  const herbs = parseComposition(resolvedComposition)
+
+                  return (
+                    <>
+                      <h5 className="font-semibold text-gray-900 mb-3 flex items-center">
+                        <i className="fa-solid fa-leaf text-green-600 mr-2"></i>
+                        약재 구성 ({herbs.length}종)
+                        {isMergedPrescription(selectedPrescription.composition) && (
+                          <span className="ml-2 text-xs text-purple-600 font-normal">(merge 결과)</span>
+                        )}
+                      </h5>
+                      {herbs.length > 0 ? (
+                        <div className="space-y-2 max-h-80 overflow-y-auto">
+                          {herbs.map((item, index) => (
+                            <div
+                              key={index}
+                              className="bg-gray-50 border border-gray-200 rounded p-2 flex items-center justify-between"
+                            >
+                              <span className="text-sm font-medium text-gray-900">{item.herb}</span>
+                              <span className="text-xs text-gray-600 bg-white px-2 py-0.5 rounded border border-gray-200">
+                                {item.amount}g
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-gray-400">
+                          <p className="text-sm">약재 구성 정보가 없습니다</p>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             </div>
           ) : (

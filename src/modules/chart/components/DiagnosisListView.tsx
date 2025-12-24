@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { query, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
 import type { Diagnosis, DiagnosisStatus, Severity } from '../types';
 
 interface Props {
@@ -26,13 +26,9 @@ const DiagnosisListView: React.FC<Props> = ({ patientId, patientName, onClose })
   const loadDiagnoses = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('diagnoses')
-        .select('*')
-        .eq('patient_id', patientId)
-        .order('diagnosis_date', { ascending: false });
-
-      if (error) throw error;
+      const data = await query<Diagnosis>(
+        `SELECT * FROM diagnoses WHERE patient_id = ${patientId} ORDER BY diagnosis_date DESC`
+      );
       setDiagnoses(data || []);
     } catch (error) {
       console.error('진단기록 로드 실패:', error);
@@ -43,20 +39,36 @@ const DiagnosisListView: React.FC<Props> = ({ patientId, patientName, onClose })
 
   const handleSave = async () => {
     try {
-      const data = { ...formData, patient_id: patientId };
+      const now = getCurrentTimestamp();
+      const diagnosisDate = formData.diagnosis_date || new Date().toISOString().split('T')[0];
 
       if (editingDiagnosis) {
-        const { error } = await supabase
-          .from('diagnoses')
-          .update(data)
-          .eq('id', editingDiagnosis.id);
-        if (error) throw error;
+        await execute(`
+          UPDATE diagnoses SET
+            diagnosis_name = ${escapeString(formData.diagnosis_name || '')},
+            icd_code = ${toSqlValue(formData.icd_code)},
+            status = ${escapeString(formData.status || 'active')},
+            severity = ${toSqlValue(formData.severity)},
+            notes = ${toSqlValue(formData.notes)},
+            updated_at = ${escapeString(now)}
+          WHERE id = ${editingDiagnosis.id}
+        `);
         alert('진단기록이 수정되었습니다');
       } else {
-        const { error } = await supabase
-          .from('diagnoses')
-          .insert([data]);
-        if (error) throw error;
+        await insert(`
+          INSERT INTO diagnoses (patient_id, diagnosis_name, icd_code, diagnosis_date, status, severity, notes, created_at, updated_at)
+          VALUES (
+            ${patientId},
+            ${escapeString(formData.diagnosis_name || '')},
+            ${toSqlValue(formData.icd_code)},
+            ${escapeString(diagnosisDate)},
+            ${escapeString(formData.status || 'active')},
+            ${toSqlValue(formData.severity)},
+            ${toSqlValue(formData.notes)},
+            ${escapeString(now)},
+            ${escapeString(now)}
+          )
+        `);
         alert('진단기록이 추가되었습니다');
       }
 
@@ -74,12 +86,7 @@ const DiagnosisListView: React.FC<Props> = ({ patientId, patientName, onClose })
     if (!confirm('이 진단기록을 삭제하시겠습니까?')) return;
 
     try {
-      const { error } = await supabase
-        .from('diagnoses')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      await execute(`DELETE FROM diagnoses WHERE id = ${id}`);
       alert('진단기록이 삭제되었습니다');
       loadDiagnoses();
     } catch (error: any) {

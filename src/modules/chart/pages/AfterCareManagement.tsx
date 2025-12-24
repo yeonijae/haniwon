@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/sqlite';
 
 // 진료 카테고리 정의
 const TREATMENT_CATEGORIES = [
@@ -79,13 +79,9 @@ const AfterCareManagement: React.FC = () => {
       setLoading(true);
 
       // 복용 완료된 처방전 가져오기 (발급일 + 복용일수가 지난 처방)
-      const { data: prescriptions, error } = await supabase
-        .from('prescriptions')
-        .select('*')
-        .eq('status', 'issued')
-        .order('issued_at', { ascending: false });
-
-      if (error) throw error;
+      const prescriptions = await query<any>(
+        `SELECT * FROM prescriptions WHERE status = 'issued' ORDER BY issued_at DESC`
+      );
 
       // 복용 완료된 환자 필터링 및 주소증 가져오기
       const now = new Date();
@@ -102,11 +98,9 @@ const AfterCareManagement: React.FC = () => {
 
           // 주소증 가져오기
           if (prescription.source_type === 'initial_chart' && prescription.source_id) {
-            const { data: chartData } = await supabase
-              .from('initial_charts')
-              .select('notes')
-              .eq('id', prescription.source_id)
-              .single();
+            const chartData = await queryOne<{ notes: string }>(
+              `SELECT notes FROM initial_charts WHERE id = ${prescription.source_id}`
+            );
 
             if (chartData?.notes) {
               const match = chartData.notes.match(/\[주소증\]([\s\S]*?)(?=\n\[|$)/);
@@ -115,11 +109,9 @@ const AfterCareManagement: React.FC = () => {
               }
             }
           } else if (prescription.source_type === 'progress_note' && prescription.source_id) {
-            const { data: noteData } = await supabase
-              .from('progress_notes')
-              .select('subjective')
-              .eq('id', prescription.source_id)
-              .single();
+            const noteData = await queryOne<{ subjective: string }>(
+              `SELECT subjective FROM progress_notes WHERE id = ${prescription.source_id}`
+            );
 
             if (noteData?.subjective) {
               chiefComplaint = noteData.subjective;
@@ -129,22 +121,29 @@ const AfterCareManagement: React.FC = () => {
           // 환자 정보 가져오기
           let phone = '';
           if (prescription.patient_id) {
-            const { data: patientData } = await supabase
-              .from('patients')
-              .select('phone')
-              .eq('id', prescription.patient_id)
-              .single();
-            phone = patientData?.phone || '';
+            try {
+              const patientData = await queryOne<{ phone: string }>(
+                `SELECT phone FROM patients WHERE id = ${prescription.patient_id}`
+              );
+              phone = patientData?.phone || '';
+            } catch {
+              // patients 테이블이 없을 수 있음
+            }
           }
 
           // 카테고리 분류
           const category = categorizeByChiefComplaint(chiefComplaint);
 
           // 사후관리 통화 기록 카운트
-          const { count } = await supabase
-            .from('aftercare_calls')
-            .select('*', { count: 'exact', head: true })
-            .eq('prescription_id', prescription.id);
+          let callCount = 0;
+          try {
+            const countResult = await queryOne<{ cnt: number }>(
+              `SELECT COUNT(*) as cnt FROM aftercare_calls WHERE prescription_id = ${prescription.id}`
+            );
+            callCount = countResult?.cnt || 0;
+          } catch {
+            // aftercare_calls 테이블이 없을 수 있음
+          }
 
           completedList.push({
             id: prescription.id,
@@ -159,7 +158,7 @@ const AfterCareManagement: React.FC = () => {
             completed_at: completedDate.toISOString(),
             days: prescription.days || 15,
             category,
-            call_count: count || 0
+            call_count: callCount
           });
         }
       }
@@ -225,13 +224,9 @@ const AfterCareManagement: React.FC = () => {
   const loadCallHistory = async (prescriptionId: number) => {
     try {
       setLoadingHistory(true);
-      const { data, error } = await supabase
-        .from('aftercare_calls')
-        .select('*')
-        .eq('prescription_id', prescriptionId)
-        .order('call_date', { ascending: false });
-
-      if (error) throw error;
+      const data = await query<AfterCareCall>(
+        `SELECT * FROM aftercare_calls WHERE prescription_id = ${prescriptionId} ORDER BY call_date DESC`
+      );
       setCallHistory(data || []);
     } catch (error) {
       console.error('통화 기록 로드 실패:', error);
@@ -252,18 +247,19 @@ const AfterCareManagement: React.FC = () => {
     if (!selectedPatient) return;
 
     try {
-      const { error } = await supabase
-        .from('aftercare_calls')
-        .insert([{
-          patient_id: selectedPatient.patient_id,
-          prescription_id: selectedPatient.prescription_id,
-          call_date: new Date().toISOString(),
-          call_result: callForm.call_result,
-          notes: callForm.notes || null,
-          next_action: callForm.next_action || null
-        }]);
-
-      if (error) throw error;
+      const now = getCurrentTimestamp();
+      await insert(`
+        INSERT INTO aftercare_calls (patient_id, prescription_id, call_date, call_result, notes, next_action, created_at)
+        VALUES (
+          ${selectedPatient.patient_id},
+          ${selectedPatient.prescription_id},
+          ${escapeString(new Date().toISOString())},
+          ${escapeString(callForm.call_result)},
+          ${callForm.notes ? escapeString(callForm.notes) : 'NULL'},
+          ${callForm.next_action ? escapeString(callForm.next_action) : 'NULL'},
+          ${escapeString(now)}
+        )
+      `);
 
       alert('통화 기록이 저장되었습니다.');
       setShowCallModal(false);

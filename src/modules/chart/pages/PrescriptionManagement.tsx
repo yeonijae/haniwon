@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
 import PrescriptionInput, { PrescriptionData } from '../components/PrescriptionInput';
 import type { Prescription } from '../types';
 
@@ -24,12 +24,10 @@ const PrescriptionManagement: React.FC = () => {
   const loadPrescriptions = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('prescriptions')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      // SQLite에서 처방 목록 조회
+      const data = await query<Prescription>(
+        `SELECT * FROM prescriptions ORDER BY created_at DESC`
+      );
 
       // 처방전에 연결된 차트에서 주소증 가져오기
       const prescriptionsWithChiefComplaint = await Promise.all(
@@ -38,11 +36,9 @@ const PrescriptionManagement: React.FC = () => {
 
           if (prescription.source_type && prescription.source_id) {
             if (prescription.source_type === 'initial_chart') {
-              const { data: chartData } = await supabase
-                .from('initial_charts')
-                .select('notes')
-                .eq('id', prescription.source_id)
-                .single();
+              const chartData = await queryOne<{ notes: string }>(
+                `SELECT notes FROM initial_charts WHERE id = ${prescription.source_id}`
+              );
               // notes에서 [주소증] 섹션 추출
               if (chartData?.notes) {
                 const match = chartData.notes.match(/\[주소증\]([\s\S]*?)(?=\n\[|$)/);
@@ -51,16 +47,34 @@ const PrescriptionManagement: React.FC = () => {
                 }
               }
             } else if (prescription.source_type === 'progress_note') {
-              const { data: noteData } = await supabase
-                .from('progress_notes')
-                .select('subjective')
-                .eq('id', prescription.source_id)
-                .single();
+              const noteData = await queryOne<{ subjective: string }>(
+                `SELECT subjective FROM progress_notes WHERE id = ${prescription.source_id}`
+              );
               chiefComplaint = noteData?.subjective || '';
             }
           }
 
-          return { ...prescription, chief_complaint: chiefComplaint };
+          // merged_herbs와 final_herbs가 문자열인 경우 파싱
+          let parsedMergedHerbs = prescription.merged_herbs;
+          let parsedFinalHerbs = prescription.final_herbs;
+
+          if (typeof prescription.merged_herbs === 'string') {
+            try {
+              parsedMergedHerbs = JSON.parse(prescription.merged_herbs);
+            } catch { parsedMergedHerbs = []; }
+          }
+          if (typeof prescription.final_herbs === 'string') {
+            try {
+              parsedFinalHerbs = JSON.parse(prescription.final_herbs);
+            } catch { parsedFinalHerbs = []; }
+          }
+
+          return {
+            ...prescription,
+            merged_herbs: parsedMergedHerbs,
+            final_herbs: parsedFinalHerbs,
+            chief_complaint: chiefComplaint
+          };
         })
       );
 
@@ -77,34 +91,40 @@ const PrescriptionManagement: React.FC = () => {
     try {
       // 처방번호 생성
       const now = new Date();
+      const nowTimestamp = getCurrentTimestamp();
       const prescriptionNumber = `RX-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+      const prescriptionDate = now.toISOString().split('T')[0];
 
-      const prescription = {
-        prescription_number: prescriptionNumber,
-        prescription_date: now.toISOString().split('T')[0],
-        patient_name: data.patientName || '',
-        formula: data.formula,
-        merged_herbs: data.mergedHerbs,
-        final_herbs: data.finalHerbs,
-        total_doses: data.totalDoses,
-        days: data.days,
-        doses_per_day: data.dosesPerDay,
-        total_packs: data.totalPacks,
-        pack_volume: data.packVolume,
-        water_amount: data.waterAmount,
-        herb_adjustment: data.herbAdjustment || null,
-        total_dosage: data.totalDosage,
-        final_total_amount: data.finalTotalAmount,
-        notes: data.notes || null,
-        status: 'issued',
-        issued_at: now.toISOString(),
-      };
-
-      const { error } = await supabase
-        .from('prescriptions')
-        .insert([prescription]);
-
-      if (error) throw error;
+      // SQLite에 처방 저장
+      await insert(`
+        INSERT INTO prescriptions (
+          prescription_number, prescription_date, patient_name, formula,
+          merged_herbs, final_herbs, total_doses, days, doses_per_day,
+          total_packs, pack_volume, water_amount, herb_adjustment, total_dosage,
+          final_total_amount, notes, status, issued_at, created_at, updated_at
+        ) VALUES (
+          ${escapeString(prescriptionNumber)},
+          ${escapeString(prescriptionDate)},
+          ${escapeString(data.patientName || '')},
+          ${toSqlValue(data.formula)},
+          ${toSqlValue(JSON.stringify(data.mergedHerbs))},
+          ${toSqlValue(JSON.stringify(data.finalHerbs))},
+          ${data.totalDoses || 'NULL'},
+          ${data.days || 'NULL'},
+          ${data.dosesPerDay || 'NULL'},
+          ${data.totalPacks || 'NULL'},
+          ${data.packVolume || 'NULL'},
+          ${data.waterAmount || 'NULL'},
+          ${toSqlValue(data.herbAdjustment)},
+          ${data.totalDosage || 'NULL'},
+          ${data.finalTotalAmount || 'NULL'},
+          ${toSqlValue(data.notes)},
+          ${escapeString('issued')},
+          ${escapeString(nowTimestamp)},
+          ${escapeString(nowTimestamp)},
+          ${escapeString(nowTimestamp)}
+        )
+      `);
 
       alert('처방전이 저장되었습니다.');
       setViewMode('list');
@@ -120,30 +140,27 @@ const PrescriptionManagement: React.FC = () => {
     if (!editingPrescription) return;
 
     try {
-      const updates = {
-        patient_name: data.patientName || '',
-        formula: data.formula,
-        merged_herbs: data.mergedHerbs,
-        final_herbs: data.finalHerbs,
-        total_doses: data.totalDoses,
-        days: data.days,
-        doses_per_day: data.dosesPerDay,
-        total_packs: data.totalPacks,
-        pack_volume: data.packVolume,
-        water_amount: data.waterAmount,
-        herb_adjustment: data.herbAdjustment || null,
-        total_dosage: data.totalDosage,
-        final_total_amount: data.finalTotalAmount,
-        notes: data.notes || null,
-        updated_at: new Date().toISOString(),
-      };
+      const now = getCurrentTimestamp();
 
-      const { error } = await supabase
-        .from('prescriptions')
-        .update(updates)
-        .eq('id', editingPrescription.id);
-
-      if (error) throw error;
+      await execute(`
+        UPDATE prescriptions SET
+          patient_name = ${escapeString(data.patientName || '')},
+          formula = ${toSqlValue(data.formula)},
+          merged_herbs = ${toSqlValue(JSON.stringify(data.mergedHerbs))},
+          final_herbs = ${toSqlValue(JSON.stringify(data.finalHerbs))},
+          total_doses = ${data.totalDoses || 'NULL'},
+          days = ${data.days || 'NULL'},
+          doses_per_day = ${data.dosesPerDay || 'NULL'},
+          total_packs = ${data.totalPacks || 'NULL'},
+          pack_volume = ${data.packVolume || 'NULL'},
+          water_amount = ${data.waterAmount || 'NULL'},
+          herb_adjustment = ${toSqlValue(data.herbAdjustment)},
+          total_dosage = ${data.totalDosage || 'NULL'},
+          final_total_amount = ${data.finalTotalAmount || 'NULL'},
+          notes = ${toSqlValue(data.notes)},
+          updated_at = ${escapeString(now)}
+        WHERE id = ${editingPrescription.id}
+      `);
 
       alert('처방전이 수정되었습니다.');
       setViewMode('list');
@@ -161,12 +178,8 @@ const PrescriptionManagement: React.FC = () => {
       // 먼저 삭제할 처방의 source 정보 조회
       const prescriptionToDelete = prescriptions.find(p => p.id === id);
 
-      const { error } = await supabase
-        .from('prescriptions')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      // SQLite에서 처방 삭제
+      await execute(`DELETE FROM prescriptions WHERE id = ${id}`);
 
       // source_type과 source_id가 있으면 해당 차트의 처방발급 상태 초기화
       if (prescriptionToDelete?.source_type && prescriptionToDelete?.source_id) {
@@ -174,17 +187,12 @@ const PrescriptionManagement: React.FC = () => {
           ? 'initial_charts'
           : 'progress_notes';
 
-        const { error: updateError } = await supabase
-          .from(tableName)
-          .update({
-            prescription_issued: false,
-            prescription_issued_at: null
-          })
-          .eq('id', prescriptionToDelete.source_id);
-
-        if (updateError) {
-          console.error('차트 상태 업데이트 실패:', updateError);
-        }
+        await execute(`
+          UPDATE ${tableName} SET
+            prescription_issued = 0,
+            prescription_issued_at = NULL
+          WHERE id = ${prescriptionToDelete.source_id}
+        `);
       }
 
       alert('처방전이 삭제되었습니다.');
@@ -631,15 +639,15 @@ const PrescriptionManagement: React.FC = () => {
   // 복용법 작성 상태 업데이트
   const updateDosageInstructionStatus = async (prescriptionId: number, created: boolean) => {
     try {
-      const { error } = await supabase
-        .from('prescriptions')
-        .update({
-          dosage_instruction_created: created,
-          dosage_instruction_created_at: created ? new Date().toISOString() : null
-        })
-        .eq('id', prescriptionId);
+      const now = getCurrentTimestamp();
 
-      if (error) throw error;
+      await execute(`
+        UPDATE prescriptions SET
+          dosage_instruction_created = ${created ? 1 : 0},
+          dosage_instruction_created_at = ${created ? escapeString(now) : 'NULL'}
+        WHERE id = ${prescriptionId}
+      `);
+
       loadPrescriptions();
     } catch (error) {
       console.error('복용법 상태 업데이트 실패:', error);

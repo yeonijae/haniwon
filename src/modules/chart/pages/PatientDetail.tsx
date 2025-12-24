@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
 import type { Patient } from '../types';
+
+// MSSQL API URL
+const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 import InitialChartView from '../components/InitialChartView';
 import DiagnosisListView from '../components/DiagnosisListView';
 import ProgressNoteView from '../components/ProgressNoteView';
@@ -26,17 +28,32 @@ const PatientDetail: React.FC = () => {
     }
   }, [id]);
 
+  // 환자 정보 로드 (MSSQL에서 조회)
   const loadPatient = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('patients')
-        .select('*')
-        .eq('id', id)
-        .single();
 
-      if (error) throw error;
-      setPatient(data);
+      const response = await fetch(`${MSSQL_API_URL}/api/patients/${id}`);
+      if (!response.ok) {
+        throw new Error(`환자 정보 조회 실패: ${response.status}`);
+      }
+
+      const p = await response.json();
+
+      // MSSQL 응답을 Patient 타입으로 변환
+      const patientData: Patient = {
+        id: p.id,
+        name: p.name,
+        chart_number: p.chart_no || '',
+        dob: p.birth || undefined,
+        gender: p.sex === 'M' ? 'male' : p.sex === 'F' ? 'female' : undefined,
+        phone: p.phone || undefined,
+        address: p.address || undefined,
+        registration_date: p.reg_date || undefined,
+        referral_path: p.referral_source || undefined,
+      };
+
+      setPatient(patientData);
     } catch (error) {
       console.error('환자 정보 로드 실패:', error);
       alert('환자 정보를 불러오는데 실패했습니다');

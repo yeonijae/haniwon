@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { query } from '@shared/lib/sqlite';
 
 interface MedicalRecord {
   id: number;
@@ -26,25 +26,25 @@ const MedicalRecordList: React.FC<Props> = ({ patientId, onSelectRecord }) => {
   const loadRecords = async () => {
     try {
       setLoading(true);
-      // 초진차트에서 진료기록 가져오기
-      const { data, error } = await supabase
-        .from('initial_charts')
-        .select('*')
-        .eq('patient_id', patientId)
-        .order('chart_date', { ascending: false });
-
-      if (error) throw error;
+      // 초진차트에서 진료기록 가져오기 - SQLite
+      const data = await query<{
+        id: number;
+        patient_id: number;
+        notes: string;
+        chart_date: string;
+        created_at: string;
+      }>(`SELECT * FROM initial_charts WHERE patient_id = ${patientId} ORDER BY chart_date DESC`);
 
       // 데이터 변환 (초진차트를 진료기록으로 사용)
       // initial_date는 실제 진료일자(chart_date)를 사용
-      const recordsData: MedicalRecord[] = data?.map(chart => ({
+      const recordsData: MedicalRecord[] = (data || []).map(chart => ({
         id: chart.id,
         patient_id: chart.patient_id,
         chief_complaint: extractChiefComplaint(chart.notes),
         initial_date: chart.chart_date, // 실제 진료일자
         medication_count: 0, // TODO: 복약 횟수 계산
         created_at: chart.created_at // 차트 생성일자
-      })) || [];
+      }));
 
       setRecords(recordsData);
     } catch (error) {

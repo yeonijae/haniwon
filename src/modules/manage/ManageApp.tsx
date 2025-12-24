@@ -18,6 +18,7 @@ import Settings from './components/Settings';
 import ConsultationInfoModal from './components/ConsultationInfoModal';
 import PatientTreatmentInfoModal from './components/PatientTreatmentInfoModal';
 import TreatmentStatsView from './components/TreatmentStatsView';
+import { useFontScale } from '@shared/hooks/useFontScale';
 
 // Custom Hooks
 import { usePatients } from './hooks/usePatients';
@@ -60,6 +61,9 @@ const roleToAffiliation = (role: string): '의료진' | '데스크' | '치료실
 };
 
 const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
+  // 폰트 스케일
+  const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('manage');
+
   // Convert PortalUser to internal User type
   const currentUser: User = useMemo(() => ({
     id: user.username,
@@ -768,11 +772,17 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
       <Header
         onOpenModal={openModal}
         currentUser={currentUser}
+        scalePercent={scalePercent}
+        onIncreaseScale={increaseScale}
+        onDecreaseScale={decreaseScale}
+        onResetScale={resetScale}
+        canIncrease={canIncrease}
+        canDecrease={canDecrease}
       />
 
       <Routes>
         <Route path="/" element={
-          <main className="flex-grow p-4 lg:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 lg:gap-6 min-h-0">
+          <main className="flex-grow p-4 lg:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 lg:gap-6 min-h-0" style={{ zoom: scale }}>
             {/* MSSQL 연결 상태 표시 */}
             {!mssqlQueue.isConnected && (
               <div className="col-span-full bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-center text-sm text-yellow-700">
