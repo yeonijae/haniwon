@@ -8,8 +8,8 @@ if (!API_KEY) {
 
 export const genAI = API_KEY ? new GoogleGenerativeAI(API_KEY) : null;
 
-// Gemini 2.0 Flash 모델 사용 (빠르고 무료 티어 있음)
+// Gemini 2.5 Flash 모델 사용 (최신 버전, 더 높은 성능)
 export const getModel = () => {
   if (!genAI) return null;
-  return genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  return genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 };

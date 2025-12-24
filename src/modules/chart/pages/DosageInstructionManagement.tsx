@@ -226,48 +226,123 @@ const DosageInstructionManagement: React.FC = () => {
   <meta charset="UTF-8">
   <title>복용법 안내문</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Malgun Gothic', sans-serif; padding: 15mm; font-size: 11pt; line-height: 1.6; }
-    .header { text-align: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #1e3a5f; }
-    .header h1 { font-size: 22pt; color: #1e3a5f; letter-spacing: 4px; }
-    .header .patient-info { margin-top: 10px; font-size: 12pt; color: #333; }
-    .header .date { font-size: 10pt; color: #666; margin-top: 5px; }
-    .section { margin-bottom: 18px; }
-    .section-title { font-size: 12pt; font-weight: bold; color: #1e3a5f; margin-bottom: 8px; padding-left: 8px; border-left: 3px solid #1e3a5f; }
-    .section-content { font-size: 10pt; padding: 10px; background: #f8f9fa; border-radius: 4px; white-space: pre-wrap; }
-    .precaution-item { padding: 3px 0; }
-    .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; font-size: 9pt; color: #666; }
-    @media print { body { padding: 10mm; } @page { margin: 0; size: A4; } }
+    @page {
+      size: A4;
+      margin: 15mm;
+    }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+      font-size: 11pt;
+      line-height: 1.6;
+      color: #333;
+    }
+    .header {
+      text-align: center;
+      border-bottom: 2px solid #2563eb;
+      padding-bottom: 15px;
+      margin-bottom: 20px;
+    }
+    .header h1 {
+      font-size: 20pt;
+      color: #2563eb;
+      margin-bottom: 5px;
+    }
+    .header .clinic {
+      font-size: 10pt;
+      color: #666;
+    }
+    .header .patient-info {
+      margin-top: 10px;
+      font-size: 11pt;
+      color: #333;
+    }
+    .header .date {
+      font-size: 9pt;
+      color: #999;
+      margin-top: 5px;
+    }
+    .section {
+      margin-bottom: 20px;
+      page-break-inside: avoid;
+    }
+    .section-title {
+      font-size: 12pt;
+      font-weight: bold;
+      color: #1e40af;
+      border-left: 4px solid #2563eb;
+      padding-left: 10px;
+      margin-bottom: 10px;
+    }
+    .section-content {
+      padding-left: 14px;
+      white-space: pre-wrap;
+    }
+    .dosage-highlight {
+      background: #ecfdf5;
+      padding: 10px 15px;
+      border-radius: 5px;
+      font-weight: 500;
+      color: #065f46;
+      margin-bottom: 10px;
+    }
+    .storage-highlight {
+      background: #ecfeff;
+      padding: 10px 15px;
+      border-radius: 5px;
+      font-weight: 500;
+      color: #0e7490;
+      margin-bottom: 10px;
+    }
+    .warning {
+      color: #dc2626;
+      font-weight: bold;
+    }
+    .precaution-item {
+      margin-bottom: 5px;
+    }
+    .footer {
+      margin-top: 30px;
+      padding-top: 15px;
+      border-top: 1px solid #e5e7eb;
+      text-align: center;
+      font-size: 9pt;
+      color: #666;
+    }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <h1>복용법 안내문</h1>
+    <div class="clinic">연이재한의원</div>
     <div class="patient-info">${prescription.patient_name || ''}${prescription.patient_age ? ` (${prescription.patient_age}세)` : ''}</div>
     <div class="date">${today}</div>
   </div>
 
   ${data.description ? `
   <div class="section">
-    <div class="section-title">一. 질환 설명</div>
-    <div class="section-content">${data.description}</div>
+    <div class="section-title">一. 설명</div>
+    <div class="section-content">${data.description.replace(/\n/g, '<br>')}</div>
   </div>
   ` : ''}
 
   <div class="section">
     <div class="section-title">二. 복용방법</div>
-    <div class="section-content">
-      하루 ${data.dosageMethod?.selectedTimes?.length || 2}회(${data.dosageMethod?.selectedTimes?.join(', ') || '아침, 저녁'}), 1회 ${data.dosageMethod?.dosageAmount || '1팩'}씩 ${data.dosageMethod?.timing || '식전/식후 상관없이'} 드세요.
-      ${data.dosageNotice ? `\n\n${data.dosageNotice}` : ''}
-    </div>
+    <div class="dosage-highlight">하루 ${data.dosageMethod?.selectedTimes?.length || 2}회(${data.dosageMethod?.selectedTimes?.join(', ') || '아침, 저녁'}), 1회 ${data.dosageMethod?.dosageAmount || '1팩'}씩 ${data.dosageMethod?.timing || '식전/식후 상관없이'} 드세요.</div>
+    <div class="section-content">${(data.dosageNotice || '').replace(/※.*전자렌지.*불가/g, '<span class="warning">$&</span>').replace(/\n/g, '<br>')}</div>
   </div>
 
   <div class="section">
     <div class="section-title">三. 보관방법</div>
-    <div class="section-content">
-      ${data.storageMethod?.method || '냉장보관'}하며, ${data.storageMethod?.duration || 30}${data.storageMethod?.unit || '일'} 이내에 드세요.
-      ${data.storageNotice ? `\n\n${data.storageNotice}` : ''}
-    </div>
+    <div class="storage-highlight">${data.storageMethod?.method || '냉장보관'}하며, ${data.storageMethod?.duration || 30}${data.storageMethod?.unit || '일'} 이내에 드세요.</div>
+    <div class="section-content">${(data.storageNotice || '').replace(/\n/g, '<br>')}</div>
   </div>
 
   ${(data.selectedFoods && data.selectedFoods.length > 0) || data.customPrecautions ? `
