@@ -88,6 +88,7 @@ export interface ExamAttachment {
   file_size?: number;
   mime_type?: string;
   thumbnail_path?: string;
+  caption?: string;
   sort_order: number;
   uploaded_at: string;
 }

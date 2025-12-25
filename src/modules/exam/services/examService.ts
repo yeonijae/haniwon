@@ -304,6 +304,18 @@ export async function deleteExamAttachment(id: number): Promise<boolean> {
   return result.success;
 }
 
+/**
+ * 첨부파일 캡션 업데이트
+ */
+export async function updateAttachmentCaption(id: number, caption: string): Promise<boolean> {
+  const result = await execute(`
+    UPDATE exam_attachments
+    SET caption = ${escapeString(caption)}
+    WHERE id = ${id}
+  `);
+  return result.success;
+}
+
 // ============ 수치 데이터 ============
 
 /**

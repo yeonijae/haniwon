@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import type { ExamResult } from '../types';
+import type { ExamResult, ExamAttachment } from '../types';
 import { getExamTypeInfo, getExamTypeStyles } from '../types';
 import { getFileUrl, getThumbnailUrl, isImageFile, isPdfFile } from '../lib/fileUpload';
-import { deleteExamResult, updateExamResult } from '../services/examService';
+import { deleteExamResult, updateExamResult, updateAttachmentCaption } from '../services/examService';
 import ExamImageViewer from './ExamImageViewer';
 import ExamAIAnalysis from './ExamAIAnalysis';
 
@@ -19,11 +19,22 @@ const ExamResultDetail: React.FC<ExamResultDetailProps> = ({ exam, onClose, onUp
   const [isSaving, setIsSaving] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showImageViewer, setShowImageViewer] = useState(false);
+  const [localAttachments, setLocalAttachments] = useState<ExamAttachment[]>(exam.attachments || []);
 
   const typeInfo = getExamTypeInfo(exam.exam_type);
   const typeStyles = getExamTypeStyles(exam.exam_type);
-  const images = exam.attachments?.filter(a => isImageFile(a.file_name)) || [];
-  const pdfs = exam.attachments?.filter(a => isPdfFile(a.file_name)) || [];
+  const images = localAttachments.filter(a => isImageFile(a.file_name));
+  const pdfs = localAttachments.filter(a => isPdfFile(a.file_name));
+
+  // 캡션 업데이트 핸들러
+  const handleCaptionUpdate = async (attachmentId: number, caption: string) => {
+    await updateAttachmentCaption(attachmentId, caption);
+    setLocalAttachments(prev =>
+      prev.map(att =>
+        att.id === attachmentId ? { ...att, caption } : att
+      )
+    );
+  };
 
   // 저장
   const handleSave = async () => {
@@ -238,25 +249,30 @@ const ExamResultDetail: React.FC<ExamResultDetailProps> = ({ exam, onClose, onUp
               {/* 첨부 파일 */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  첨부파일 ({exam.attachments?.length || 0})
+                  첨부파일 ({localAttachments.length})
                 </label>
                 <div className="space-y-2">
-                  {exam.attachments?.map((att) => (
+                  {localAttachments.map((att) => (
                     <div
                       key={att.id}
-                      className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg"
+                      className="p-2 bg-gray-50 rounded-lg"
                     >
-                      <i className={`fas ${isImageFile(att.file_name) ? 'fa-image text-blue-500' : 'fa-file-pdf text-red-500'}`}></i>
-                      <span className="flex-1 text-sm text-gray-700 truncate">
-                        {att.file_name}
-                      </span>
-                      <button
-                        onClick={() => handleDownload(att.file_path, att.file_name)}
-                        className="text-gray-400 hover:text-purple-600"
-                        title="다운로드"
-                      >
-                        <i className="fas fa-download"></i>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <i className={`fas ${isImageFile(att.file_name) ? 'fa-image text-blue-500' : 'fa-file-pdf text-red-500'}`}></i>
+                        <span className="flex-1 text-sm text-gray-700 truncate">
+                          {att.file_name}
+                        </span>
+                        <button
+                          onClick={() => handleDownload(att.file_path, att.file_name)}
+                          className="text-gray-400 hover:text-purple-600"
+                          title="다운로드"
+                        >
+                          <i className="fas fa-download"></i>
+                        </button>
+                      </div>
+                      {att.caption && (
+                        <p className="text-xs text-gray-500 mt-1 ml-6">{att.caption}</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -327,12 +343,10 @@ const ExamResultDetail: React.FC<ExamResultDetailProps> = ({ exam, onClose, onUp
       {/* 전체화면 이미지 뷰어 */}
       {showImageViewer && images.length > 0 && (
         <ExamImageViewer
-          images={images.map(img => ({
-            file_path: img.file_path,
-            file_name: img.file_name,
-          }))}
+          images={images}
           initialIndex={selectedImageIndex}
           onClose={() => setShowImageViewer(false)}
+          onCaptionUpdate={handleCaptionUpdate}
         />
       )}
     </div>

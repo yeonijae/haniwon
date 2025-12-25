@@ -2,11 +2,12 @@
  * 검사결과 비교 뷰어
  * - 같은 유형의 검사를 좌우로 비교
  * - 날짜 선택으로 비교 대상 변경
+ * - 썸네일 스트립으로 파일 선택
  * - 동기화 줌/이동 옵션
  */
 
 import { useState, useCallback } from 'react';
-import type { ExamResult } from '../types';
+import type { ExamResult, ExamAttachment } from '../types';
 import { getExamTypeInfo, getExamTypeStyles } from '../types';
 import { getFileUrl, getThumbnailUrl, isImageFile } from '../lib/fileUpload';
 
@@ -19,7 +20,6 @@ interface ExamCompareViewerProps {
 
 interface ViewState {
   scale: number;
-  rotation: number;
   position: { x: number; y: number };
   imageIndex: number;
 }
@@ -34,14 +34,12 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
 
   const [leftState, setLeftState] = useState<ViewState>({
     scale: 1,
-    rotation: 0,
     position: { x: 0, y: 0 },
     imageIndex: 0,
   });
 
   const [rightState, setRightState] = useState<ViewState>({
     scale: 1,
-    rotation: 0,
     position: { x: 0, y: 0 },
     imageIndex: 0,
   });
@@ -66,7 +64,7 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
   const handleZoom = useCallback((side: 'left' | 'right', delta: number) => {
     const updateState = (state: ViewState): ViewState => ({
       ...state,
-      scale: Math.max(0.25, Math.min(5, state.scale + delta)),
+      scale: Math.max(0.5, Math.min(3, state.scale + delta)),
     });
 
     if (syncMode) {
@@ -79,28 +77,42 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
     }
   }, [syncMode]);
 
-  // 회전 컨트롤
-  const handleRotate = useCallback((side: 'left' | 'right', degrees: number) => {
-    const updateState = (state: ViewState): ViewState => ({
+  // Fit to Window
+  const handleFit = useCallback((side: 'left' | 'right') => {
+    const resetState = (state: ViewState): ViewState => ({
       ...state,
-      rotation: (state.rotation + degrees + 360) % 360,
+      scale: 1,
+      position: { x: 0, y: 0 },
     });
 
     if (syncMode) {
-      setLeftState(updateState);
-      setRightState(updateState);
+      setLeftState(resetState);
+      setRightState(resetState);
     } else if (side === 'left') {
-      setLeftState(updateState);
+      setLeftState(resetState);
     } else {
-      setRightState(updateState);
+      setRightState(resetState);
     }
   }, [syncMode]);
 
-  // 리셋
+  // 이미지 인덱스 변경
+  const handleImageChange = useCallback((
+    side: 'left' | 'right',
+    delta: number,
+    images: ExamAttachment[],
+    state: ViewState,
+    setState: React.Dispatch<React.SetStateAction<ViewState>>
+  ) => {
+    const newIndex = state.imageIndex + delta;
+    if (newIndex >= 0 && newIndex < images.length) {
+      setState(s => ({ ...s, imageIndex: newIndex }));
+    }
+  }, []);
+
+  // 전체 리셋
   const handleReset = useCallback(() => {
     const resetState: ViewState = {
       scale: 1,
-      rotation: 0,
       position: { x: 0, y: 0 },
       imageIndex: 0,
     };
@@ -112,17 +124,18 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
   const renderImagePanel = (
     side: 'left' | 'right',
     exam: ExamResult,
-    images: { file_path: string; file_name: string }[],
+    images: ExamAttachment[],
     state: ViewState,
     setState: React.Dispatch<React.SetStateAction<ViewState>>,
     examIndex: number,
     setExamIndex: React.Dispatch<React.SetStateAction<number>>
   ) => {
     const currentImage = images[state.imageIndex];
+    const hasMultipleImages = images.length > 1;
 
     return (
       <div className="flex-1 flex flex-col border-r border-gray-700 last:border-r-0">
-        {/* 날짜 선택 */}
+        {/* 날짜 선택 헤더 */}
         <div className="bg-gray-800 px-4 py-2 flex items-center justify-between">
           <select
             value={examIndex}
@@ -130,11 +143,11 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
               setExamIndex(Number(e.target.value));
               setState(s => ({ ...s, imageIndex: 0 }));
             }}
-            className="bg-gray-700 text-white text-sm rounded px-2 py-1 border-none focus:ring-2 focus:ring-purple-500"
+            className="bg-gray-700 text-white text-sm rounded px-2 py-1.5 border-none focus:ring-2 focus:ring-purple-500"
           >
             {exams.map((ex, idx) => (
               <option key={ex.id} value={idx}>
-                {ex.exam_date}
+                {ex.exam_date} ({ex.attachments?.filter(a => isImageFile(a.file_name)).length || 0}장)
               </option>
             ))}
           </select>
@@ -142,43 +155,67 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
           <div className="flex items-center gap-1">
             <button
               onClick={() => handleZoom(side, -0.25)}
-              className="p-1 text-gray-400 hover:text-white"
+              className="p-1.5 text-gray-400 hover:text-white rounded hover:bg-gray-700"
               title="축소"
             >
-              <i className="fas fa-search-minus text-xs"></i>
+              <i className="fas fa-minus text-xs"></i>
             </button>
-            <span className="text-gray-400 text-xs w-10 text-center">
+            <button
+              onClick={() => handleFit(side)}
+              className="px-2 py-1 text-gray-300 text-xs hover:bg-gray-700 rounded"
+              title="창에 맞춤"
+            >
               {Math.round(state.scale * 100)}%
-            </span>
+            </button>
             <button
               onClick={() => handleZoom(side, 0.25)}
-              className="p-1 text-gray-400 hover:text-white"
+              className="p-1.5 text-gray-400 hover:text-white rounded hover:bg-gray-700"
               title="확대"
             >
-              <i className="fas fa-search-plus text-xs"></i>
-            </button>
-            <button
-              onClick={() => handleRotate(side, 90)}
-              className="p-1 text-gray-400 hover:text-white ml-2"
-              title="회전"
-            >
-              <i className="fas fa-redo text-xs"></i>
+              <i className="fas fa-plus text-xs"></i>
             </button>
           </div>
         </div>
 
         {/* 이미지 영역 */}
-        <div className="flex-1 bg-gray-900 flex items-center justify-center overflow-hidden">
+        <div className="flex-1 bg-gray-900 flex items-center justify-center overflow-hidden relative">
           {currentImage ? (
-            <img
-              src={getFileUrl(currentImage.file_path)}
-              alt=""
-              className="max-w-full max-h-full object-contain transition-transform"
-              style={{
-                transform: `translate(${state.position.x}px, ${state.position.y}px) scale(${state.scale}) rotate(${state.rotation}deg)`,
-              }}
-              draggable={false}
-            />
+            <>
+              <img
+                src={getFileUrl(currentImage.file_path)}
+                alt=""
+                className="max-w-full max-h-full object-contain transition-transform"
+                style={{
+                  transform: `translate(${state.position.x}px, ${state.position.y}px) scale(${state.scale})`,
+                }}
+                draggable={false}
+              />
+
+              {/* 이전/다음 버튼 (여러 이미지인 경우) */}
+              {hasMultipleImages && (
+                <>
+                  <button
+                    onClick={() => handleImageChange(side, -1, images, state, setState)}
+                    disabled={state.imageIndex === 0}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 text-white rounded-full hover:bg-black/70 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <i className="fas fa-chevron-left"></i>
+                  </button>
+                  <button
+                    onClick={() => handleImageChange(side, 1, images, state, setState)}
+                    disabled={state.imageIndex === images.length - 1}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 text-white rounded-full hover:bg-black/70 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <i className="fas fa-chevron-right"></i>
+                  </button>
+
+                  {/* 이미지 인덱스 표시 */}
+                  <div className="absolute top-2 right-2 bg-black/60 px-2 py-1 rounded text-white text-xs">
+                    {state.imageIndex + 1} / {images.length}
+                  </div>
+                </>
+              )}
+            </>
           ) : (
             <div className="text-gray-500 text-center">
               <i className="fas fa-image text-4xl mb-2"></i>
@@ -187,37 +224,41 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
           )}
         </div>
 
-        {/* 썸네일 선택 */}
-        {images.length > 1 && (
-          <div className="bg-gray-800 px-2 py-2 flex gap-1 overflow-x-auto">
-            {images.map((img, idx) => (
-              <button
-                key={idx}
-                onClick={() => setState(s => ({ ...s, imageIndex: idx }))}
-                className={`flex-shrink-0 w-10 h-10 rounded overflow-hidden ring-1 ${
-                  idx === state.imageIndex
-                    ? 'ring-purple-500'
-                    : 'ring-gray-600 hover:ring-gray-400'
-                }`}
-              >
-                <img
-                  src={getThumbnailUrl(img.file_path)}
-                  alt=""
-                  className="w-full h-full object-cover"
-                />
-              </button>
-            ))}
+        {/* 썸네일 스트립 */}
+        {hasMultipleImages && (
+          <div className="bg-gray-800 px-2 py-2">
+            <div className="flex gap-1.5 overflow-x-auto py-1">
+              {images.map((img, idx) => (
+                <button
+                  key={img.id}
+                  onClick={() => setState(s => ({ ...s, imageIndex: idx }))}
+                  className={`flex-shrink-0 w-12 h-12 rounded overflow-hidden transition-all ${
+                    idx === state.imageIndex
+                      ? 'ring-2 ring-purple-500 ring-offset-1 ring-offset-gray-800'
+                      : 'ring-1 ring-gray-600 hover:ring-gray-400 opacity-60 hover:opacity-100'
+                  }`}
+                >
+                  <img
+                    src={getThumbnailUrl(img.thumbnail_path) || getFileUrl(img.file_path)}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* 소견 */}
-        {exam.findings && (
-          <div className="bg-gray-800 px-4 py-2 border-t border-gray-700">
-            <p className="text-xs text-gray-400 line-clamp-2">
-              {exam.findings}
-            </p>
-          </div>
-        )}
+        {/* 캡션 또는 소견 */}
+        <div className="bg-gray-800 px-4 py-2 border-t border-gray-700 min-h-[48px]">
+          {currentImage?.caption ? (
+            <p className="text-sm text-gray-300">{currentImage.caption}</p>
+          ) : exam.findings ? (
+            <p className="text-xs text-gray-400 line-clamp-2">{exam.findings}</p>
+          ) : (
+            <p className="text-xs text-gray-500 italic">설명 없음</p>
+          )}
+        </div>
       </div>
     );
   };
@@ -242,7 +283,7 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
   return (
     <div className="fixed inset-0 bg-black z-[60] flex flex-col">
       {/* 상단 툴바 */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-700">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-700">
         <div className="flex items-center gap-3">
           <span className={`inline-flex items-center px-2 py-1 rounded text-sm ${typeStyles.badge}`}>
             <i className={`fas ${typeInfo?.icon || 'fa-file'} mr-2`}></i>
@@ -302,6 +343,11 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
           rightExamIndex,
           setRightExamIndex
         )}
+      </div>
+
+      {/* 하단 도움말 */}
+      <div className="bg-gray-900 border-t border-gray-700 px-4 py-1.5 text-center text-gray-500 text-xs">
+        좌우 패널에서 날짜와 이미지를 선택하여 비교 | 동기화 모드에서 줌 동시 조절
       </div>
     </div>
   );
