@@ -520,22 +520,6 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
     );
   };
 
-  // 패널 추가 버튼 렌더링
-  const renderAddPanelButton = () => {
-    if (panels.length >= MAX_PANELS) return null;
-
-    return (
-      <button
-        onClick={addPanel}
-        className="flex flex-col items-center justify-center border-2 border-dashed border-gray-600 rounded-lg bg-gray-800/50 hover:bg-gray-800 hover:border-gray-500 transition-colors min-h-[200px]"
-      >
-        <i className="fas fa-plus text-2xl text-gray-500 mb-2"></i>
-        <span className="text-sm text-gray-500">패널 추가</span>
-        <span className="text-xs text-gray-600 mt-1">({panels.length}/{MAX_PANELS})</span>
-      </button>
-    );
-  };
-
   if (exams.length < 2) {
     return (
       <div className="fixed inset-0 bg-black z-[60] flex items-center justify-center">
@@ -553,7 +537,7 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
     );
   }
 
-  const gridCols = getGridCols(panels.length + (panels.length < MAX_PANELS ? 1 : 0));
+  const gridCols = getGridCols(panels.length);
 
   return (
     <div className="fixed inset-0 bg-black z-[60] flex flex-col">
@@ -604,7 +588,6 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
         }}
       >
         {panels.map((panel, index) => renderPanel(panel, index))}
-        {renderAddPanelButton()}
       </div>
 
       {/* 하단 도움말 */}
