@@ -119,6 +119,7 @@ export interface HerbalPackage {
   patient_id: number;
   chart_number: string;
   patient_name: string;
+  herbal_name: string;        // 약명 (시함마농, 궁귀교애탕 등)
   package_type: '1month' | '2month' | '3month' | '6month';  // 선결 기간
   total_count: number;       // 총 회차
   used_count: number;        // 사용 회차
@@ -130,6 +131,54 @@ export interface HerbalPackage {
   created_at?: string;
   updated_at?: string;
 }
+
+// 한약패키지 회차별 관리 타입
+export type DeliveryMethod = 'pickup' | 'local' | 'express';
+export type RoundStatus = 'pending' | 'preparing' | 'delivered' | 'completed';
+
+export interface HerbalPackageRound {
+  id?: number;
+  package_id: number;        // 연결된 HerbalPackage ID
+  round_number: number;      // 회차 번호 (1, 2, 3...)
+  delivery_method: DeliveryMethod;  // 배송방법: 내원/시내/시외
+  scheduled_date?: string;   // 예정일
+  delivered_date?: string;   // 배송완료일
+  status: RoundStatus;       // 상태: 대기/준비중/배송완료/복용완료
+  memo?: string;             // 회차별 메모
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 배송방법 라벨
+export const DELIVERY_METHOD_LABELS: Record<DeliveryMethod, string> = {
+  pickup: '내원',
+  local: '시내',
+  express: '시외',
+};
+
+// 회차 상태 라벨
+export const ROUND_STATUS_LABELS: Record<RoundStatus, string> = {
+  pending: '대기',
+  preparing: '준비중',
+  delivered: '배송완료',
+  completed: '복용완료',
+};
+
+// 회차 상태 색상
+export const ROUND_STATUS_COLORS: Record<RoundStatus, string> = {
+  pending: '#9ca3af',
+  preparing: '#f59e0b',
+  delivered: '#3b82f6',
+  completed: '#10b981',
+};
+
+// 패키지 타입 라벨
+export const PACKAGE_TYPE_LABELS: Record<string, string> = {
+  '1month': '1개월',
+  '2month': '2개월',
+  '3month': '3개월',
+  '6month': '6개월',
+};
 
 // 적립포인트 타입
 export interface PointTransaction {

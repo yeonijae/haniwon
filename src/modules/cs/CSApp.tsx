@@ -6,19 +6,21 @@ import ReservationView from './components/ReservationView';
 import ReceiptView from './components/ReceiptView';
 import InquiryView from './components/InquiryView';
 import PatientSearchView from './components/PatientSearchView';
+import PrepaidManagementView from './components/PrepaidManagementView';
 import './styles/cs.css';
 
 interface CSAppProps {
   user: PortalUser;
 }
 
-export type CSMenuType = 'reservation' | 'receipt' | 'inquiry' | 'search';
+export type CSMenuType = 'reservation' | 'receipt' | 'inquiry' | 'search' | 'prepaid';
 
 const MENU_TITLES: Record<CSMenuType, string> = {
   reservation: '예약관리',
   receipt: '수납관리',
   inquiry: '문의접수',
   search: '환자검색',
+  prepaid: '선결관리',
 };
 
 function CSApp({ user }: CSAppProps) {
@@ -39,6 +41,8 @@ function CSApp({ user }: CSAppProps) {
         return <InquiryView user={user} />;
       case 'search':
         return <PatientSearchView user={user} />;
+      case 'prepaid':
+        return <PrepaidManagementView user={user} />;
       default:
         return null;
     }

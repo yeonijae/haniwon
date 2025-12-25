@@ -5,6 +5,9 @@ import type {
   UpdateInquiryRequest,
   TreatmentPackage,
   HerbalPackage,
+  HerbalPackageRound,
+  DeliveryMethod,
+  RoundStatus,
   PointTransaction,
   PatientPointBalance,
   Membership,
@@ -183,6 +186,7 @@ export async function ensureReceiptTables(): Promise<void> {
       patient_id INTEGER NOT NULL,
       chart_number TEXT,
       patient_name TEXT,
+      herbal_name TEXT,
       package_type TEXT NOT NULL,
       total_count INTEGER NOT NULL,
       used_count INTEGER DEFAULT 0,
@@ -193,6 +197,23 @@ export async function ensureReceiptTables(): Promise<void> {
       status TEXT DEFAULT 'active',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // 한약패키지 회차별 관리 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_herbal_package_rounds (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      package_id INTEGER NOT NULL,
+      round_number INTEGER NOT NULL,
+      delivery_method TEXT DEFAULT 'pickup',
+      scheduled_date TEXT,
+      delivered_date TEXT,
+      status TEXT DEFAULT 'pending',
+      memo TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (package_id) REFERENCES cs_herbal_packages(id) ON DELETE CASCADE
     )
   `);
 
@@ -438,6 +459,166 @@ export async function useHerbalPackage(id: number, nextDeliveryDate?: string): P
       updated_at = ${escapeString(now)}
     WHERE id = ${id}
   `);
+}
+
+export async function updateHerbalPackage(id: number, updates: Partial<HerbalPackage>): Promise<void> {
+  const parts: string[] = [];
+  if (updates.herbal_name !== undefined) parts.push(`herbal_name = ${escapeString(updates.herbal_name)}`);
+  if (updates.package_type !== undefined) parts.push(`package_type = ${escapeString(updates.package_type)}`);
+  if (updates.total_count !== undefined) parts.push(`total_count = ${updates.total_count}`);
+  if (updates.used_count !== undefined) parts.push(`used_count = ${updates.used_count}`);
+  if (updates.remaining_count !== undefined) parts.push(`remaining_count = ${updates.remaining_count}`);
+  if (updates.next_delivery_date !== undefined) parts.push(`next_delivery_date = ${toSqlValue(updates.next_delivery_date)}`);
+  if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
+  if (updates.status !== undefined) parts.push(`status = ${escapeString(updates.status)}`);
+  parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
+
+  await execute(`UPDATE cs_herbal_packages SET ${parts.join(', ')} WHERE id = ${id}`);
+}
+
+export async function deleteHerbalPackage(id: number): Promise<void> {
+  // 회차 데이터도 함께 삭제됨 (CASCADE)
+  await execute(`DELETE FROM cs_herbal_packages WHERE id = ${id}`);
+}
+
+// 모든 활성 한약패키지 조회 (선결제관리용)
+export async function getAllActiveHerbalPackages(): Promise<HerbalPackage[]> {
+  return query<HerbalPackage>(
+    `SELECT * FROM cs_herbal_packages WHERE status = 'active' ORDER BY next_delivery_date ASC, created_at DESC`
+  );
+}
+
+// 모든 한약패키지 조회 (완료 포함)
+export async function getAllHerbalPackages(includeCompleted: boolean = false): Promise<HerbalPackage[]> {
+  let sql = 'SELECT * FROM cs_herbal_packages';
+  if (!includeCompleted) {
+    sql += " WHERE status = 'active'";
+  }
+  sql += ' ORDER BY status ASC, next_delivery_date ASC, created_at DESC';
+  return query<HerbalPackage>(sql);
+}
+
+// ============================================
+// 한약패키지 회차 API
+// ============================================
+
+export async function getPackageRounds(packageId: number): Promise<HerbalPackageRound[]> {
+  return query<HerbalPackageRound>(
+    `SELECT * FROM cs_herbal_package_rounds WHERE package_id = ${packageId} ORDER BY round_number ASC`
+  );
+}
+
+export async function createPackageRound(round: Omit<HerbalPackageRound, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
+  const now = getCurrentTimestamp();
+  return insert(`
+    INSERT INTO cs_herbal_package_rounds (
+      package_id, round_number, delivery_method, scheduled_date, delivered_date, status, memo, created_at, updated_at
+    ) VALUES (
+      ${round.package_id}, ${round.round_number}, ${escapeString(round.delivery_method)},
+      ${toSqlValue(round.scheduled_date)}, ${toSqlValue(round.delivered_date)},
+      ${escapeString(round.status)}, ${toSqlValue(round.memo)}, ${escapeString(now)}, ${escapeString(now)}
+    )
+  `);
+}
+
+export async function updatePackageRound(id: number, updates: Partial<HerbalPackageRound>): Promise<void> {
+  const parts: string[] = [];
+  if (updates.delivery_method !== undefined) parts.push(`delivery_method = ${escapeString(updates.delivery_method)}`);
+  if (updates.scheduled_date !== undefined) parts.push(`scheduled_date = ${toSqlValue(updates.scheduled_date)}`);
+  if (updates.delivered_date !== undefined) parts.push(`delivered_date = ${toSqlValue(updates.delivered_date)}`);
+  if (updates.status !== undefined) parts.push(`status = ${escapeString(updates.status)}`);
+  if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
+  parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
+
+  await execute(`UPDATE cs_herbal_package_rounds SET ${parts.join(', ')} WHERE id = ${id}`);
+}
+
+export async function deletePackageRound(id: number): Promise<void> {
+  await execute(`DELETE FROM cs_herbal_package_rounds WHERE id = ${id}`);
+}
+
+// 패키지 생성 시 회차 자동 생성
+export async function initializePackageRounds(packageId: number, totalCount: number): Promise<void> {
+  for (let i = 1; i <= totalCount; i++) {
+    await createPackageRound({
+      package_id: packageId,
+      round_number: i,
+      delivery_method: 'pickup',
+      status: 'pending',
+    });
+  }
+}
+
+// 회차 상태 변경 및 패키지 used_count 업데이트
+export async function completePackageRound(roundId: number, deliveredDate?: string): Promise<void> {
+  const now = getCurrentTimestamp();
+  const delivered = deliveredDate || new Date().toISOString().split('T')[0];
+
+  // 회차 정보 조회
+  const round = await queryOne<HerbalPackageRound>(
+    `SELECT * FROM cs_herbal_package_rounds WHERE id = ${roundId}`
+  );
+  if (!round) throw new Error('회차를 찾을 수 없습니다.');
+
+  // 회차 상태 업데이트
+  await execute(`
+    UPDATE cs_herbal_package_rounds SET
+      status = 'delivered',
+      delivered_date = ${escapeString(delivered)},
+      updated_at = ${escapeString(now)}
+    WHERE id = ${roundId}
+  `);
+
+  // 패키지 used_count 증가, remaining_count 감소
+  await execute(`
+    UPDATE cs_herbal_packages SET
+      used_count = used_count + 1,
+      remaining_count = remaining_count - 1,
+      status = CASE WHEN remaining_count - 1 <= 0 THEN 'completed' ELSE status END,
+      updated_at = ${escapeString(now)}
+    WHERE id = ${round.package_id}
+  `);
+
+  // 다음 배송일 업데이트 (다음 pending 회차의 scheduled_date)
+  const nextRound = await queryOne<HerbalPackageRound>(
+    `SELECT * FROM cs_herbal_package_rounds
+     WHERE package_id = ${round.package_id} AND status = 'pending'
+     ORDER BY round_number ASC LIMIT 1`
+  );
+  if (nextRound?.scheduled_date) {
+    await execute(`
+      UPDATE cs_herbal_packages SET
+        next_delivery_date = ${escapeString(nextRound.scheduled_date)}
+      WHERE id = ${round.package_id}
+    `);
+  }
+}
+
+// 패키지와 회차 정보 함께 조회
+export interface HerbalPackageWithRounds extends HerbalPackage {
+  rounds: HerbalPackageRound[];
+}
+
+export async function getHerbalPackageWithRounds(packageId: number): Promise<HerbalPackageWithRounds | null> {
+  const pkg = await queryOne<HerbalPackage>(
+    `SELECT * FROM cs_herbal_packages WHERE id = ${packageId}`
+  );
+  if (!pkg) return null;
+
+  const rounds = await getPackageRounds(packageId);
+  return { ...pkg, rounds };
+}
+
+export async function getAllHerbalPackagesWithRounds(includeCompleted: boolean = false): Promise<HerbalPackageWithRounds[]> {
+  const packages = await getAllHerbalPackages(includeCompleted);
+  const result: HerbalPackageWithRounds[] = [];
+
+  for (const pkg of packages) {
+    const rounds = await getPackageRounds(pkg.id!);
+    result.push({ ...pkg, rounds });
+  }
+
+  return result;
 }
 
 // ============================================

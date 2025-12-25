@@ -16,6 +16,7 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   { id: 'reservation', icon: '📅', label: '예약' },
   { id: 'receipt', icon: '💰', label: '수납' },
+  { id: 'prepaid', icon: '💊', label: '선결' },
   { id: 'inquiry', icon: '📝', label: '문의' },
   { id: 'search', icon: '🔍', label: '검색' },
 ];

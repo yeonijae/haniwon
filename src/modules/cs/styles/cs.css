@@ -2657,3 +2657,494 @@
 .grid-tag.gift.clickable:hover {
   background: #d1d5db;
 }
+
+/* ============================================ */
+/* 선결제관리 스타일                           */
+/* ============================================ */
+
+.prepaid-management {
+  padding: 20px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 헤더 */
+.prepaid-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  background: white;
+  padding: 12px 16px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.prepaid-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.prepaid-header-left h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.prepaid-count {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.prepaid-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.prepaid-filter-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.prepaid-filter-checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+}
+
+.prepaid-refresh-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  border: none;
+  border-radius: 8px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.prepaid-refresh-btn:hover {
+  background: #e5e7eb;
+}
+
+.prepaid-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.prepaid-add-btn:hover {
+  background: #059669;
+}
+
+/* 패키지 목록 */
+.prepaid-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prepaid-loading,
+.prepaid-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #9ca3af;
+}
+
+.prepaid-empty i {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+/* 패키지 카드 */
+.prepaid-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.prepaid-card.completed {
+  opacity: 0.7;
+}
+
+/* 카드 헤더 */
+.prepaid-card-header {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto auto;
+  gap: 16px;
+  padding: 14px 16px;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.prepaid-card-header:hover {
+  background: #f9fafb;
+}
+
+.prepaid-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prepaid-patient {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.prepaid-patient-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.prepaid-chart-no {
+  font-size: 13px;
+  color: #9ca3af;
+  font-family: monospace;
+}
+
+.prepaid-herbal-name {
+  font-size: 14px;
+  color: #10b981;
+  font-weight: 500;
+}
+
+.prepaid-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.prepaid-type-badge {
+  padding: 4px 10px;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.prepaid-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.prepaid-progress-bar {
+  width: 80px;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.prepaid-progress-fill {
+  height: 100%;
+  background: #10b981;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.prepaid-progress-text {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.prepaid-card-dates {
+  display: flex;
+  gap: 20px;
+}
+
+.prepaid-date-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.prepaid-date-label {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.prepaid-date-value {
+  font-size: 13px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.prepaid-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.prepaid-action-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  border: none;
+  border-radius: 6px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.prepaid-action-btn:hover {
+  background: #e5e7eb;
+}
+
+.prepaid-action-btn.complete:hover {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.prepaid-action-btn.delete:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.prepaid-expand-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+/* 카드 상세 */
+.prepaid-card-detail {
+  background: #f8fafc;
+  border-top: 1px solid #e5e7eb;
+  padding: 16px;
+}
+
+.prepaid-memo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #fef3c7;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #92400e;
+  margin-bottom: 12px;
+}
+
+/* 회차 테이블 */
+.prepaid-rounds {
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.prepaid-rounds-header {
+  display: grid;
+  grid-template-columns: 60px 80px 90px 90px 80px 1fr 100px;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.prepaid-round-row {
+  display: grid;
+  grid-template-columns: 60px 80px 90px 90px 80px 1fr 100px;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 13px;
+  align-items: center;
+}
+
+.prepaid-round-row:last-child {
+  border-bottom: none;
+}
+
+.prepaid-round-row.pending {
+  background: white;
+}
+
+.prepaid-round-row.preparing {
+  background: #fffbeb;
+}
+
+.prepaid-round-row.delivered {
+  background: #eff6ff;
+}
+
+.prepaid-round-row.completed {
+  background: #f0fdf4;
+}
+
+.round-col {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.round-col.round-num {
+  font-weight: 600;
+  color: #374151;
+}
+
+.round-col.round-method {
+  color: #6b7280;
+}
+
+.round-col.round-scheduled,
+.round-col.round-delivered {
+  font-family: monospace;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.round-status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: white;
+}
+
+.round-col.round-memo {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.round-col.round-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.round-action-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  border: none;
+  border-radius: 6px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 12px;
+}
+
+.round-action-btn:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.round-action-btn.edit:hover {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+/* 선결 모달 */
+.prepaid-modal {
+  min-width: 480px;
+  max-width: 560px;
+}
+
+.prepaid-modal.small {
+  min-width: 400px;
+  max-width: 480px;
+}
+
+.prepaid-modal .modal-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.prepaid-modal .modal-close:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+.prepaid-modal .form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.prepaid-modal .form-group textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.btn-save {
+  padding: 10px 24px;
+  background: #10b981;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-save:hover {
+  background: #059669;
+}
+
+.btn-save:disabled {
+  background: #6ee7b7;
+  cursor: not-allowed;
+}
