@@ -25,6 +25,7 @@ import HerbalApp from './modules/herbal/HerbalApp';
 import StaffApp from './modules/staff/StaffApp';
 import WikiApp from './modules/wiki/WikiApp';
 import CSApp from './modules/cs/CSApp';
+import ExamApp from './modules/exam/ExamApp';
 
 // Public Blog Pages (공개 - 로그인 불필요)
 import BlogListPage from './modules/blog/pages/BlogListPage';
@@ -220,6 +221,12 @@ function App() {
       <Route
         path="/cs/*"
         element={user ? <CSApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Exam Management Routes (검사결과 관리) */}
+      <Route
+        path="/exam/*"
+        element={user ? <ExamApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Fallback */}

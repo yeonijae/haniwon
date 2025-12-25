@@ -130,4 +130,12 @@ export const APPS: AppInfo[] = [
     icon: '🎧',
     color: '#ec4899',
   },
+  {
+    id: 'exam',
+    name: '검사결과',
+    description: '환자 검사결과를 관리합니다. 체열검사, 인바디, 설진, 맥진 등 검사 이미지를 관리하고 AI 분석을 지원합니다.',
+    path: '/exam',
+    icon: '🔬',
+    color: '#8b5cf6',
+  },
 ];
