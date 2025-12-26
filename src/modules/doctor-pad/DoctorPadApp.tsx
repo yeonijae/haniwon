@@ -726,6 +726,8 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
       // 5. 녹음 파일이 있으면 백그라운드에서 녹취록 변환
       if (audioBlob && audioBlob.size > 0) {
         setIsTranscribing(true);
+        // 약상담인 경우에만 오디오 파일 저장
+        const isYakConsult = actingToComplete.actingType.includes('약');
         // 백그라운드에서 처리 (UI 블로킹 없이)
         processRecording(audioBlob, {
           actingId: actingToComplete.id,
@@ -733,7 +735,7 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
           doctorId: doctor.id,
           doctorName: doctor.fullName,
           actingType: actingToComplete.actingType,
-          saveAudio: false, // 오디오 파일은 저장하지 않음 (텍스트만)
+          saveAudio: isYakConsult, // 약상담만 오디오 파일 저장
         }).then(result => {
           setIsTranscribing(false);
           if (result.success) {
