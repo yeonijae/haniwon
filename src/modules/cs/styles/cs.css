@@ -976,10 +976,111 @@
   background: #e5e7eb;
 }
 
-.receipt-date-bar .receipt-count {
-  font-size: 14px;
+/* 기록 상태 필터 */
+.record-filter-group {
+  display: flex;
+  gap: 4px;
+  margin-left: 16px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.record-filter-btn {
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
   color: #6b7280;
-  margin-left: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.record-filter-btn:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.record-filter-btn.active {
+  background: white;
+  color: #1f2937;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.record-filter-btn.incomplete.active {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.record-filter-btn.completed.active {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.record-filter-btn .filter-count {
+  display: inline-block;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+.record-filter-btn.active .filter-count {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* 현장예약율 표시 */
+.onsite-rate-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 16px;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+}
+
+.onsite-rate-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.onsite-rate-divider {
+  width: 1px;
+  height: 20px;
+  background: #93c5fd;
+}
+
+.onsite-label {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.onsite-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #10b981;
+}
+
+.onsite-value.reserved {
+  color: #3b82f6;
+}
+
+.onsite-detail {
+  font-size: 11px;
+  color: #94a3b8;
 }
 
 .receipt-error {
@@ -1046,6 +1147,61 @@
 .receipt-row.expanded {
   background: #eff6ff;
   border-bottom-color: transparent;
+}
+
+/* 완료된 행 */
+.receipt-row.completed {
+  background: #f0fdf4;
+}
+
+.receipt-row.completed:hover {
+  background: #dcfce7;
+}
+
+.receipt-row.completed .col-patient .patient-name {
+  color: #059669;
+}
+
+/* 완료 처리 버튼 및 배지 */
+.reservation-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+
+.complete-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  border: 1px dashed #d1d5db;
+  border-radius: 4px;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 11px;
+}
+
+.complete-btn:hover {
+  background: #d1fae5;
+  border-color: #10b981;
+  border-style: solid;
+  color: #059669;
+}
+
+.complete-badge {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #10b981;
+  border-radius: 4px;
+  color: white;
+  font-size: 11px;
 }
 
 /* 열 스타일 */

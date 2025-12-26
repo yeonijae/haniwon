@@ -274,9 +274,13 @@ export interface ReceiptMemo {
   memo?: string;             // 특이사항 메모
   reservation_status: ReservationStatus;
   reservation_date?: string; // 예약 확정 시 날짜
+  is_completed?: boolean;    // 기록 완료 여부
   created_at?: string;
   updated_at?: string;
 }
+
+// 수납 기록 필터 타입
+export type ReceiptRecordFilter = 'all' | 'completed' | 'incomplete';
 
 // 수납 목록 아이템 (MSSQL + SQLite 병합)
 export interface ReceiptListItem {

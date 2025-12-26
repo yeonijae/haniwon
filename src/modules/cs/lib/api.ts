@@ -313,10 +313,18 @@ export async function ensureReceiptTables(): Promise<void> {
       memo TEXT,
       reservation_status TEXT DEFAULT 'none',
       reservation_date TEXT,
+      is_completed INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
+  // is_completed 컬럼이 없으면 추가 (기존 테이블 마이그레이션)
+  try {
+    await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN is_completed INTEGER DEFAULT 0`);
+  } catch {
+    // 이미 컬럼이 있으면 무시
+  }
 }
 
 // ============================================
@@ -907,6 +915,7 @@ export async function upsertReceiptMemo(data: {
   memo?: string;
   reservation_status?: ReservationStatus;
   reservation_date?: string;
+  is_completed?: boolean;
 }): Promise<number> {
   const now = getCurrentTimestamp();
 
@@ -920,6 +929,7 @@ export async function upsertReceiptMemo(data: {
     if (data.reservation_status !== undefined) parts.push(`reservation_status = ${escapeString(data.reservation_status)}`);
     if (data.reservation_date !== undefined) parts.push(`reservation_date = ${toSqlValue(data.reservation_date)}`);
     if (data.mssql_receipt_id !== undefined) parts.push(`mssql_receipt_id = ${data.mssql_receipt_id}`);
+    if (data.is_completed !== undefined) parts.push(`is_completed = ${data.is_completed ? 1 : 0}`);
     parts.push(`updated_at = ${escapeString(now)}`);
 
     await execute(`UPDATE cs_receipt_memos SET ${parts.join(', ')} WHERE id = ${existing.id}`);
@@ -929,15 +939,46 @@ export async function upsertReceiptMemo(data: {
     return insert(`
       INSERT INTO cs_receipt_memos (
         patient_id, chart_number, patient_name, mssql_receipt_id, receipt_date,
-        memo, reservation_status, reservation_date, created_at, updated_at
+        memo, reservation_status, reservation_date, is_completed, created_at, updated_at
       ) VALUES (
         ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
         ${data.mssql_receipt_id || 'NULL'}, ${escapeString(data.receipt_date)},
         ${toSqlValue(data.memo)}, ${escapeString(data.reservation_status || 'none')},
-        ${toSqlValue(data.reservation_date)}, ${escapeString(now)}, ${escapeString(now)}
+        ${toSqlValue(data.reservation_date)}, ${data.is_completed ? 1 : 0},
+        ${escapeString(now)}, ${escapeString(now)}
       )
     `);
   }
+}
+
+/**
+ * 수납 기록 완료 처리
+ */
+export async function markReceiptCompleted(
+  patientId: number,
+  receiptDate: string,
+  chartNumber?: string,
+  patientName?: string,
+  mssqlReceiptId?: number
+): Promise<void> {
+  await upsertReceiptMemo({
+    patient_id: patientId,
+    chart_number: chartNumber,
+    patient_name: patientName,
+    mssql_receipt_id: mssqlReceiptId,
+    receipt_date: receiptDate,
+    is_completed: true,
+  });
+}
+
+/**
+ * 날짜별 완료된 수납 메모 ID 목록 조회
+ */
+export async function getCompletedReceiptIds(date: string): Promise<Set<number>> {
+  const memos = await query<ReceiptMemo>(
+    `SELECT mssql_receipt_id FROM cs_receipt_memos WHERE receipt_date = ${escapeString(date)} AND is_completed = 1`
+  );
+  return new Set(memos.filter(m => m.mssql_receipt_id).map(m => m.mssql_receipt_id!));
 }
 
 export async function updateReservationStatus(

@@ -7,6 +7,8 @@ import {
   useTreatmentPackage,
   earnPoints,
   usePoints,
+  markReceiptCompleted,
+  getCompletedReceiptIds,
 } from '../lib/api';
 import {
   type TreatmentPackage,
@@ -17,6 +19,7 @@ import {
   type DocumentIssue,
   type ReceiptMemo,
   type ReservationStatus,
+  type ReceiptRecordFilter,
   RESERVATION_STATUS_LABELS,
   generateMemoSummary,
 } from '../types';
@@ -30,6 +33,30 @@ import { fetchDoctors, fetchReservationsByDateRange } from '../../reservation/li
 import type { Doctor, Reservation } from '../../reservation/types';
 // manage 모듈의 API 사용
 import { fetchReceiptHistory, type ReceiptHistoryItem } from '../../manage/lib/api';
+
+const MSSQL_API_BASE = 'http://192.168.0.173:3100';
+
+// 현장예약율 타입
+interface OnsiteReservationStats {
+  total_chim_patients: number;  // 총 침환자
+  reserved_count: number;       // 예약 환자
+  reservation_rate: number;     // 사전예약율
+  onsite_count: number;         // 현장예약
+  onsite_rate: number;          // 현장예약율
+}
+
+// 현장예약율 조회
+const fetchOnsiteReservationRate = async (date: string): Promise<OnsiteReservationStats | null> => {
+  try {
+    const res = await fetch(`${MSSQL_API_BASE}/api/stats/all?period=daily&date=${date}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.error || !data.total_stats?.reservations) return null;
+    return data.total_stats.reservations;
+  } catch {
+    return null;
+  }
+};
 
 interface ReceiptViewProps {
   user: PortalUser;
@@ -80,6 +107,8 @@ interface ExpandedReceiptItem extends ReceiptHistoryItem {
   isExpanded: boolean;
   isLoading: boolean;
   memoSummary: string;
+  // 기록 완료 여부
+  isCompleted: boolean;
 }
 
 // 금액 포맷
@@ -204,6 +233,9 @@ function ReceiptView({ user }: ReceiptViewProps) {
   const [receipts, setReceipts] = useState<ExpandedReceiptItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recordFilter, setRecordFilter] = useState<ReceiptRecordFilter>('all');
+  const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
+  const [onsiteStats, setOnsiteStats] = useState<OnsiteReservationStats | null>(null);
 
   // 예약 모달 상태
   const [showReservationModal, setShowReservationModal] = useState(false);
@@ -264,6 +296,14 @@ function ReceiptView({ user }: ReceiptViewProps) {
     setIsLoading(true);
     setError(null);
     try {
+      // 완료된 수납 ID 목록 조회 + 현장예약율 조회 병렬 처리
+      const [completedReceiptIds, onsiteData] = await Promise.all([
+        getCompletedReceiptIds(selectedDate),
+        fetchOnsiteReservationRate(selectedDate)
+      ]);
+      setCompletedIds(completedReceiptIds);
+      setOnsiteStats(onsiteData);
+
       const response = await fetchReceiptHistory(selectedDate);
       const mssqlReceipts = response.receipts || [];
 
@@ -284,6 +324,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
         isExpanded: false,
         isLoading: false,
         memoSummary: '',
+        isCompleted: completedReceiptIds.has(r.id),
       }));
 
       setReceipts(expandedReceipts);
@@ -554,6 +595,39 @@ function ReceiptView({ user }: ReceiptViewProps) {
     );
   };
 
+  // 기록 완료 처리
+  const handleMarkCompleted = async (receipt: ExpandedReceiptItem) => {
+    try {
+      await markReceiptCompleted(
+        receipt.patient_id,
+        selectedDate,
+        receipt.chart_no,
+        receipt.patient_name,
+        receipt.id
+      );
+      // 상태 업데이트
+      setReceipts(prev => prev.map(r =>
+        r.id === receipt.id ? { ...r, isCompleted: true } : r
+      ));
+      setCompletedIds(prev => new Set([...prev, receipt.id]));
+    } catch (err) {
+      console.error('기록 완료 처리 실패:', err);
+      alert('기록 완료 처리에 실패했습니다.');
+    }
+  };
+
+  // 필터링된 수납 목록
+  const filteredReceipts = receipts.filter(receipt => {
+    if (recordFilter === 'all') return true;
+    if (recordFilter === 'completed') return receipt.isCompleted;
+    if (recordFilter === 'incomplete') return !receipt.isCompleted;
+    return true;
+  });
+
+  // 필터 카운트
+  const completedCount = receipts.filter(r => r.isCompleted).length;
+  const incompleteCount = receipts.filter(r => !r.isCompleted).length;
+
   // 날짜 이동 버튼
   const changeDate = (days: number) => {
     const current = new Date(selectedDate);
@@ -583,12 +657,48 @@ function ReceiptView({ user }: ReceiptViewProps) {
         >
           오늘
         </button>
+
+        {/* 기록 상태 필터 */}
+        <div className="record-filter-group">
+          <button
+            className={`record-filter-btn ${recordFilter === 'all' ? 'active' : ''}`}
+            onClick={() => setRecordFilter('all')}
+          >
+            전체 <span className="filter-count">{receipts.length}</span>
+          </button>
+          <button
+            className={`record-filter-btn incomplete ${recordFilter === 'incomplete' ? 'active' : ''}`}
+            onClick={() => setRecordFilter('incomplete')}
+          >
+            미기록 <span className="filter-count">{incompleteCount}</span>
+          </button>
+          <button
+            className={`record-filter-btn completed ${recordFilter === 'completed' ? 'active' : ''}`}
+            onClick={() => setRecordFilter('completed')}
+          >
+            완료 <span className="filter-count">{completedCount}</span>
+          </button>
+        </div>
+
+        {/* 현장예약율 */}
+        {onsiteStats && (
+          <div className="onsite-rate-display">
+            <div className="onsite-rate-item">
+              <span className="onsite-label">현장예약율</span>
+              <span className="onsite-value">{onsiteStats.onsite_rate}%</span>
+              <span className="onsite-detail">({onsiteStats.onsite_count}/{onsiteStats.total_chim_patients})</span>
+            </div>
+            <div className="onsite-rate-divider"></div>
+            <div className="onsite-rate-item">
+              <span className="onsite-label">사전예약율</span>
+              <span className="onsite-value reserved">{onsiteStats.reservation_rate}%</span>
+            </div>
+          </div>
+        )}
+
         <button onClick={loadReceipts} className="refresh-btn">
           <i className="fa-solid fa-rotate-right"></i> 새로고침
         </button>
-        <span className="receipt-count">
-          총 {receipts.length}건
-        </span>
       </div>
 
       {/* 에러 메시지 */}
@@ -631,11 +741,11 @@ function ReceiptView({ user }: ReceiptViewProps) {
           </div>
 
           {/* 테이블 바디 */}
-          {receipts.map((receipt, index) => (
+          {filteredReceipts.map((receipt, index) => (
             <React.Fragment key={receipt.id}>
               {/* 메인 행 (클릭 시 확장) */}
               <div
-                className={`receipt-row ${receipt.isExpanded ? 'expanded' : ''}`}
+                className={`receipt-row ${receipt.isExpanded ? 'expanded' : ''} ${receipt.isCompleted ? 'completed' : ''}`}
                 onClick={() => toggleExpand(receipt.id)}
               >
                 <div className="col-num">{index + 1}</div>
@@ -674,7 +784,25 @@ function ReceiptView({ user }: ReceiptViewProps) {
                   <span className="memo-summary">{receipt.memoSummary || '-'}</span>
                 </div>
                 <div className="col-reservation" onClick={(e) => e.stopPropagation()}>
-                  {renderReservationStatus(receipt)}
+                  <div className="reservation-actions">
+                    {renderReservationStatus(receipt)}
+                    {receipt.isCompleted ? (
+                      <span className="complete-badge" title="기록 완료">
+                        <i className="fa-solid fa-check"></i>
+                      </span>
+                    ) : (
+                      <button
+                        className="complete-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMarkCompleted(receipt);
+                        }}
+                        title="기록 완료"
+                      >
+                        <i className="fa-solid fa-check"></i>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
