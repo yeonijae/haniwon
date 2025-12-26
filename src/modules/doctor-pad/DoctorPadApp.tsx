@@ -8,7 +8,7 @@
  * - 진행 중인 내 액팅 (시간 카운팅)
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import type { ActingQueueItem, DoctorStatus } from '@modules/acting/types';
@@ -28,6 +28,8 @@ import {
   fetchDailyTreatmentRecord,
 } from '@modules/manage/lib/treatmentApi';
 import type { PatientDefaultTreatments, DailyTreatmentRecord } from '@modules/manage/types';
+import { useAudioRecorder } from './hooks/useAudioRecorder';
+import { processRecording } from './services/transcriptionService';
 
 interface DoctorPadAppProps {
   user: PortalUser;
@@ -65,6 +67,7 @@ interface PatientChartModalProps {
   elapsedTime: number;
   startedAt: string | null;
   fontSize: number;
+  isRecording?: boolean;
   onClose: () => void;
   onStartActing: () => void;
   onCompleteActing: (treatmentItems: TreatmentItemSelection) => void;
@@ -85,6 +88,7 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
   elapsedTime,
   startedAt,
   fontSize,
+  isRecording = false,
   onClose,
   onStartActing,
   onCompleteActing,
@@ -166,13 +170,20 @@ const PatientChartModal: React.FC<PatientChartModalProps> = ({
         <div className="bg-white border-b-2 px-4 py-3">
           {isActingInProgress ? (
             <div className="space-y-2">
-              {/* 상단: 타이머 + 완료 버튼 */}
+              {/* 상단: 타이머 + 녹음표시 + 완료 버튼 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
                   <span className={`text-2xl font-mono font-bold ${elapsedTime > 180 ? 'text-red-600' : 'text-gray-800'}`}>
                     {formatTime(elapsedTime)}
                   </span>
+                  {/* 녹음 중 표시 */}
+                  {isRecording && (
+                    <span className="px-2 py-0.5 bg-red-100 text-red-600 text-sm font-medium rounded-full flex items-center gap-1">
+                      <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                      REC
+                    </span>
+                  )}
                 </div>
                 <button
                   onClick={handleComplete}
@@ -478,6 +489,11 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [elapsedTime, setElapsedTime] = useState(0);
 
+  // 녹음 관련
+  const audioRecorder = useAudioRecorder();
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [lastTranscript, setLastTranscript] = useState<string | null>(null);
+
   // 폰트 크기 상태 (localStorage에서 복원)
   const [fontSizeIndex, setFontSizeIndex] = useState(() => {
     const saved = localStorage.getItem('doctorPadFontSize');
@@ -643,6 +659,14 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
 
     try {
       await actingApi.startActing(selectedActing.id, doctor.id, doctor.fullName);
+
+      // 녹음 시작
+      const started = await audioRecorder.startRecording();
+      if (!started) {
+        console.warn('녹음 시작 실패:', audioRecorder.error);
+        // 녹음 실패해도 진료는 계속 진행
+      }
+
       // 모달을 닫지 않고 데이터만 새로고침 (모달에서 타이머 + 치료항목 표시)
       await loadData();
     } catch (error) {
@@ -656,10 +680,16 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
     if (!actingToComplete) return;
 
     try {
-      // 1. 액팅 완료 처리
+      // 1. 녹음 중지 및 변환 (비동기로 처리)
+      let audioBlob: Blob | null = null;
+      if (audioRecorder.isRecording) {
+        audioBlob = await audioRecorder.stopRecording();
+      }
+
+      // 2. 액팅 완료 처리
       await actingApi.completeActing(actingToComplete.id, doctor.id, doctor.fullName);
 
-      // 2. 치료 항목 저장 (선택된 항목이 있는 경우)
+      // 3. 치료 항목 저장 (선택된 항목이 있는 경우)
       if (treatmentItems && Object.keys(treatmentItems).length > 0) {
         const selectedItems: TreatmentItemSelection = Object.entries(treatmentItems)
           .filter(([_, value]) => value > 0)
@@ -680,7 +710,7 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
             durationSec: elapsedTime,
           });
 
-          // 3. 잔디 푸시 (선택된 항목이 있을 때만)
+          // 4. 잔디 푸시 (선택된 항목이 있을 때만)
           const itemsList = Object.entries(selectedItems)
             .map(([name, value]) => value > 1 ? `${name}(${value})` : name)
             .join(', ');
@@ -693,7 +723,32 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
         }
       }
 
-      // 4. 자침/침 완료 시 유침 자동 시작은 actingApi.completeActing 내부에서 처리됨
+      // 5. 녹음 파일이 있으면 백그라운드에서 녹취록 변환
+      if (audioBlob && audioBlob.size > 0) {
+        setIsTranscribing(true);
+        // 백그라운드에서 처리 (UI 블로킹 없이)
+        processRecording(audioBlob, {
+          actingId: actingToComplete.id,
+          patientId: actingToComplete.patientId,
+          doctorId: doctor.id,
+          doctorName: doctor.fullName,
+          actingType: actingToComplete.actingType,
+          saveAudio: false, // 오디오 파일은 저장하지 않음 (텍스트만)
+        }).then(result => {
+          setIsTranscribing(false);
+          if (result.success) {
+            setLastTranscript(result.transcript);
+            console.log('녹취록 저장 완료:', result.transcript.substring(0, 100) + '...');
+          } else {
+            console.error('녹취록 변환 실패:', result.error);
+          }
+        }).catch(err => {
+          setIsTranscribing(false);
+          console.error('녹취록 처리 오류:', err);
+        });
+      }
+
+      // 6. 자침/침 완료 시 유침 자동 시작은 actingApi.completeActing 내부에서 처리됨
 
       handleCloseModal();
       await loadData();
@@ -791,6 +846,12 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
         <section className="bg-white rounded-xl shadow p-4">
           <h2 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
             <span>⏱️</span> 진행 중인 액팅
+            {/* 녹취 변환 중 표시 */}
+            {isTranscribing && (
+              <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full animate-pulse">
+                녹취 변환중...
+              </span>
+            )}
           </h2>
           {currentActing ? (
             <div
@@ -800,9 +861,16 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                  {/* 녹음 중 표시 */}
+                  {audioRecorder.isRecording && (
+                    <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" title="녹음 중"></div>
+                  )}
                   <div>
                     <h3 className="font-bold text-xl text-gray-800">{currentActing.patientName}</h3>
-                    <p className="text-sm text-gray-500">{currentActing.actingType}</p>
+                    <p className="text-sm text-gray-500">
+                      {currentActing.actingType}
+                      {audioRecorder.isRecording && <span className="ml-2 text-red-500">● REC</span>}
+                    </p>
                   </div>
                 </div>
                 <div className="text-right">
@@ -842,6 +910,7 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
           elapsedTime={currentActing?.id === selectedActing.id ? elapsedTime : 0}
           startedAt={currentActing?.startedAt || null}
           fontSize={fontSize}
+          isRecording={audioRecorder.isRecording}
           onClose={handleCloseModal}
           onStartActing={handleStartActing}
           onCompleteActing={handleCompleteActing}
