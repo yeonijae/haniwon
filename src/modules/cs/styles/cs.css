@@ -32,6 +32,7 @@
   font-weight: 700;
 }
 
+/* 기존 메뉴 (하위 호환) */
 .cs-sidebar-nav {
   flex: 1;
   padding: 16px 0;
@@ -67,26 +68,258 @@
   font-size: 18px;
 }
 
+/* 컴팩트 메뉴 (대기환자 목록과 함께 사용) - 레거시 */
+.cs-sidebar-nav-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 10px 10px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cs-sidebar-item-compact {
+  flex: 0 0 calc(50% - 2px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  font-size: 12px;
+}
+
+.cs-sidebar-item-compact:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.cs-sidebar-item-compact.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-weight: 600;
+}
+
+.cs-sidebar-item-compact .cs-sidebar-icon {
+  font-size: 14px;
+}
+
+.cs-sidebar-item-compact .cs-sidebar-label {
+  font-size: 12px;
+}
+
+/* 1열 세로 메뉴 (아이콘 + 큰 폰트) */
+.cs-sidebar-nav-vertical {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cs-sidebar-item-vertical {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.cs-sidebar-item-vertical:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.cs-sidebar-item-vertical.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.cs-sidebar-item-vertical .cs-menu-icon {
+  font-size: 18px;
+}
+
+.cs-sidebar-item-vertical .cs-menu-label {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.cs-sidebar-item-vertical.active .cs-menu-label {
+  font-weight: 700;
+}
+
+/* 대기환자 섹션 */
+.cs-waiting-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cs-waiting-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.cs-waiting-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cs-waiting-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cs-waiting-status {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.cs-waiting-status.connected {
+  color: #4ade80;
+}
+
+.cs-waiting-list {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cs-waiting-empty {
+  padding: 20px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.cs-waiting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cs-waiting-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cs-waiting-item.long {
+  background: rgba(251, 146, 60, 0.15);
+  border-left: 3px solid #fb923c;
+}
+
+.cs-waiting-item.very-long {
+  background: rgba(248, 113, 113, 0.15);
+  border-left: 3px solid #f87171;
+}
+
+.cs-waiting-patient {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cs-waiting-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: white;
+}
+
+.cs-waiting-info {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cs-waiting-time {
+  margin-left: auto;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cs-waiting-time.long {
+  color: #fb923c;
+  font-weight: 600;
+}
+
+.cs-waiting-time.very-long {
+  color: #f87171;
+  font-weight: 700;
+}
+
+.cs-waiting-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.cs-waiting-doctor {
+  font-size: 12px;
+  color: #93c5fd;
+  font-weight: 500;
+}
+
+.cs-waiting-status-text {
+  font-size: 12px;
+  color: #fbbf24;
+  font-weight: 500;
+}
+
 .cs-sidebar-footer {
-  padding: 16px;
+  padding: 10px 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
 }
 
 .cs-sidebar-user {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  font-size: 14px;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
 }
 
 .cs-sidebar-close {
   width: 100%;
-  padding: 10px;
+  padding: 8px;
   background: rgba(255, 255, 255, 0.1);
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   color: white;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -3303,4 +3536,77 @@
 .btn-save:disabled {
   background: #6ee7b7;
   cursor: not-allowed;
+}
+
+/* ============================================ */
+/* 상담 등록 모달                               */
+/* ============================================ */
+
+.consultation-modal {
+  min-width: 400px;
+  max-width: 480px;
+}
+
+.consultation-modal .patient-gender {
+  margin-left: auto;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.consultation-type-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.consultation-type-btn {
+  flex: 1;
+  min-width: 100px;
+  padding: 10px 16px;
+  background: #f3f4f6;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.consultation-type-btn:hover {
+  background: #e5e7eb;
+}
+
+.consultation-type-btn.active {
+  background: #dbeafe;
+  border-color: #3b82f6;
+  color: #1e40af;
+  font-weight: 500;
+}
+
+.doctor-select-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.doctor-select-btn {
+  padding: 12px 16px;
+  background: #f3f4f6;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.doctor-select-btn:hover {
+  background: #e5e7eb;
+}
+
+.doctor-select-btn.active {
+  background: #dbeafe;
+  border-color: #3b82f6;
+  color: #1e40af;
 }
