@@ -47,15 +47,37 @@ function TreatmentApp({ user }: TreatmentAppProps) {
       const queueItems = await api.fetchWaitingQueue('treatment');
       const patientsWithDetails = await Promise.all(
         queueItems.map(async (item) => {
+          // SQLite patients 테이블에서 조회 시도
           const patient = await api.fetchPatientById(item.patient_id);
+
+          // 시간 계산: mssql_intotime 우선, 없으면 created_at
+          const timeSource = item.mssql_intotime || item.created_at;
+          const time = timeSource
+            ? new Date(timeSource).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+            : '';
+
           if (patient) {
+            // SQLite에 환자 정보가 있으면 사용
             const defaultTreatments = await api.fetchPatientDefaultTreatments(item.patient_id);
             return {
               ...patient,
               details: item.details,
-              time: item.created_at ? new Date(item.created_at + 'Z').toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+              time,
               defaultTreatments,
               doctor: item.doctor,
+            };
+          } else if (item.patient_name) {
+            // MSSQL 동기화 데이터 사용 (SQLite에 환자 없는 경우)
+            return {
+              id: item.patient_id,
+              name: item.patient_name,
+              chartNumber: item.chart_number,
+              time,
+              status: 'waiting' as const,
+              details: item.details,
+              gender: item.sex === 'M' ? 'male' : item.sex === 'F' ? 'female' : undefined,
+              doctor: item.doctor,
+              defaultTreatments: [],
             };
           }
           return null;

@@ -416,6 +416,12 @@ export interface WaitingQueueItem {
   position: number;
   created_at?: string;
   doctor?: string;
+  // MSSQL 동기화 필드
+  patient_name?: string;
+  chart_number?: string;
+  age?: number;
+  sex?: string;
+  mssql_intotime?: string;
 }
 
 // 대기 목록 조회
