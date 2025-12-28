@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { DayView } from '../../reservation/components/DayView';
 import { CalendarHeader } from '../../reservation/components/CalendarHeader';
 import type { ReservationDraft } from '../../reservation/components/ReservationStep1Modal';
@@ -86,6 +87,9 @@ export const QuickReservationModal: React.FC<QuickReservationModalProps> = ({
   const [selectedDoctor, setSelectedDoctor] = useState<string>('');
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
+
+  // ESC 키로 모달 닫기
+  useEscapeKey(onClose, isOpen);
 
   // Draft 생성
   const reservationDraft: ReservationDraft | null = useMemo(() => {

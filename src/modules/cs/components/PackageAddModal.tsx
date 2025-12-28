@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { createTreatmentPackage, updateTreatmentPackage, deleteTreatmentPackage } from '../lib/api';
 import type { TreatmentPackage } from '../types';
 
@@ -41,6 +42,9 @@ export function PackageAddModal({
   const [expireDate, setExpireDate] = useState('');
   const [memo, setMemo] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ESC 키로 모달 닫기
+  useEscapeKey(onClose, isOpen);
 
   // 수정 모드일 때 데이터 로드
   useEffect(() => {

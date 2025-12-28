@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import type { PortalUser } from '@shared/types';
 import type { HerbalPackage, HerbalPackageRound, DeliveryMethod, RoundStatus } from '../types';
 import { DELIVERY_METHOD_LABELS, ROUND_STATUS_LABELS, ROUND_STATUS_COLORS, PACKAGE_TYPE_LABELS } from '../types';
@@ -351,6 +352,9 @@ function AddPackageModal({ onClose, onSuccess }: AddPackageModalProps) {
   });
   const [saving, setSaving] = useState(false);
 
+  // ESC 키로 모달 닫기
+  useEscapeKey(onClose);
+
   // 패키지 타입에 따른 기본 회차 설정
   const packageTypeDefaults: Record<string, number> = {
     '1month': 1,
@@ -518,6 +522,9 @@ function EditRoundModal({ round, onClose, onSuccess }: EditRoundModalProps) {
     memo: round.memo || '',
   });
   const [saving, setSaving] = useState(false);
+
+  // ESC 키로 모달 닫기
+  useEscapeKey(onClose);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import type { PortalUser } from '@shared/types';
 import { query, execute, escapeString } from '@shared/lib/sqlite';
 
@@ -366,6 +367,9 @@ function AddUsageModal({ program, onClose, onSuccess }: AddUsageModalProps) {
   const [saving, setSaving] = useState(false);
 
   const remainingCount = program.unit_count - program.used_count;
+
+  // ESC 키로 모달 닫기
+  useEscapeKey(onClose);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

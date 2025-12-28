@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { query, insert, execute, escapeString } from '@shared/lib/sqlite';
 import { ConsultationPatient } from './CSSidebar';
 
@@ -78,6 +79,9 @@ function PatientProgramModal({ patient, onClose, onSuccess }: PatientProgramModa
   const [usageDate, setUsageDate] = useState(new Date().toISOString().split('T')[0]);
   const [usageCount, setUsageCount] = useState(1);
   const [usageMemo, setUsageMemo] = useState('');
+
+  // ESC 키로 모달 닫기
+  useEscapeKey(onClose);
 
   // 환자의 프로그램 목록 조회
   const loadPrograms = useCallback(async () => {

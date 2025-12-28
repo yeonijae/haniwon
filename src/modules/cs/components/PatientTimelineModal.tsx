@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { query, execute, escapeString } from '@shared/lib/sqlite';
 import { EVENT_TYPES, EventTypeCode } from './NonCoveredManagementView';
 import type { ConsultationPatient } from './CSSidebar';
@@ -86,6 +87,9 @@ function PatientTimelineModal({ patient, onClose }: PatientTimelineModalProps) {
   });
 
   const [saving, setSaving] = useState(false);
+
+  // ESC 키로 모달 닫기
+  useEscapeKey(onClose);
 
   // 환자 ID 가져오기 (SQLite)
   const getPatientId = useCallback(async (): Promise<number | null> => {

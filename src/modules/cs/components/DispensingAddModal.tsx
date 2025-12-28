@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import {
   createHerbalDispensing,
   updateHerbalDispensing,
@@ -89,6 +90,9 @@ export function DispensingAddModal({
   const [giftReason, setGiftReason] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ESC 키로 모달 닫기
+  useEscapeKey(onClose, isOpen);
 
   // 수정 모드일 때 데이터 로드
   useEffect(() => {

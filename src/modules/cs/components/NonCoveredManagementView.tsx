@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import type { PortalUser } from '@shared/types';
 import { query, execute, escapeString } from '@shared/lib/sqlite';
 
@@ -287,6 +288,9 @@ function AddEventModal({ user, patient, onClose, onSuccess }: AddEventModalProps
   const [searchResults, setSearchResults] = useState<{ id: number; name: string; chart_number: string }[]>([]);
   const [patientSearch, setPatientSearch] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // ESC 키로 모달 닫기
+  useEscapeKey(onClose);
 
   // 환자 검색
   const searchPatients = useCallback(async (term: string) => {

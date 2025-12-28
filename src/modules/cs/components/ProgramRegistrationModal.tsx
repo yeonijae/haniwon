@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { query, insert, escapeString } from '@shared/lib/sqlite';
 import { ConsultationPatient } from './CSSidebar';
 
@@ -46,6 +47,9 @@ function ProgramRegistrationModal({ patient, onClose, onSuccess }: ProgramRegist
   const [selectedGrade, setSelectedGrade] = useState<ProgramGrade | null>(null);
   const [selectedAddons, setSelectedAddons] = useState<ProgramAddon[]>([]);
   const [memo, setMemo] = useState('');
+
+  // ESC 키로 모달 닫기
+  useEscapeKey(onClose);
 
   // 필터된 등급/추가옵션
   const filteredGrades = selectedCategory

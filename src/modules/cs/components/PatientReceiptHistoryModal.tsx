@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import {
   fetchPatientReceiptHistory,
   type PatientReceiptHistoryResponse,
@@ -220,6 +221,9 @@ export function PatientReceiptHistoryModal({
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // ESC 키로 모달 닫기
+  useEscapeKey(onClose, isOpen);
 
   // 기간 변경 시 페이지 리셋
   const handlePeriodChange = (newPeriod: PeriodFilter) => {
