@@ -2540,18 +2540,18 @@
   color: #2563eb;
 }
 
-/* 모달 오버레이 */
+/* 모달 오버레이 - 헤더/사이드바 안쪽 영역만 */
 .patient-history-modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
+  top: 56px;    /* 헤더 높이 */
+  left: 220px;  /* 사이드바 너비 */
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.3);
   z-index: 1000;
 }
 
-/* 모달 본체 - 전체화면 */
+/* 모달 본체 - 콘텐츠 영역 내 전체 */
 .patient-history-modal {
   position: absolute;
   top: 0;
