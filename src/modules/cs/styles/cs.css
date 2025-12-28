@@ -4552,3 +4552,738 @@
   outline: none;
   border-color: #3b82f6;
 }
+
+/* ===== 프로그램 관리 뷰 (ProgramManagementView) ===== */
+.program-management {
+  padding: 20px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.program-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.program-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.program-header-left h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.program-count {
+  background: #e0e7ff;
+  color: #4338ca;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.program-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.program-search {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  width: 200px;
+}
+
+.program-search:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.program-filter-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.program-refresh-btn {
+  padding: 8px 12px;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #374151;
+}
+
+.program-refresh-btn:hover {
+  background: #e5e7eb;
+}
+
+.program-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.program-loading,
+.program-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #9ca3af;
+  gap: 12px;
+}
+
+.program-empty i {
+  font-size: 48px;
+}
+
+.program-card {
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.program-card.completed {
+  opacity: 0.7;
+  background: #f9fafb;
+}
+
+.program-card-header {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  gap: 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.program-card-header:hover {
+  background: #f9fafb;
+}
+
+.program-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.program-patient {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.program-patient-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.program-chart-no {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.program-category {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.program-category-icon {
+  font-size: 16px;
+}
+
+.program-category-name {
+  font-size: 14px;
+  color: #4b5563;
+}
+
+.program-grade {
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.program-card-meta {
+  width: 150px;
+}
+
+.program-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.program-progress-bar {
+  flex: 1;
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.program-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981, #34d399);
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.program-progress-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.program-card-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 100px;
+}
+
+.program-date-item {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.program-date-label {
+  color: #9ca3af;
+}
+
+.program-date-value {
+  color: #4b5563;
+  font-weight: 500;
+}
+
+.program-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.program-action-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.program-action-btn.use {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.program-action-btn.use:hover {
+  background: #bfdbfe;
+}
+
+.program-action-btn.complete {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.program-action-btn.complete:hover {
+  background: #a7f3d0;
+}
+
+.program-expand-btn {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.program-card-detail {
+  padding: 0 16px 16px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.program-addons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  flex-wrap: wrap;
+}
+
+.program-addons-label {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.program-addon-badge {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.program-memo {
+  padding: 10px 12px;
+  background: #fffbeb;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #92400e;
+  margin-bottom: 12px;
+}
+
+.program-usage-section {
+  margin-top: 12px;
+}
+
+.program-usage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.program-add-usage-btn {
+  padding: 6px 12px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.program-add-usage-btn:hover {
+  background: #2563eb;
+}
+
+.program-usage-list {
+  background: #f9fafb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.program-usage-empty {
+  padding: 20px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.program-usage-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 13px;
+}
+
+.program-usage-item:last-child {
+  border-bottom: none;
+}
+
+.usage-date {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.usage-count {
+  color: #059669;
+  font-weight: 600;
+}
+
+.usage-doctor {
+  color: #6b7280;
+}
+
+.usage-memo {
+  color: #9ca3af;
+  flex: 1;
+  text-align: right;
+}
+
+/* 사용 기록 추가 모달 */
+.program-usage-modal .patient-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.program-usage-modal .program-info {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.program-usage-modal .remaining {
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+/* ===== 환자별 프로그램 관리 모달 (PatientProgramModal) ===== */
+.patient-program-modal {
+  width: 600px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.patient-program-modal .modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+/* 목록 뷰 */
+.program-list-view {
+  min-height: 200px;
+}
+
+.program-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #4b5563;
+}
+
+.btn-add-program {
+  padding: 8px 14px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-add-program:hover {
+  background: #2563eb;
+}
+
+.loading-text,
+.empty-text {
+  text-align: center;
+  padding: 40px;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.program-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.program-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+}
+
+.program-item.completed {
+  opacity: 0.6;
+  background: #f3f4f6;
+}
+
+.program-item-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.program-item-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.program-item-info .program-icon {
+  font-size: 18px;
+}
+
+.program-item-info .program-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.program-grade-badge {
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.program-addons-count {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.program-item-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.program-item-progress .progress-bar {
+  width: 100px;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.program-item-progress .progress-fill {
+  height: 100%;
+  background: #10b981;
+  border-radius: 3px;
+}
+
+.program-item-progress .progress-text {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.program-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.program-item-actions .btn-usage,
+.program-item-actions .btn-complete {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.program-item-actions .btn-usage {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.program-item-actions .btn-usage:hover {
+  background: #bfdbfe;
+}
+
+.program-item-actions .btn-complete {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.program-item-actions .btn-complete:hover {
+  background: #a7f3d0;
+}
+
+.program-item-actions .status-badge.completed {
+  background: #d1d5db;
+  color: #6b7280;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* 등록 뷰 (program-add-view) - 기존 스타일 재사용 */
+
+/* 사용 기록 뷰 */
+.program-usage-view {
+  min-height: 200px;
+}
+
+.usage-program-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.usage-program-info .program-icon {
+  font-size: 20px;
+}
+
+.usage-program-info .program-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.usage-program-info .program-remaining {
+  margin-left: auto;
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.usage-add-form {
+  background: #f9fafb;
+  padding: 16px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+.usage-add-form .form-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.usage-add-form .form-group {
+  flex: 1;
+}
+
+.usage-add-form .form-group label {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.usage-add-form .form-group input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.usage-add-form .form-group input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.btn-add-usage {
+  width: 100%;
+  padding: 10px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.btn-add-usage:hover {
+  background: #059669;
+}
+
+.btn-add-usage:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.usage-records h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 10px;
+}
+
+.usage-records-list {
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.usage-record-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 13px;
+}
+
+.usage-record-item:last-child {
+  border-bottom: none;
+}
+
+.usage-record-item .usage-date {
+  font-weight: 600;
+  color: #1f2937;
+  min-width: 90px;
+}
+
+.usage-record-item .usage-count {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.usage-record-item .usage-doctor {
+  color: #6b7280;
+}
+
+.usage-record-item .usage-memo {
+  color: #9ca3af;
+  flex: 1;
+  text-align: right;
+}

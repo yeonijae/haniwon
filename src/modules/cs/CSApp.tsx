@@ -12,9 +12,9 @@ import ReservationView from './components/ReservationView';
 import ReceiptView from './components/ReceiptView';
 import InquiryView from './components/InquiryView';
 import PatientSearchView from './components/PatientSearchView';
-import PrepaidManagementView from './components/PrepaidManagementView';
+import ProgramManagementView from './components/ProgramManagementView';
 import TreatmentProgramAdmin from './components/TreatmentProgramAdmin';
-import ProgramRegistrationModal from './components/ProgramRegistrationModal';
+import PatientProgramModal from './components/PatientProgramModal';
 import './styles/cs.css';
 
 const MSSQL_API_URL = 'http://192.168.0.173:3100';
@@ -58,15 +58,15 @@ interface CSAppProps {
   user: PortalUser;
 }
 
-export type CSMenuType = 'reservation' | 'receipt' | 'inquiry' | 'search' | 'prepaid' | 'program';
+export type CSMenuType = 'reservation' | 'receipt' | 'inquiry' | 'search' | 'program' | 'settings';
 
 const MENU_TITLES: Record<CSMenuType, string> = {
   reservation: '예약관리',
   receipt: '수납관리',
   inquiry: '문의접수',
   search: '환자검색',
-  prepaid: '선결관리',
-  program: '프로그램설정',
+  program: '프로그램관리',
+  settings: '프로그램설정',
 };
 
 interface MenuItem {
@@ -78,10 +78,10 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   { id: 'reservation', icon: '📅', label: '예약' },
   { id: 'receipt', icon: '💰', label: '수납' },
-  { id: 'prepaid', icon: '💊', label: '선결' },
+  { id: 'program', icon: '💊', label: '프로그램' },
   { id: 'inquiry', icon: '📝', label: '문의' },
   { id: 'search', icon: '🔍', label: '검색' },
-  { id: 'program', icon: '⚙️', label: '설정' },
+  { id: 'settings', icon: '⚙️', label: '설정' },
 ];
 
 function CSApp({ user }: CSAppProps) {
@@ -288,9 +288,9 @@ function CSApp({ user }: CSAppProps) {
         return <InquiryView user={user} />;
       case 'search':
         return <PatientSearchView user={user} />;
-      case 'prepaid':
-        return <PrepaidManagementView user={user} />;
       case 'program':
+        return <ProgramManagementView user={user} />;
+      case 'settings':
         return <TreatmentProgramAdmin />;
       default:
         return null;
@@ -367,30 +367,34 @@ function CSApp({ user }: CSAppProps) {
           style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* 액팅이 없는 경우: 액팅 배정 */}
-          {!contextPatient.hasActing && (
-            <button className="cs-context-menu-item" onClick={handleContextAssignActing}>
-              <span className="cs-context-icon">👨‍⚕️</span>
-              <span>액팅 배정</span>
-            </button>
-          )}
-          {/* 액팅이 있는 경우: 수정/취소 */}
-          {contextPatient.hasActing && (
+          {/* 상담대기 (waiting/pending): 액팅 관련 메뉴 */}
+          {(contextPatient.consultationStatus === 'waiting' || contextPatient.consultationStatus === 'pending') && (
             <>
-              <button className="cs-context-menu-item" onClick={handleContextEditActing}>
-                <span className="cs-context-icon">✏️</span>
-                <span>액팅 수정</span>
-              </button>
-              <button className="cs-context-menu-item cs-context-danger" onClick={handleContextCancelActing}>
-                <span className="cs-context-icon">🗑️</span>
-                <span>액팅 취소</span>
-              </button>
+              {!contextPatient.hasActing && (
+                <button className="cs-context-menu-item" onClick={handleContextAssignActing}>
+                  <span className="cs-context-icon">👨‍⚕️</span>
+                  <span>액팅 배정</span>
+                </button>
+              )}
+              {contextPatient.hasActing && (
+                <>
+                  <button className="cs-context-menu-item" onClick={handleContextEditActing}>
+                    <span className="cs-context-icon">✏️</span>
+                    <span>액팅 수정</span>
+                  </button>
+                  <button className="cs-context-menu-item cs-context-danger" onClick={handleContextCancelActing}>
+                    <span className="cs-context-icon">🗑️</span>
+                    <span>액팅 취소</span>
+                  </button>
+                </>
+              )}
             </>
           )}
-          {contextPatient.consultationStatus === 'completed' && (
+          {/* 상담완료 (in_progress/completed): 프로그램 관리만 */}
+          {(contextPatient.consultationStatus === 'in_progress' || contextPatient.consultationStatus === 'completed') && (
             <button className="cs-context-menu-item" onClick={handleContextRegisterProgram}>
               <span className="cs-context-icon">💊</span>
-              <span>프로그램 등록</span>
+              <span>프로그램 관리</span>
             </button>
           )}
           <button className="cs-context-menu-item" onClick={closeContextMenu}>
@@ -472,9 +476,9 @@ function CSApp({ user }: CSAppProps) {
         </div>
       )}
 
-      {/* 프로그램 등록 모달 */}
+      {/* 프로그램 관리 모달 */}
       {showProgramModal && programModalPatient && (
-        <ProgramRegistrationModal
+        <PatientProgramModal
           patient={programModalPatient}
           onClose={closeProgramModal}
         />
