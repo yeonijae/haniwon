@@ -62,6 +62,20 @@ const MENU_TITLES: Record<CSMenuType, string> = {
   prepaid: '선결관리',
 };
 
+interface MenuItem {
+  id: CSMenuType;
+  icon: string;
+  label: string;
+}
+
+const MENU_ITEMS: MenuItem[] = [
+  { id: 'reservation', icon: '📅', label: '예약' },
+  { id: 'receipt', icon: '💰', label: '수납' },
+  { id: 'prepaid', icon: '💊', label: '선결' },
+  { id: 'inquiry', icon: '📝', label: '문의' },
+  { id: 'search', icon: '🔍', label: '검색' },
+];
+
 function CSApp({ user }: CSAppProps) {
   const [activeMenu, setActiveMenu] = useState<CSMenuType>('reservation');
   const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('cs');
@@ -140,11 +154,13 @@ function CSApp({ user }: CSAppProps) {
       `);
 
       // 3. 액팅 등록
+      // doctor.id가 "doctor_1" 형태이므로 숫자만 추출
+      const doctorIdNum = parseInt(selectedDoctor.id.replace('doctor_', ''), 10);
       await addActing({
         patientId,
         patientName: selectedPatient.patient_name,
         chartNo,
-        doctorId: parseInt(selectedDoctor.id, 10),
+        doctorId: doctorIdNum,
         doctorName: selectedDoctor.name,
         actingType,
         source: 'cs_consultation',
@@ -188,17 +204,26 @@ function CSApp({ user }: CSAppProps) {
   }
 
   return (
-    <div className="cs-app">
-      <CSSidebar
-        activeMenu={activeMenu}
-        onMenuChange={setActiveMenu}
-        userName={user.name}
-        onClose={handleClose}
-        onPatientClick={handlePatientClick}
-      />
-      <div className="cs-main">
-        <header className="cs-header">
-          <h1 className="cs-header-title">{MENU_TITLES[activeMenu]}</h1>
+    <div className="cs-app-new">
+      {/* 상단 헤더 (메뉴 포함) */}
+      <header className="cs-top-header">
+        <div className="cs-top-header-left">
+          <span className="cs-logo">🎧</span>
+          <span className="cs-title">데스크</span>
+        </div>
+        <nav className="cs-top-nav">
+          {MENU_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              className={`cs-top-nav-item ${activeMenu === item.id ? 'active' : ''}`}
+              onClick={() => setActiveMenu(item.id)}
+            >
+              <span className="cs-top-nav-icon">{item.icon}</span>
+              <span className="cs-top-nav-label">{item.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="cs-top-header-right">
           <div className="font-scale-controls">
             <button
               className="font-scale-btn"
@@ -220,9 +245,21 @@ function CSApp({ user }: CSAppProps) {
               <i className="fa-solid fa-plus"></i>
             </button>
           </div>
-        </header>
-        <div className="cs-content" style={{ zoom: scale }}>
-          {renderContent()}
+          <span className="cs-user-info">👤 {user.name}</span>
+          <button className="cs-close-btn" onClick={handleClose}>✕</button>
+        </div>
+      </header>
+
+      {/* 메인 영역 (대기환자 패널 + 콘텐츠) */}
+      <div className="cs-body">
+        {/* 왼쪽: 대기환자 패널 */}
+        <CSSidebar onPatientClick={handlePatientClick} />
+
+        {/* 오른쪽: 콘텐츠 */}
+        <div className="cs-main-new">
+          <div className="cs-content" style={{ zoom: scale }}>
+            {renderContent()}
+          </div>
         </div>
       </div>
 
