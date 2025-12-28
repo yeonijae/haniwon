@@ -1209,6 +1209,156 @@
   background: #e5e7eb;
 }
 
+/* 환자 검색 */
+.receipt-search-container {
+  position: relative;
+  margin-left: auto;
+  margin-right: 12px;
+}
+
+.receipt-search-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 6px 12px;
+  transition: all 0.2s;
+}
+
+.receipt-search-input-wrapper:focus-within {
+  background: white;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.receipt-search-input-wrapper i {
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.receipt-search-input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+  width: 140px;
+  color: #1f2937;
+}
+
+.receipt-search-input::placeholder {
+  color: #9ca3af;
+}
+
+.receipt-search-input-wrapper .search-loading {
+  color: #3b82f6;
+}
+
+.search-clear-btn {
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.search-clear-btn:hover {
+  color: #6b7280;
+}
+
+.receipt-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-height: 320px;
+  overflow-y: auto;
+  min-width: 280px;
+}
+
+.receipt-search-result-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid #f3f4f6;
+  transition: background 0.15s;
+}
+
+.receipt-search-result-item:last-child {
+  border-bottom: none;
+}
+
+.receipt-search-result-item:hover {
+  background: #f0f9ff;
+}
+
+.search-result-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.search-result-name {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.search-result-chart {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.search-result-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.search-result-meta span {
+  display: flex;
+  align-items: center;
+}
+
+.search-result-footer {
+  padding: 8px 14px;
+  background: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+}
+
+.search-no-results {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #9ca3af;
+}
+
+.search-no-results i {
+  font-size: 24px;
+}
+
+.search-no-results span {
+  font-size: 13px;
+}
+
 /* 기록 상태 필터 */
 .record-filter-group {
   display: flex;

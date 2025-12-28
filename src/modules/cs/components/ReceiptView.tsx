@@ -36,6 +36,30 @@ import { fetchReceiptHistory, type ReceiptHistoryItem } from '../../manage/lib/a
 
 const MSSQL_API_BASE = 'http://192.168.0.173:3100';
 
+// 환자 검색 결과 타입
+interface PatientSearchResult {
+  id: number;
+  chart_no: string;
+  name: string;
+  birth: string | null;
+  sex: 'M' | 'F';
+  phone: string | null;
+  last_visit: string | null;
+}
+
+// 환자 검색 API
+const searchPatients = async (query: string): Promise<PatientSearchResult[]> => {
+  try {
+    const res = await fetch(`${MSSQL_API_BASE}/api/patients/search?q=${encodeURIComponent(query)}&limit=10`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (data.error) return [];
+    return data;
+  } catch {
+    return [];
+  }
+};
+
 // 현장예약율 타입
 interface OnsiteReservationStats {
   total_chim_patients: number;  // 총 침환자
@@ -262,6 +286,55 @@ function ReceiptView({ user }: ReceiptViewProps) {
     patientName: string;
     chartNo: string;
   } | null>(null);
+
+  // 환자 검색 상태
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<PatientSearchResult[]>([]);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // 디바운스 검색
+  useEffect(() => {
+    if (searchTerm.length < 2) {
+      setSearchResults([]);
+      setShowSearchDropdown(false);
+      return;
+    }
+
+    setIsSearching(true);
+    const timer = setTimeout(async () => {
+      const results = await searchPatients(searchTerm);
+      setSearchResults(results);
+      setShowSearchDropdown(true);
+      setIsSearching(false);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // 검색 결과 클릭 → 수납이력 모달 열기
+  const handleSearchResultClick = (patient: PatientSearchResult) => {
+    setHistoryPatient({
+      patientId: patient.id,
+      patientName: patient.name,
+      chartNo: patient.chart_no,
+    });
+    setShowHistoryModal(true);
+    setShowSearchDropdown(false);
+    setSearchTerm('');
+  };
+
+  // 검색 드롭다운 외부 클릭 시 닫기
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.receipt-search-container')) {
+        setShowSearchDropdown(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   // 환자 클릭 시 이력 모달 열기
   const handlePatientClick = (receipt: ExpandedReceiptItem, e: React.MouseEvent) => {
@@ -695,6 +768,70 @@ function ReceiptView({ user }: ReceiptViewProps) {
             </div>
           </div>
         )}
+
+        {/* 환자 검색 */}
+        <div className="receipt-search-container">
+          <div className="receipt-search-input-wrapper">
+            <i className="fa-solid fa-magnifying-glass"></i>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="환자검색"
+              className="receipt-search-input"
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setSearchTerm('');
+                  setShowSearchDropdown(false);
+                }
+              }}
+            />
+            {isSearching && <i className="fa-solid fa-spinner fa-spin search-loading"></i>}
+            {searchTerm && !isSearching && (
+              <button
+                className="search-clear-btn"
+                onClick={() => {
+                  setSearchTerm('');
+                  setShowSearchDropdown(false);
+                }}
+              >
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            )}
+          </div>
+          {showSearchDropdown && searchResults.length > 0 && (
+            <div className="receipt-search-dropdown">
+              {searchResults.map((patient) => (
+                <div
+                  key={patient.id}
+                  className="receipt-search-result-item"
+                  onClick={() => handleSearchResultClick(patient)}
+                >
+                  <div className="search-result-main">
+                    <span className="search-result-name">{patient.name}</span>
+                    <span className="search-result-chart">({patient.chart_no.replace(/^0+/, '')})</span>
+                  </div>
+                  <div className="search-result-meta">
+                    {patient.birth && <span>{patient.birth.slice(2, 10).replace(/-/g, '.')}</span>}
+                    <span>{patient.sex === 'M' ? '남' : '여'}</span>
+                    {patient.last_visit && <span>최근 {patient.last_visit.slice(5).replace('-', '/')}</span>}
+                  </div>
+                </div>
+              ))}
+              <div className="search-result-footer">
+                {searchResults.length}건 검색됨
+              </div>
+            </div>
+          )}
+          {showSearchDropdown && searchTerm.length >= 2 && searchResults.length === 0 && !isSearching && (
+            <div className="receipt-search-dropdown">
+              <div className="search-no-results">
+                <i className="fa-solid fa-user-slash"></i>
+                <span>검색 결과 없음</span>
+              </div>
+            </div>
+          )}
+        </div>
 
         <button onClick={loadReceipts} className="refresh-btn">
           <i className="fa-solid fa-rotate-right"></i> 새로고침
