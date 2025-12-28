@@ -12,9 +12,9 @@ import ReservationView from './components/ReservationView';
 import ReceiptView from './components/ReceiptView';
 import InquiryView from './components/InquiryView';
 import PatientSearchView from './components/PatientSearchView';
-import ProgramManagementView from './components/ProgramManagementView';
+import NonCoveredManagementView from './components/NonCoveredManagementView';
 import TreatmentProgramAdmin from './components/TreatmentProgramAdmin';
-import PatientProgramModal from './components/PatientProgramModal';
+import PatientTimelineModal from './components/PatientTimelineModal';
 import './styles/cs.css';
 
 const MSSQL_API_URL = 'http://192.168.0.173:3100';
@@ -58,14 +58,14 @@ interface CSAppProps {
   user: PortalUser;
 }
 
-export type CSMenuType = 'reservation' | 'receipt' | 'inquiry' | 'search' | 'program' | 'settings';
+export type CSMenuType = 'reservation' | 'receipt' | 'inquiry' | 'search' | 'noncovered' | 'settings';
 
 const MENU_TITLES: Record<CSMenuType, string> = {
   reservation: '예약관리',
   receipt: '수납관리',
   inquiry: '문의접수',
   search: '환자검색',
-  program: '프로그램관리',
+  noncovered: '비급여관리',
   settings: '프로그램설정',
 };
 
@@ -78,7 +78,7 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   { id: 'reservation', icon: '📅', label: '예약' },
   { id: 'receipt', icon: '💰', label: '수납' },
-  { id: 'program', icon: '💊', label: '프로그램' },
+  { id: 'noncovered', icon: '💊', label: '비급여' },
   { id: 'inquiry', icon: '📝', label: '문의' },
   { id: 'search', icon: '🔍', label: '검색' },
   { id: 'settings', icon: '⚙️', label: '설정' },
@@ -288,8 +288,8 @@ function CSApp({ user }: CSAppProps) {
         return <InquiryView user={user} />;
       case 'search':
         return <PatientSearchView user={user} />;
-      case 'program':
-        return <ProgramManagementView user={user} />;
+      case 'noncovered':
+        return <NonCoveredManagementView user={user} />;
       case 'settings':
         return <TreatmentProgramAdmin />;
       default:
@@ -390,11 +390,11 @@ function CSApp({ user }: CSAppProps) {
               )}
             </>
           )}
-          {/* 상담완료 (in_progress/completed): 프로그램 관리만 */}
+          {/* 상담완료 (in_progress/completed): 비급여관리만 */}
           {(contextPatient.consultationStatus === 'in_progress' || contextPatient.consultationStatus === 'completed') && (
             <button className="cs-context-menu-item" onClick={handleContextRegisterProgram}>
               <span className="cs-context-icon">💊</span>
-              <span>프로그램 관리</span>
+              <span>비급여관리</span>
             </button>
           )}
           <button className="cs-context-menu-item" onClick={closeContextMenu}>
@@ -476,9 +476,9 @@ function CSApp({ user }: CSAppProps) {
         </div>
       )}
 
-      {/* 프로그램 관리 모달 */}
+      {/* 비급여관리 타임라인 모달 */}
       {showProgramModal && programModalPatient && (
-        <PatientProgramModal
+        <PatientTimelineModal
           patient={programModalPatient}
           onClose={closeProgramModal}
         />
