@@ -16,7 +16,37 @@ const MSSQL_API_URL = 'http://192.168.0.173:3100';
 interface Doctor {
   id: string;
   name: string;
+  isOther?: boolean;
+  resigned?: boolean;
+  workStartDate?: string;
+  workEndDate?: string;
 }
+
+// 입사일/퇴사일 기반 활성 의사 필터
+const isActiveDoctor = (doc: Doctor): boolean => {
+  // 'DOCTOR' 또는 isOther 제외
+  if (doc.isOther || doc.name === 'DOCTOR') return false;
+
+  // 퇴직자 제외
+  if (doc.resigned) return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // 입사일이 미래면 제외 (아직 입사 전)
+  if (doc.workStartDate) {
+    const startDate = new Date(doc.workStartDate);
+    if (startDate > today) return false;
+  }
+
+  // 퇴사일이 과거면 제외 (이미 퇴사)
+  if (doc.workEndDate) {
+    const endDate = new Date(doc.workEndDate);
+    if (endDate < today) return false;
+  }
+
+  return true;
+};
 
 interface CSAppProps {
   user: PortalUser;
@@ -43,14 +73,16 @@ function CSApp({ user }: CSAppProps) {
   const [actingType, setActingType] = useState('한약상담');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 의사 목록 가져오기
+  // 의사 목록 가져오기 (입사일/퇴사일 필터 적용)
   useEffect(() => {
     const fetchDoctors = async () => {
       try {
         const response = await fetch(`${MSSQL_API_URL}/api/doctors`);
         if (response.ok) {
-          const data = await response.json();
-          setDoctors(data);
+          const data: Doctor[] = await response.json();
+          // 활성 의사만 필터링
+          const activeDoctors = data.filter(isActiveDoctor);
+          setDoctors(activeDoctors);
         }
       } catch (error) {
         console.error('의사 목록 조회 오류:', error);
