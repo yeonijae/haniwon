@@ -3905,7 +3905,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  background: #1e40af;
+  background: #0ea5e9;
   color: white;
   flex-shrink: 0;
 }
@@ -3926,8 +3926,8 @@
   min-width: 20px;
   height: 20px;
   padding: 0 6px;
-  background: #fbbf24;
-  color: #1e3a8a;
+  background: white;
+  color: #0284c7;
   border-radius: 10px;
   font-size: 12px;
   font-weight: 700;
