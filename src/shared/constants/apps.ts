@@ -127,7 +127,7 @@ export const APPS: AppInfo[] = [
     name: '데스크',
     description: '데스크 업무를 관리합니다. 예약, 수납메모, 문의접수, 환자검색을 할 수 있습니다.',
     path: '/cs',
-    icon: '🎧',
+    icon: '🖥️',
     color: '#ec4899',
   },
   {

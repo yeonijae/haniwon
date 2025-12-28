@@ -382,7 +382,7 @@ function CSApp({ user }: CSAppProps) {
       {/* 상단 헤더 (메뉴 포함) */}
       <header className="cs-top-header">
         <div className="cs-top-header-left">
-          <span className="cs-logo">🎧</span>
+          <span className="cs-logo">🖥️</span>
           <span className="cs-title">데스크</span>
         </div>
         <nav className="cs-top-nav">
