@@ -51,6 +51,33 @@ const TREATMENT_NAME_MAP: Record<string, string> = {
   '자락관법': '습부',
   '자락관법이체': '습부이체',
   '경피적외선조사': '적외선',
+  // 추가 매핑
+  '기타침/자석침': '자석침',
+  '수양명경경락검사': '경락검사',
+  '추나요법(복잡)': '추나복잡',
+  '추나요법(단순)': '추나단순',
+  '간접구': '간접구',
+  '열전기침': '열전기',
+  '부항': '부항',
+  '전기부항요법': '전기부항',
+  '한방물리요법': '물리',
+  '한방온열요법': '온열',
+  '경피경혈': '경피경혈',
+  '흉복강침술': '흉복강',
+};
+
+// 진료명 간소화 함수 (매핑에 없으면 축약)
+const shortenTreatmentName = (name: string): string => {
+  // 매핑에 있으면 사용
+  if (TREATMENT_NAME_MAP[name]) {
+    return TREATMENT_NAME_MAP[name];
+  }
+  // 6글자 이하면 그대로
+  if (name.length <= 6) {
+    return name;
+  }
+  // 긴 이름은 앞 4글자만
+  return name.substring(0, 4);
 };
 
 // 진료 항목 요약
@@ -89,8 +116,9 @@ const summarizeTreatments = (treatments: { name: string; amount: number; is_cove
       continue;
     }
 
+    // 급여 항목은 매핑 또는 축약된 이름으로 표시
     if (t.is_covered) {
-      const shortName = TREATMENT_NAME_MAP[name];
+      const shortName = shortenTreatmentName(name);
       if (shortName && !result.coveredItems.includes(shortName)) {
         result.coveredItems.push(shortName);
       }
