@@ -263,6 +263,177 @@ export interface DocumentIssue {
   created_at?: string;
 }
 
+// ============================================
+// 약침 관리 타입
+// ============================================
+
+// 약침 종류
+export type YakchimType = 'gyeonggeun' | 'nokryong' | 'taeban' | 'hwata' | 'line';
+
+// 약침 결제 유형
+export type YakchimPaymentType = 'onetime' | 'tongma' | 'membership' | 'service';
+
+// 약침 종류 라벨
+export const YAKCHIM_TYPE_LABELS: Record<YakchimType, string> = {
+  gyeonggeun: '경근',
+  nokryong: '녹용',
+  taeban: '태반',
+  hwata: '화타',
+  line: '라인',
+};
+
+// 약침 결제 유형 라벨
+export const YAKCHIM_PAYMENT_TYPE_LABELS: Record<YakchimPaymentType, string> = {
+  onetime: '일회',
+  tongma: '통마',
+  membership: '멤버십',
+  service: '서비스',
+};
+
+// 약침 사용 기록 (한 행)
+export interface YakchimUsage {
+  id?: number;
+  patient_id: number;
+  chart_number: string;
+  patient_name: string;
+  receipt_id?: number;           // 연결된 수납 ID (MSSQL)
+  usage_date: string;            // 사용일 (YYYY-MM-DD)
+  yakchim_type: YakchimType;     // 약침 종류
+  amount_cc: number;             // 사용량 (cc)
+  payment_type: YakchimPaymentType;  // 결제 유형
+  package_id?: number;           // 통마 패키지 ID
+  membership_id?: number;        // 멤버십 ID
+  service_reason?: string;       // 서비스 사유
+  memo?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 약침 패키지 (통마)
+export interface YakchimPackage {
+  id?: number;
+  patient_id: number;
+  chart_number: string;
+  patient_name: string;
+  yakchim_type: YakchimType;     // 약침 종류
+  package_name: string;          // "경근 10회권"
+  total_count: number;           // 총 횟수
+  used_count: number;            // 사용 횟수
+  remaining_count: number;       // 잔여 횟수
+  price?: number;                // 구매 금액
+  start_date: string;            // 시작일
+  expire_date?: string;          // 만료일
+  memo?: string;
+  status: 'active' | 'completed' | 'expired';
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 약침 패키지 이력
+export interface YakchimPackageHistory {
+  id?: number;
+  package_id: number;
+  action: 'purchase' | 'use' | 'adjust';  // 구매/사용/조정
+  count_change: number;          // 변동 횟수 (+10, -1 등)
+  remaining_after: number;       // 변동 후 잔여
+  usage_id?: number;             // 연결된 사용 기록 ID
+  memo?: string;
+  action_date: string;
+  created_at?: string;
+}
+
+// 약침 멤버십
+export interface YakchimMembership {
+  id?: number;
+  patient_id: number;
+  chart_number: string;
+  patient_name: string;
+  membership_name: string;       // "약침 무제한 월정액"
+  yakchim_types?: YakchimType[]; // 포함된 약침 종류 (null이면 전체)
+  start_date: string;
+  end_date: string;
+  price?: number;                // 월 금액
+  memo?: string;
+  status: 'active' | 'expired' | 'cancelled';
+  created_at?: string;
+  updated_at?: string;
+}
+
+// ============================================
+// 한약 선결제 패키지 관리 타입 (확장)
+// ============================================
+
+// 녹용 추가 패키지
+export interface NokryongPackage {
+  id?: number;
+  patient_id: number;
+  chart_number: string;
+  patient_name: string;
+  package_name: string;          // "녹용 2개월권"
+  total_months: number;          // 총 개월수
+  remaining_months: number;      // 잔여 개월수
+  price?: number;                // 구매 금액
+  start_date: string;            // 시작일
+  expire_date?: string;          // 만료일
+  memo?: string;
+  status: 'active' | 'completed' | 'expired';
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 한약 수령 기록 (회차별)
+export interface HerbalPickup {
+  id?: number;
+  package_id: number;            // 연결된 HerbalPackage ID
+  patient_id: number;
+  chart_number: string;
+  patient_name: string;
+  round_id?: number;             // 연결된 HerbalPackageRound ID
+  receipt_id?: number;           // 연결된 수납 ID
+  pickup_date: string;           // 수령일
+  round_number: number;          // 회차 번호
+  delivery_method: DeliveryMethod;  // 배송방법
+  with_nokryong: boolean;        // 녹용 추가 여부
+  nokryong_package_id?: number;  // 사용된 녹용 패키지 ID
+  memo?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 한약 패키지 타입별 회차 매핑
+export const HERBAL_PACKAGE_ROUNDS: Record<string, number> = {
+  '1month': 2,   // 1개월 = 2회 (15일분 x 2)
+  '2month': 4,   // 2개월 = 4회
+  '3month': 6,   // 3개월 = 6회
+  '6month': 12,  // 6개월 = 12회
+};
+
+// 상비약 사용내역 타입
+export interface MedicineUsage {
+  id?: number;
+  patient_id: number;
+  chart_number: string;
+  patient_name?: string;
+  receipt_id?: number;       // 연결된 수납 ID
+  usage_date: string;        // 사용일 (YYYY-MM-DD)
+  medicine_name: string;     // 약 이름 (소화제, 진통제, 파스 등)
+  quantity: number;          // 수량
+  memo?: string;             // 비고
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 상비약 종류 (자주 사용하는 항목)
+export const MEDICINE_PRESETS = [
+  '소화제',
+  '진통제',
+  '파스',
+  '반창고',
+  '소독약',
+  '연고',
+  '기타',
+] as const;
+
 // 수납 메모 (기존 확장)
 export interface ReceiptMemo {
   id?: number;
@@ -319,6 +490,7 @@ export function generateMemoSummary(data: {
   herbalDispensings?: HerbalDispensing[];
   giftDispensings?: GiftDispensing[];
   documentIssues?: DocumentIssue[];
+  medicineUsages?: MedicineUsage[];
 }): string {
   const parts: string[] = [];
 
@@ -368,6 +540,11 @@ export function generateMemoSummary(data: {
   // 서류발급
   data.documentIssues?.forEach(doc => {
     parts.push(`서류>${doc.document_type}${doc.quantity > 1 ? ` ${doc.quantity}매` : ''}`);
+  });
+
+  // 상비약 사용
+  data.medicineUsages?.forEach(med => {
+    parts.push(`💊${med.medicine_name}(${med.quantity})`);
   });
 
   return parts.join(', ');

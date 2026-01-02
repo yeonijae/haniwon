@@ -11,6 +11,7 @@ import PrescriptionManagement from './pages/PrescriptionManagement';
 import PrescriptionDefinitions from './pages/PrescriptionDefinitions';
 import DosageInstructionManagement from './pages/DosageInstructionManagement';
 import DosageInstructionCreator from './pages/DosageInstructionCreator';
+import MedicalTranscripts from './pages/MedicalTranscripts';
 
 // Components
 import TreatmentRecordList from '@shared/components/TreatmentRecordList';
@@ -32,6 +33,7 @@ interface ChartAppProps {
 const menuItems = [
   { path: '/', label: '대시보드', icon: 'fa-chart-line' },
   { path: '/treatment-records', label: '진료내역', icon: 'fa-history' },
+  { path: '/transcripts', label: '진료녹취', icon: 'fa-microphone' },
   { path: '/patients', label: '환자차트', icon: 'fa-users' },
   { path: '/prescriptions', label: '처방관리', icon: 'fa-prescription' },
   { path: '/prescription-definitions', label: '처방정의', icon: 'fa-book-medical' },
@@ -172,6 +174,7 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/treatment-records" element={<TreatmentRecordsPage />} />
+          <Route path="/transcripts" element={<MedicalTranscripts />} />
           <Route path="/patients" element={<PatientList />} />
           <Route path="/patients/:id" element={<PatientDetail />} />
           <Route path="/prescriptions" element={<PrescriptionManagement />} />

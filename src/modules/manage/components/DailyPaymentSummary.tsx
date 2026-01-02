@@ -108,86 +108,198 @@ const TreatmentTooltip: React.FC<{
     );
 };
 
-// 인라인 메모 편집 컴포넌트
+// 메모 타입별 인라인 편집 컴포넌트
 const InlineMemoEditor: React.FC<{
-    receiptId: number;
-    initialMemo: string;
-    onSave: (receiptId: number, memo: string) => Promise<void>;
-}> = ({ receiptId, initialMemo, onSave }) => {
-    const [isEditing, setIsEditing] = useState(false);
-    const [memo, setMemo] = useState(initialMemo);
+    receipt: api.ReceiptHistoryItem;
+    memoItems: api.PaymentMemoItem[];
+    onAdd: (item: Omit<api.PaymentMemoItem, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
+    onUpdate: (id: number, updates: { memo_type?: api.MemoType; memo_content?: string }) => Promise<void>;
+    onDelete: (id: number) => Promise<void>;
+}> = ({ receipt, memoItems, onAdd, onUpdate, onDelete }) => {
+    const [isAdding, setIsAdding] = useState(false);
+    const [editingId, setEditingId] = useState<number | null>(null);
+    const [newMemoType, setNewMemoType] = useState<api.MemoType>('package');
+    const [newMemoContent, setNewMemoContent] = useState('');
+    const [editContent, setEditContent] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+    const editInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        if (isEditing && inputRef.current) {
+        if (isAdding && inputRef.current) {
             inputRef.current.focus();
-            inputRef.current.select();
         }
-    }, [isEditing]);
+    }, [isAdding]);
 
-    const handleSave = async () => {
-        if (memo === initialMemo) {
-            setIsEditing(false);
-            return;
+    useEffect(() => {
+        if (editingId && editInputRef.current) {
+            editInputRef.current.focus();
+            editInputRef.current.select();
         }
+    }, [editingId]);
+
+    const handleAdd = async () => {
+        if (!newMemoContent.trim()) return;
+
         setIsSaving(true);
         try {
-            await onSave(receiptId, memo);
-            setIsEditing(false);
+            await onAdd({
+                patient_id: receipt.patient_id,
+                chart_number: receipt.chart_no,
+                receipt_date: receipt.receipt_date,
+                mssql_receipt_id: receipt.id,
+                memo_type: newMemoType,
+                memo_content: newMemoContent.trim(),
+            });
+            setNewMemoContent('');
+            setIsAdding(false);
         } catch (err) {
-            console.error('메모 저장 실패:', err);
-            alert('메모 저장에 실패했습니다.');
+            console.error('메모 추가 실패:', err);
         } finally {
             setIsSaving(false);
         }
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            handleSave();
-        } else if (e.key === 'Escape') {
-            setMemo(initialMemo);
-            setIsEditing(false);
+    const handleUpdate = async (id: number) => {
+        if (!editContent.trim()) return;
+
+        setIsSaving(true);
+        try {
+            await onUpdate(id, { memo_content: editContent.trim() });
+            setEditingId(null);
+        } catch (err) {
+            console.error('메모 수정 실패:', err);
+        } finally {
+            setIsSaving(false);
         }
     };
 
-    if (isEditing) {
-        return (
-            <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
-                <input
-                    ref={inputRef}
-                    type="text"
-                    value={memo}
-                    onChange={(e) => setMemo(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    onBlur={handleSave}
-                    disabled={isSaving}
-                    className="w-full text-xs px-2 py-1 border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="메모 입력..."
-                    maxLength={100}
-                />
-                {isSaving && <i className="fa-solid fa-spinner fa-spin text-blue-500 text-xs"></i>}
-            </div>
-        );
-    }
+    const handleDelete = async (id: number) => {
+        if (!confirm('이 메모를 삭제하시겠습니까?')) return;
+        try {
+            await onDelete(id);
+        } catch (err) {
+            console.error('메모 삭제 실패:', err);
+        }
+    };
+
+    const startEdit = (item: api.PaymentMemoItem) => {
+        setEditingId(item.id);
+        setEditContent(item.memo_content);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent, action: 'add' | 'edit', id?: number) => {
+        if (e.key === 'Enter') {
+            if (action === 'add') handleAdd();
+            else if (id) handleUpdate(id);
+        } else if (e.key === 'Escape') {
+            if (action === 'add') {
+                setIsAdding(false);
+                setNewMemoContent('');
+            } else {
+                setEditingId(null);
+            }
+        }
+    };
 
     return (
-        <div
-            className="group cursor-pointer min-h-[24px] flex items-center"
-            onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
-            title={memo || '클릭하여 메모 추가'}
-        >
-            {memo ? (
-                <span className="text-xs text-gray-700 truncate max-w-[140px] group-hover:text-blue-600">
-                    {memo}
-                </span>
-            ) : (
-                <span className="text-xs text-gray-300 group-hover:text-blue-400 italic">
-                    + 메모
-                </span>
+        <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
+            {/* 기존 메모 태그들 */}
+            <div className="flex flex-wrap gap-1">
+                {memoItems.map((item) => {
+                    const typeInfo = api.MEMO_TYPES[item.memo_type] || api.MEMO_TYPES.other;
+
+                    if (editingId === item.id) {
+                        return (
+                            <div key={item.id} className="flex items-center gap-1 w-full">
+                                <span className="text-xs">{typeInfo.icon}</span>
+                                <input
+                                    ref={editInputRef}
+                                    type="text"
+                                    value={editContent}
+                                    onChange={(e) => setEditContent(e.target.value)}
+                                    onKeyDown={(e) => handleKeyDown(e, 'edit', item.id)}
+                                    onBlur={() => handleUpdate(item.id)}
+                                    disabled={isSaving}
+                                    className="flex-1 text-xs px-1.5 py-0.5 border border-blue-300 rounded focus:outline-none"
+                                    maxLength={50}
+                                />
+                                {isSaving && <i className="fa-solid fa-spinner fa-spin text-xs text-blue-500"></i>}
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <div
+                            key={item.id}
+                            className={`group inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${typeInfo.color} cursor-pointer`}
+                            onClick={() => startEdit(item)}
+                            title="클릭하여 수정"
+                        >
+                            <span>{typeInfo.icon}</span>
+                            <span className="max-w-[80px] truncate">{item.memo_content}</span>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
+                                className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-500 transition-opacity ml-0.5"
+                                title="삭제"
+                            >
+                                <i className="fa-solid fa-xmark text-[10px]"></i>
+                            </button>
+                        </div>
+                    );
+                })}
+
+                {/* 추가 버튼 */}
+                {!isAdding && (
+                    <button
+                        onClick={() => setIsAdding(true)}
+                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-colors"
+                        title="메모 추가"
+                    >
+                        <i className="fa-solid fa-plus text-[10px]"></i>
+                        <span>메모</span>
+                    </button>
+                )}
+            </div>
+
+            {/* 인라인 추가 폼 */}
+            {isAdding && (
+                <div className="flex items-center gap-1 mt-1">
+                    <select
+                        value={newMemoType}
+                        onChange={(e) => setNewMemoType(e.target.value as api.MemoType)}
+                        className="text-xs px-1 py-0.5 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                    >
+                        {Object.entries(api.MEMO_TYPES).map(([key, val]) => (
+                            <option key={key} value={key}>{val.icon} {val.label}</option>
+                        ))}
+                    </select>
+                    <input
+                        ref={inputRef}
+                        type="text"
+                        value={newMemoContent}
+                        onChange={(e) => setNewMemoContent(e.target.value)}
+                        onKeyDown={(e) => handleKeyDown(e, 'add')}
+                        placeholder="내용 입력..."
+                        disabled={isSaving}
+                        className="flex-1 text-xs px-1.5 py-0.5 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        maxLength={50}
+                    />
+                    <button
+                        onClick={handleAdd}
+                        disabled={isSaving || !newMemoContent.trim()}
+                        className="px-1.5 py-0.5 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    >
+                        {isSaving ? <i className="fa-solid fa-spinner fa-spin"></i> : '추가'}
+                    </button>
+                    <button
+                        onClick={() => { setIsAdding(false); setNewMemoContent(''); }}
+                        className="px-1 py-0.5 text-xs text-gray-500 hover:text-gray-700"
+                    >
+                        <i className="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
             )}
-            <i className="fa-solid fa-pen text-[10px] text-gray-300 group-hover:text-blue-500 ml-1 opacity-0 group-hover:opacity-100 transition-opacity"></i>
         </div>
     );
 };
@@ -197,8 +309,8 @@ const DailyPaymentSummary: React.FC<DailyPaymentSummaryProps> = ({ onDatePickerR
     const [data, setData] = useState<api.ReceiptHistoryResponse | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    // 로컬 메모 상태 (API 저장 전 UI 반영용)
-    const [localMemos, setLocalMemos] = useState<Record<number, string>>({});
+    // 메모 아이템 상태 (수납건별로 그룹화)
+    const [memoItemsMap, setMemoItemsMap] = useState<Record<number, api.PaymentMemoItem[]>>({});
 
     const formattedSelectedDate = useMemo(() => {
         const year = selectedDate.getFullYear();
@@ -214,12 +326,20 @@ const DailyPaymentSummary: React.FC<DailyPaymentSummaryProps> = ({ onDatePickerR
         try {
             const result = await api.fetchReceiptHistory(formattedSelectedDate);
             setData(result);
-            // 메모 초기화
-            const memos: Record<number, string> = {};
-            result.receipts.forEach(r => {
-                memos[r.id] = r.memo || '';
+
+            // 메모 아이템 로드
+            const memoItems = await api.fetchPaymentMemoItemsByDate(formattedSelectedDate);
+            // 수납건별로 그룹화
+            const grouped: Record<number, api.PaymentMemoItem[]> = {};
+            memoItems.forEach(item => {
+                if (item.mssql_receipt_id) {
+                    if (!grouped[item.mssql_receipt_id]) {
+                        grouped[item.mssql_receipt_id] = [];
+                    }
+                    grouped[item.mssql_receipt_id].push(item);
+                }
             });
-            setLocalMemos(memos);
+            setMemoItemsMap(grouped);
         } catch (err) {
             console.error('수납현황 로드 오류:', err);
             setError('수납 현황을 불러오는 중 오류가 발생했습니다.');
@@ -251,19 +371,51 @@ const DailyPaymentSummary: React.FC<DailyPaymentSummaryProps> = ({ onDatePickerR
         setSelectedDate(new Date());
     };
 
-    // 메모 저장 핸들러
-    const handleSaveMemo = async (receiptId: number, memo: string) => {
-        // 로컬 상태 먼저 업데이트
-        setLocalMemos(prev => ({ ...prev, [receiptId]: memo }));
+    // 메모 아이템 추가 핸들러
+    const handleAddMemoItem = async (item: Omit<api.PaymentMemoItem, 'id' | 'created_at' | 'updated_at'>) => {
+        const newId = await api.addPaymentMemoItem(item);
+        const newItem: api.PaymentMemoItem = {
+            ...item,
+            id: newId,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+        };
 
-        // API 호출 (추후 구현)
-        try {
-            await api.saveReceiptMemo(receiptId, memo);
-        } catch (err) {
-            console.error('메모 저장 실패:', err);
-            // 실패 시 원래 값으로 복구
-            throw err;
-        }
+        setMemoItemsMap(prev => {
+            const receiptId = item.mssql_receipt_id!;
+            return {
+                ...prev,
+                [receiptId]: [...(prev[receiptId] || []), newItem],
+            };
+        });
+    };
+
+    // 메모 아이템 수정 핸들러
+    const handleUpdateMemoItem = async (id: number, updates: { memo_type?: api.MemoType; memo_content?: string }) => {
+        await api.updatePaymentMemoItem(id, updates);
+
+        setMemoItemsMap(prev => {
+            const newMap = { ...prev };
+            for (const receiptId in newMap) {
+                newMap[receiptId] = newMap[receiptId].map(item =>
+                    item.id === id ? { ...item, ...updates, updated_at: new Date().toISOString() } : item
+                );
+            }
+            return newMap;
+        });
+    };
+
+    // 메모 아이템 삭제 핸들러
+    const handleDeleteMemoItem = async (id: number) => {
+        await api.deletePaymentMemoItem(id);
+
+        setMemoItemsMap(prev => {
+            const newMap = { ...prev };
+            for (const receiptId in newMap) {
+                newMap[receiptId] = newMap[receiptId].filter(item => item.id !== id);
+            }
+            return newMap;
+        });
     };
 
     // 진료 내역 요약 문자열 생성
@@ -481,9 +633,11 @@ const DailyPaymentSummary: React.FC<DailyPaymentSummaryProps> = ({ onDatePickerR
                                             {/* 메모 (인라인 편집) */}
                                             <td className="px-3 py-2.5">
                                                 <InlineMemoEditor
-                                                    receiptId={receipt.id}
-                                                    initialMemo={localMemos[receipt.id] || ''}
-                                                    onSave={handleSaveMemo}
+                                                    receipt={receipt}
+                                                    memoItems={memoItemsMap[receipt.id] || []}
+                                                    onAdd={handleAddMemoItem}
+                                                    onUpdate={handleUpdateMemoItem}
+                                                    onDelete={handleDeleteMemoItem}
                                                 />
                                             </td>
                                         </tr>

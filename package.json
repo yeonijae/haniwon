@@ -27,6 +27,7 @@
     "@tiptap/react": "^3.14.0",
     "@tiptap/starter-kit": "^3.14.0",
     "codemirror": "^6.0.2",
+    "date-fns": "^4.1.0",
     "jspdf": "^3.0.3",
     "jspdf-autotable": "^5.0.2",
     "mssql": "^12.2.0",

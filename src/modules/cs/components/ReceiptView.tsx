@@ -7,7 +7,7 @@ import {
   useTreatmentPackage,
   earnPoints,
   usePoints,
-  markReceiptCompleted,
+  toggleReceiptCompleted,
   getCompletedReceiptIds,
 } from '../lib/api';
 import {
@@ -17,6 +17,7 @@ import {
   type HerbalDispensing,
   type GiftDispensing,
   type DocumentIssue,
+  type MedicineUsage,
   type ReceiptMemo,
   type ReservationStatus,
   type ReceiptRecordFilter,
@@ -33,6 +34,9 @@ import { fetchDoctors, fetchReservationsByDateRange } from '../../reservation/li
 import type { Doctor, Reservation } from '../../reservation/types';
 // manage 모듈의 API 사용
 import { fetchReceiptHistory, type ReceiptHistoryItem } from '../../manage/lib/api';
+import { ReceiptMemoModal } from './ReceiptMemoModal';
+import YakchimModal from './YakchimModal';
+import HerbalModal from './HerbalModal';
 
 const MSSQL_API_BASE = 'http://192.168.0.173:3100';
 
@@ -124,6 +128,7 @@ interface ExpandedReceiptItem extends ReceiptHistoryItem {
   herbalDispensings: HerbalDispensing[];
   giftDispensings: GiftDispensing[];
   documentIssues: DocumentIssue[];
+  medicineUsages: MedicineUsage[];
   receiptMemo: ReceiptMemo | null;
   // 다음 예약 정보
   nextReservation: Reservation | null;
@@ -133,6 +138,13 @@ interface ExpandedReceiptItem extends ReceiptHistoryItem {
   memoSummary: string;
   // 기록 완료 여부
   isCompleted: boolean;
+  // 빠른 메모 버튼 상태
+  hasYakchimMemo: boolean;
+  hasHerbalMemo: boolean;
+  hasMedicineMemo: boolean;
+  hasGongjindanMemo: boolean;
+  hasGyeongokgoMemo: boolean;
+  hasDietMemo: boolean;
 }
 
 // 금액 포맷
@@ -152,9 +164,9 @@ const formatTime = (receiptTime?: string | null): string => {
 // 수납 방식 아이콘
 const getPaymentMethodIcons = (receipt: ReceiptHistoryItem) => {
   const methods: { icon: string; color: string; label: string }[] = [];
-  if (receipt.card > 0) methods.push({ icon: 'fa-credit-card', color: 'text-purple-600', label: '카드' });
-  if (receipt.cash > 0) methods.push({ icon: 'fa-money-bill', color: 'text-orange-600', label: '현금' });
-  if (receipt.transfer > 0) methods.push({ icon: 'fa-building-columns', color: 'text-teal-600', label: '이체' });
+  if (receipt.card > 0) methods.push({ icon: 'fa-credit-card', color: 'text-gray-400', label: '카드' });
+  if (receipt.cash > 0) methods.push({ icon: 'fa-money-bill', color: 'text-green-600', label: '현금' });
+  if (receipt.transfer > 0) methods.push({ icon: 'fa-building-columns', color: 'text-blue-600', label: '이체' });
   return methods;
 };
 
@@ -168,9 +180,10 @@ const getDoctorShortName = (receipt: ReceiptHistoryItem): string => {
   return cleaned.charAt(0) || '-';
 };
 
-// 종별 간소화 (건보(직장), 건보(지역) -> 건보)
+// 종별 간소화 (건보(직장), 건보(지역) -> 건보, 산정특례 -> 산특)
 const formatInsuranceType = (type: string): string => {
   if (type.startsWith('건보')) return '건보';
+  if (type === '산정특례') return '산특';
   return type;
 };
 
@@ -293,6 +306,18 @@ function ReceiptView({ user }: ReceiptViewProps) {
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
 
+  // 수납 메모 모달 상태
+  const [showMemoModal, setShowMemoModal] = useState(false);
+  const [memoModalReceipt, setMemoModalReceipt] = useState<ExpandedReceiptItem | null>(null);
+
+  // 약침 모달 상태
+  const [showYakchimModal, setShowYakchimModal] = useState(false);
+  const [yakchimModalReceipt, setYakchimModalReceipt] = useState<ExpandedReceiptItem | null>(null);
+
+  // 한약 모달 상태
+  const [showHerbalModal, setShowHerbalModal] = useState(false);
+  const [herbalModalReceipt, setHerbalModalReceipt] = useState<ExpandedReceiptItem | null>(null);
+
   // 디바운스 검색
   useEffect(() => {
     if (searchTerm.length < 2) {
@@ -392,12 +417,19 @@ function ReceiptView({ user }: ReceiptViewProps) {
         herbalDispensings: [],
         giftDispensings: [],
         documentIssues: [],
+        medicineUsages: [],
         receiptMemo: null,
         nextReservation: null,
         isExpanded: false,
         isLoading: false,
         memoSummary: '',
         isCompleted: completedReceiptIds.has(r.id),
+        hasYakchimMemo: false,
+        hasHerbalMemo: false,
+        hasMedicineMemo: false,
+        hasGongjindanMemo: false,
+        hasGyeongokgoMemo: false,
+        hasDietMemo: false,
       }));
 
       setReceipts(expandedReceipts);
@@ -467,11 +499,35 @@ function ReceiptView({ user }: ReceiptViewProps) {
             herbalDispensings: data.herbalDispensings,
             giftDispensings: data.giftDispensings,
             documentIssues: data.documentIssues,
+            medicineUsages: data.medicineUsages,
           });
 
           // 해당 환자의 다음 예약 찾기
           const patientReservations = reservationsByPatient.get(item.patient_id) || [];
           const nextReservation = getNextReservation(patientReservations);
+
+          // 빠른 메모 버튼 상태 체크
+          const hasYakchimMemo = data.treatmentPackages?.some(p =>
+            p.package_name?.includes('약침')
+          ) || false;
+          const hasHerbalMemo = (data.herbalPackages?.length > 0) ||
+            (data.herbalDispensings?.length > 0);
+          const hasMedicineMemo = (data.medicineUsages?.length > 0);
+          const hasGongjindanMemo = data.herbalPackages?.some(p =>
+            p.package_name?.includes('공진단')
+          ) || data.herbalDispensings?.some(d =>
+            d.name?.includes('공진단')
+          ) || false;
+          const hasGyeongokgoMemo = data.herbalPackages?.some(p =>
+            p.package_name?.includes('경옥고')
+          ) || data.herbalDispensings?.some(d =>
+            d.name?.includes('경옥고')
+          ) || false;
+          const hasDietMemo = data.herbalPackages?.some(p =>
+            p.package_name?.includes('린') || p.package_name?.includes('체감탕')
+          ) || data.herbalDispensings?.some(d =>
+            d.name?.includes('린') || d.name?.includes('체감탕')
+          ) || false;
 
           return {
             patient_id: item.patient_id,
@@ -479,6 +535,12 @@ function ReceiptView({ user }: ReceiptViewProps) {
             reservationStatus: data.memo?.reservation_status || 'none',
             reservationDate: data.memo?.reservation_date,
             nextReservation,
+            hasYakchimMemo,
+            hasHerbalMemo,
+            hasMedicineMemo,
+            hasGongjindanMemo,
+            hasGyeongokgoMemo,
+            hasDietMemo,
           };
         } catch (err) {
           // 해당 환자의 다음 예약 찾기 (메모 로드 실패해도)
@@ -490,6 +552,12 @@ function ReceiptView({ user }: ReceiptViewProps) {
             memoSummary: '',
             reservationStatus: 'none' as ReservationStatus,
             nextReservation,
+            hasYakchimMemo: false,
+            hasHerbalMemo: false,
+            hasMedicineMemo: false,
+            hasGongjindanMemo: false,
+            hasGyeongokgoMemo: false,
+            hasDietMemo: false,
           };
         }
       })
@@ -507,6 +575,12 @@ function ReceiptView({ user }: ReceiptViewProps) {
             reservation_status: update.reservationStatus as ReservationStatus,
             reservation_date: update.reservationDate,
           } as ReceiptMemo,
+          hasYakchimMemo: update.hasYakchimMemo,
+          hasHerbalMemo: update.hasHerbalMemo,
+          hasMedicineMemo: update.hasMedicineMemo,
+          hasGongjindanMemo: update.hasGongjindanMemo,
+          hasGyeongokgoMemo: update.hasGyeongokgoMemo,
+          hasDietMemo: update.hasDietMemo,
         };
       }
       return item;
@@ -517,6 +591,42 @@ function ReceiptView({ user }: ReceiptViewProps) {
   useEffect(() => {
     loadReceipts();
   }, [loadReceipts]);
+
+  // 수납 메모 모달 열기
+  const handleOpenMemoModal = (receipt: ExpandedReceiptItem) => {
+    setMemoModalReceipt(receipt);
+    setShowMemoModal(true);
+  };
+
+  // 수납 메모 모달 닫기
+  const handleCloseMemoModal = () => {
+    setShowMemoModal(false);
+    setMemoModalReceipt(null);
+  };
+
+  // 약침 모달 열기
+  const handleOpenYakchimModal = (receipt: ExpandedReceiptItem) => {
+    setYakchimModalReceipt(receipt);
+    setShowYakchimModal(true);
+  };
+
+  // 약침 모달 닫기
+  const handleCloseYakchimModal = () => {
+    setShowYakchimModal(false);
+    setYakchimModalReceipt(null);
+  };
+
+  // 한약 모달 열기
+  const handleOpenHerbalModal = (receipt: ExpandedReceiptItem) => {
+    setHerbalModalReceipt(receipt);
+    setShowHerbalModal(true);
+  };
+
+  // 한약 모달 닫기
+  const handleCloseHerbalModal = () => {
+    setShowHerbalModal(false);
+    setHerbalModalReceipt(null);
+  };
 
   // 행 확장/축소 토글
   const toggleExpand = async (receiptId: number) => {
@@ -548,6 +658,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
             herbalDispensings: data.herbalDispensings,
             giftDispensings: data.giftDispensings,
             documentIssues: data.documentIssues,
+            medicineUsages: data.medicineUsages,
             receiptMemo: data.memo,
             isLoading: false,
           } : r
@@ -668,24 +779,33 @@ function ReceiptView({ user }: ReceiptViewProps) {
     );
   };
 
-  // 기록 완료 처리
-  const handleMarkCompleted = async (receipt: ExpandedReceiptItem) => {
+  // 기록 완료 토글
+  const handleToggleCompleted = async (receipt: ExpandedReceiptItem) => {
+    const newStatus = !receipt.isCompleted;
     try {
-      await markReceiptCompleted(
+      await toggleReceiptCompleted(
         receipt.patient_id,
         selectedDate,
+        newStatus,
         receipt.chart_no,
         receipt.patient_name,
         receipt.id
       );
       // 상태 업데이트
       setReceipts(prev => prev.map(r =>
-        r.id === receipt.id ? { ...r, isCompleted: true } : r
+        r.id === receipt.id ? { ...r, isCompleted: newStatus } : r
       ));
-      setCompletedIds(prev => new Set([...prev, receipt.id]));
+      if (newStatus) {
+        setCompletedIds(prev => new Set([...prev, receipt.id]));
+      } else {
+        setCompletedIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(receipt.id);
+          return newSet;
+        });
+      }
     } catch (err) {
-      console.error('기록 완료 처리 실패:', err);
-      alert('기록 완료 처리에 실패했습니다.');
+      console.error('기록 완료 토글 실패:', err);
     }
   };
 
@@ -861,109 +981,218 @@ function ReceiptView({ user }: ReceiptViewProps) {
       )}
 
       {!isLoading && receipts.length > 0 && (
-        <div className="receipt-accordion-table">
-          {/* 테이블 헤더 */}
-          <div className="receipt-header-row">
-            <div className="col-num">#</div>
-            <div className="col-time">시간</div>
-            <div className="col-patient">환자</div>
-            <div className="col-age">나이</div>
-            <div className="col-doctor">담당</div>
-            <div className="col-type">종별</div>
-            <div className="col-self">본인부담</div>
-            <div className="col-general">비급여</div>
-            <div className="col-payment">수납/방식</div>
-            <div className="col-memo">메모</div>
-            <div className="col-reservation">예약</div>
+        <div className="receipt-accordion-table receipt-2row-layout">
+          {/* 테이블 헤더 (2행) */}
+          <div className="receipt-header-2row">
+            <div className="header-row-1">
+              <div className="col-num">#</div>
+              <div className="col-time">시간</div>
+              <div className="col-patient">환자</div>
+              <div className="col-doctor">담당</div>
+              <div className="col-type">종별</div>
+              <div className="col-receipt-detail">수납내역</div>
+              <div className="col-uncovered"></div>
+              <div className="col-reservation">예약</div>
+            </div>
+            <div className="header-row-2">
+              <div className="col-quick-memo"></div>
+              <div className="col-memo"></div>
+              <div className="col-complete"></div>
+            </div>
           </div>
 
           {/* 테이블 바디 */}
           {filteredReceipts.map((receipt, index) => (
             <React.Fragment key={receipt.id}>
-              {/* 메인 행 (클릭 시 확장) */}
-              <div
-                className={`receipt-row ${receipt.isExpanded ? 'expanded' : ''} ${receipt.isCompleted ? 'completed' : ''}`}
-                onClick={() => toggleExpand(receipt.id)}
-              >
-                <div className="col-num">{index + 1}</div>
-                <div className="col-time">{formatTime(receipt.receipt_time)}</div>
-                <div
-                  className="col-patient clickable"
-                  onClick={(e) => handlePatientClick(receipt, e)}
-                  title="수납이력 보기"
-                >
-                  <span className="patient-name">{receipt.patient_name}</span>
-                  <span className="patient-info">
-                    ({receipt.chart_no.replace(/^0+/, '')})
-                  </span>
-                </div>
-                <div className="col-age">{receipt.age || '-'}</div>
-                <div className="col-doctor">{getDoctorShortName(receipt)}</div>
-                <div className="col-type">
-                  <span className={`type-badge ${getInsuranceTypeClass(receipt.insurance_type)}`}>{formatInsuranceType(receipt.insurance_type)}</span>
-                </div>
-                <div className="col-self">{formatMoney(receipt.insurance_self)}</div>
-                <div className="col-general">{formatMoney(receipt.general_amount)}</div>
-                <div className="col-payment">
-                  <div className="payment-amount">{formatMoney(receipt.total_amount)}</div>
-                  <div className="payment-methods">
-                    {getPaymentMethodIcons(receipt).map((m, i) => (
-                      <span key={i} className={m.color} title={m.label}>
-                        <i className={`fa-solid ${m.icon}`}></i>
+              {/* 2행 구조 수납 항목 */}
+              <div className={`receipt-item-2row ${receipt.isCompleted ? 'completed' : ''}`}>
+                {/* 1행: 기본 정보 + 수납내역 + 비급여내역 + 예약 */}
+                <div className="receipt-row-1">
+                  <div className="col-num">{index + 1}</div>
+                  <div className="col-time">{formatTime(receipt.receipt_time)}</div>
+                  <div
+                    className="col-patient clickable"
+                    onClick={(e) => handlePatientClick(receipt, e)}
+                    title="수납이력 보기"
+                  >
+                    <span className="patient-name">{receipt.patient_name}</span>
+                    <span className="patient-info">
+                      ({receipt.chart_no.replace(/^0+/, '')}/{receipt.age || '-'}세)
+                    </span>
+                  </div>
+                  <div className="col-doctor">{getDoctorShortName(receipt)}</div>
+                  <div className="col-type">
+                    <span className={`type-badge ${getInsuranceTypeClass(receipt.insurance_type)}`}>{formatInsuranceType(receipt.insurance_type)}</span>
+                  </div>
+                  <div className="col-receipt-detail">
+                    <span className="payment-methods-inline">
+                      {getPaymentMethodIcons(receipt).map((m, i) => (
+                        <span key={i} className={m.color} title={m.label}>
+                          <i className={`fa-solid ${m.icon}`}></i>
+                        </span>
+                      ))}
+                    </span>
+                    <span className="amount-item total">{formatMoney(receipt.total_amount)}</span>
+                    <span className="amount-divider">/</span>
+                    <span className={`amount-item self ${receipt.insurance_self >= 20000 ? 'high' : ''}`}>{formatMoney(receipt.insurance_self)}</span>
+                    {receipt.insurance_self > 20000 && (() => {
+                      const choonaTreatment = receipt.treatments?.find(t =>
+                        t.is_covered && t.name?.includes('추나')
+                      );
+                      if (choonaTreatment) {
+                        const label = choonaTreatment.name?.includes('단순') ? '단추' :
+                                      choonaTreatment.name?.includes('복잡') ? '복추' : null;
+                        if (label) {
+                          return <span className="choona-type">({label})</span>;
+                        }
+                      }
+                      return null;
+                    })()}
+                  </div>
+                  <div className="col-uncovered">
+                    <span className="amount-divider">/</span>
+                    <span className="amount-item general">{formatMoney(receipt.general_amount)}</span>
+                    {receipt.treatment_summary?.uncovered && receipt.treatment_summary.uncovered.length > 0 && (
+                      <span className="uncovered-items">
+                        ({receipt.treatment_summary.uncovered.map(u => u.name).join(',')})
                       </span>
-                    ))}
-                    {getPaymentMethodIcons(receipt).length === 0 && (
-                      <span className="text-gray-300">-</span>
                     )}
                   </div>
-                </div>
-                <div className="col-memo">
-                  <span className="memo-summary">{receipt.memoSummary || '-'}</span>
-                </div>
-                <div className="col-reservation" onClick={(e) => e.stopPropagation()}>
-                  <div className="reservation-actions">
+                  <div className="col-reservation" onClick={(e) => e.stopPropagation()}>
                     {renderReservationStatus(receipt)}
-                    {receipt.isCompleted ? (
-                      <span className="complete-badge" title="기록 완료">
-                        <i className="fa-solid fa-check"></i>
-                      </span>
-                    ) : (
-                      <button
-                        className="complete-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMarkCompleted(receipt);
-                        }}
-                        title="기록 완료"
-                      >
-                        <i className="fa-solid fa-check"></i>
-                      </button>
-                    )}
+                  </div>
+                </div>
+
+                {/* 2행: 빠른메모버튼 + 수납메모 + 완료 */}
+                <div className="receipt-row-2">
+                  <div className="col-quick-memo">
+                    {/* 비급여 키워드별 빠른 메모 버튼 */}
+                    {(() => {
+                      const uncoveredNames = receipt.treatment_summary?.uncovered?.map(u => u.name).join(' ') || '';
+                      const hasYakchim = uncoveredNames.includes('약침');
+                      const hasHerbal = uncoveredNames.includes('한약');
+                      const hasMedicine = uncoveredNames.includes('상비약') ||
+                                         uncoveredNames.includes('감기약') ||
+                                         uncoveredNames.includes('치료약') ||
+                                         uncoveredNames.includes('보완처방') ||
+                                         uncoveredNames.includes('상용환') ||
+                                         uncoveredNames.includes('자운고');
+                      const hasGongjindan = uncoveredNames.includes('공진단');
+                      const hasGyeongokgo = uncoveredNames.includes('경옥고');
+                      const hasDiet = uncoveredNames.includes('린') || uncoveredNames.includes('체감탕');
+
+                      if (!hasYakchim && !hasHerbal && !hasMedicine && !hasGongjindan && !hasGyeongokgo && !hasDiet) return null;
+
+                      return (
+                        <span className="quick-memo-btns">
+                          {hasYakchim && (
+                            <button
+                              className={`quick-memo-btn yakchim ${receipt.hasYakchimMemo ? 'completed' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenYakchimModal(receipt);
+                              }}
+                              title={receipt.hasYakchimMemo ? '약침 메모 있음' : '약침 관리'}
+                            >
+                              약침
+                            </button>
+                          )}
+                          {hasHerbal && (
+                            <button
+                              className={`quick-memo-btn herbal ${receipt.hasHerbalMemo ? 'completed' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenHerbalModal(receipt);
+                              }}
+                              title={receipt.hasHerbalMemo ? '한약 메모 있음' : '한약 관리'}
+                            >
+                              한약
+                            </button>
+                          )}
+                          {hasGongjindan && (
+                            <button
+                              className={`quick-memo-btn gongjindan ${receipt.hasGongjindanMemo ? 'completed' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenMemoModal(receipt);
+                              }}
+                              title={receipt.hasGongjindanMemo ? '공진단 메모 있음' : '공진단 메모 추가'}
+                            >
+                              공진단
+                            </button>
+                          )}
+                          {hasGyeongokgo && (
+                            <button
+                              className={`quick-memo-btn gyeongokgo ${receipt.hasGyeongokgoMemo ? 'completed' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenMemoModal(receipt);
+                              }}
+                              title={receipt.hasGyeongokgoMemo ? '경옥고 메모 있음' : '경옥고 메모 추가'}
+                            >
+                              경옥고
+                            </button>
+                          )}
+                          {hasMedicine && (
+                            <button
+                              className={`quick-memo-btn medicine ${receipt.hasMedicineMemo ? 'completed' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenMemoModal(receipt);
+                              }}
+                              title={receipt.hasMedicineMemo ? '상비약 메모 있음' : '상비약 메모 추가'}
+                            >
+                              상비약
+                            </button>
+                          )}
+                          {hasDiet && (
+                            <button
+                              className={`quick-memo-btn diet ${receipt.hasDietMemo ? 'completed' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenMemoModal(receipt);
+                              }}
+                              title={receipt.hasDietMemo ? '다이어트 메모 있음' : '다이어트 메모 추가'}
+                            >
+                              다이어트
+                            </button>
+                          )}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <div
+                    className="col-memo"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenMemoModal(receipt);
+                    }}
+                    title="클릭하여 메모 관리"
+                  >
+                    <div className="memo-summary-display">
+                      {receipt.memoSummary ? (
+                        <span className="memo-text">{receipt.memoSummary}</span>
+                      ) : (
+                        <span className="memo-click-hint">
+                          <i className="fa-solid fa-plus"></i> 클릭하여 메모 추가
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="col-complete" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      className={`complete-btn ${receipt.isCompleted ? 'completed' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleCompleted(receipt);
+                      }}
+                      title={receipt.isCompleted ? '완료 해제' : '기록 완료'}
+                    >
+                      <i className="fa-solid fa-check"></i>
+                    </button>
                   </div>
                 </div>
               </div>
-
-              {/* 확장된 상세 패널 */}
-              {receipt.isExpanded && (
-                <div className="receipt-detail-panel">
-                  {receipt.isLoading ? (
-                    <div className="detail-loading">
-                      <i className="fa-solid fa-spinner fa-spin"></i> 로딩 중...
-                    </div>
-                  ) : (
-                    <ReceiptDetailPanel
-                      receipt={receipt}
-                      selectedDate={selectedDate}
-                      onDataChange={() => {
-                        toggleExpand(receipt.id);
-                        setTimeout(() => toggleExpand(receipt.id), 100);
-                      }}
-                      onReservationStatusChange={handleReservationStatusChange}
-                      onQuickReservation={handleQuickReservation}
-                    />
-                  )}
-                </div>
-              )}
             </React.Fragment>
           ))}
         </div>
@@ -1008,6 +1237,56 @@ function ReceiptView({ user }: ReceiptViewProps) {
           patientId={historyPatient.patientId}
           patientName={historyPatient.patientName}
           chartNo={historyPatient.chartNo}
+        />
+      )}
+
+      {/* 수납 메모 모달 */}
+      {memoModalReceipt && (
+        <ReceiptMemoModal
+          isOpen={showMemoModal}
+          onClose={handleCloseMemoModal}
+          patientId={memoModalReceipt.patient_id}
+          patientName={memoModalReceipt.patient_name}
+          chartNo={memoModalReceipt.chart_no}
+          receiptId={memoModalReceipt.id}
+          receiptDate={selectedDate}
+          onDataChange={loadReceipts}
+        />
+      )}
+
+      {/* 약침 관리 모달 */}
+      {yakchimModalReceipt && (
+        <YakchimModal
+          isOpen={showYakchimModal}
+          onClose={handleCloseYakchimModal}
+          patientId={yakchimModalReceipt.patient_id}
+          patientName={yakchimModalReceipt.patient_name}
+          chartNumber={yakchimModalReceipt.chart_no}
+          receiptId={yakchimModalReceipt.id}
+          receiptDate={selectedDate}
+          onSave={(data) => {
+            console.log('약침 저장:', data);
+            // TODO: 데이터 새로고침
+            loadReceipts();
+          }}
+        />
+      )}
+
+      {/* 한약 관리 모달 */}
+      {herbalModalReceipt && (
+        <HerbalModal
+          isOpen={showHerbalModal}
+          onClose={handleCloseHerbalModal}
+          patientId={herbalModalReceipt.patient_id}
+          patientName={herbalModalReceipt.patient_name}
+          chartNumber={herbalModalReceipt.chart_no}
+          receiptId={herbalModalReceipt.id}
+          receiptDate={selectedDate}
+          onSave={(data) => {
+            console.log('한약 저장:', data);
+            // TODO: 데이터 새로고침
+            loadReceipts();
+          }}
         />
       )}
     </div>

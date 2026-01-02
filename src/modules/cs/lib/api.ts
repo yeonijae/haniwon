@@ -16,6 +16,7 @@ import type {
   DocumentIssue,
   ReceiptMemo,
   ReservationStatus,
+  MedicineUsage,
 } from '../types';
 
 // MSSQL API 기본 URL
@@ -325,6 +326,23 @@ export async function ensureReceiptTables(): Promise<void> {
   } catch {
     // 이미 컬럼이 있으면 무시
   }
+
+  // 상비약 사용내역 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_medicine_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT NOT NULL,
+      patient_name TEXT,
+      receipt_id INTEGER,
+      usage_date TEXT NOT NULL,
+      medicine_name TEXT NOT NULL,
+      quantity INTEGER DEFAULT 1,
+      memo TEXT,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )
+  `);
 }
 
 // ============================================
@@ -972,6 +990,27 @@ export async function markReceiptCompleted(
 }
 
 /**
+ * 수납 기록 완료 토글
+ */
+export async function toggleReceiptCompleted(
+  patientId: number,
+  receiptDate: string,
+  isCompleted: boolean,
+  chartNumber?: string,
+  patientName?: string,
+  mssqlReceiptId?: number
+): Promise<void> {
+  await upsertReceiptMemo({
+    patient_id: patientId,
+    chart_number: chartNumber,
+    patient_name: patientName,
+    mssql_receipt_id: mssqlReceiptId,
+    receipt_date: receiptDate,
+    is_completed: isCompleted,
+  });
+}
+
+/**
  * 날짜별 완료된 수납 메모 ID 목록 조회
  */
 export async function getCompletedReceiptIds(date: string): Promise<Set<number>> {
@@ -1009,6 +1048,7 @@ export async function getPatientMemoData(patientId: number, date: string): Promi
   herbalDispensings: HerbalDispensing[];
   giftDispensings: GiftDispensing[];
   documentIssues: DocumentIssue[];
+  medicineUsages: MedicineUsage[];
   memo: ReceiptMemo | null;
 }> {
   const [
@@ -1020,6 +1060,7 @@ export async function getPatientMemoData(patientId: number, date: string): Promi
     herbalDispensings,
     giftDispensings,
     documentIssues,
+    medicineUsages,
     memo,
   ] = await Promise.all([
     getActiveTreatmentPackages(patientId),
@@ -1030,6 +1071,7 @@ export async function getPatientMemoData(patientId: number, date: string): Promi
     getHerbalDispensings(patientId, date),
     getGiftDispensings(patientId, date),
     getDocumentIssues(patientId, date),
+    getMedicineUsages(patientId, date),
     getReceiptMemo(patientId, date),
   ]);
 
@@ -1052,6 +1094,73 @@ export async function getPatientMemoData(patientId: number, date: string): Promi
     herbalDispensings,
     giftDispensings,
     documentIssues,
+    medicineUsages,
     memo,
   };
+}
+
+// ============================================
+// 상비약 사용내역 API
+// ============================================
+
+/**
+ * 환자별 상비약 사용내역 조회
+ */
+export async function getMedicineUsages(patientId: number, date?: string): Promise<MedicineUsage[]> {
+  let sql = `SELECT * FROM cs_medicine_usage WHERE patient_id = ${patientId}`;
+  if (date) {
+    sql += ` AND usage_date = ${escapeString(date)}`;
+  }
+  sql += ' ORDER BY created_at DESC';
+  return query<MedicineUsage>(sql);
+}
+
+/**
+ * 날짜별 상비약 사용내역 조회
+ */
+export async function getMedicineUsagesByDate(date: string): Promise<MedicineUsage[]> {
+  return query<MedicineUsage>(
+    `SELECT * FROM cs_medicine_usage WHERE usage_date = ${escapeString(date)} ORDER BY created_at DESC`
+  );
+}
+
+/**
+ * 상비약 사용내역 추가
+ */
+export async function createMedicineUsage(data: Omit<MedicineUsage, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
+  const now = getCurrentTimestamp();
+  return insert(`
+    INSERT INTO cs_medicine_usage (
+      patient_id, chart_number, patient_name, receipt_id, usage_date,
+      medicine_name, quantity, memo, created_at, updated_at
+    ) VALUES (
+      ${data.patient_id}, ${escapeString(data.chart_number)}, ${toSqlValue(data.patient_name)},
+      ${data.receipt_id || 'NULL'}, ${escapeString(data.usage_date)},
+      ${escapeString(data.medicine_name)}, ${data.quantity}, ${toSqlValue(data.memo)},
+      ${escapeString(now)}, ${escapeString(now)}
+    )
+  `);
+}
+
+/**
+ * 상비약 사용내역 수정
+ */
+export async function updateMedicineUsage(id: number, updates: Partial<MedicineUsage>): Promise<void> {
+  const parts: string[] = [];
+  if (updates.medicine_name !== undefined) parts.push(`medicine_name = ${escapeString(updates.medicine_name)}`);
+  if (updates.quantity !== undefined) parts.push(`quantity = ${updates.quantity}`);
+  if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
+  if (updates.usage_date !== undefined) parts.push(`usage_date = ${escapeString(updates.usage_date)}`);
+  parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
+
+  if (parts.length > 0) {
+    await execute(`UPDATE cs_medicine_usage SET ${parts.join(', ')} WHERE id = ${id}`);
+  }
+}
+
+/**
+ * 상비약 사용내역 삭제
+ */
+export async function deleteMedicineUsage(id: number): Promise<void> {
+  await execute(`DELETE FROM cs_medicine_usage WHERE id = ${id}`);
 }

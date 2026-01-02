@@ -1844,3 +1844,127 @@ export {
 } from './treatmentApi';
 
 export type { TreatmentQueueEntryResult } from './treatmentApi';
+
+// ============ 수납 메모 아이템 (타입별) ============
+
+// 메모 타입 정의
+export const MEMO_TYPES = {
+  package: { value: 'package', label: '패키지', icon: '📦', color: 'bg-purple-100 text-purple-700' },
+  membership: { value: 'membership', label: '멤버십', icon: '🎫', color: 'bg-blue-100 text-blue-700' },
+  event: { value: 'event', label: '이벤트/할인', icon: '🎁', color: 'bg-pink-100 text-pink-700' },
+  point: { value: 'point', label: '적립포인트', icon: '💰', color: 'bg-yellow-100 text-yellow-700' },
+  refund: { value: 'refund', label: '환불내역', icon: '💸', color: 'bg-red-100 text-red-700' },
+  other: { value: 'other', label: '기타', icon: '📝', color: 'bg-gray-100 text-gray-700' },
+} as const;
+
+export type MemoType = keyof typeof MEMO_TYPES;
+
+export interface PaymentMemoItem {
+  id: number;
+  patient_id: number;
+  chart_number?: string;
+  receipt_date?: string;
+  mssql_receipt_id?: number;
+  memo_type: MemoType;
+  memo_content: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 수납건별 메모 아이템 조회
+export async function fetchPaymentMemoItems(
+  mssqlReceiptId: number
+): Promise<PaymentMemoItem[]> {
+  const data = await query<any>(`
+    SELECT * FROM payment_memo_items
+    WHERE mssql_receipt_id = ${mssqlReceiptId}
+    ORDER BY created_at ASC
+  `);
+
+  return (data || []).map((d: any) => ({
+    id: d.id,
+    patient_id: d.patient_id,
+    chart_number: d.chart_number,
+    receipt_date: d.receipt_date,
+    mssql_receipt_id: d.mssql_receipt_id,
+    memo_type: d.memo_type as MemoType,
+    memo_content: d.memo_content,
+    created_at: d.created_at,
+    updated_at: d.updated_at,
+  }));
+}
+
+// 날짜별 메모 아이템 조회 (전체)
+export async function fetchPaymentMemoItemsByDate(
+  date: string
+): Promise<PaymentMemoItem[]> {
+  const data = await query<any>(`
+    SELECT * FROM payment_memo_items
+    WHERE receipt_date = ${escapeString(date)}
+    ORDER BY patient_id, created_at ASC
+  `);
+
+  return (data || []).map((d: any) => ({
+    id: d.id,
+    patient_id: d.patient_id,
+    chart_number: d.chart_number,
+    receipt_date: d.receipt_date,
+    mssql_receipt_id: d.mssql_receipt_id,
+    memo_type: d.memo_type as MemoType,
+    memo_content: d.memo_content,
+    created_at: d.created_at,
+    updated_at: d.updated_at,
+  }));
+}
+
+// 메모 아이템 추가
+export async function addPaymentMemoItem(
+  item: Omit<PaymentMemoItem, 'id' | 'created_at' | 'updated_at'>
+): Promise<number> {
+  const now = new Date().toISOString();
+
+  const id = await insert(`
+    INSERT INTO payment_memo_items (
+      patient_id, chart_number, receipt_date, mssql_receipt_id,
+      memo_type, memo_content, created_at, updated_at
+    ) VALUES (
+      ${item.patient_id},
+      ${item.chart_number ? escapeString(item.chart_number) : 'NULL'},
+      ${item.receipt_date ? escapeString(item.receipt_date) : 'NULL'},
+      ${item.mssql_receipt_id || 'NULL'},
+      ${escapeString(item.memo_type)},
+      ${escapeString(item.memo_content)},
+      ${escapeString(now)},
+      ${escapeString(now)}
+    )
+  `);
+
+  return id;
+}
+
+// 메모 아이템 수정
+export async function updatePaymentMemoItem(
+  id: number,
+  updates: { memo_type?: MemoType; memo_content?: string }
+): Promise<void> {
+  const now = new Date().toISOString();
+  const setClauses: string[] = [`updated_at = ${escapeString(now)}`];
+
+  if (updates.memo_type) {
+    setClauses.push(`memo_type = ${escapeString(updates.memo_type)}`);
+  }
+  if (updates.memo_content !== undefined) {
+    setClauses.push(`memo_content = ${escapeString(updates.memo_content)}`);
+  }
+
+  await execute(`
+    UPDATE payment_memo_items
+    SET ${setClauses.join(', ')}
+    WHERE id = ${id}
+  `);
+}
+
+// 메모 아이템 삭제
+export async function deletePaymentMemoItem(id: number): Promise<void> {
+  await execute(`DELETE FROM payment_memo_items WHERE id = ${id}`);
+}
