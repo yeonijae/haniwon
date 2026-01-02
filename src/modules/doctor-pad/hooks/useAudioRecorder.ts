@@ -45,15 +45,36 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       streamRef.current = stream;
 
       // MediaRecorder 생성
-      // webm/opus가 대부분의 브라우저에서 지원됨
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
+      // iOS Safari는 webm을 지원하지 않으므로 mp4/aac 사용
+      const getSupportedMimeType = (): string => {
+        const types = [
+          'audio/webm;codecs=opus',
+          'audio/webm',
+          'audio/mp4',
+          'audio/aac',
+          'audio/ogg;codecs=opus',
+          'audio/wav',
+        ];
+        for (const type of types) {
+          if (MediaRecorder.isTypeSupported(type)) {
+            console.log('[AudioRecorder] Using MIME type:', type);
+            return type;
+          }
+        }
+        console.warn('[AudioRecorder] No supported MIME type found, using default');
+        return '';
+      };
 
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType,
+      const mimeType = getSupportedMimeType();
+
+      const options: MediaRecorderOptions = {
         audioBitsPerSecond: 128000,
-      });
+      };
+      if (mimeType) {
+        options.mimeType = mimeType;
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, options);
 
       mediaRecorderRef.current = mediaRecorder;
 
@@ -83,11 +104,22 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     } catch (err) {
       console.error('녹음 시작 오류:', err);
       if (err instanceof DOMException && err.name === 'NotAllowedError') {
-        setError('마이크 권한이 필요합니다. 브라우저 설정에서 허용해주세요.');
+        // iOS Safari는 HTTPS에서만 마이크 허용
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        const isHTTP = window.location.protocol === 'http:';
+        if (isIOS && isHTTP) {
+          setError('iOS에서는 HTTPS 연결이 필요합니다. 관리자에게 문의하세요.');
+        } else {
+          setError('마이크 권한이 필요합니다. 브라우저 설정에서 허용해주세요.');
+        }
       } else if (err instanceof DOMException && err.name === 'NotFoundError') {
         setError('마이크를 찾을 수 없습니다.');
+      } else if (err instanceof DOMException && err.name === 'NotSupportedError') {
+        setError('이 브라우저에서는 녹음이 지원되지 않습니다.');
+      } else if (err instanceof TypeError) {
+        setError('MediaRecorder가 지원되지 않습니다. 다른 브라우저를 사용해주세요.');
       } else {
-        setError('녹음을 시작할 수 없습니다.');
+        setError(`녹음을 시작할 수 없습니다: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
       }
       return false;
     }
