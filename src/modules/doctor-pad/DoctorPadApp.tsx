@@ -740,6 +740,8 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
           setIsTranscribing(false);
           if (result.success) {
             setLastTranscript(result.transcript);
+            // 5초 후 자동으로 알림 숨기기
+            setTimeout(() => setLastTranscript(null), 5000);
             console.log('녹취록 저장 완료:', result.transcript.substring(0, 100) + '...');
           } else {
             console.error('녹취록 변환 실패:', result.error);
@@ -801,6 +803,37 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
         </div>
       </header>
 
+      {/* 녹취 변환 중 알림 바 */}
+      {isTranscribing && (
+        <div className="bg-purple-600 text-white px-4 py-3 flex items-center justify-center gap-3 animate-pulse">
+          <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span className="font-bold">녹취록 변환 중...</span>
+          <span className="text-purple-200 text-sm">(Whisper → 텍스트 → SOAP 분석)</span>
+        </div>
+      )}
+
+      {/* 녹취 변환 완료 알림 */}
+      {lastTranscript && !isTranscribing && (
+        <div
+          className="bg-green-600 text-white px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-green-700"
+          onClick={() => setLastTranscript(null)}
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">✓</span>
+            <div>
+              <span className="font-bold">녹취록 저장 완료</span>
+              <p className="text-green-200 text-sm truncate max-w-md">
+                {lastTranscript.length > 50 ? lastTranscript.substring(0, 50) + '...' : lastTranscript}
+              </p>
+            </div>
+          </div>
+          <span className="text-green-200 text-sm">클릭하여 닫기</span>
+        </div>
+      )}
+
       {/* 메인 콘텐츠 - 3섹션 */}
       <main className="flex-1 p-4 flex flex-col gap-4 overflow-y-auto">
         {/* 섹션 1: 내 액팅 대기 */}
@@ -848,12 +881,6 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
         <section className="bg-white rounded-xl shadow p-4">
           <h2 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
             <span>⏱️</span> 진행 중인 액팅
-            {/* 녹취 변환 중 표시 */}
-            {isTranscribing && (
-              <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full animate-pulse">
-                녹취 변환중...
-              </span>
-            )}
           </h2>
           {currentActing ? (
             <div
