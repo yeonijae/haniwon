@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import {
   createHerbalDispensing,
   updateHerbalDispensing,
@@ -73,6 +74,9 @@ export function DispensingAddModal({
   const isHerbalEditMode = !!editHerbalData;
   const isGiftEditMode = !!editGiftData;
   const isEditMode = isHerbalEditMode || isGiftEditMode;
+
+  // 드래그 기능
+  const { modalRef, modalStyle, modalClassName, handleMouseDown } = useDraggableModal({ isOpen });
 
   // 탭 상태
   const [activeTab, setActiveTab] = useState<TabType>(isGiftEditMode ? 'gift' : 'herbal');
@@ -254,8 +258,13 @@ export function DispensingAddModal({
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
-      <div className="modal-content dispensing-add-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+      <div
+        ref={modalRef}
+        className={`modal-content dispensing-add-modal ${modalClassName}`}
+        style={modalStyle}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header draggable" onMouseDown={handleMouseDown}>
           <h3>{getTitle()}</h3>
           <button className="modal-close-btn" onClick={handleClose}>
             <i className="fa-solid fa-xmark"></i>

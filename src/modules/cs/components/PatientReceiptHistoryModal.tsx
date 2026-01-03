@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import {
   fetchPatientReceiptHistory,
   type PatientReceiptHistoryResponse,
@@ -172,6 +173,9 @@ export function PatientReceiptHistoryModal({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 드래그 기능
+  const { modalRef, modalStyle, modalClassName, handleMouseDown } = useDraggableModal({ isOpen });
+
   // 기간에 따른 시작일 계산
   const getStartDate = useCallback((periodFilter: PeriodFilter): string | undefined => {
     if (periodFilter === 'all') return undefined;
@@ -305,9 +309,14 @@ export function PatientReceiptHistoryModal({
 
   return (
     <div className="patient-history-modal-overlay" onClick={onClose}>
-      <div className="patient-history-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={modalRef}
+        className={`patient-history-modal ${modalClassName}`}
+        style={modalStyle}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* 헤더 */}
-        <div className="history-modal-header">
+        <div className="history-modal-header draggable" onMouseDown={handleMouseDown}>
           <h3>
             <span className="patient-name">{patientName}</span>
             <span className="chart-no">({chartNo.replace(/^0+/, '')})</span>

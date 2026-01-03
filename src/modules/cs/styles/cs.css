@@ -7716,6 +7716,24 @@
   background: #f8fafc;
 }
 
+.yakchim-modal-header.draggable {
+  cursor: grab;
+  user-select: none;
+}
+
+.yakchim-modal-header.draggable:active {
+  cursor: grabbing;
+}
+
+.yakchim-modal.dragging {
+  user-select: none;
+  transition: none;
+}
+
+.yakchim-modal.dragging .yakchim-modal-header {
+  cursor: grabbing;
+}
+
 .yakchim-modal-header h2 {
   font-size: 16px;
   font-weight: 600;
@@ -8224,6 +8242,289 @@
   cursor: not-allowed;
 }
 
+/* 오늘 처리 필요 섹션 */
+.yakchim-panel .pending-section {
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.yakchim-panel .pending-section .section-header h3 {
+  color: #92400e;
+}
+
+.yakchim-panel .pending-section .section-header h3 i {
+  margin-right: 6px;
+  color: #d97706;
+}
+
+.yakchim-panel .pending-count {
+  display: inline-block;
+  background: #dc2626;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+}
+
+.yakchim-panel .pending-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.yakchim-panel .pending-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid #fcd34d;
+}
+
+.yakchim-panel .pending-item.processed {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.yakchim-panel .pending-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.yakchim-panel .pending-name {
+  font-weight: 500;
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.yakchim-panel .pending-amount {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.yakchim-panel .pending-badge {
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.yakchim-panel .pending-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.yakchim-panel .processed-badge {
+  color: #15803d;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.yakchim-panel .btn-undo {
+  padding: 4px 10px;
+  background: #f3f4f6;
+  color: #6b7280;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.yakchim-panel .btn-undo:hover:not(:disabled) {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* 멤버십/패키지 카드 */
+.yakchim-panel .membership-card,
+.yakchim-panel .package-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  background: white;
+}
+
+.yakchim-panel .membership-main,
+.yakchim-panel .package-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.yakchim-panel .membership-info,
+.yakchim-panel .package-info {
+  flex: 1;
+}
+
+.yakchim-panel .membership-type,
+.yakchim-panel .package-name {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.yakchim-panel .membership-remaining {
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.yakchim-panel .membership-remaining strong {
+  color: #6366f1;
+  font-size: 16px;
+}
+
+.yakchim-panel .membership-expire,
+.yakchim-panel .package-expire {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.yakchim-panel .membership-expire.warning {
+  color: #d97706;
+}
+
+.yakchim-panel .membership-expire.expired {
+  color: #dc2626;
+}
+
+/* 차감 버튼 영역 */
+.yakchim-panel .deduct-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #e5e7eb;
+}
+
+.yakchim-panel .btn-deduct {
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.yakchim-panel .btn-deduct:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.yakchim-panel .btn-deduct:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 사용 기록 */
+.yakchim-panel .usage-history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.yakchim-panel .history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.yakchim-panel .history-date {
+  color: #6b7280;
+  min-width: 40px;
+}
+
+.yakchim-panel .history-item-name {
+  color: #1f2937;
+  font-weight: 500;
+}
+
+.yakchim-panel .history-arrow {
+  color: #9ca3af;
+}
+
+.yakchim-panel .history-source {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.yakchim-panel .history-source.membership {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.yakchim-panel .history-source.package {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+
+.yakchim-panel .history-remaining {
+  color: #6b7280;
+  font-size: 11px;
+}
+
+/* 빈 상태 - light */
+.yakchim-panel .empty-state.light {
+  background: transparent;
+  border: 1px dashed #d1d5db;
+  padding: 16px;
+}
+
+/* 푸터 경고 */
+.yakchim-panel .footer-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #d97706;
+  font-size: 12px;
+  margin-right: auto;
+}
+
+.yakchim-panel .footer-warning i {
+  color: #f59e0b;
+}
+
+/* 섹션 헤더 아이콘 */
+.yakchim-panel .section-header h3 i {
+  margin-right: 6px;
+  color: #6366f1;
+}
+
+.yakchim-panel .membership-section .section-header h3 i {
+  color: #2563eb;
+}
+
+.yakchim-panel .package-section .section-header h3 i {
+  color: #7c3aed;
+}
+
+.yakchim-panel .history-section .section-header h3 i {
+  color: #6b7280;
+}
+
 /* ============================================ */
 /* 한약 관리 패널 스타일                          */
 /* ============================================ */
@@ -8263,6 +8564,24 @@
   padding: 16px 20px;
   border-bottom: 1px solid #e5e7eb;
   background: #f8fafc;
+}
+
+.herbal-modal-header.draggable {
+  cursor: grab;
+  user-select: none;
+}
+
+.herbal-modal-header.draggable:active {
+  cursor: grabbing;
+}
+
+.herbal-modal.dragging {
+  user-select: none;
+  transition: none;
+}
+
+.herbal-modal.dragging .herbal-modal-header {
+  cursor: grabbing;
 }
 
 .herbal-modal-header h2 {
@@ -8924,5 +9243,33 @@
 .herbal-panel .btn-save:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* ==============================================
+   공통 모달 드래그 스타일
+   ============================================== */
+
+/* 드래그 가능한 헤더 */
+.modal-header.draggable {
+  cursor: grab;
+  user-select: none;
+}
+
+.modal-header.draggable:active {
+  cursor: grabbing;
+}
+
+/* 드래그 중인 모달 */
+.modal-content.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.modal-content.dragging * {
+  user-select: none;
+}
+
+.modal-content.dragging .modal-header {
+  cursor: grabbing;
 }
 

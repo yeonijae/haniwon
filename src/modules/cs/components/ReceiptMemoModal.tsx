@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import type { TreatmentPackage, Membership, PointTransaction } from '../types';
 import {
   // 패키지 API
@@ -57,6 +58,9 @@ export function ReceiptMemoModal({
 }: ReceiptMemoModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('package');
   const [isLoading, setIsLoading] = useState(true);
+
+  // 드래그 기능
+  const { modalRef, modalStyle, modalClassName, handleMouseDown } = useDraggableModal({ isOpen });
 
   // 패키지 상태
   const [packages, setPackages] = useState<TreatmentPackage[]>([]);
@@ -132,9 +136,14 @@ export function ReceiptMemoModal({
 
   return (
     <div className="receipt-memo-modal-overlay" onClick={onClose}>
-      <div className="receipt-memo-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={modalRef}
+        className={`receipt-memo-modal ${modalClassName}`}
+        style={modalStyle}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* 헤더 */}
-        <div className="receipt-memo-modal-header">
+        <div className="receipt-memo-modal-header draggable" onMouseDown={handleMouseDown}>
           <div className="patient-info">
             <span className="patient-name">{patientName}</span>
             <span className="chart-no">({chartNo})</span>

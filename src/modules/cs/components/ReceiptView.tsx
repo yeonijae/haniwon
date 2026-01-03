@@ -313,6 +313,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
   // 약침 모달 상태
   const [showYakchimModal, setShowYakchimModal] = useState(false);
   const [yakchimModalReceipt, setYakchimModalReceipt] = useState<ExpandedReceiptItem | null>(null);
+  const [yakchimPendingItems, setYakchimPendingItems] = useState<{ name: string; amount: number }[]>([]);
 
   // 한약 모달 상태
   const [showHerbalModal, setShowHerbalModal] = useState(false);
@@ -606,7 +607,16 @@ function ReceiptView({ user }: ReceiptViewProps) {
 
   // 약침 모달 열기
   const handleOpenYakchimModal = (receipt: ExpandedReceiptItem) => {
+    // 처리 필요 항목 추출 (0원 약침, 약침포인트, 멤버십)
+    const uncoveredItems = receipt.treatment_summary?.uncovered || [];
+    const pendingItems = uncoveredItems.filter(u =>
+      (u.name.includes('약침') && u.amount === 0) ||
+      u.name.includes('약침포인트') ||
+      u.name.includes('멤버십')
+    );
+
     setYakchimModalReceipt(receipt);
+    setYakchimPendingItems(pendingItems);
     setShowYakchimModal(true);
   };
 
@@ -614,6 +624,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
   const handleCloseYakchimModal = () => {
     setShowYakchimModal(false);
     setYakchimModalReceipt(null);
+    setYakchimPendingItems([]);
   };
 
   // 한약 모달 열기
@@ -1068,8 +1079,15 @@ function ReceiptView({ user }: ReceiptViewProps) {
                   <div className="col-quick-memo">
                     {/* 비급여 키워드별 빠른 메모 버튼 */}
                     {(() => {
-                      const uncoveredNames = receipt.treatment_summary?.uncovered?.map(u => u.name).join(' ') || '';
-                      const hasYakchim = uncoveredNames.includes('약침');
+                      const uncoveredItems = receipt.treatment_summary?.uncovered || [];
+                      const uncoveredNames = uncoveredItems.map(u => u.name).join(' ');
+
+                      // 약침 뱃지: 0원 약침(패키지/멤버십 사용), 약침포인트(패키지결제), 멤버십(멤버십결제)
+                      const hasYakchim = uncoveredItems.some(u =>
+                        (u.name.includes('약침') && u.amount === 0) ||
+                        u.name.includes('약침포인트') ||
+                        u.name.includes('멤버십')
+                      );
                       const hasHerbal = uncoveredNames.includes('한약');
                       const hasMedicine = uncoveredNames.includes('상비약') ||
                                          uncoveredNames.includes('감기약') ||
@@ -1264,9 +1282,9 @@ function ReceiptView({ user }: ReceiptViewProps) {
           chartNumber={yakchimModalReceipt.chart_no}
           receiptId={yakchimModalReceipt.id}
           receiptDate={selectedDate}
-          onSave={(data) => {
-            console.log('약침 저장:', data);
-            // TODO: 데이터 새로고침
+          pendingItems={yakchimPendingItems}
+          onSave={() => {
+            console.log('약침 차감 완료');
             loadReceipts();
           }}
         />

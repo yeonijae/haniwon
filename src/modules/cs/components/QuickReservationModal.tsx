@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import { DayView } from '../../reservation/components/DayView';
 import { CalendarHeader } from '../../reservation/components/CalendarHeader';
 import type { ReservationDraft } from '../../reservation/components/ReservationStep1Modal';
@@ -90,6 +91,9 @@ export const QuickReservationModal: React.FC<QuickReservationModalProps> = ({
 
   // ESC 키로 모달 닫기
   useEscapeKey(onClose, isOpen);
+
+  // 드래그 기능
+  const { modalRef, modalStyle, modalClassName, handleMouseDown } = useDraggableModal({ isOpen });
 
   // Draft 생성
   const reservationDraft: ReservationDraft | null = useMemo(() => {
@@ -236,9 +240,16 @@ export const QuickReservationModal: React.FC<QuickReservationModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl mx-4 h-[85vh] flex flex-col">
-        {/* 헤더 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b bg-clinic-primary text-white rounded-t-xl">
+      <div
+        ref={modalRef}
+        className={`bg-white rounded-xl shadow-xl w-full max-w-5xl mx-4 h-[85vh] flex flex-col ${modalClassName}`}
+        style={modalStyle}
+      >
+        {/* 헤더 - 드래그 가능 */}
+        <div
+          className="flex items-center justify-between px-6 py-4 border-b bg-clinic-primary text-white rounded-t-xl cursor-grab active:cursor-grabbing"
+          onMouseDown={handleMouseDown}
+        >
           <div className="flex items-center gap-4">
             <i className="fa-solid fa-calendar-plus text-xl"></i>
             <div>

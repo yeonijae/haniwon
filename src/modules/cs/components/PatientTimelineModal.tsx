@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import { query, execute, escapeString } from '@shared/lib/sqlite';
 import { EVENT_TYPES, EventTypeCode } from './NonCoveredManagementView';
 import type { ConsultationPatient } from './CSSidebar';
@@ -64,6 +65,9 @@ function PatientTimelineModal({ patient, onClose }: PatientTimelineModalProps) {
   const [programs, setPrograms] = useState<PatientProgram[]>([]);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 드래그 기능
+  const { modalRef, modalStyle, modalClassName, handleMouseDown } = useDraggableModal({ isOpen: true });
 
   // 프로그램 등록용 상태
   const [categories, setCategories] = useState<Category[]>([]);
@@ -355,9 +359,14 @@ function PatientTimelineModal({ patient, onClose }: PatientTimelineModalProps) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content patient-timeline-modal" onClick={e => e.stopPropagation()}>
+      <div
+        ref={modalRef}
+        className={`modal-content patient-timeline-modal ${modalClassName}`}
+        style={modalStyle}
+        onClick={e => e.stopPropagation()}
+      >
         {/* 헤더 */}
-        <div className="modal-header">
+        <div className="modal-header draggable" onMouseDown={handleMouseDown}>
           <div className="patient-timeline-header-info">
             <h3>비급여 관리</h3>
             <div className="patient-timeline-patient">

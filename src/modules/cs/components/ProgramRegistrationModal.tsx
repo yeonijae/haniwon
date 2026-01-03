@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import { query, insert, escapeString } from '@shared/lib/sqlite';
 import { ConsultationPatient } from './CSSidebar';
 
@@ -35,6 +36,9 @@ interface ProgramRegistrationModalProps {
 function ProgramRegistrationModal({ patient, onClose, onSuccess }: ProgramRegistrationModalProps) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  // 드래그 기능
+  const { modalRef, modalStyle, modalClassName, handleMouseDown } = useDraggableModal({ isOpen: true });
 
   // 프리셋 데이터
   const [categories, setCategories] = useState<ProgramCategory[]>([]);
@@ -157,7 +161,12 @@ function ProgramRegistrationModal({ patient, onClose, onSuccess }: ProgramRegist
   if (loading) {
     return (
       <div className="modal-overlay" onClick={onClose}>
-        <div className="modal-content program-modal" onClick={e => e.stopPropagation()}>
+        <div
+          ref={modalRef}
+          className={`modal-content program-modal ${modalClassName}`}
+          style={modalStyle}
+          onClick={e => e.stopPropagation()}
+        >
           <div className="program-modal-loading">로딩 중...</div>
         </div>
       </div>
@@ -166,8 +175,13 @@ function ProgramRegistrationModal({ patient, onClose, onSuccess }: ProgramRegist
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content program-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+      <div
+        ref={modalRef}
+        className={`modal-content program-modal ${modalClassName}`}
+        style={modalStyle}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="modal-header draggable" onMouseDown={handleMouseDown}>
           <h3>치료 프로그램 등록</h3>
           <button className="modal-close-btn" onClick={onClose}>×</button>
         </div>

@@ -253,6 +253,43 @@ export async function ensureReceiptTables(): Promise<void> {
     )
   `);
 
+  // 약침 패키지 테이블 (통증마일리지)
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_yakchim_packages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT,
+      patient_name TEXT,
+      package_name TEXT NOT NULL,
+      total_count INTEGER NOT NULL,
+      used_count INTEGER DEFAULT 0,
+      remaining_count INTEGER NOT NULL,
+      start_date TEXT NOT NULL,
+      expire_date TEXT,
+      memo TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // 약침/멤버십 사용 기록 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_yakchim_usage_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL,
+      source_type TEXT NOT NULL,
+      source_id INTEGER NOT NULL,
+      source_name TEXT,
+      usage_date TEXT NOT NULL,
+      item_name TEXT NOT NULL,
+      remaining_after INTEGER NOT NULL,
+      receipt_id INTEGER,
+      memo TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   // 한약 출납 테이블
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_herbal_dispensings (

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import { query, insert, execute, escapeString } from '@shared/lib/sqlite';
 import { ConsultationPatient } from './CSSidebar';
 
@@ -63,6 +64,9 @@ function PatientProgramModal({ patient, onClose, onSuccess }: PatientProgramModa
   const [programs, setPrograms] = useState<PatientProgram[]>([]);
   const [selectedProgram, setSelectedProgram] = useState<PatientProgram | null>(null);
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([]);
+
+  // 드래그 기능
+  const { modalRef, modalStyle, modalClassName, handleMouseDown } = useDraggableModal({ isOpen: true });
 
   // 프로그램 등록 폼 상태
   const [categories, setCategories] = useState<ProgramCategory[]>([]);
@@ -293,8 +297,13 @@ function PatientProgramModal({ patient, onClose, onSuccess }: PatientProgramModa
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content patient-program-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+      <div
+        ref={modalRef}
+        className={`modal-content patient-program-modal ${modalClassName}`}
+        style={modalStyle}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="modal-header draggable" onMouseDown={handleMouseDown}>
           <h3>
             {viewMode === 'list' && '프로그램 관리'}
             {viewMode === 'add' && '새 프로그램 등록'}

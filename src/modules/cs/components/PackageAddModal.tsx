@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import { createTreatmentPackage, updateTreatmentPackage, deleteTreatmentPackage } from '../lib/api';
 import type { TreatmentPackage } from '../types';
 
@@ -32,6 +33,9 @@ export function PackageAddModal({
   editData,
 }: PackageAddModalProps) {
   const isEditMode = !!editData;
+
+  // 드래그 기능
+  const { modalRef, modalStyle, modalClassName, handleMouseDown } = useDraggableModal({ isOpen });
 
   // 폼 상태
   const [packageType, setPackageType] = useState('통마');
@@ -160,8 +164,13 @@ export function PackageAddModal({
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
-      <div className="modal-content package-add-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+      <div
+        ref={modalRef}
+        className={`modal-content package-add-modal ${modalClassName}`}
+        style={modalStyle}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header draggable" onMouseDown={handleMouseDown}>
           <h3>{isEditMode ? '시술패키지 수정' : '시술패키지 추가'}</h3>
           <button className="modal-close-btn" onClick={handleClose}>
             <i className="fa-solid fa-xmark"></i>

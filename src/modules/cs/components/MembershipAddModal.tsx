@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import { createMembership, updateMembership, deleteMembership } from '../lib/api';
 import type { Membership } from '../types';
 
@@ -30,6 +31,9 @@ export function MembershipAddModal({
 }: MembershipAddModalProps) {
   const isEditMode = !!editData;
   const today = new Date().toISOString().split('T')[0];
+
+  // 드래그 기능
+  const { modalRef, modalStyle, modalClassName, handleMouseDown } = useDraggableModal({ isOpen });
 
   // 폼 상태
   const [membershipType, setMembershipType] = useState('경근멤버십');
@@ -159,8 +163,13 @@ export function MembershipAddModal({
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
-      <div className="modal-content membership-add-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+      <div
+        ref={modalRef}
+        className={`modal-content membership-add-modal ${modalClassName}`}
+        style={modalStyle}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header draggable" onMouseDown={handleMouseDown}>
           <h3>{isEditMode ? '멤버십 수정' : '멤버십 추가'}</h3>
           <button className="modal-close-btn" onClick={handleClose}>
             <i className="fa-solid fa-xmark"></i>
