@@ -1,4 +1,4 @@
-import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from './sqlite';
+import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from './postgres';
 import type { PortalUser, AppType } from '../types';
 
 const SESSION_KEY = 'portal_session';

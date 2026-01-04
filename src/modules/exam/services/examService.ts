@@ -12,8 +12,8 @@ import type {
   ExamDateGroup,
 } from '../types';
 
-const SQLITE_API_URL = 'http://192.168.0.173:3200';
-const MSSQL_API_URL = 'http://192.168.0.173:3100';
+const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
+const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
 // SQL 문자열 이스케이프
 function escapeString(value: string | null | undefined): string {
@@ -21,9 +21,9 @@ function escapeString(value: string | null | undefined): string {
   return "'" + String(value).replace(/'/g, "''") + "'";
 }
 
-// SQLite 쿼리 실행
+// PostgreSQL 쿼리 실행
 async function query<T>(sql: string): Promise<T[]> {
-  const response = await fetch(`${SQLITE_API_URL}/api/execute`, {
+  const response = await fetch(`${API_URL}/api/execute`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sql }),
@@ -34,38 +34,58 @@ async function query<T>(sql: string): Promise<T[]> {
     throw new Error(data.error);
   }
 
-  // rows 배열을 객체 배열로 변환
-  if (!data.columns || !data.rows) return [];
+  if (!data.rows || data.rows.length === 0) return [];
 
-  return data.rows.map((row: any[]) => {
-    const obj: any = {};
-    data.columns.forEach((col: string, idx: number) => {
-      obj[col] = row[idx];
+  // PostgreSQL은 rows를 객체 배열로 반환
+  if (typeof data.rows[0] === 'object' && !Array.isArray(data.rows[0])) {
+    return data.rows as T[];
+  }
+
+  // 구버전 호환: rows 배열을 객체 배열로 변환
+  if (data.columns && Array.isArray(data.rows[0])) {
+    return data.rows.map((row: any[]) => {
+      const obj: any = {};
+      data.columns.forEach((col: string, idx: number) => {
+        obj[col] = row[idx];
+      });
+      return obj as T;
     });
-    return obj as T;
-  });
+  }
+
+  return data.rows as T[];
 }
 
-// SQLite INSERT 실행
+// PostgreSQL INSERT 실행 (RETURNING id 사용)
 async function insert(sql: string): Promise<number> {
-  const response = await fetch(`${SQLITE_API_URL}/api/execute`, {
+  // RETURNING id 추가
+  let insertSql = sql.trim();
+  if (!insertSql.toUpperCase().includes('RETURNING')) {
+    insertSql = insertSql.replace(/;?\s*$/, ' RETURNING id');
+  }
+
+  const response = await fetch(`${API_URL}/api/execute`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sql }),
+    body: JSON.stringify({ sql: insertSql }),
   });
 
   const data = await response.json();
   if (data.error) {
-    throw new Error(data.error);
+    // RETURNING 실패 시 일반 실행
+    await execute(sql);
+    return 0;
   }
 
-  // API 응답에서 직접 lastrowid 반환
-  return data.lastrowid || 0;
+  // PostgreSQL: rows에서 id 추출
+  if (data.rows && data.rows.length > 0) {
+    return data.rows[0].id || 0;
+  }
+  return 0;
 }
 
-// SQLite UPDATE/DELETE 실행
+// PostgreSQL UPDATE/DELETE 실행
 async function execute(sql: string): Promise<{ success: boolean; affected: number }> {
-  const response = await fetch(`${SQLITE_API_URL}/api/execute`, {
+  const response = await fetch(`${API_URL}/api/execute`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sql }),

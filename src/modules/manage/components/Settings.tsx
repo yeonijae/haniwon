@@ -1479,7 +1479,8 @@ const PatientDbSync: React.FC = () => {
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetch('http://192.168.0.173:3100/api/sync/status');
+            const mssqlApiUrl = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
+            const response = await fetch(`${mssqlApiUrl}/api/sync/status`);
             if (!response.ok) throw new Error('동기화 상태 확인 실패');
             const data = await response.json();
             if (data.success) {
@@ -1507,7 +1508,8 @@ const PatientDbSync: React.FC = () => {
         setIsSyncing(true);
         setError(null);
         try {
-            const response = await fetch('http://192.168.0.173:3100/api/sync/execute', {
+            const mssqlApiUrl = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
+            const response = await fetch(`${mssqlApiUrl}/api/sync/execute`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });

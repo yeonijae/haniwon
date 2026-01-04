@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { query } from '@shared/lib/sqlite';
+import { query } from '@shared/lib/postgres';
 
 interface MedicalRecord {
   id: number;

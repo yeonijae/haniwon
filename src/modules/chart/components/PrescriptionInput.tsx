@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { query } from '@shared/lib/sqlite';
+import { query } from '@shared/lib/postgres';
 import type { PrescriptionTemplate, PrescriptionHerb } from '../types';
 
 // 최종 약재 타입

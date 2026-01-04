@@ -2,7 +2,7 @@
  * 구입 요청 API - SQLite 연결
  */
 
-import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/postgres';
 
 export interface SupplyRequest {
   id: number;

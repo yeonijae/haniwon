@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { query } from '@shared/lib/sqlite';
+import { query } from '@shared/lib/postgres';
 
-const MSSQL_API_URL = 'http://192.168.0.173:3100';
+const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
 // 상담 유형 정의
 export const CONSULTATION_TYPES = [

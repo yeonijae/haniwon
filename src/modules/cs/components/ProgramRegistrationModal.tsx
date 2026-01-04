@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { useDraggableModal } from '../hooks/useDraggableModal';
-import { query, insert, escapeString } from '@shared/lib/sqlite';
+import { query, insert, escapeString } from '@shared/lib/postgres';
 import { ConsultationPatient } from './CSSidebar';
 
 // 타입 정의

@@ -7706,6 +7706,11 @@
   overflow: hidden;
 }
 
+/* 넓은 모달 (2단 레이아웃용) */
+.yakchim-modal.wide {
+  width: 850px;
+}
+
 /* 모달 헤더 */
 .yakchim-modal-header {
   display: flex;
@@ -7791,6 +7796,331 @@
   align-items: center;
   justify-content: center;
   min-height: 200px;
+}
+
+/* 2단 레이아웃 */
+.yakchim-columns {
+  display: flex;
+  gap: 20px;
+  min-height: 350px;
+}
+
+.yakchim-columns .left-column {
+  flex: 0 0 280px;
+  min-width: 250px;
+  border-right: 1px solid #e5e7eb;
+  padding-right: 20px;
+}
+
+.yakchim-columns .right-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 왼쪽 컬럼 - 사용 기록 */
+.yakchim-columns .left-column .history-section {
+  height: 100%;
+}
+
+.yakchim-columns .left-column .usage-history {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.yakchim-columns .left-column .history-item {
+  padding: 8px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid #f3f4f6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.yakchim-columns .left-column .history-date {
+  color: #6b7280;
+  font-weight: 500;
+  min-width: 35px;
+}
+
+.yakchim-columns .left-column .history-item-name {
+  color: #374151;
+  flex: 1;
+  min-width: 60px;
+}
+
+.yakchim-columns .left-column .history-arrow {
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+.yakchim-columns .left-column .history-source {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.yakchim-columns .left-column .history-source.membership {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.yakchim-columns .left-column .history-source.package {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.yakchim-columns .left-column .history-remaining {
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+/* 오른쪽 컬럼 - 섹션 컴팩트화 */
+.yakchim-columns .right-column .panel-section {
+  margin-bottom: 0;
+}
+
+.yakchim-columns .right-column .section-header h3 {
+  font-size: 13px;
+}
+
+/* 인라인 폼 */
+.yakchim-panel .inline-form {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.yakchim-panel .inline-form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.yakchim-panel .inline-form-row:last-child {
+  margin-bottom: 0;
+}
+
+.yakchim-panel .inline-form-row label {
+  font-size: 12px;
+  color: #64748b;
+  min-width: 35px;
+}
+
+.yakchim-panel .inline-form-row select {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+}
+
+.yakchim-panel .inline-form-row input[type="number"],
+.yakchim-panel .inline-form-row input[type="date"] {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.yakchim-panel .inline-form-row input[type="number"].input-small {
+  width: 60px;
+}
+
+.yakchim-panel .inline-form-row input[type="date"] {
+  flex: 1;
+}
+
+.yakchim-panel .inline-form-row .input-suffix {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.yakchim-panel .inline-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.yakchim-panel .btn-cancel-small,
+.yakchim-panel .btn-save-small {
+  padding: 5px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.yakchim-panel .btn-cancel-small {
+  background: white;
+  border: 1px solid #d1d5db;
+  color: #4b5563;
+}
+
+.yakchim-panel .btn-cancel-small:hover {
+  background: #f3f4f6;
+}
+
+.yakchim-panel .btn-save-small {
+  background: #6366f1;
+  border: 1px solid #6366f1;
+  color: white;
+}
+
+.yakchim-panel .btn-save-small:hover {
+  background: #4f46e5;
+}
+
+.yakchim-panel .btn-save-small:disabled,
+.yakchim-panel .btn-cancel-small:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 인라인 폼 (한 줄) */
+.yakchim-panel .inline-form-single {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.yakchim-panel .inline-form-single select {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 13px;
+  background: white;
+  min-width: 90px;
+}
+
+.yakchim-panel .inline-form-single .input-qty {
+  width: 50px;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.yakchim-panel .inline-form-single .input-suffix {
+  font-size: 12px;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.yakchim-panel .inline-form-single .input-date {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 13px;
+  min-width: 120px;
+}
+
+.yakchim-panel .inline-form-single .btn-cancel-small,
+.yakchim-panel .inline-form-single .btn-save-small {
+  padding: 6px 14px;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* 아이템 리스트 (한 줄 표시) */
+.yakchim-panel .item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.yakchim-panel .item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.yakchim-panel .item-row.expired,
+.yakchim-panel .item-row.depleted {
+  background: #fef2f2;
+  border-color: #fecaca;
+  opacity: 0.7;
+}
+
+.yakchim-panel .item-type {
+  font-weight: 600;
+  color: #1e40af;
+  min-width: 80px;
+}
+
+.yakchim-panel .item-qty {
+  color: #059669;
+  font-weight: 500;
+  min-width: 50px;
+}
+
+.yakchim-panel .item-expire {
+  color: #6b7280;
+  font-size: 12px;
+  flex: 1;
+}
+
+.yakchim-panel .item-status {
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.yakchim-panel .btn-use {
+  padding: 4px 10px;
+  background: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.yakchim-panel .btn-use:hover {
+  background: #4f46e5;
+}
+
+.yakchim-panel .btn-use.package {
+  background: #0891b2;
+}
+
+.yakchim-panel .btn-use.package:hover {
+  background: #0e7490;
+}
+
+.yakchim-panel .btn-use:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .yakchim-panel .loading-spinner {

@@ -95,7 +95,7 @@ const YakchimModal: React.FC<YakchimModalProps> = ({
     <div className="yakchim-modal-backdrop" onClick={handleBackdropClick}>
       <div
         ref={modalRef}
-        className={`yakchim-modal ${isDragging ? 'dragging' : ''}`}
+        className={`yakchim-modal wide ${isDragging ? 'dragging' : ''}`}
         style={{
           transform: `translate(${position.x}px, ${position.y}px)`,
         }}

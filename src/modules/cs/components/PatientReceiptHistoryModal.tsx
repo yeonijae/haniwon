@@ -573,7 +573,7 @@ function HistoryDetailPanel({ receipt }: { receipt: ExpandedHistoryItem }) {
               <div className="grid-tags">
                 <div className="grid-tag membership">
                   <span className="tag-name">{receipt.activeMembership!.membership_type}</span>
-                  <span className="tag-count">{receipt.activeMembership!.remaining_count}회</span>
+                  <span className="tag-count">{receipt.activeMembership!.quantity}개</span>
                 </div>
               </div>
             ) : (

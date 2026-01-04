@@ -4,7 +4,7 @@
  * - SQLite: 복약관리 데이터 저장/조회
  */
 
-import { query, execute, escapeString, toSqlValue, getCurrentDate } from '@shared/lib/sqlite';
+import { query, execute, escapeString, toSqlValue, getCurrentDate } from '@shared/lib/postgres';
 import type {
   HerbalTask,
   HerbalTasksResponse,

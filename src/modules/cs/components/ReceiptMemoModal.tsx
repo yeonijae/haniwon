@@ -470,7 +470,7 @@ function MembershipTab({ memberships, activeMembership, patientId, patientName, 
   const [editingMembership, setEditingMembership] = useState<Membership | null>(null);
   const [form, setForm] = useState({
     membership_type: '',
-    remaining_count: 30,
+    quantity: 1, // 등록 개수 (내원 시 무료 이용 개수)
     expire_date: '',
     memo: '',
   });
@@ -482,7 +482,7 @@ function MembershipTab({ memberships, activeMembership, patientId, patientName, 
     defaultExpire.setMonth(defaultExpire.getMonth() + 1);
     setForm({
       membership_type: '',
-      remaining_count: 30,
+      quantity: 1,
       expire_date: defaultExpire.toISOString().split('T')[0],
       memo: '',
     });
@@ -502,7 +502,7 @@ function MembershipTab({ memberships, activeMembership, patientId, patientName, 
       if (editingMembership) {
         await updateMembership(editingMembership.id!, {
           membership_type: form.membership_type,
-          remaining_count: form.remaining_count,
+          quantity: form.quantity,
           expire_date: form.expire_date,
           memo: form.memo || undefined,
         });
@@ -512,7 +512,7 @@ function MembershipTab({ memberships, activeMembership, patientId, patientName, 
           chart_number: chartNo,
           patient_name: patientName,
           membership_type: form.membership_type,
-          remaining_count: form.remaining_count,
+          quantity: form.quantity,
           start_date: today,
           expire_date: form.expire_date,
           memo: form.memo || undefined,
@@ -545,7 +545,7 @@ function MembershipTab({ memberships, activeMembership, patientId, patientName, 
     setEditingMembership(m);
     setForm({
       membership_type: m.membership_type,
-      remaining_count: m.remaining_count,
+      quantity: m.quantity,
       expire_date: m.expire_date,
       memo: m.memo || '',
     });
@@ -600,7 +600,7 @@ function MembershipTab({ memberships, activeMembership, patientId, patientName, 
                   </div>
                   <div className="remaining-info">
                     <i className="fa-solid fa-ticket"></i>
-                    <span>잔여: {m.remaining_count}회</span>
+                    <span>{m.quantity}개 무료</span>
                   </div>
                   {m.memo && <div className="memo">{m.memo}</div>}
                 </div>
@@ -635,12 +635,12 @@ function MembershipTab({ memberships, activeMembership, patientId, patientName, 
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label>잔여 횟수</label>
+              <label>등록 개수 (내원 시 무료 개수)</label>
               <input
                 type="number"
-                min="0"
-                value={form.remaining_count}
-                onChange={(e) => setForm({ ...form, remaining_count: parseInt(e.target.value) || 0 })}
+                min="1"
+                value={form.quantity}
+                onChange={(e) => setForm({ ...form, quantity: parseInt(e.target.value) || 1 })}
               />
             </div>
           </div>

@@ -2,7 +2,7 @@
  * 액팅 관리 API
  */
 
-import { query, queryOne, execute, insert, escapeString, getCurrentDate, getCurrentTimestamp, toSqlValue } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, getCurrentDate, getCurrentTimestamp, toSqlValue } from '@shared/lib/postgres';
 import {
   createActingTimeLog,
   updateActingStatus as updateActingTimeLogStatus,

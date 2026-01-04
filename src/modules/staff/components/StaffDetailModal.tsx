@@ -35,7 +35,7 @@ import {
   createDoctorFromMssql,
   type MssqlDoctor
 } from '../api/staffApi';
-import { execute } from '@shared/lib/sqlite';
+import { execute } from '@shared/lib/postgres';
 
 interface StaffDetailModalProps {
   staff: StaffMember | null;

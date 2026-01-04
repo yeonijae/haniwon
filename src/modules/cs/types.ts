@@ -204,20 +204,35 @@ export interface PatientPointBalance {
   last_transaction_date?: string;
 }
 
-// 멤버십 타입
+// 멤버십 타입 (기간 기반 무제한 사용)
 export interface Membership {
   id?: number;
   patient_id: number;
   chart_number: string;
   patient_name: string;
   membership_type: string;   // 경근멤버십 등
-  remaining_count: number;   // 잔여 횟수
+  quantity: number;          // 등록 개수 (내원 시 무료 이용 개수)
   start_date: string;
   expire_date: string;       // 만료일
   memo?: string;
   status: 'active' | 'expired';
   created_at?: string;
   updated_at?: string;
+}
+
+// 약침 사용 기록 타입
+export interface YakchimUsageRecord {
+  id: number;
+  patient_id: number;
+  source_type: 'membership' | 'package';  // 멤버십 or 패키지
+  source_id: number;
+  source_name: string;                     // 경근멤버십, 통마 등
+  usage_date: string;
+  item_name: string;                       // 사용된 항목명 (녹용약침 등)
+  remaining_after: number;                 // 사용 후 잔여 (패키지만 의미 있음)
+  receipt_id?: number;
+  memo?: string;
+  created_at: string;
 }
 
 // 한약 출납 타입
@@ -491,8 +506,45 @@ export function generateMemoSummary(data: {
   giftDispensings?: GiftDispensing[];
   documentIssues?: DocumentIssue[];
   medicineUsages?: MedicineUsage[];
+  yakchimUsageRecords?: YakchimUsageRecord[];
 }): string {
   const parts: string[] = [];
+
+  // 약침 사용 기록 (멤버십/패키지)
+  // 멤버십: "경근멤1" 형식
+  // 패키지: "통마[8-1=7]" 형식
+  if (data.yakchimUsageRecords && data.yakchimUsageRecords.length > 0) {
+    // 같은 source별로 그룹화하여 카운트
+    const membershipUsage = new Map<string, number>(); // source_name -> count
+    const packageUsage: Array<{ name: string; before: number; used: number; after: number }> = [];
+
+    data.yakchimUsageRecords.forEach(record => {
+      if (record.source_type === 'membership') {
+        // 멤버십: 사용 횟수 카운트
+        const shortName = record.source_name.replace('멤버십', '멤');
+        membershipUsage.set(shortName, (membershipUsage.get(shortName) || 0) + 1);
+      } else if (record.source_type === 'package') {
+        // 패키지: [이전-1=현재] 형식
+        const before = record.remaining_after + 1;
+        packageUsage.push({
+          name: record.source_name,
+          before,
+          used: 1,
+          after: record.remaining_after,
+        });
+      }
+    });
+
+    // 멤버십 출력
+    membershipUsage.forEach((count, name) => {
+      parts.push(`${name}${count}`);
+    });
+
+    // 패키지 출력
+    packageUsage.forEach(pkg => {
+      parts.push(`${pkg.name}[${pkg.before}-${pkg.used}=${pkg.after}]`);
+    });
+  }
 
   // 시술패키지
   data.treatmentPackages?.forEach(pkg => {
@@ -519,10 +571,10 @@ export function generateMemoSummary(data: {
     parts.push(`포인트+${data.pointEarned.toLocaleString()}`);
   }
 
-  // 멤버십
+  // 멤버십 (등록 정보 - 사용 기록과 별개)
   if (data.membership && data.membership.status === 'active') {
     const expireDate = data.membership.expire_date.slice(2, 7).replace('-', '/');
-    parts.push(`${data.membership.membership_type} ${data.membership.remaining_count}회 (${expireDate})`);
+    parts.push(`${data.membership.membership_type} ${data.membership.quantity}개 (${expireDate})`);
   }
 
   // 한약 출납

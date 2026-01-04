@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { query, insert, execute, escapeString } from '@shared/lib/sqlite';
+import { query, insert, execute, escapeString } from '@shared/lib/postgres';
 
 // 타입 정의
 interface ProgramCategory {

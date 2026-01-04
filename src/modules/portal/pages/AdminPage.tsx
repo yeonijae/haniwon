@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { createUser, deleteUser, changePassword, getAllUsers } from '@shared/lib/auth';
-import { execute, escapeString, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { execute, escapeString, getCurrentTimestamp } from '@shared/lib/postgres';
 import { APPS } from '@shared/constants/apps';
 import type { PortalUser, AppType, UserRole } from '@shared/types';
 import '../styles/portal.css';

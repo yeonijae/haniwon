@@ -2,7 +2,7 @@
  * 진료내역 API
  */
 
-import { query, queryOne, execute, insert, escapeString, getCurrentDate, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, getCurrentDate, getCurrentTimestamp } from '@shared/lib/postgres';
 import type {
   TreatmentRecord,
   TimelineEvent,

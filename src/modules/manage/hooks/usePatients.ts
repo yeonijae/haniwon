@@ -4,7 +4,7 @@ import { NewPatientData } from '../components/NewPatientForm';
 import { BulkPatientData } from '../components/Settings';
 import * as api from '../lib/api';
 import * as actingApi from '@acting/api';
-import { execute, escapeString } from '@shared/lib/sqlite';
+import { execute, escapeString } from '@shared/lib/postgres';
 import { DOCTORS } from '../constants';
 
 // 자신의 변경을 무시하기 위한 타임스탬프 (구독 이벤트 무시용)

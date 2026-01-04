@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/postgres';
 
 // 진료 카테고리 정의
 const TREATMENT_CATEGORIES = [

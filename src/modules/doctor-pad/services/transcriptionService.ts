@@ -6,7 +6,7 @@
  * - SQLite에 진료녹취 저장
  */
 
-const SQLITE_API_URL = 'http://192.168.0.173:3200';
+const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
 
 interface TranscriptionResult {
   success: boolean;
@@ -86,7 +86,7 @@ export async function transcribeAudio(
     formData.append('prompt', options.prompt);
   }
 
-  const response = await fetch(`${SQLITE_API_URL}/api/whisper/transcribe`, {
+  const response = await fetch(`${API_URL}/api/whisper/transcribe`, {
     method: 'POST',
     body: formData,
   });
@@ -120,7 +120,7 @@ export async function convertToSoap(
   patientInfo?: string
 ): Promise<SoapResult> {
   try {
-    const response = await fetch(`${SQLITE_API_URL}/api/gpt/soap`, {
+    const response = await fetch(`${API_URL}/api/gpt/soap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -171,7 +171,7 @@ export async function diarizeTranscript(
   actingType: string
 ): Promise<DiarizationResult> {
   try {
-    const response = await fetch(`${SQLITE_API_URL}/api/gpt/diarize`, {
+    const response = await fetch(`${API_URL}/api/gpt/diarize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -223,7 +223,7 @@ export async function uploadAudioFile(
     formData.append('file', audioBlob, fileName);
     formData.append('folder', `recordings/patient_${patientId}`);
 
-    const response = await fetch(`${SQLITE_API_URL}/api/files/upload`, {
+    const response = await fetch(`${API_URL}/api/files/upload`, {
       method: 'POST',
       body: formData,
     });
@@ -278,7 +278,7 @@ export async function saveMedicalTranscript(params: SaveTranscriptParams & {
   `;
 
   try {
-    const response = await fetch(`${SQLITE_API_URL}/api/execute`, {
+    const response = await fetch(`${API_URL}/api/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql }),
@@ -325,7 +325,7 @@ export async function updateSoapStatus(
   `;
 
   try {
-    const response = await fetch(`${SQLITE_API_URL}/api/execute`, {
+    const response = await fetch(`${API_URL}/api/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql }),
@@ -359,7 +359,7 @@ export async function updateDiarizedTranscript(
   `;
 
   try {
-    const response = await fetch(`${SQLITE_API_URL}/api/execute`, {
+    const response = await fetch(`${API_URL}/api/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql }),
@@ -385,7 +385,7 @@ export async function getPatientTranscripts(patientId: number, limit = 20): Prom
   `;
 
   try {
-    const response = await fetch(`${SQLITE_API_URL}/api/execute`, {
+    const response = await fetch(`${API_URL}/api/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql }),
@@ -419,7 +419,7 @@ export async function getTranscriptsByDate(date: string, limit = 100): Promise<M
   `;
 
   try {
-    const response = await fetch(`${SQLITE_API_URL}/api/execute`, {
+    const response = await fetch(`${API_URL}/api/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql }),

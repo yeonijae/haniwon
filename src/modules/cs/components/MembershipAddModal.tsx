@@ -38,7 +38,7 @@ export function MembershipAddModal({
   // 폼 상태
   const [membershipType, setMembershipType] = useState('경근멤버십');
   const [customTypeName, setCustomTypeName] = useState('');
-  const [remainingCount, setRemainingCount] = useState(10);
+  const [quantity, setQuantity] = useState(1); // 등록 개수 (내원 시 무료 이용 개수)
   const [startDate, setStartDate] = useState(today);
   const [expireDate, setExpireDate] = useState('');
   const [memo, setMemo] = useState('');
@@ -58,7 +58,7 @@ export function MembershipAddModal({
         setMembershipType('custom');
         setCustomTypeName(editData.membership_type);
       }
-      setRemainingCount(editData.remaining_count);
+      setQuantity(editData.quantity);
       setStartDate(editData.start_date);
       setExpireDate(editData.expire_date);
       setMemo(editData.memo || '');
@@ -80,8 +80,8 @@ export function MembershipAddModal({
       return;
     }
 
-    if (remainingCount <= 0) {
-      alert('잔여 횟수는 1 이상이어야 합니다.');
+    if (quantity <= 0) {
+      alert('등록 개수는 1 이상이어야 합니다.');
       return;
     }
 
@@ -91,11 +91,11 @@ export function MembershipAddModal({
         // 수정 모드
         await updateMembership(editData.id, {
           membership_type: typeName,
-          remaining_count: remainingCount,
+          quantity: quantity,
           start_date: startDate,
           expire_date: expireDate,
           memo: memo || undefined,
-          status: remainingCount <= 0 ? 'expired' : 'active',
+          status: 'active',
         });
       } else {
         // 추가 모드
@@ -104,7 +104,7 @@ export function MembershipAddModal({
           chart_number: chartNo,
           patient_name: patientName,
           membership_type: typeName,
-          remaining_count: remainingCount,
+          quantity: quantity,
           start_date: startDate,
           expire_date: expireDate,
           memo: memo || undefined,
@@ -144,7 +144,7 @@ export function MembershipAddModal({
     // 폼 초기화
     setMembershipType('경근멤버십');
     setCustomTypeName('');
-    setRemainingCount(10);
+    setQuantity(1);
     setStartDate(today);
     setExpireDate('');
     setMemo('');
@@ -206,11 +206,11 @@ export function MembershipAddModal({
           </div>
 
           <div className="form-group">
-            <label>잔여 횟수 *</label>
+            <label>등록 개수 * <span className="label-hint">(내원 시 무료 이용 개수)</span></label>
             <input
               type="number"
-              value={remainingCount}
-              onChange={(e) => setRemainingCount(Number(e.target.value))}
+              value={quantity}
+              onChange={(e) => setQuantity(Number(e.target.value))}
               min={1}
             />
           </div>

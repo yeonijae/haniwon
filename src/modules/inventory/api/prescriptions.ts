@@ -2,7 +2,7 @@
  * 처방전 API - SQLite 연결
  */
 
-import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/postgres';
 
 // 처방 정의 (마스터 데이터)
 export interface PrescriptionDefinition {

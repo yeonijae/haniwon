@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/postgres';
 
 // 오늘의 콜 대상 인터페이스
 interface TodayCallTarget {

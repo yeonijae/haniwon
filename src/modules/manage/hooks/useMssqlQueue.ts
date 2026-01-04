@@ -9,11 +9,11 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { query, queryOne, insert, execute, escapeString } from '@shared/lib/sqlite';
+import { query, queryOne, insert, execute, escapeString } from '@shared/lib/postgres';
 import { processPatientForTreatmentQueue } from '../lib/treatmentApi';
 import { addActing } from '@acting/api';
 
-const API_BASE_URL = 'http://192.168.0.173:3100';
+const API_BASE_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 const POLL_INTERVAL = 1000; // 1초
 
 // MSSQL 대기 환자 타입

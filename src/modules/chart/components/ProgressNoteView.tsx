@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { query, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { query, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/postgres';
 import type { ProgressNote } from '../types';
 
 interface Props {

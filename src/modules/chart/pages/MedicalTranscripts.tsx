@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { format, subDays, addDays, startOfMonth } from 'date-fns';
 import { diarizeTranscript, updateDiarizedTranscript } from '../../doctor-pad/services/transcriptionService';
 
-const SQLITE_API_URL = 'http://192.168.0.173:3200';
+const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
 
 interface MedicalTranscript {
   id: number;
@@ -130,25 +130,33 @@ const MedicalTranscripts: React.FC = () => {
         `;
       }
 
-      const response = await fetch(`${SQLITE_API_URL}/api/execute`, {
+      const response = await fetch(`${API_URL}/api/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sql }),
       });
 
       const data = await response.json();
-      if (!data.columns || !data.rows) {
+      if (!data.rows || data.rows.length === 0) {
         setTranscripts([]);
         return;
       }
 
-      const items = data.rows.map((row: any[]) => {
-        const obj: any = {};
-        data.columns.forEach((col: string, idx: number) => {
-          obj[col] = row[idx];
+      // PostgreSQL API는 rows를 객체 배열로 반환
+      let items: MedicalTranscript[];
+      if (data.columns && Array.isArray(data.rows[0])) {
+        // 구버전 형식: columns + rows(배열)
+        items = data.rows.map((row: any[]) => {
+          const obj: any = {};
+          data.columns.forEach((col: string, idx: number) => {
+            obj[col] = row[idx];
+          });
+          return obj as MedicalTranscript;
         });
-        return obj as MedicalTranscript;
-      });
+      } else {
+        // PostgreSQL 형식: rows(객체 배열)
+        items = data.rows as MedicalTranscript[];
+      }
 
       setTranscripts(items);
 
@@ -168,7 +176,8 @@ const MedicalTranscripts: React.FC = () => {
   // 환자 정보 조회 (MSSQL)
   const fetchPatientInfo = async (patientIds: number[]) => {
     try {
-      const response = await fetch('http://192.168.0.173:3100/api/patients/by-ids', {
+      const mssqlApiUrl = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
+      const response = await fetch(`${mssqlApiUrl}/api/patients/by-ids`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: patientIds }),
@@ -222,7 +231,7 @@ const MedicalTranscripts: React.FC = () => {
     setIsReprocessing(true);
     try {
       // SOAP 상태 초기화
-      await fetch(`${SQLITE_API_URL}/api/execute`, {
+      await fetch(`${API_URL}/api/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -231,7 +240,7 @@ const MedicalTranscripts: React.FC = () => {
       });
 
       // SOAP 변환 요청
-      const soapResponse = await fetch(`${SQLITE_API_URL}/api/gpt/soap`, {
+      const soapResponse = await fetch(`${API_URL}/api/gpt/soap`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -247,7 +256,7 @@ const MedicalTranscripts: React.FC = () => {
         const escapeStr = (str: string | null) =>
           str ? `'${str.replace(/'/g, "''")}'` : 'NULL';
 
-        await fetch(`${SQLITE_API_URL}/api/execute`, {
+        await fetch(`${API_URL}/api/execute`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -272,7 +281,7 @@ const MedicalTranscripts: React.FC = () => {
       alert('SOAP 재처리에 실패했습니다.');
 
       // 실패 상태 업데이트
-      await fetch(`${SQLITE_API_URL}/api/execute`, {
+      await fetch(`${API_URL}/api/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -290,7 +299,7 @@ const MedicalTranscripts: React.FC = () => {
 
     setIsDeleting(true);
     try {
-      await fetch(`${SQLITE_API_URL}/api/execute`, {
+      await fetch(`${API_URL}/api/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -321,7 +330,7 @@ const MedicalTranscripts: React.FC = () => {
     content += `의료진: ${selectedTranscript.doctor_name}\n`;
     content += `진료유형: ${selectedTranscript.acting_type}\n`;
     content += `녹음시간: ${formatDuration(selectedTranscript.duration_sec)}\n`;
-    content += `일시: ${format(new Date(selectedTranscript.created_at), 'yyyy-MM-dd HH:mm')}\n\n`;
+    content += `일시: ${formatDate(selectedTranscript.created_at, 'yyyy-MM-dd HH:mm')}\n\n`;
     content += `[녹취 내용]\n${selectedTranscript.transcript}\n\n`;
 
     if (selectedTranscript.soap_status === 'completed') {
@@ -336,7 +345,7 @@ const MedicalTranscripts: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `녹취록_${patient?.patient_name || selectedTranscript.patient_id}_${format(new Date(selectedTranscript.created_at), 'yyyyMMdd_HHmm')}.txt`;
+    a.download = `녹취록_${patient?.patient_name || selectedTranscript.patient_id}_${formatDate(selectedTranscript.created_at, 'yyyyMMdd_HHmm')}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -381,9 +390,20 @@ const MedicalTranscripts: React.FC = () => {
   // 시간 포맷
   const formatTime = (dateStr: string) => {
     try {
+      if (!dateStr) return '--:--';
       return format(new Date(dateStr), 'HH:mm');
     } catch {
       return '--:--';
+    }
+  };
+
+  // 날짜 포맷 (안전)
+  const formatDate = (dateStr: string, formatStr: string = 'MM/dd') => {
+    try {
+      if (!dateStr) return '--/--';
+      return format(new Date(dateStr), formatStr);
+    } catch {
+      return '--/--';
     }
   };
 
@@ -648,7 +668,7 @@ const MedicalTranscripts: React.FC = () => {
                     <div className="flex items-center gap-3 text-sm text-gray-500 mb-2">
                       <span>
                         <i className="fas fa-calendar-alt mr-1"></i>
-                        {format(new Date(t.created_at), 'MM/dd')}
+                        {formatDate(t.created_at)}
                       </span>
                       <span>
                         <i className="fas fa-clock mr-1"></i>
@@ -748,7 +768,7 @@ const MedicalTranscripts: React.FC = () => {
                   <div>
                     <span className="text-gray-500">일시</span>
                     <p className="font-medium text-gray-800">
-                      {format(new Date(selectedTranscript.created_at), 'yyyy-MM-dd HH:mm')}
+                      {formatDate(selectedTranscript.created_at, 'yyyy-MM-dd HH:mm')}
                     </p>
                   </div>
                 </div>
@@ -865,7 +885,7 @@ const MedicalTranscripts: React.FC = () => {
                   <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
                     <audio
                       controls
-                      src={`${SQLITE_API_URL}/api/files/${selectedTranscript.audio_path}`}
+                      src={`${API_URL}/api/files/${selectedTranscript.audio_path}`}
                       className="w-full h-10"
                     />
                   </div>

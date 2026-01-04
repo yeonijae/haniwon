@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { query, execute, escapeString } from '@shared/lib/sqlite';
-import { MembershipAddModal } from './MembershipAddModal';
+import { query, execute, escapeString, insert } from '@shared/lib/postgres';
 
 interface YakchimPanelProps {
   patientId: number;
@@ -14,14 +13,14 @@ interface YakchimPanelProps {
   onClose?: () => void;
 }
 
-// 멤버십 타입
+// 멤버십 타입 (기간 기반 무제한 사용)
 interface Membership {
   id: number;
   patient_id: number;
   chart_number: string;
   patient_name: string;
   membership_type: string;
-  remaining_count: number;
+  quantity: number; // 등록 개수 (내원 시 무료 이용 개수)
   start_date: string;
   expire_date: string;
   status: 'active' | 'expired' | 'cancelled';
@@ -91,8 +90,21 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
   // SQLite patient_id 조회
   const [sqlitePatientId, setSqlitePatientId] = useState<number | null>(null);
 
-  // 멤버십 등록 모달 상태
-  const [showMembershipModal, setShowMembershipModal] = useState(false);
+  // 멤버십 인라인 폼 상태
+  const [showMembershipForm, setShowMembershipForm] = useState(false);
+  const [membershipForm, setMembershipForm] = useState({
+    membership_type: '경근멤버십',
+    quantity: 1,
+    expire_date: '',
+  });
+
+  // 패키지 인라인 폼 상태
+  const [showPackageForm, setShowPackageForm] = useState(false);
+  const [packageForm, setPackageForm] = useState({
+    package_name: '통마',
+    total_count: 10,
+    expire_date: '',
+  });
 
   // 날짜 포맷
   const formatDate = (dateStr: string) => {
@@ -140,9 +152,11 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
     }
   }, [patientId, patientName, chartNumber]);
 
-  // 데이터 로드
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
+  // 데이터 로드 (pending 상태는 건드리지 않음)
+  const loadData = useCallback(async (isInitial = false) => {
+    if (isInitial) {
+      setIsLoading(true);
+    }
     setError(null);
 
     try {
@@ -164,9 +178,9 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
       `);
       setMemberships(membershipData);
 
-      // 패키지 조회
+      // 패키지 조회 (시술패키지 - 통증마일리지)
       const packageData = await query<YakchimPackage>(`
-        SELECT * FROM cs_yakchim_packages
+        SELECT * FROM cs_treatment_packages
         WHERE patient_id = ${pid} AND status = 'active'
         ORDER BY created_at DESC
       `);
@@ -184,47 +198,35 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
       `);
       setUsageRecords(usageData);
 
-      // 처리 대기 항목 초기화
-      setPending(pendingItems.map(item => ({
-        ...item,
-        processed: false,
-      })));
+      // 처리 대기 항목 초기화 (최초 로드 시에만)
+      if (isInitial) {
+        setPending(pendingItems.map(item => ({
+          ...item,
+          processed: false,
+        })));
+      }
 
     } catch (err) {
       console.error('데이터 로드 오류:', err);
       setError('데이터를 불러오는 중 오류가 발생했습니다.');
     } finally {
-      setIsLoading(false);
+      if (isInitial) {
+        setIsLoading(false);
+      }
     }
   }, [getOrCreatePatient, pendingItems]);
 
   useEffect(() => {
-    loadData();
+    loadData(true);
   }, [loadData]);
 
-  // 멤버십으로 차감
-  const handleDeductMembership = async (membership: Membership, pendingIndex: number) => {
-    if (membership.remaining_count <= 0) {
-      alert('잔여 횟수가 없습니다.');
-      return;
-    }
-
+  // 멤버십으로 사용 기록 (차감 없음 - 기간 동안 무제한 사용)
+  const handleUseMembership = async (membership: Membership, pendingIndex: number) => {
     setIsSaving(true);
     try {
       const pendingItem = pending[pendingIndex];
-      const newRemaining = membership.remaining_count - 1;
-      const newStatus = newRemaining <= 0 ? 'expired' : 'active';
 
-      // 멤버십 차감
-      await execute(`
-        UPDATE cs_memberships
-        SET remaining_count = ${newRemaining},
-            status = ${escapeString(newStatus)},
-            updated_at = datetime('now')
-        WHERE id = ${membership.id}
-      `);
-
-      // 사용 기록 추가
+      // 사용 기록만 추가 (차감 없음)
       await execute(`
         INSERT INTO cs_yakchim_usage_records
         (patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id)
@@ -235,7 +237,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
           ${escapeString(membership.membership_type)},
           ${escapeString(receiptDate)},
           ${escapeString(pendingItem.name)},
-          ${newRemaining},
+          ${membership.quantity},
           ${receiptId || 'NULL'}
         )
       `);
@@ -247,21 +249,14 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
           : item
       ));
 
-      // 멤버십 목록 업데이트
-      setMemberships(prev => prev.map(m =>
-        m.id === membership.id
-          ? { ...m, remaining_count: newRemaining, status: newStatus as any }
-          : m
-      ));
-
       // 사용 기록 새로고침
       await loadData();
 
-      console.log(`✅ ${pendingItem.name} → ${membership.membership_type} 차감 (잔여 ${newRemaining}회)`);
+      console.log(`✅ ${pendingItem.name} → ${membership.membership_type} 사용 기록`);
 
     } catch (err) {
-      console.error('멤버십 차감 오류:', err);
-      alert('차감 처리 중 오류가 발생했습니다.');
+      console.error('멤버십 사용 기록 오류:', err);
+      alert('사용 기록 처리 중 오류가 발생했습니다.');
     } finally {
       setIsSaving(false);
     }
@@ -283,7 +278,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
 
       // 패키지 차감
       await execute(`
-        UPDATE cs_yakchim_packages
+        UPDATE cs_treatment_packages
         SET remaining_count = ${newRemaining},
             used_count = ${newUsed},
             status = ${escapeString(newStatus)},
@@ -334,14 +329,14 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
     }
   };
 
-  // 차감 취소
-  const handleUndoDeduction = async (pendingIndex: number) => {
+  // 사용 기록 취소 (멤버십은 기록만 삭제, 패키지는 복구까지)
+  const handleUndoUsage = async (pendingIndex: number) => {
     const pendingItem = pending[pendingIndex];
     if (!pendingItem.processed || !pendingItem.processedId) return;
 
     setIsSaving(true);
     try {
-      // 마지막 사용 기록 삭제
+      // 사용 기록 삭제
       await execute(`
         DELETE FROM cs_yakchim_usage_records
         WHERE patient_id = ${sqlitePatientId}
@@ -351,18 +346,10 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
           AND item_name = ${escapeString(pendingItem.name)}
       `);
 
-      // 멤버십/패키지 복구
-      if (pendingItem.processedWith === 'membership') {
+      // 패키지만 복구 (멤버십은 차감이 없으므로 복구 불필요)
+      if (pendingItem.processedWith === 'package') {
         await execute(`
-          UPDATE cs_memberships
-          SET remaining_count = remaining_count + 1,
-              status = 'active',
-              updated_at = datetime('now')
-          WHERE id = ${pendingItem.processedId}
-        `);
-      } else {
-        await execute(`
-          UPDATE cs_yakchim_packages
+          UPDATE cs_treatment_packages
           SET remaining_count = remaining_count + 1,
               used_count = used_count - 1,
               status = 'active',
@@ -381,11 +368,11 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
       // 데이터 새로고침
       await loadData();
 
-      console.log(`↩️ ${pendingItem.name} 차감 취소`);
+      console.log(`↩️ ${pendingItem.name} 취소`);
 
     } catch (err) {
-      console.error('차감 취소 오류:', err);
-      alert('차감 취소 중 오류가 발생했습니다.');
+      console.error('취소 오류:', err);
+      alert('취소 처리 중 오류가 발생했습니다.');
     } finally {
       setIsSaving(false);
     }
@@ -393,6 +380,129 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
 
   // 처리되지 않은 항목 수
   const unprocessedCount = pending.filter(p => !p.processed).length;
+
+  // 멤버십 폼 초기화
+  const resetMembershipForm = () => {
+    const defaultExpire = new Date();
+    defaultExpire.setFullYear(defaultExpire.getFullYear() + 1);
+    setMembershipForm({
+      membership_type: '경근멤버십',
+      quantity: 1,
+      expire_date: defaultExpire.toISOString().split('T')[0],
+    });
+  };
+
+  // 멤버십 저장
+  const handleSaveMembership = async () => {
+    console.log('멤버십 저장 시도:', membershipForm);
+
+    if (!membershipForm.membership_type.trim()) {
+      alert('멤버십 종류를 선택해주세요.');
+      return;
+    }
+    if (!membershipForm.expire_date) {
+      alert('만료일을 선택해주세요.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      let pid = sqlitePatientId;
+      if (!pid) {
+        pid = await getOrCreatePatient();
+        setSqlitePatientId(pid);
+      }
+
+      console.log('patient_id:', pid);
+
+      if (!pid) {
+        alert('환자 정보를 찾을 수 없습니다.');
+        return;
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+      const sql = `
+        INSERT INTO cs_memberships (
+          patient_id, chart_number, patient_name, membership_type, quantity, remaining_count,
+          start_date, expire_date, status, created_at, updated_at
+        ) VALUES (
+          ${pid}, ${escapeString(chartNumber)}, ${escapeString(patientName)},
+          ${escapeString(membershipForm.membership_type)}, ${membershipForm.quantity}, ${membershipForm.quantity},
+          ${escapeString(today)}, ${escapeString(membershipForm.expire_date)},
+          'active', ${escapeString(now)}, ${escapeString(now)}
+        )
+      `;
+      console.log('SQL:', sql);
+
+      const newId = await insert(sql);
+      console.log('생성된 멤버십 ID:', newId);
+
+      setShowMembershipForm(false);
+      resetMembershipForm();
+      await loadData();
+    } catch (err) {
+      console.error('멤버십 저장 오류:', err);
+      alert('저장에 실패했습니다: ' + (err as Error).message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 패키지 폼 초기화
+  const resetPackageForm = () => {
+    setPackageForm({
+      package_name: '통마',
+      total_count: 10,
+      expire_date: '',
+    });
+  };
+
+  // 패키지 저장
+  const handleSavePackage = async () => {
+    if (!packageForm.package_name.trim()) {
+      alert('패키지명을 선택해주세요.');
+      return;
+    }
+    if (packageForm.total_count <= 0) {
+      alert('총 횟수는 1 이상이어야 합니다.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      let pid = sqlitePatientId;
+      if (!pid) {
+        pid = await getOrCreatePatient();
+        setSqlitePatientId(pid);
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      await insert(`
+        INSERT INTO cs_treatment_packages (
+          patient_id, chart_number, patient_name, package_name,
+          total_count, used_count, remaining_count,
+          start_date, expire_date, status, created_at, updated_at
+        ) VALUES (
+          ${pid}, ${escapeString(chartNumber)}, ${escapeString(patientName)},
+          ${escapeString(packageForm.package_name)},
+          ${packageForm.total_count}, 0, ${packageForm.total_count},
+          ${escapeString(today)}, ${packageForm.expire_date ? escapeString(packageForm.expire_date) : 'NULL'},
+          'active', datetime('now'), datetime('now')
+        )
+      `);
+
+      setShowPackageForm(false);
+      resetPackageForm();
+      await loadData();
+    } catch (err) {
+      console.error('패키지 저장 오류:', err);
+      alert('저장에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -408,206 +518,275 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
     <div className="yakchim-panel">
       {error && <div className="error-message">{error}</div>}
 
-      {/* 오늘 처리 필요 */}
-      {pending.length > 0 && (
-        <section className="panel-section pending-section">
-          <div className="section-header">
-            <h3>
-              <i className="fa-solid fa-exclamation-triangle"></i>
-              오늘 처리 필요
-              {unprocessedCount > 0 && (
-                <span className="pending-count">{unprocessedCount}건</span>
-              )}
-            </h3>
-          </div>
-          <div className="pending-items">
-            {pending.map((item, idx) => (
-              <div
-                key={idx}
-                className={`pending-item ${item.processed ? 'processed' : ''}`}
-              >
-                <div className="pending-info">
-                  <span className="pending-name">{item.name}</span>
-                  <span className="pending-amount">({item.amount.toLocaleString()}원)</span>
-                </div>
-                {item.processed ? (
-                  <div className="pending-status">
-                    <span className="processed-badge">
-                      ✓ {item.processedWith === 'membership' ? '멤버십' : '패키지'} 차감
-                    </span>
-                    <button
-                      className="btn-undo"
-                      onClick={() => handleUndoDeduction(idx)}
-                      disabled={isSaving}
-                    >
-                      취소
-                    </button>
-                  </div>
-                ) : (
-                  <span className="pending-badge">차감 대기</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* 2단 레이아웃 */}
+      <div className="yakchim-columns">
+        {/* 왼쪽: 최근 사용 기록 */}
+        <div className="left-column">
+          <section className="panel-section history-section">
+            <div className="section-header">
+              <h3>
+                <i className="fa-solid fa-history"></i>
+                최근 사용 기록
+              </h3>
+            </div>
 
-      {/* 멤버십 현황 */}
-      <section className="panel-section membership-section">
-        <div className="section-header">
-          <h3>
-            <i className="fa-solid fa-id-card"></i>
-            멤버십
-          </h3>
-          <button
-            className="btn-add-small"
-            onClick={async () => {
-              // sqlitePatientId가 없으면 환자 먼저 생성
-              if (!sqlitePatientId) {
-                const pid = await getOrCreatePatient();
-                setSqlitePatientId(pid);
-              }
-              setShowMembershipModal(true);
-            }}
-          >
-            <i className="fa-solid fa-plus"></i> 등록
-          </button>
+            {usageRecords.length === 0 ? (
+              <div className="empty-state light">사용 기록이 없습니다.</div>
+            ) : (
+              <div className="usage-history">
+                {usageRecords.map(record => (
+                  <div key={record.id} className="history-item">
+                    <span className="history-date">{formatDate(record.usage_date)}</span>
+                    <span className="history-item-name">{record.item_name}</span>
+                    <span className="history-arrow">→</span>
+                    <span className={`history-source ${record.source_type}`}>
+                      {record.source_type === 'membership' ? '멤버십' : '패키지'}
+                    </span>
+                    {record.source_type === 'package' && (
+                      <span className="history-remaining">(잔여 {record.remaining_after}회)</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
 
-        {memberships.length === 0 ? (
-          <div className="empty-state">등록된 멤버십이 없습니다.</div>
-        ) : (
-          <div className="membership-list">
-            {memberships.map(mem => {
-              const daysLeft = getDaysUntilExpire(mem.expire_date);
-              const isExpiringSoon = daysLeft <= 30 && daysLeft > 0;
-              const isExpired = daysLeft <= 0;
-
-              return (
-                <div key={mem.id} className="membership-card">
-                  <div className="membership-main">
-                    <div className="membership-info">
-                      <span className="membership-type">{mem.membership_type}</span>
-                      <span className="membership-remaining">
-                        잔여 <strong>{mem.remaining_count}</strong>회
-                      </span>
+        {/* 오른쪽: 처리 대기 + 멤버십 + 패키지 */}
+        <div className="right-column">
+          {/* 오늘 처리 필요 */}
+          {pending.length > 0 && (
+            <section className="panel-section pending-section">
+              <div className="section-header">
+                <h3>
+                  <i className="fa-solid fa-exclamation-triangle"></i>
+                  오늘 처리 필요
+                  {unprocessedCount > 0 && (
+                    <span className="pending-count">{unprocessedCount}건</span>
+                  )}
+                </h3>
+              </div>
+              <div className="pending-items">
+                {pending.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className={`pending-item ${item.processed ? 'processed' : ''}`}
+                  >
+                    <div className="pending-info">
+                      <span className="pending-name">{item.name}</span>
+                      <span className="pending-amount">({item.amount.toLocaleString()}원)</span>
                     </div>
-                    <div className={`membership-expire ${isExpired ? 'expired' : isExpiringSoon ? 'warning' : ''}`}>
-                      만료 {mem.expire_date}
-                      {isExpired ? ' (만료됨)' : isExpiringSoon ? ` (D-${daysLeft})` : ''}
-                    </div>
+                    {item.processed ? (
+                      <div className="pending-status">
+                        <span className="processed-badge">
+                          ✓ {item.processedWith === 'membership' ? '멤버십 사용' : '패키지 차감'}
+                        </span>
+                        <button
+                          className="btn-undo"
+                          onClick={() => handleUndoUsage(idx)}
+                          disabled={isSaving}
+                        >
+                          취소
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="pending-badge">처리 대기</span>
+                    )}
                   </div>
+                ))}
+              </div>
+            </section>
+          )}
 
-                  {/* 처리 대기 항목에 대한 차감 버튼들 */}
-                  {pending.filter(p => !p.processed).length > 0 && mem.remaining_count > 0 && (
-                    <div className="deduct-buttons">
-                      {pending.map((item, idx) => !item.processed && (
+          {/* 멤버십 현황 */}
+          <section className="panel-section membership-section">
+            <div className="section-header">
+              <h3>
+                <i className="fa-solid fa-id-card"></i>
+                멤버십
+              </h3>
+              {!showMembershipForm && (
+                <button
+                  className="btn-add-small"
+                  onClick={() => {
+                    resetMembershipForm();
+                    setShowMembershipForm(true);
+                  }}
+                >
+                  <i className="fa-solid fa-plus"></i> 등록
+                </button>
+              )}
+            </div>
+
+            {/* 인라인 등록 폼 (한 줄) */}
+            {showMembershipForm && (
+              <div className="inline-form-single">
+                <select
+                  value={membershipForm.membership_type}
+                  onChange={(e) => setMembershipForm({ ...membershipForm, membership_type: e.target.value })}
+                >
+                  <option value="경근멤버십">경근멤버십</option>
+                  <option value="녹용멤버십">녹용멤버십</option>
+                  <option value="VIP멤버십">VIP멤버십</option>
+                </select>
+                <input
+                  type="number"
+                  value={membershipForm.quantity}
+                  onChange={(e) => setMembershipForm({ ...membershipForm, quantity: Number(e.target.value) })}
+                  min={1}
+                  className="input-qty"
+                />
+                <span className="input-suffix">개</span>
+                <input
+                  type="date"
+                  value={membershipForm.expire_date}
+                  onChange={(e) => setMembershipForm({ ...membershipForm, expire_date: e.target.value })}
+                  className="input-date"
+                />
+                <button
+                  className="btn-cancel-small"
+                  onClick={() => setShowMembershipForm(false)}
+                  disabled={isSaving}
+                >
+                  취소
+                </button>
+                <button
+                  className="btn-save-small"
+                  onClick={handleSaveMembership}
+                  disabled={isSaving}
+                >
+                  {isSaving ? '...' : '저장'}
+                </button>
+              </div>
+            )}
+
+            {memberships.length === 0 && !showMembershipForm ? (
+              <div className="empty-state">등록된 멤버십이 없습니다.</div>
+            ) : (
+              <div className="item-list">
+                {memberships.map(mem => {
+                  const daysLeft = getDaysUntilExpire(mem.expire_date);
+                  const isExpired = daysLeft <= 0;
+
+                  return (
+                    <div key={mem.id} className={`item-row ${isExpired ? 'expired' : ''}`}>
+                      <span className="item-type">{mem.membership_type}</span>
+                      <span className="item-qty">{mem.quantity}개</span>
+                      <span className="item-expire">~{mem.expire_date}</span>
+                      {pending.filter(p => !p.processed).length > 0 && !isExpired ? (
+                        pending.filter(p => !p.processed).map((item, idx) => (
+                          <button
+                            key={idx}
+                            className="btn-use"
+                            onClick={() => handleUseMembership(mem, pending.findIndex(p => p === item))}
+                            disabled={isSaving}
+                          >
+                            사용기록
+                          </button>
+                        ))
+                      ) : (
+                        <span className="item-status">{isExpired ? '만료' : ''}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* 패키지 현황 */}
+          <section className="panel-section package-section">
+            <div className="section-header">
+              <h3>
+                <i className="fa-solid fa-box"></i>
+                패키지 (통증마일리지)
+              </h3>
+              {!showPackageForm && (
+                <button
+                  className="btn-add-small"
+                  onClick={() => {
+                    resetPackageForm();
+                    setShowPackageForm(true);
+                  }}
+                >
+                  <i className="fa-solid fa-plus"></i> 등록
+                </button>
+              )}
+            </div>
+
+            {/* 인라인 등록 폼 (한 줄) */}
+            {showPackageForm && (
+              <div className="inline-form-single">
+                <select
+                  value={packageForm.package_name}
+                  onChange={(e) => setPackageForm({ ...packageForm, package_name: e.target.value })}
+                >
+                  <option value="통마">통마</option>
+                  <option value="약침">약침</option>
+                  <option value="향기요법">향기요법</option>
+                  <option value="스파인엠티">스파인엠티</option>
+                </select>
+                <input
+                  type="number"
+                  value={packageForm.total_count}
+                  onChange={(e) => setPackageForm({ ...packageForm, total_count: Number(e.target.value) })}
+                  min={1}
+                  className="input-qty"
+                />
+                <span className="input-suffix">회</span>
+                <input
+                  type="date"
+                  value={packageForm.expire_date}
+                  onChange={(e) => setPackageForm({ ...packageForm, expire_date: e.target.value })}
+                  className="input-date"
+                />
+                <button
+                  className="btn-cancel-small"
+                  onClick={() => setShowPackageForm(false)}
+                  disabled={isSaving}
+                >
+                  취소
+                </button>
+                <button
+                  className="btn-save-small"
+                  onClick={handleSavePackage}
+                  disabled={isSaving}
+                >
+                  {isSaving ? '...' : '저장'}
+                </button>
+              </div>
+            )}
+
+            {packages.length === 0 && !showPackageForm ? (
+              <div className="empty-state">등록된 패키지가 없습니다.</div>
+            ) : (
+              <div className="item-list">
+                {packages.map(pkg => (
+                  <div key={pkg.id} className={`item-row ${pkg.remaining_count <= 0 ? 'depleted' : ''}`}>
+                    <span className="item-type">{pkg.package_name}</span>
+                    <span className="item-qty">{pkg.remaining_count}/{pkg.total_count}회</span>
+                    {pkg.expire_date && <span className="item-expire">~{pkg.expire_date}</span>}
+                    {pending.filter(p => !p.processed).length > 0 && pkg.remaining_count > 0 ? (
+                      pending.filter(p => !p.processed).map((item, idx) => (
                         <button
                           key={idx}
-                          className="btn-deduct"
-                          onClick={() => handleDeductMembership(mem, idx)}
-                          disabled={isSaving || mem.remaining_count <= 0}
+                          className="btn-use package"
+                          onClick={() => handleDeductPackage(pkg, pending.findIndex(p => p === item))}
+                          disabled={isSaving}
                         >
-                          {item.name} → 여기서 차감
+                          차감
                         </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* 패키지 현황 */}
-      <section className="panel-section package-section">
-        <div className="section-header">
-          <h3>
-            <i className="fa-solid fa-box"></i>
-            패키지 (통증마일리지)
-          </h3>
-          <button className="btn-add-small">
-            <i className="fa-solid fa-plus"></i> 등록
-          </button>
-        </div>
-
-        {packages.length === 0 ? (
-          <div className="empty-state">등록된 패키지가 없습니다.</div>
-        ) : (
-          <div className="package-list">
-            {packages.map(pkg => (
-              <div key={pkg.id} className="package-card">
-                <div className="package-main">
-                  <div className="package-info">
-                    <span className="package-name">{pkg.package_name}</span>
-                    <div className="package-progress">
-                      <div className="progress-bar">
-                        <div
-                          className="progress-fill"
-                          style={{ width: `${(pkg.remaining_count / pkg.total_count) * 100}%` }}
-                        />
-                      </div>
-                      <span className="progress-text">
-                        {pkg.remaining_count}/{pkg.total_count}회
-                      </span>
-                    </div>
+                      ))
+                    ) : (
+                      <span className="item-status">{pkg.remaining_count <= 0 ? '소진' : ''}</span>
+                    )}
                   </div>
-                  {pkg.expire_date && (
-                    <div className="package-expire">
-                      만료 {formatDate(pkg.expire_date)}
-                    </div>
-                  )}
-                </div>
-
-                {/* 처리 대기 항목에 대한 차감 버튼들 */}
-                {pending.filter(p => !p.processed).length > 0 && pkg.remaining_count > 0 && (
-                  <div className="deduct-buttons">
-                    {pending.map((item, idx) => !item.processed && (
-                      <button
-                        key={idx}
-                        className="btn-deduct"
-                        onClick={() => handleDeductPackage(pkg, idx)}
-                        disabled={isSaving || pkg.remaining_count <= 0}
-                      >
-                        {item.name} → 여기서 차감
-                      </button>
-                    ))}
-                  </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* 최근 차감 기록 */}
-      <section className="panel-section history-section">
-        <div className="section-header">
-          <h3>
-            <i className="fa-solid fa-history"></i>
-            최근 차감 기록
-          </h3>
+            )}
+          </section>
         </div>
-
-        {usageRecords.length === 0 ? (
-          <div className="empty-state light">차감 기록이 없습니다.</div>
-        ) : (
-          <div className="usage-history">
-            {usageRecords.map(record => (
-              <div key={record.id} className="history-item">
-                <span className="history-date">{formatDate(record.usage_date)}</span>
-                <span className="history-item-name">{record.item_name}</span>
-                <span className="history-arrow">→</span>
-                <span className={`history-source ${record.source_type}`}>
-                  {record.source_type === 'membership' ? '멤버십' : '패키지'}
-                </span>
-                <span className="history-remaining">(잔여 {record.remaining_after}회)</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      </div>
 
       {/* 하단 버튼 */}
       <div className="panel-footer">
@@ -619,21 +798,6 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
           </span>
         )}
       </div>
-
-      {/* 멤버십 등록 모달 */}
-      {showMembershipModal && sqlitePatientId && (
-        <MembershipAddModal
-          isOpen={showMembershipModal}
-          onClose={() => setShowMembershipModal(false)}
-          onSuccess={() => {
-            setShowMembershipModal(false);
-            loadData(); // 데이터 새로고침
-          }}
-          patientId={sqlitePatientId}
-          patientName={patientName}
-          chartNo={chartNumber}
-        />
-      )}
     </div>
   );
 };

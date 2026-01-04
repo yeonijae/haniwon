@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/postgres';
 import { getMultipleRecommendations, generateCustomDescription, type AIRecommendation, type AIGeneratedDescription } from '../services/aiDosageRecommendation';
 import type { DosageInstruction, Patient } from '../types';
 

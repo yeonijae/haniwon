@@ -38,7 +38,7 @@ import { ReceiptMemoModal } from './ReceiptMemoModal';
 import YakchimModal from './YakchimModal';
 import HerbalModal from './HerbalModal';
 
-const MSSQL_API_BASE = 'http://192.168.0.173:3100';
+const MSSQL_API_BASE = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
 // 환자 검색 결과 타입
 interface PatientSearchResult {
@@ -501,6 +501,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
             giftDispensings: data.giftDispensings,
             documentIssues: data.documentIssues,
             medicineUsages: data.medicineUsages,
+            yakchimUsageRecords: data.yakchimUsageRecords,
           });
 
           // 해당 환자의 다음 예약 찾기
@@ -1556,7 +1557,7 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
             <div className="grid-tags">
               <div className="grid-tag membership clickable" onClick={() => openMembershipEdit(receipt.activeMembership!)}>
                 <span className="tag-name">{receipt.activeMembership!.membership_type}</span>
-                <span className="tag-count">{receipt.activeMembership!.remaining_count}회</span>
+                <span className="tag-count">{receipt.activeMembership!.quantity}개</span>
                 <span className="tag-expire">~{new Date(receipt.activeMembership!.expire_date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</span>
               </div>
             </div>

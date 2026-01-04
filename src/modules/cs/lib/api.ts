@@ -1,4 +1,4 @@
-import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/postgres';
 import type {
   Inquiry,
   CreateInquiryRequest,
@@ -17,10 +17,11 @@ import type {
   ReceiptMemo,
   ReservationStatus,
   MedicineUsage,
+  YakchimUsageRecord,
 } from '../types';
 
 // MSSQL API 기본 URL
-const MSSQL_API_BASE_URL = 'http://192.168.0.173:3100';
+const MSSQL_API_BASE_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
 /**
  * 문의 목록 조회
@@ -235,7 +236,7 @@ export async function ensureReceiptTables(): Promise<void> {
     )
   `);
 
-  // 멤버십 테이블
+  // 멤버십 테이블 (기간 기반 무제한 사용)
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_memberships (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -243,7 +244,7 @@ export async function ensureReceiptTables(): Promise<void> {
       chart_number TEXT,
       patient_name TEXT,
       membership_type TEXT NOT NULL,
-      remaining_count INTEGER NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
       start_date TEXT NOT NULL,
       expire_date TEXT NOT NULL,
       memo TEXT,
@@ -252,6 +253,10 @@ export async function ensureReceiptTables(): Promise<void> {
       updated_at TEXT DEFAULT (datetime('now'))
     )
   `);
+
+  // 기존 테이블에 quantity 컬럼 추가 (remaining_count → quantity 마이그레이션)
+  await execute(`ALTER TABLE cs_memberships ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1`).catch(() => {});
+  await execute(`UPDATE cs_memberships SET quantity = remaining_count WHERE remaining_count IS NOT NULL AND quantity = 1`).catch(() => {});
 
   // 약침 패키지 테이블 (통증마일리지)
   await execute(`
@@ -775,32 +780,23 @@ export async function createMembership(membership: Omit<Membership, 'id' | 'crea
   const now = getCurrentTimestamp();
   return insert(`
     INSERT INTO cs_memberships (
-      patient_id, chart_number, patient_name, membership_type, remaining_count,
+      patient_id, chart_number, patient_name, membership_type, quantity,
       start_date, expire_date, memo, status, created_at, updated_at
     ) VALUES (
       ${membership.patient_id}, ${toSqlValue(membership.chart_number)}, ${toSqlValue(membership.patient_name)},
-      ${escapeString(membership.membership_type)}, ${membership.remaining_count},
+      ${escapeString(membership.membership_type)}, ${membership.quantity},
       ${escapeString(membership.start_date)}, ${escapeString(membership.expire_date)},
       ${toSqlValue(membership.memo)}, ${escapeString(membership.status)}, ${escapeString(now)}, ${escapeString(now)}
     )
   `);
 }
 
-export async function useMembership(id: number): Promise<void> {
-  const now = getCurrentTimestamp();
-  await execute(`
-    UPDATE cs_memberships SET
-      remaining_count = remaining_count - 1,
-      status = CASE WHEN remaining_count - 1 <= 0 THEN 'expired' ELSE status END,
-      updated_at = ${escapeString(now)}
-    WHERE id = ${id}
-  `);
-}
+// 멤버십은 차감 없음 (기간 동안 무제한 사용, 사용 기록만 남김)
 
 export async function updateMembership(id: number, updates: Partial<Membership>): Promise<void> {
   const parts: string[] = [];
   if (updates.membership_type !== undefined) parts.push(`membership_type = ${escapeString(updates.membership_type)}`);
-  if (updates.remaining_count !== undefined) parts.push(`remaining_count = ${updates.remaining_count}`);
+  if (updates.quantity !== undefined) parts.push(`quantity = ${updates.quantity}`);
   if (updates.start_date !== undefined) parts.push(`start_date = ${escapeString(updates.start_date)}`);
   if (updates.expire_date !== undefined) parts.push(`expire_date = ${escapeString(updates.expire_date)}`);
   if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
@@ -1086,6 +1082,7 @@ export async function getPatientMemoData(patientId: number, date: string): Promi
   giftDispensings: GiftDispensing[];
   documentIssues: DocumentIssue[];
   medicineUsages: MedicineUsage[];
+  yakchimUsageRecords: YakchimUsageRecord[];
   memo: ReceiptMemo | null;
 }> {
   const [
@@ -1098,6 +1095,7 @@ export async function getPatientMemoData(patientId: number, date: string): Promi
     giftDispensings,
     documentIssues,
     medicineUsages,
+    yakchimUsageRecords,
     memo,
   ] = await Promise.all([
     getActiveTreatmentPackages(patientId),
@@ -1109,6 +1107,7 @@ export async function getPatientMemoData(patientId: number, date: string): Promi
     getGiftDispensings(patientId, date),
     getDocumentIssues(patientId, date),
     getMedicineUsages(patientId, date),
+    getYakchimUsageRecords(patientId, date),
     getReceiptMemo(patientId, date),
   ]);
 
@@ -1132,6 +1131,7 @@ export async function getPatientMemoData(patientId: number, date: string): Promi
     giftDispensings,
     documentIssues,
     medicineUsages,
+    yakchimUsageRecords,
     memo,
   };
 }
@@ -1158,6 +1158,32 @@ export async function getMedicineUsages(patientId: number, date?: string): Promi
 export async function getMedicineUsagesByDate(date: string): Promise<MedicineUsage[]> {
   return query<MedicineUsage>(
     `SELECT * FROM cs_medicine_usage WHERE usage_date = ${escapeString(date)} ORDER BY created_at DESC`
+  );
+}
+
+// ============================================
+// 약침 사용 기록 API
+// ============================================
+
+/**
+ * 환자별 약침 사용 기록 조회 (날짜 기준)
+ */
+export async function getYakchimUsageRecords(patientId: number, date: string): Promise<YakchimUsageRecord[]> {
+  return query<YakchimUsageRecord>(
+    `SELECT * FROM cs_yakchim_usage_records
+     WHERE patient_id = ${patientId} AND usage_date = ${escapeString(date)}
+     ORDER BY created_at DESC`
+  );
+}
+
+/**
+ * 영수증 ID로 약침 사용 기록 조회
+ */
+export async function getYakchimUsageRecordsByReceiptId(receiptId: number): Promise<YakchimUsageRecord[]> {
+  return query<YakchimUsageRecord>(
+    `SELECT * FROM cs_yakchim_usage_records
+     WHERE receipt_id = ${receiptId}
+     ORDER BY created_at DESC`
   );
 }
 

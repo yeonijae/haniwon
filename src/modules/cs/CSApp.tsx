@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { PortalUser } from '@shared/types';
 import { useFontScale } from '@shared/hooks/useFontScale';
-import { insert, execute, queryOne, escapeString } from '@shared/lib/sqlite';
+import { insert, execute, queryOne, escapeString } from '@shared/lib/postgres';
 import { addActing, cancelActing, updateActing } from '@acting/api';
 import CSSidebar, {
   ConsultationPatient,
@@ -17,7 +17,7 @@ import TreatmentProgramAdmin from './components/TreatmentProgramAdmin';
 import PatientTimelineModal from './components/PatientTimelineModal';
 import './styles/cs.css';
 
-const MSSQL_API_URL = 'http://192.168.0.173:3100';
+const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
 interface Doctor {
   id: string;

@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const API_BASE_URL = 'http://192.168.0.173:3100';
+const API_BASE_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 const POLL_INTERVAL = 5000; // 5초 (예약은 자주 변경되지 않으므로)
 
 // MSSQL 예약 타입

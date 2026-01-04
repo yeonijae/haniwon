@@ -2,7 +2,7 @@
  * 직원관리 API
  */
 
-import { query, execute } from '@shared/lib/sqlite';
+import { query, execute } from '@shared/lib/postgres';
 import type {
   StaffMember,
   WorkPattern,
@@ -20,7 +20,7 @@ import type {
 import { DEFAULT_DOCTOR_PERMISSIONS } from '../types';
 
 // MSSQL API URL
-const MSSQL_API_BASE_URL = 'http://192.168.0.173:3100';
+const MSSQL_API_BASE_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
 // MSSQL 의료진 타입
 export interface MssqlDoctor {

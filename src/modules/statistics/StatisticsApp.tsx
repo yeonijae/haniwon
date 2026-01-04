@@ -3,7 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import type { PortalUser } from '@shared/types';
 import { useFontScale } from '@shared/hooks/useFontScale';
 
-const API_BASE = 'http://192.168.0.173:3100';
+const API_BASE = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
 interface UncoveredItem {
   name: string;

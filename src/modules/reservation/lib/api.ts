@@ -7,7 +7,8 @@ import type {
   DayOff
 } from '../types';
 
-const API_BASE = 'http://192.168.0.173:3100/api';
+const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
+const API_BASE = `${MSSQL_API_URL}/api`;
 
 // API 응답 타입
 interface MssqlReservationResponse {

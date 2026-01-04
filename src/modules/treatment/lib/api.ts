@@ -4,7 +4,7 @@
  */
 
 import { Patient, TreatmentRoom, TreatmentItem, SessionTreatment, DefaultTreatment } from '../types';
-import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/postgres';
 
 /**
  * 환자 관련 API
@@ -51,7 +51,8 @@ export async function fetchPatientById(patientId: number): Promise<Patient | nul
   // 성별 또는 생년월일이 없으면 MSSQL에서 가져와서 업데이트
   if ((!gender || !birthDate) && data.chart_number) {
     try {
-      const mssqlRes = await fetch(`http://192.168.0.173:3100/api/patients/search?q=${data.chart_number}`);
+      const mssqlApiUrl = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
+      const mssqlRes = await fetch(`${mssqlApiUrl}/api/patients/search?q=${data.chart_number}`);
       if (mssqlRes.ok) {
         const mssqlData = await mssqlRes.json();
         const patient = mssqlData[0];
@@ -209,7 +210,8 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
     // 생년월일이 여전히 없고 차트번호가 있으면 MSSQL에서 가져오기 시도
     if (!patientDob && room.patient_chart_number && room.patient_id) {
       try {
-        const mssqlRes = await fetch(`http://192.168.0.173:3100/api/patients/search?q=${room.patient_chart_number}`);
+        const mssqlApiUrl2 = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
+        const mssqlRes = await fetch(`${mssqlApiUrl2}/api/patients/search?q=${room.patient_chart_number}`);
         if (mssqlRes.ok) {
           const mssqlData = await mssqlRes.json();
           const patient = mssqlData[0];

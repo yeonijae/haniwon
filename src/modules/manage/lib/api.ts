@@ -4,7 +4,7 @@
  */
 
 import { Patient, Reservation, Payment, DefaultTreatment, Acting, CompletedPayment, MedicalStaff, MedicalStaffPermissions, Staff, StaffPermissions, UncoveredCategories, TreatmentRoom, SessionTreatment, TreatmentItem, ConsultationItem, ConsultationSubItem, RoomStatus } from '../types';
-import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp, toSqlValue } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp, toSqlValue } from '@shared/lib/postgres';
 
 /**
  * 환자 관련 API
@@ -93,7 +93,7 @@ export async function fetchPatientsByChartNumbers(chartNumbers: string[]): Promi
 }
 
 // MSSQL API 기본 URL
-const MSSQL_API_BASE_URL = 'http://192.168.0.173:3100';
+const MSSQL_API_BASE_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
 // MSSQL API 응답을 Patient 객체로 변환
 interface MssqlPatientResponse {

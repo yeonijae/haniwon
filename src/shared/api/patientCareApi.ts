@@ -3,7 +3,7 @@
  * 해피콜, 치료 종결, 정기 관리 메시지 등
  */
 
-import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentDate, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentDate, getCurrentTimestamp } from '@shared/lib/postgres';
 import type {
   PatientCareItem,
   PatientCareType,

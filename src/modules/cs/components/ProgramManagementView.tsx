@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import type { PortalUser } from '@shared/types';
-import { query, execute, escapeString } from '@shared/lib/sqlite';
+import { query, execute, escapeString } from '@shared/lib/postgres';
 
 interface ProgramManagementViewProps {
   user: PortalUser;

@@ -2,7 +2,7 @@
  * 의료진 할일 API
  */
 
-import { query, queryOne, execute, insert, escapeString, getCurrentDate, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, getCurrentDate, getCurrentTimestamp } from '@shared/lib/postgres';
 import type {
   Task,
   TaskTemplate,

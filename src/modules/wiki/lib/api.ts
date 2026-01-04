@@ -3,7 +3,7 @@
  */
 
 import { WikiPage, WikiImage, WikiTreeNode } from '../types';
-import { query, queryOne, execute, insert, escapeString } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString } from '@shared/lib/postgres';
 
 // 모든 페이지 조회 (트리 구조용)
 export async function fetchAllPages(): Promise<WikiPage[]> {

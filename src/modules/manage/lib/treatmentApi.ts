@@ -3,7 +3,7 @@
  * 환자별 기본 치료 정보, 당일 치료 기록, 치료 시간 로그, 액팅 시간 로그 관리
  */
 
-import { query, queryOne, execute, insert, escapeString, toSqlValue, tableExists } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, tableExists } from '@shared/lib/postgres';
 import type {
   PatientDefaultTreatments,
   DailyTreatmentRecord,

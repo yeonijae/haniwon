@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { useDraggableModal } from '../hooks/useDraggableModal';
-import { query, execute, escapeString } from '@shared/lib/sqlite';
+import { query, execute, escapeString } from '@shared/lib/postgres';
 import { EVENT_TYPES, EventTypeCode } from './NonCoveredManagementView';
 import type { ConsultationPatient } from './CSSidebar';
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { PortalUser } from '@shared/types';
 
-const API_BASE = 'http://192.168.0.173:3100';
+const API_BASE = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
 interface Database {
   name: string;

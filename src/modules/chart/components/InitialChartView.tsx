@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/sqlite';
+import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/postgres';
 import type { InitialChart } from '../types';
 
 interface Props {

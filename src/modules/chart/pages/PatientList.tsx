@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { query } from '@shared/lib/sqlite';
+import { query } from '@shared/lib/postgres';
 import type { Patient } from '../types';
 
 // MSSQL API URL
