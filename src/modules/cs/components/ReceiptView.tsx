@@ -3,6 +3,7 @@ import type { PortalUser } from '@shared/types';
 import {
   ensureReceiptTables,
   getPatientMemoData,
+  getPatientsMemoDataBatch,
   upsertReceiptMemo,
   useTreatmentPackage,
   earnPoints,
@@ -485,85 +486,93 @@ function ReceiptView({ user }: ReceiptViewProps) {
       }
     });
 
-    // 3. 각 환자의 메모 요약 + 다음 예약 매핑
-    const updates = await Promise.all(
-      items.map(async (item) => {
-        try {
-          // 메모 데이터 로드
-          const data = await getPatientMemoData(item.patient_id, selectedDate);
-          const summary = generateMemoSummary({
-            treatmentPackages: data.treatmentPackages,
-            herbalPackages: data.herbalPackages,
-            pointUsed: data.todayPointUsed,
-            pointEarned: data.todayPointEarned,
-            membership: data.membership || undefined,
-            herbalDispensings: data.herbalDispensings,
-            giftDispensings: data.giftDispensings,
-            documentIssues: data.documentIssues,
-            medicineUsages: data.medicineUsages,
-            yakchimUsageRecords: data.yakchimUsageRecords,
-          });
+    // 3. 배치 쿼리로 모든 환자의 메모 데이터 한 번에 조회 (최적화)
+    const patientIds = items.map(item => item.patient_id);
+    let memoDataMap = new Map<number, any>();
 
-          // 해당 환자의 다음 예약 찾기
-          const patientReservations = reservationsByPatient.get(item.patient_id) || [];
-          const nextReservation = getNextReservation(patientReservations);
+    try {
+      memoDataMap = await getPatientsMemoDataBatch(patientIds, selectedDate);
+    } catch (err) {
+      console.error('배치 메모 데이터 조회 실패:', err);
+    }
 
-          // 빠른 메모 버튼 상태 체크
-          const hasYakchimMemo = data.treatmentPackages?.some(p =>
-            p.package_name?.includes('약침')
-          ) || false;
-          const hasHerbalMemo = (data.herbalPackages?.length > 0) ||
-            (data.herbalDispensings?.length > 0);
-          const hasMedicineMemo = (data.medicineUsages?.length > 0);
-          const hasGongjindanMemo = data.herbalPackages?.some(p =>
-            p.package_name?.includes('공진단')
-          ) || data.herbalDispensings?.some(d =>
-            d.name?.includes('공진단')
-          ) || false;
-          const hasGyeongokgoMemo = data.herbalPackages?.some(p =>
-            p.package_name?.includes('경옥고')
-          ) || data.herbalDispensings?.some(d =>
-            d.name?.includes('경옥고')
-          ) || false;
-          const hasDietMemo = data.herbalPackages?.some(p =>
-            p.package_name?.includes('린') || p.package_name?.includes('체감탕')
-          ) || data.herbalDispensings?.some(d =>
-            d.name?.includes('린') || d.name?.includes('체감탕')
-          ) || false;
+    // 4. 각 환자의 메모 요약 + 다음 예약 매핑
+    const updates = items.map((item) => {
+      const data = memoDataMap.get(item.patient_id);
 
-          return {
-            patient_id: item.patient_id,
-            memoSummary: summary,
-            reservationStatus: data.memo?.reservation_status || 'none',
-            reservationDate: data.memo?.reservation_date,
-            nextReservation,
-            hasYakchimMemo,
-            hasHerbalMemo,
-            hasMedicineMemo,
-            hasGongjindanMemo,
-            hasGyeongokgoMemo,
-            hasDietMemo,
-          };
-        } catch (err) {
-          // 해당 환자의 다음 예약 찾기 (메모 로드 실패해도)
-          const patientReservations = reservationsByPatient.get(item.patient_id) || [];
-          const nextReservation = getNextReservation(patientReservations);
+      if (data) {
+        const summary = generateMemoSummary({
+          treatmentPackages: data.treatmentPackages,
+          herbalPackages: data.herbalPackages,
+          pointUsed: data.todayPointUsed,
+          pointEarned: data.todayPointEarned,
+          membership: data.membership || undefined,
+          herbalDispensings: data.herbalDispensings,
+          giftDispensings: data.giftDispensings,
+          documentIssues: data.documentIssues,
+          medicineUsages: data.medicineUsages,
+          yakchimUsageRecords: data.yakchimUsageRecords,
+        });
 
-          return {
-            patient_id: item.patient_id,
-            memoSummary: '',
-            reservationStatus: 'none' as ReservationStatus,
-            nextReservation,
-            hasYakchimMemo: false,
-            hasHerbalMemo: false,
-            hasMedicineMemo: false,
-            hasGongjindanMemo: false,
-            hasGyeongokgoMemo: false,
-            hasDietMemo: false,
-          };
-        }
-      })
-    );
+        // 해당 환자의 다음 예약 찾기
+        const patientReservations = reservationsByPatient.get(item.patient_id) || [];
+        const nextReservation = getNextReservation(patientReservations);
+
+        // 빠른 메모 버튼 상태 체크
+        const hasYakchimMemo = data.treatmentPackages?.some((p: any) =>
+          p.package_name?.includes('약침')
+        ) || false;
+        const hasHerbalMemo = (data.herbalPackages?.length > 0) ||
+          (data.herbalDispensings?.length > 0);
+        const hasMedicineMemo = (data.medicineUsages?.length > 0);
+        const hasGongjindanMemo = data.herbalPackages?.some((p: any) =>
+          p.package_name?.includes('공진단')
+        ) || data.herbalDispensings?.some((d: any) =>
+          d.name?.includes('공진단')
+        ) || false;
+        const hasGyeongokgoMemo = data.herbalPackages?.some((p: any) =>
+          p.package_name?.includes('경옥고')
+        ) || data.herbalDispensings?.some((d: any) =>
+          d.name?.includes('경옥고')
+        ) || false;
+        const hasDietMemo = data.herbalPackages?.some((p: any) =>
+          p.package_name?.includes('린') || p.package_name?.includes('체감탕')
+        ) || data.herbalDispensings?.some((d: any) =>
+          d.name?.includes('린') || d.name?.includes('체감탕')
+        ) || false;
+
+        return {
+          patient_id: item.patient_id,
+          memoSummary: summary,
+          reservationStatus: data.memo?.reservation_status || 'none',
+          reservationDate: data.memo?.reservation_date,
+          nextReservation,
+          hasYakchimMemo,
+          hasHerbalMemo,
+          hasMedicineMemo,
+          hasGongjindanMemo,
+          hasGyeongokgoMemo,
+          hasDietMemo,
+        };
+      } else {
+        // 메모 데이터 없음
+        const patientReservations = reservationsByPatient.get(item.patient_id) || [];
+        const nextReservation = getNextReservation(patientReservations);
+
+        return {
+          patient_id: item.patient_id,
+          memoSummary: '',
+          reservationStatus: 'none' as ReservationStatus,
+          nextReservation,
+          hasYakchimMemo: false,
+          hasHerbalMemo: false,
+          hasMedicineMemo: false,
+          hasGongjindanMemo: false,
+          hasGyeongokgoMemo: false,
+          hasDietMemo: false,
+        };
+      }
+    });
 
     setReceipts(prev => prev.map(item => {
       const update = updates.find(u => u.patient_id === item.patient_id);

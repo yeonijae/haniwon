@@ -1137,6 +1137,154 @@ export async function getPatientMemoData(patientId: number, date: string): Promi
 }
 
 // ============================================
+// 배치 쿼리: 여러 환자의 메모 데이터 한 번에 조회
+// ============================================
+
+export interface PatientMemoData {
+  treatmentPackages: TreatmentPackage[];
+  herbalPackages: HerbalPackage[];
+  pointBalance: number;
+  todayPointUsed: number;
+  todayPointEarned: number;
+  membership: Membership | null;
+  herbalDispensings: HerbalDispensing[];
+  giftDispensings: GiftDispensing[];
+  documentIssues: DocumentIssue[];
+  medicineUsages: MedicineUsage[];
+  yakchimUsageRecords: YakchimUsageRecord[];
+  memo: ReceiptMemo | null;
+}
+
+/**
+ * 여러 환자의 메모 데이터를 배치로 조회 (최적화)
+ * 기존: 환자 50명 × 11쿼리 = 550쿼리
+ * 최적화: 11개 배치 쿼리
+ */
+export async function getPatientsMemoDataBatch(
+  patientIds: number[],
+  date: string
+): Promise<Map<number, PatientMemoData>> {
+  if (patientIds.length === 0) {
+    return new Map();
+  }
+
+  // 중복 제거
+  const uniqueIds = [...new Set(patientIds)];
+  const idsStr = uniqueIds.join(',');
+
+  // 11개 배치 쿼리 병렬 실행
+  const [
+    allTreatmentPackages,
+    allHerbalPackages,
+    allPointTransactions,
+    allMemberships,
+    allHerbalDispensings,
+    allGiftDispensings,
+    allDocumentIssues,
+    allMedicineUsages,
+    allYakchimUsageRecords,
+    allReceiptMemos,
+  ] = await Promise.all([
+    // 시술패키지 (활성)
+    query<TreatmentPackage>(
+      `SELECT * FROM cs_treatment_packages WHERE patient_id IN (${idsStr}) AND status = 'active'`
+    ),
+    // 한약패키지 (활성)
+    query<HerbalPackage>(
+      `SELECT * FROM cs_herbal_packages WHERE patient_id IN (${idsStr}) AND status = 'active'`
+    ),
+    // 포인트 거래 (오늘 날짜)
+    query<PointTransaction>(
+      `SELECT * FROM cs_point_transactions WHERE patient_id IN (${idsStr}) AND transaction_date = ${escapeString(date)}`
+    ),
+    // 멤버십 (활성)
+    query<Membership>(
+      `SELECT * FROM cs_memberships WHERE patient_id IN (${idsStr}) AND status = 'active'`
+    ),
+    // 한약 출납 (오늘)
+    query<HerbalDispensing>(
+      `SELECT * FROM cs_herbal_dispensings WHERE patient_id IN (${idsStr}) AND dispensing_date = ${escapeString(date)}`
+    ),
+    // 증정품 출납 (오늘)
+    query<GiftDispensing>(
+      `SELECT * FROM cs_gift_dispensings WHERE patient_id IN (${idsStr}) AND dispensing_date = ${escapeString(date)}`
+    ),
+    // 서류발급 (오늘)
+    query<DocumentIssue>(
+      `SELECT * FROM cs_document_issues WHERE patient_id IN (${idsStr}) AND issue_date = ${escapeString(date)}`
+    ),
+    // 상비약 사용 (오늘)
+    query<MedicineUsage>(
+      `SELECT * FROM cs_medicine_usage WHERE patient_id IN (${idsStr}) AND usage_date = ${escapeString(date)}`
+    ),
+    // 약침 사용 기록 (오늘)
+    query<YakchimUsageRecord>(
+      `SELECT * FROM cs_yakchim_usage_records WHERE patient_id IN (${idsStr}) AND usage_date = ${escapeString(date)}`
+    ),
+    // 수납 메모 (오늘)
+    query<ReceiptMemo>(
+      `SELECT * FROM cs_receipt_memos WHERE patient_id IN (${idsStr}) AND receipt_date = ${escapeString(date)}`
+    ),
+  ]);
+
+  // 포인트 잔액 조회 (각 환자의 최신 거래에서)
+  const pointBalances = await query<{ patient_id: number; balance: number }>(
+    `SELECT patient_id, balance_after as balance FROM cs_point_transactions
+     WHERE id IN (
+       SELECT MAX(id) FROM cs_point_transactions WHERE patient_id IN (${idsStr}) GROUP BY patient_id
+     )`
+  );
+  const balanceMap = new Map(pointBalances.map(p => [p.patient_id, p.balance]));
+
+  // 결과 맵 생성
+  const result = new Map<number, PatientMemoData>();
+
+  for (const patientId of uniqueIds) {
+    // 해당 환자 데이터 필터링
+    const treatmentPackages = allTreatmentPackages.filter(p => p.patient_id === patientId);
+    const herbalPackages = allHerbalPackages.filter(p => p.patient_id === patientId);
+    const pointTransactions = allPointTransactions.filter(p => p.patient_id === patientId);
+    const memberships = allMemberships.filter(m => m.patient_id === patientId);
+    const herbalDispensings = allHerbalDispensings.filter(d => d.patient_id === patientId);
+    const giftDispensings = allGiftDispensings.filter(d => d.patient_id === patientId);
+    const documentIssues = allDocumentIssues.filter(d => d.patient_id === patientId);
+    const medicineUsages = allMedicineUsages.filter(u => u.patient_id === patientId);
+    const yakchimUsageRecords = allYakchimUsageRecords.filter(r => r.patient_id === patientId);
+    const memos = allReceiptMemos.filter(m => m.patient_id === patientId);
+
+    // 포인트 계산
+    const todayPointUsed = pointTransactions
+      .filter(t => t.transaction_type === 'use')
+      .reduce((sum, t) => sum + t.amount, 0);
+    const todayPointEarned = pointTransactions
+      .filter(t => t.transaction_type === 'earn')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    // 가장 최근 만료일 멤버십
+    const membership = memberships.length > 0
+      ? memberships.sort((a, b) => (b.expire_date || '').localeCompare(a.expire_date || ''))[0]
+      : null;
+
+    result.set(patientId, {
+      treatmentPackages,
+      herbalPackages,
+      pointBalance: balanceMap.get(patientId) || 0,
+      todayPointUsed,
+      todayPointEarned,
+      membership,
+      herbalDispensings,
+      giftDispensings,
+      documentIssues,
+      medicineUsages,
+      yakchimUsageRecords,
+      memo: memos.length > 0 ? memos[0] : null,
+    });
+  }
+
+  return result;
+}
+
+// ============================================
 // 상비약 사용내역 API
 // ============================================
 
