@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import TreatmentProgramAdmin from './TreatmentProgramAdmin';
 import MedicineInventoryAdmin from './MedicineInventoryAdmin';
+import DecocionManagementView from './DecocionManagementView';
 
-type SettingsTab = 'treatment' | 'medicine';
+type SettingsTab = 'medicine' | 'decocion' | 'treatment';
 
 interface SettingsViewProps {
   user?: any;
@@ -13,6 +14,7 @@ function SettingsView({ user }: SettingsViewProps) {
 
   const tabs: { id: SettingsTab; label: string; icon: string }[] = [
     { id: 'medicine', label: '상비약 재고', icon: '💊' },
+    { id: 'decocion', label: '탕전 관리', icon: '🍵' },
     { id: 'treatment', label: '시술 프로그램', icon: '📋' },
   ];
 
@@ -56,6 +58,7 @@ function SettingsView({ user }: SettingsViewProps) {
       {/* 탭 컨텐츠 */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {activeTab === 'medicine' && <MedicineInventoryAdmin />}
+        {activeTab === 'decocion' && <DecocionManagementView />}
         {activeTab === 'treatment' && <TreatmentProgramAdmin />}
       </div>
     </div>
