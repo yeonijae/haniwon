@@ -39,6 +39,7 @@ import { ReceiptMemoModal } from './ReceiptMemoModal';
 import { ReceiptDetailModal } from './ReceiptDetailModal';
 import YakchimModal from './YakchimModal';
 import HerbalModal from './HerbalModal';
+import { MedicineModal } from './MedicineModal';
 
 const MSSQL_API_BASE = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
@@ -324,6 +325,9 @@ function ReceiptView({ user }: ReceiptViewProps) {
   // 진료상세 모달 상태
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [detailModalReceipt, setDetailModalReceipt] = useState<ExpandedReceiptItem | null>(null);
+
+  // 상비약 모달 상태
+  const [medicineModalReceipt, setMedicineModalReceipt] = useState<ExpandedReceiptItem | null>(null);
 
   // 디바운스 검색
   useEffect(() => {
@@ -1191,9 +1195,9 @@ function ReceiptView({ user }: ReceiptViewProps) {
                               className={`quick-memo-btn medicine ${receipt.hasMedicineMemo ? 'completed' : ''}`}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleOpenMemoModal(receipt);
+                                setMedicineModalReceipt(receipt);
                               }}
-                              title={receipt.hasMedicineMemo ? '상비약 메모 있음' : '상비약 메모 추가'}
+                              title={receipt.hasMedicineMemo ? '상비약 처방됨' : '상비약 처방'}
                             >
                               상비약
                             </button>
@@ -1354,6 +1358,22 @@ function ReceiptView({ user }: ReceiptViewProps) {
           receiptDate={selectedDate}
           insuranceSelf={detailModalReceipt.insurance_self}
           generalAmount={detailModalReceipt.general_amount}
+        />
+      )}
+
+      {/* 상비약 모달 */}
+      {medicineModalReceipt && (
+        <MedicineModal
+          isOpen={true}
+          onClose={() => setMedicineModalReceipt(null)}
+          patientId={medicineModalReceipt.patient_id}
+          chartNumber={medicineModalReceipt.chart_no}
+          patientName={medicineModalReceipt.patient_name}
+          usageDate={selectedDate}
+          receiptId={medicineModalReceipt.id}
+          onSuccess={() => {
+            loadReceipts();
+          }}
         />
       )}
     </div>

@@ -14,6 +14,7 @@ import InquiryView from './components/InquiryView';
 import PatientSearchView from './components/PatientSearchView';
 import NonCoveredManagementView from './components/NonCoveredManagementView';
 import TreatmentProgramAdmin from './components/TreatmentProgramAdmin';
+import SettingsView from './components/SettingsView';
 import PatientTimelineModal from './components/PatientTimelineModal';
 import './styles/cs.css';
 
@@ -291,7 +292,7 @@ function CSApp({ user }: CSAppProps) {
       case 'noncovered':
         return <NonCoveredManagementView user={user} />;
       case 'settings':
-        return <TreatmentProgramAdmin />;
+        return <SettingsView user={user} />;
       default:
         return null;
     }
