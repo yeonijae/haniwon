@@ -111,12 +111,20 @@ function TreatmentApp({ user }: TreatmentAppProps) {
     }
   }, [loadWaitingList]);
 
+  const handleSSEConnect = useCallback(() => {
+    console.log('[SSE] 대기목록 실시간 연결됨');
+  }, []);
+
+  const handleSSEDisconnect = useCallback(() => {
+    console.log('[SSE] 대기목록 연결 끊김');
+  }, []);
+
   // SSE 실시간 구독
   const { isConnected: sseConnected } = useSSE({
     enabled: !!user,
     onMessage: handleSSEMessage,
-    onConnect: () => console.log('[SSE] 대기목록 실시간 연결됨'),
-    onDisconnect: () => console.log('[SSE] 대기목록 연결 끊김'),
+    onConnect: handleSSEConnect,
+    onDisconnect: handleSSEDisconnect,
   });
 
   // SSE 연결 실패 시 폴백 폴링

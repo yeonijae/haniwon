@@ -1,9 +1,10 @@
 /**
  * SSE (Server-Sent Events) 실시간 구독 훅
  * PostgreSQL LISTEN/NOTIFY를 통한 실시간 데이터 동기화
+ * 싱글톤 패턴으로 하나의 연결만 유지
  */
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useSyncExternalStore } from 'react';
 
 const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
 
@@ -13,82 +14,92 @@ export interface SSEMessage {
   id: number;
 }
 
-export interface UseSSEOptions {
-  /** 구독할 테이블 이름 (없으면 전체 구독) */
-  table?: string;
-  /** 연결 성공 시 콜백 */
-  onConnect?: () => void;
-  /** 메시지 수신 시 콜백 */
-  onMessage?: (message: SSEMessage) => void;
-  /** 에러 발생 시 콜백 */
-  onError?: (error: Event) => void;
-  /** 연결 끊김 시 콜백 */
-  onDisconnect?: () => void;
-  /** 자동 재연결 활성화 (기본: true) */
-  autoReconnect?: boolean;
-  /** 재연결 딜레이 (ms, 기본: 3000) */
-  reconnectDelay?: number;
-  /** 활성화 여부 (기본: true) */
-  enabled?: boolean;
-}
+// 싱글톤 SSE 매니저
+class SSEManager {
+  private static instance: SSEManager;
+  private eventSource: EventSource | null = null;
+  private listeners: Set<(message: SSEMessage) => void> = new Set();
+  private connectListeners: Set<() => void> = new Set();
+  private disconnectListeners: Set<() => void> = new Set();
+  private _isConnected = false;
+  private reconnectTimeout: number | null = null;
+  private subscriberCount = 0;
 
-export const useSSE = (options: UseSSEOptions = {}) => {
-  const {
-    table,
-    onConnect,
-    onMessage,
-    onError,
-    onDisconnect,
-    autoReconnect = true,
-    reconnectDelay = 3000,
-    enabled = true,
-  } = options;
+  static getInstance(): SSEManager {
+    if (!SSEManager.instance) {
+      SSEManager.instance = new SSEManager();
+    }
+    return SSEManager.instance;
+  }
 
-  const [isConnected, setIsConnected] = useState(false);
-  const [lastMessage, setLastMessage] = useState<SSEMessage | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const reconnectTimeoutRef = useRef<number | null>(null);
+  get isConnected(): boolean {
+    return this._isConnected;
+  }
 
-  const connect = useCallback(() => {
-    if (!enabled) return;
+  subscribe(
+    onMessage: (message: SSEMessage) => void,
+    onConnect?: () => void,
+    onDisconnect?: () => void
+  ): () => void {
+    this.listeners.add(onMessage);
+    if (onConnect) this.connectListeners.add(onConnect);
+    if (onDisconnect) this.disconnectListeners.add(onDisconnect);
 
-    // 기존 연결 정리
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
+    this.subscriberCount++;
+
+    // 첫 구독자일 때만 연결
+    if (this.subscriberCount === 1) {
+      this.connect();
+    } else if (this._isConnected && onConnect) {
+      // 이미 연결되어 있으면 즉시 콜백 호출
+      onConnect();
     }
 
-    const url = table
-      ? `${API_URL}/api/subscribe/${table}`
-      : `${API_URL}/api/subscribe`;
+    // 구독 해제 함수 반환
+    return () => {
+      this.listeners.delete(onMessage);
+      if (onConnect) this.connectListeners.delete(onConnect);
+      if (onDisconnect) this.disconnectListeners.delete(onDisconnect);
 
+      this.subscriberCount--;
+
+      // 마지막 구독자가 해제되면 연결 종료
+      if (this.subscriberCount === 0) {
+        this.disconnect();
+      }
+    };
+  }
+
+  private connect(): void {
+    if (this.eventSource) {
+      return; // 이미 연결됨
+    }
+
+    const url = `${API_URL}/api/subscribe`;
     console.log(`[SSE] Connecting to ${url}...`);
 
-    const eventSource = new EventSource(url);
-    eventSourceRef.current = eventSource;
+    this.eventSource = new EventSource(url);
 
-    eventSource.onopen = () => {
+    this.eventSource.onopen = () => {
       console.log('[SSE] Connection opened');
-      setIsConnected(true);
-      onConnect?.();
+      this._isConnected = true;
+      this.connectListeners.forEach(cb => cb());
     };
 
-    eventSource.onmessage = (event) => {
+    this.eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
 
-        // 연결 확인 메시지
         if (data.type === 'connected') {
           console.log('[SSE] Subscription confirmed:', data);
           return;
         }
 
-        // 에러 메시지
         if (data.type === 'error') {
           console.error('[SSE] Server error:', data.message);
           return;
         }
 
-        // 테이블 변경 메시지
         const message: SSEMessage = {
           table: data.table,
           action: data.action,
@@ -96,72 +107,126 @@ export const useSSE = (options: UseSSEOptions = {}) => {
         };
 
         console.log('[SSE] Received:', message);
-        setLastMessage(message);
-        onMessage?.(message);
+        this.listeners.forEach(cb => cb(message));
       } catch (e) {
-        console.error('[SSE] Failed to parse message:', event.data);
+        // keepalive 메시지 등 JSON이 아닌 경우 무시
       }
     };
 
-    eventSource.onerror = (event) => {
+    this.eventSource.onerror = () => {
       console.error('[SSE] Connection error');
-      setIsConnected(false);
-      onError?.(event);
-      onDisconnect?.();
+      this._isConnected = false;
+      this.disconnectListeners.forEach(cb => cb());
 
-      // EventSource가 자동으로 재연결을 시도하지만,
-      // 서버가 완전히 다운된 경우를 위해 수동 재연결도 설정
-      if (autoReconnect && eventSource.readyState === EventSource.CLOSED) {
-        console.log(`[SSE] Will reconnect in ${reconnectDelay}ms...`);
-        reconnectTimeoutRef.current = window.setTimeout(() => {
-          connect();
-        }, reconnectDelay);
+      // 재연결 시도
+      if (this.eventSource?.readyState === EventSource.CLOSED) {
+        this.eventSource = null;
+
+        if (this.subscriberCount > 0) {
+          console.log('[SSE] Will reconnect in 3s...');
+          this.reconnectTimeout = window.setTimeout(() => {
+            this.connect();
+          }, 3000);
+        }
       }
     };
-  }, [table, enabled, onConnect, onMessage, onError, onDisconnect, autoReconnect, reconnectDelay]);
+  }
 
-  const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
+  private disconnect(): void {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
     }
 
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-      setIsConnected(false);
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+      this._isConnected = false;
       console.log('[SSE] Disconnected');
     }
-  }, []);
+  }
 
-  // 연결 관리
-  useEffect(() => {
-    if (enabled) {
-      connect();
-    } else {
-      disconnect();
+  // 강제 재연결
+  reconnect(): void {
+    this.disconnect();
+    if (this.subscriberCount > 0) {
+      this.connect();
     }
+  }
+}
 
-    return () => {
-      disconnect();
+// 싱글톤 인스턴스
+const sseManager = SSEManager.getInstance();
+
+export interface UseSSEOptions {
+  /** 연결 성공 시 콜백 */
+  onConnect?: () => void;
+  /** 메시지 수신 시 콜백 */
+  onMessage?: (message: SSEMessage) => void;
+  /** 연결 끊김 시 콜백 */
+  onDisconnect?: () => void;
+  /** 활성화 여부 (기본: true) */
+  enabled?: boolean;
+}
+
+export const useSSE = (options: UseSSEOptions = {}) => {
+  const {
+    onConnect,
+    onMessage,
+    onDisconnect,
+    enabled = true,
+  } = options;
+
+  const [isConnected, setIsConnected] = useState(sseManager.isConnected);
+  const [lastMessage, setLastMessage] = useState<SSEMessage | null>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const handleMessage = (message: SSEMessage) => {
+      setLastMessage(message);
+      onMessage?.(message);
     };
-  }, [enabled, connect, disconnect]);
+
+    const handleConnect = () => {
+      setIsConnected(true);
+      onConnect?.();
+    };
+
+    const handleDisconnect = () => {
+      setIsConnected(false);
+      onDisconnect?.();
+    };
+
+    const unsubscribe = sseManager.subscribe(
+      handleMessage,
+      handleConnect,
+      handleDisconnect
+    );
+
+    // 현재 연결 상태 동기화
+    setIsConnected(sseManager.isConnected);
+
+    return unsubscribe;
+  }, [enabled, onConnect, onMessage, onDisconnect]);
+
+  const reconnect = useCallback(() => {
+    sseManager.reconnect();
+  }, []);
 
   return {
     isConnected,
     lastMessage,
-    reconnect: connect,
-    disconnect,
+    reconnect,
   };
 };
 
 /**
  * 여러 테이블 구독을 위한 훅
- * 변경된 테이블에 따라 다른 콜백 실행
  */
 export const useSSEMultiple = (
   handlers: Record<string, (message: SSEMessage) => void>,
-  options: Omit<UseSSEOptions, 'table' | 'onMessage'> = {}
+  options: Omit<UseSSEOptions, 'onMessage'> = {}
 ) => {
   const handleMessage = useCallback((message: SSEMessage) => {
     const handler = handlers[message.table];

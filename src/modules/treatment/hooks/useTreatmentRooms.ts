@@ -52,7 +52,7 @@ export const useTreatmentRooms = (currentUser: any) => {
     loadTreatmentRooms();
   }, [currentUser, loadTreatmentRooms]);
 
-  // SSE 메시지 핸들러
+  // SSE 메시지 핸들러 (안정적인 참조)
   const handleSSEMessage = useCallback((message: SSEMessage) => {
     // treatment_rooms 또는 session_treatments 변경 시 데이터 리로드
     if (message.table === 'treatment_rooms' || message.table === 'session_treatments') {
@@ -61,12 +61,20 @@ export const useTreatmentRooms = (currentUser: any) => {
     }
   }, [loadTreatmentRooms]);
 
+  const handleSSEConnect = useCallback(() => {
+    console.log('[SSE] 치료실 실시간 연결됨');
+  }, []);
+
+  const handleSSEDisconnect = useCallback(() => {
+    console.log('[SSE] 치료실 연결 끊김');
+  }, []);
+
   // SSE 실시간 구독
   const { isConnected: sseConnected } = useSSE({
     enabled: !!currentUser,
     onMessage: handleSSEMessage,
-    onConnect: () => console.log('[SSE] 치료실 실시간 연결됨'),
-    onDisconnect: () => console.log('[SSE] 치료실 연결 끊김'),
+    onConnect: handleSSEConnect,
+    onDisconnect: handleSSEDisconnect,
   });
 
   // SSE 연결 실패 시 폴백 폴링
