@@ -251,9 +251,6 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
 
       // 사용 기록 새로고침
       await loadData();
-
-      console.log(`✅ ${pendingItem.name} → ${membership.membership_type} 사용 기록`);
-
     } catch (err) {
       console.error('멤버십 사용 기록 오류:', err);
       alert('사용 기록 처리 중 오류가 발생했습니다.');
@@ -318,9 +315,6 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
 
       // 사용 기록 새로고침
       await loadData();
-
-      console.log(`✅ ${pendingItem.name} → ${pkg.package_name} 차감 (잔여 ${newRemaining}회)`);
-
     } catch (err) {
       console.error('패키지 차감 오류:', err);
       alert('차감 처리 중 오류가 발생했습니다.');
@@ -367,9 +361,6 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
 
       // 데이터 새로고침
       await loadData();
-
-      console.log(`↩️ ${pendingItem.name} 취소`);
-
     } catch (err) {
       console.error('취소 오류:', err);
       alert('취소 처리 중 오류가 발생했습니다.');
@@ -394,8 +385,6 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
 
   // 멤버십 저장
   const handleSaveMembership = async () => {
-    console.log('멤버십 저장 시도:', membershipForm);
-
     if (!membershipForm.membership_type.trim()) {
       alert('멤버십 종류를 선택해주세요.');
       return;
@@ -412,8 +401,6 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
         pid = await getOrCreatePatient();
         setSqlitePatientId(pid);
       }
-
-      console.log('patient_id:', pid);
 
       if (!pid) {
         alert('환자 정보를 찾을 수 없습니다.');
@@ -434,10 +421,8 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
           'active', ${escapeString(now)}, ${escapeString(now)}
         )
       `;
-      console.log('SQL:', sql);
 
-      const newId = await insert(sql);
-      console.log('생성된 멤버십 ID:', newId);
+      await insert(sql);
 
       setShowMembershipForm(false);
       resetMembershipForm();

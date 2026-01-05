@@ -474,7 +474,6 @@ function ReceiptView({ user }: ReceiptViewProps) {
     let allReservations: Reservation[] = [];
     try {
       allReservations = await fetchReservationsByDateRange(today, endDate);
-      console.log(`[ReceiptView] 예약 ${allReservations.length}건 조회됨 (${today} ~ ${endDate})`);
     } catch (err) {
       console.error('예약 조회 실패:', err);
     }

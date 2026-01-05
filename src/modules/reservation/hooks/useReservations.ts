@@ -18,32 +18,20 @@ export function useReservations(initialDate?: string) {
     const loadDoctors = async () => {
       try {
         const data = await api.fetchDoctors(selectedDate);
-        console.log('[DEBUG] API 응답 데이터:', data);
-        console.log('[DEBUG] selectedDate:', selectedDate);
 
         // 의사 필터링 및 isWorking 계산
         const processedDoctors = data
           .filter((doc: any) => {
             // 기타여부 제외 (DOCTOR 등 시스템 계정)
-            if (doc.isOther) {
-              console.log(`[DEBUG] ${doc.name} 제외 - isOther:${doc.isOther}`);
-              return false;
-            }
+            if (doc.isOther) return false;
             // 'DOCTOR' 같은 테스트 계정 제외
-            if (doc.name === 'DOCTOR') {
-              console.log(`[DEBUG] ${doc.name} 제외 - 테스트 계정`);
-              return false;
-            }
+            if (doc.name === 'DOCTOR') return false;
             // 근무시작일이 없는 의사 제외
-            if (!doc.workStartDate) {
-              console.log(`[DEBUG] ${doc.name} 제외 - 근무시작일 없음`);
-              return false;
-            }
+            if (!doc.workStartDate) return false;
             return true;
           })
           .map((doc: any) => {
             // isWorking 계산: 근무기간 내에 있는지 확인
-            // 날짜 문자열을 YYYY-MM-DD로 변환 (GMT 형식 또는 ISO 형식 모두 처리)
             const parseToYYYYMMDD = (dateStr: string | null): string | null => {
               if (!dateStr) return null;
               try {
@@ -55,7 +43,7 @@ export function useReservations(initialDate?: string) {
               }
             };
 
-            const targetDateStr = selectedDate; // "YYYY-MM-DD" 형식
+            const targetDateStr = selectedDate;
             const workStartStr = parseToYYYYMMDD(doc.workStartDate);
             const workEndStr = parseToYYYYMMDD(doc.workEndDate);
 
@@ -66,8 +54,6 @@ export function useReservations(initialDate?: string) {
             if (workEndStr && targetDateStr > workEndStr) {
               isWorking = false;
             }
-
-            console.log(`[DEBUG] ${doc.name}: targetDate=${targetDateStr}, workStart=${workStartStr}, workEnd=${workEndStr}, isWorking=${isWorking}`);
 
             return {
               ...doc,
