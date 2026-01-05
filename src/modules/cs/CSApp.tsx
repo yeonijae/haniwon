@@ -76,8 +76,8 @@ interface MenuItem {
 }
 
 const MENU_ITEMS: MenuItem[] = [
-  { id: 'reservation', icon: '📅', label: '예약' },
   { id: 'receipt', icon: '💰', label: '수납' },
+  { id: 'reservation', icon: '📅', label: '예약' },
   { id: 'noncovered', icon: '💊', label: '비급여' },
   { id: 'inquiry', icon: '📝', label: '문의' },
   { id: 'search', icon: '🔍', label: '검색' },
@@ -85,7 +85,7 @@ const MENU_ITEMS: MenuItem[] = [
 ];
 
 function CSApp({ user }: CSAppProps) {
-  const [activeMenu, setActiveMenu] = useState<CSMenuType>('reservation');
+  const [activeMenu, setActiveMenu] = useState<CSMenuType>('receipt');
   const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('cs');
 
   // 의사 목록 및 모달 상태

@@ -272,7 +272,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
   const [receipts, setReceipts] = useState<ExpandedReceiptItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [recordFilter, setRecordFilter] = useState<ReceiptRecordFilter>('all');
+  const [recordFilter, setRecordFilter] = useState<ReceiptRecordFilter>('incomplete');
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
   const [onsiteStats, setOnsiteStats] = useState<OnsiteReservationStats | null>(null);
 
