@@ -235,7 +235,7 @@ const MedicalTranscripts: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sql: `UPDATE medical_transcripts SET soap_status = 'processing', updated_at = datetime('now') WHERE id = ${selectedTranscript.id}`,
+          sql: `UPDATE medical_transcripts SET soap_status = 'processing', updated_at = NOW() WHERE id = ${selectedTranscript.id}`,
         }),
       });
 
@@ -266,7 +266,7 @@ const MedicalTranscripts: React.FC = () => {
               soap_assessment = ${escapeStr(soapData.assessment)},
               soap_plan = ${escapeStr(soapData.plan)},
               soap_status = 'completed',
-              updated_at = datetime('now')
+              updated_at = NOW()
             WHERE id = ${selectedTranscript.id}`,
           }),
         });
@@ -285,7 +285,7 @@ const MedicalTranscripts: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sql: `UPDATE medical_transcripts SET soap_status = 'failed', updated_at = datetime('now') WHERE id = ${selectedTranscript.id}`,
+          sql: `UPDATE medical_transcripts SET soap_status = 'failed', updated_at = NOW() WHERE id = ${selectedTranscript.id}`,
         }),
       });
     } finally {

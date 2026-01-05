@@ -131,14 +131,14 @@ export async function markFirstVisitMessageSent(
       ${escapeString(doctorName)},
       ${escapeString(templateType)},
       1,
-      datetime('now'),
+      NOW(),
       ${escapeString(sentBy)},
       ${escapeString(notes)},
-      datetime('now')
+      NOW()
     )
     ON CONFLICT(customer_pk, treatment_date) DO UPDATE SET
       message_sent = 1,
-      sent_at = datetime('now'),
+      sent_at = NOW(),
       sent_by = ${escapeString(sentBy)},
       template_type = ${escapeString(templateType)},
       notes = ${escapeString(notes)}
@@ -338,7 +338,7 @@ export async function fetchPendingCalls(targetDate?: string): Promise<HerbalTask
     naewon: '내원콜'
   };
 
-  const date = targetDate ? `'${targetDate}'` : `date('now')`;
+  const date = targetDate ? `'${targetDate}'` : `CURRENT_DATE`;
 
   const data = await query<any>(`
     SELECT
@@ -393,7 +393,7 @@ export async function fetchPendingEventBenefits(): Promise<HerbalTask[]> {
       he.benefit_message
     FROM herbal_purchases hp
     JOIN herbal_events he ON hp.event_id = he.id
-    WHERE he.end_date < date('now')
+    WHERE he.end_date < CURRENT_DATE
       AND hp.event_benefit_sent = 0
   `);
 
@@ -423,10 +423,10 @@ export async function fetchFollowupNeeded(): Promise<HerbalTask[]> {
   const data = await query<any>(`
     SELECT
       hp.*,
-      julianday('now') - julianday(hp.actual_end_date) as days_since_completion
+      EXTRACT(DAY FROM NOW() - hp.actual_end_date::timestamp) as days_since_completion
     FROM herbal_purchases hp
     WHERE hp.status = 'completed'
-      AND hp.actual_end_date < date('now', '-90 days')
+      AND hp.actual_end_date < CURRENT_DATE - INTERVAL '90 days'
       AND NOT EXISTS (
         SELECT 1 FROM herbal_purchases hp2
         WHERE hp2.patient_chart_number = hp.patient_chart_number
@@ -598,11 +598,11 @@ export async function completeCall(
   await execute(`
     UPDATE herbal_calls
     SET status = 'completed',
-        completed_at = datetime('now'),
+        completed_at = NOW(),
         completed_by = ${escapeString(completedBy)},
         contact_method = ${escapeString(contactMethod)},
         result = ${escapeString(result)},
-        updated_at = datetime('now')
+        updated_at = NOW()
     WHERE id = ${callId}
   `);
 }
@@ -615,7 +615,7 @@ export async function skipCall(callId: number, reason: string): Promise<void> {
     UPDATE herbal_calls
     SET status = 'skipped',
         reschedule_reason = ${escapeString(reason)},
-        updated_at = datetime('now')
+        updated_at = NOW()
     WHERE id = ${callId}
   `);
 }
@@ -638,8 +638,8 @@ export async function markEventBenefitSent(purchaseId: number): Promise<void> {
   await execute(`
     UPDATE herbal_purchases
     SET event_benefit_sent = 1,
-        event_benefit_sent_at = datetime('now'),
-        updated_at = datetime('now')
+        event_benefit_sent_at = NOW(),
+        updated_at = NOW()
     WHERE id = ${purchaseId}
   `);
 }

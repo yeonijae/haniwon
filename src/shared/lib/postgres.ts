@@ -5,6 +5,17 @@
 
 const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
 
+// 테이블 초기화 캐시 (세션당 한 번만 실행)
+const initializedTables = new Set<string>();
+
+export function isTableInitialized(key: string): boolean {
+  return initializedTables.has(key);
+}
+
+export function markTableInitialized(key: string): void {
+  initializedTables.add(key);
+}
+
 interface ApiResponse {
   columns?: string[];
   rows?: any[] | Record<string, any>[];

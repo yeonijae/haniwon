@@ -320,7 +320,7 @@ export async function updateSoapStatus(
       soap_assessment = ${escapeSql(soap.assessment)},
       soap_plan = ${escapeSql(soap.plan)},
       soap_status = ${escapeSql(soap.status)},
-      updated_at = datetime('now', 'localtime')
+      updated_at = NOW()
     WHERE id = ${transcriptId}
   `;
 
@@ -354,7 +354,7 @@ export async function updateDiarizedTranscript(
   const sql = `
     UPDATE medical_transcripts SET
       diarized_transcript = ${escapeSql(diarizedTranscript)},
-      updated_at = datetime('now', 'localtime')
+      updated_at = NOW()
     WHERE id = ${transcriptId}
   `;
 

@@ -3,7 +3,7 @@
  * 환자별 기본 치료 정보, 당일 치료 기록, 치료 시간 로그, 액팅 시간 로그 관리
  */
 
-import { query, queryOne, execute, insert, escapeString, toSqlValue, tableExists } from '@shared/lib/postgres';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, tableExists, isTableInitialized, markTableInitialized } from '@shared/lib/postgres';
 import type {
   PatientDefaultTreatments,
   DailyTreatmentRecord,
@@ -24,12 +24,17 @@ import { TREATMENT_TYPE_INFO } from '../types';
  * 치료 관련 테이블 생성
  */
 export async function initTreatmentTables(): Promise<void> {
+  // 이미 초기화되었으면 스킵
+  if (isTableInitialized('treatment_tables')) {
+    return;
+  }
+
   // 1. patient_default_treatments (환자별 기본 치료 정보)
   const defaultTreatmentsExists = await tableExists('patient_default_treatments');
   if (!defaultTreatmentsExists) {
     await execute(`
       CREATE TABLE patient_default_treatments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         patient_id INTEGER NOT NULL UNIQUE,
         has_acupuncture INTEGER DEFAULT 1,
         has_moxa INTEGER DEFAULT 1,
@@ -42,8 +47,8 @@ export async function initTreatmentTables(): Promise<void> {
         yakchim_type TEXT,
         yakchim_quantity INTEGER DEFAULT 0,
         memo TEXT,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
     console.log('Created table: patient_default_treatments');
@@ -54,7 +59,7 @@ export async function initTreatmentTables(): Promise<void> {
   if (!dailyRecordsExists) {
     await execute(`
       CREATE TABLE daily_treatment_records (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         patient_id INTEGER NOT NULL,
         patient_name TEXT,
         chart_number TEXT,
@@ -78,8 +83,8 @@ export async function initTreatmentTables(): Promise<void> {
         yakchim_type TEXT,
         yakchim_quantity INTEGER DEFAULT 0,
         memo TEXT,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now')),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(patient_id, treatment_date)
       )
     `);
@@ -91,7 +96,7 @@ export async function initTreatmentTables(): Promise<void> {
   if (!timeLogsExists) {
     await execute(`
       CREATE TABLE treatment_time_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         daily_record_id INTEGER NOT NULL,
         patient_id INTEGER NOT NULL,
         treatment_date TEXT NOT NULL,
@@ -102,7 +107,7 @@ export async function initTreatmentTables(): Promise<void> {
         duration_seconds INTEGER,
         room_id INTEGER,
         bed_number INTEGER,
-        created_at TEXT DEFAULT (datetime('now'))
+        created_at TIMESTAMP DEFAULT NOW()
       )
     `);
     console.log('Created table: treatment_time_logs');
@@ -113,7 +118,7 @@ export async function initTreatmentTables(): Promise<void> {
   if (!actingLogsExists) {
     await execute(`
       CREATE TABLE acting_time_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         daily_record_id INTEGER,
         patient_id INTEGER NOT NULL,
         patient_name TEXT,
@@ -127,7 +132,7 @@ export async function initTreatmentTables(): Promise<void> {
         ended_at TEXT,
         duration_seconds INTEGER,
         status TEXT DEFAULT 'pending',
-        created_at TEXT DEFAULT (datetime('now'))
+        created_at TIMESTAMP DEFAULT NOW()
       )
     `);
     console.log('Created table: acting_time_logs');
@@ -140,6 +145,8 @@ export async function initTreatmentTables(): Promise<void> {
   } catch {
     // 이미 컬럼이 존재하면 무시
   }
+
+  markTableInitialized('treatment_tables');
 }
 
 // =====================================================
@@ -199,7 +206,7 @@ export async function savePatientDefaultTreatments(
         yakchim_type = ${toSqlValue(treatments.yakchim_type ?? existing.yakchim_type)},
         yakchim_quantity = ${toSqlValue(treatments.yakchim_quantity ?? existing.yakchim_quantity)},
         memo = ${toSqlValue(treatments.memo ?? existing.memo)},
-        updated_at = datetime('now')
+        updated_at = NOW()
       WHERE patient_id = ${patientId}
     `);
     return existing.id!;
@@ -386,7 +393,7 @@ export async function updateDailyTreatmentRecord(
   if (updates.memo !== undefined)
     setClauses.push(`memo = ${toSqlValue(updates.memo)}`);
 
-  setClauses.push(`updated_at = datetime('now')`);
+  setClauses.push(`updated_at = NOW()`);
 
   if (setClauses.length > 0) {
     await execute(`

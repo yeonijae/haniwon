@@ -247,7 +247,7 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
       updates.push(`status = 'resigned'`);
     }
 
-    updates.push(`updated_at = datetime('now')`);
+    updates.push(`updated_at = NOW()`);
 
     if (updates.length > 0) {
       await execute(`UPDATE staff SET ${updates.join(', ')} WHERE id = ${id}`);

@@ -282,7 +282,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
         SET remaining_count = ${newRemaining},
             used_count = ${newUsed},
             status = ${escapeString(newStatus)},
-            updated_at = datetime('now')
+            updated_at = NOW()
         WHERE id = ${pkg.id}
       `);
 
@@ -353,7 +353,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
           SET remaining_count = remaining_count + 1,
               used_count = used_count - 1,
               status = 'active',
-              updated_at = datetime('now')
+              updated_at = NOW()
           WHERE id = ${pendingItem.processedId}
         `);
       }
@@ -489,7 +489,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
           ${escapeString(packageForm.package_name)},
           ${packageForm.total_count}, 0, ${packageForm.total_count},
           ${escapeString(today)}, ${packageForm.expire_date ? escapeString(packageForm.expire_date) : 'NULL'},
-          'active', datetime('now'), datetime('now')
+          'active', NOW(), NOW()
         )
       `);
 

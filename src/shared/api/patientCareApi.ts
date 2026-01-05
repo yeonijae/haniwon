@@ -47,7 +47,7 @@ export async function fetchPatientsNeedFollowup(): Promise<any[]> {
 
   const data = await query<any>(`
     SELECT pts.*, p.name, p.chart_number, p.phone,
-           julianday('now') - julianday(pts.last_visit_date) as days_since_last_visit
+           EXTRACT(DAY FROM NOW() - pts.last_visit_date::timestamp) as days_since_last_visit
     FROM patient_treatment_status pts
     LEFT JOIN patients p ON pts.patient_id = p.id
     WHERE pts.last_visit_date <= ${escapeString(dateStr)}

@@ -1,4 +1,4 @@
-import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/postgres';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp, isTableInitialized, markTableInitialized } from '@shared/lib/postgres';
 import type {
   Inquiry,
   CreateInquiryRequest,
@@ -137,9 +137,13 @@ export async function updateInquiryStatus(id: number, status: string): Promise<v
  * cs_inquiries 테이블 생성 (없으면)
  */
 export async function ensureInquiriesTable(): Promise<void> {
+  if (isTableInitialized('cs_inquiries')) {
+    return;
+  }
+
   const sql = `
     CREATE TABLE IF NOT EXISTS cs_inquiries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       channel TEXT NOT NULL,
       patient_name TEXT,
       contact TEXT,
@@ -148,11 +152,12 @@ export async function ensureInquiriesTable(): Promise<void> {
       response TEXT,
       status TEXT DEFAULT 'pending',
       staff_name TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     )
   `;
   await execute(sql);
+  markTableInitialized('cs_inquiries');
 }
 
 // ============================================
@@ -160,10 +165,15 @@ export async function ensureInquiriesTable(): Promise<void> {
 // ============================================
 
 export async function ensureReceiptTables(): Promise<void> {
+  // 이미 초기화되었으면 스킵 (세션당 한 번만 실행)
+  if (isTableInitialized('cs_receipt_tables')) {
+    return;
+  }
+
   // 시술패키지 테이블
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_treatment_packages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       patient_id INTEGER NOT NULL,
       chart_number TEXT,
       patient_name TEXT,
@@ -176,15 +186,15 @@ export async function ensureReceiptTables(): Promise<void> {
       expire_date TEXT,
       memo TEXT,
       status TEXT DEFAULT 'active',
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     )
   `);
 
   // 한약패키지 테이블
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_herbal_packages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       patient_id INTEGER NOT NULL,
       chart_number TEXT,
       patient_name TEXT,
@@ -197,15 +207,15 @@ export async function ensureReceiptTables(): Promise<void> {
       next_delivery_date TEXT,
       memo TEXT,
       status TEXT DEFAULT 'active',
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     )
   `);
 
   // 한약패키지 회차별 관리 테이블
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_herbal_package_rounds (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       package_id INTEGER NOT NULL,
       round_number INTEGER NOT NULL,
       delivery_method TEXT DEFAULT 'pickup',
@@ -213,8 +223,8 @@ export async function ensureReceiptTables(): Promise<void> {
       delivered_date TEXT,
       status TEXT DEFAULT 'pending',
       memo TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW(),
       FOREIGN KEY (package_id) REFERENCES cs_herbal_packages(id) ON DELETE CASCADE
     )
   `);
@@ -222,7 +232,7 @@ export async function ensureReceiptTables(): Promise<void> {
   // 포인트 거래 테이블
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_point_transactions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       patient_id INTEGER NOT NULL,
       chart_number TEXT,
       patient_name TEXT,
@@ -232,14 +242,14 @@ export async function ensureReceiptTables(): Promise<void> {
       description TEXT,
       receipt_id INTEGER,
       transaction_date TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW()
     )
   `);
 
   // 멤버십 테이블 (기간 기반 무제한 사용)
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_memberships (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       patient_id INTEGER NOT NULL,
       chart_number TEXT,
       patient_name TEXT,
@@ -249,8 +259,8 @@ export async function ensureReceiptTables(): Promise<void> {
       expire_date TEXT NOT NULL,
       memo TEXT,
       status TEXT DEFAULT 'active',
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     )
   `);
 
@@ -261,7 +271,7 @@ export async function ensureReceiptTables(): Promise<void> {
   // 약침 패키지 테이블 (통증마일리지)
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_yakchim_packages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       patient_id INTEGER NOT NULL,
       chart_number TEXT,
       patient_name TEXT,
@@ -273,15 +283,15 @@ export async function ensureReceiptTables(): Promise<void> {
       expire_date TEXT,
       memo TEXT,
       status TEXT DEFAULT 'active',
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     )
   `);
 
   // 약침/멤버십 사용 기록 테이블
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_yakchim_usage_records (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       patient_id INTEGER NOT NULL,
       source_type TEXT NOT NULL,
       source_id INTEGER NOT NULL,
@@ -291,14 +301,14 @@ export async function ensureReceiptTables(): Promise<void> {
       remaining_after INTEGER NOT NULL,
       receipt_id INTEGER,
       memo TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW()
     )
   `);
 
   // 한약 출납 테이블
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_herbal_dispensings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       patient_id INTEGER NOT NULL,
       chart_number TEXT,
       patient_name TEXT,
@@ -309,14 +319,14 @@ export async function ensureReceiptTables(): Promise<void> {
       receipt_id INTEGER,
       memo TEXT,
       dispensing_date TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW()
     )
   `);
 
   // 증정품 출납 테이블
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_gift_dispensings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       patient_id INTEGER NOT NULL,
       chart_number TEXT,
       patient_name TEXT,
@@ -325,14 +335,14 @@ export async function ensureReceiptTables(): Promise<void> {
       reason TEXT,
       receipt_id INTEGER,
       dispensing_date TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW()
     )
   `);
 
   // 서류발급 테이블
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_document_issues (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       patient_id INTEGER NOT NULL,
       chart_number TEXT,
       patient_name TEXT,
@@ -340,14 +350,14 @@ export async function ensureReceiptTables(): Promise<void> {
       quantity INTEGER DEFAULT 1,
       receipt_id INTEGER,
       issue_date TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW()
     )
   `);
 
   // 수납 메모 테이블
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_receipt_memos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       patient_id INTEGER NOT NULL,
       chart_number TEXT,
       patient_name TEXT,
@@ -357,8 +367,8 @@ export async function ensureReceiptTables(): Promise<void> {
       reservation_status TEXT DEFAULT 'none',
       reservation_date TEXT,
       is_completed INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     )
   `);
 
@@ -372,7 +382,7 @@ export async function ensureReceiptTables(): Promise<void> {
   // 상비약 사용내역 테이블
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_medicine_usage (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       patient_id INTEGER NOT NULL,
       chart_number TEXT NOT NULL,
       patient_name TEXT,
@@ -381,10 +391,13 @@ export async function ensureReceiptTables(): Promise<void> {
       medicine_name TEXT NOT NULL,
       quantity INTEGER DEFAULT 1,
       memo TEXT,
-      created_at TEXT DEFAULT (datetime('now', 'localtime')),
-      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  // 초기화 완료 표시
+  markTableInitialized('cs_receipt_tables');
 }
 
 // ============================================

@@ -298,7 +298,7 @@ export async function syncDoctorFromMssql(staffId: number, mssqlDoc: MssqlDoctor
     `hire_date = ${mssqlDoc.workStartDate ? `'${mssqlDoc.workStartDate.split('T')[0]}'` : 'NULL'}`,
     `resign_date = ${mssqlDoc.workEndDate ? `'${mssqlDoc.workEndDate.split('T')[0]}'` : 'NULL'}`,
     `status = '${mssqlDoc.resigned ? 'resigned' : 'active'}'`,
-    `updated_at = datetime('now')`
+    `updated_at = NOW()`
   ];
 
   await execute(`UPDATE staff SET ${updates.join(', ')} WHERE id = ${staffId}`);
@@ -477,7 +477,7 @@ export async function updateStaff(id: number, data: Partial<StaffMember>): Promi
   if (data.status !== undefined) updates.push(`status = '${data.status}'`);
   if (data.profile_color !== undefined) updates.push(`profile_color = '${data.profile_color}'`);
   if (data.memo !== undefined) updates.push(`memo = ${data.memo ? `'${data.memo}'` : 'NULL'}`);
-  updates.push(`updated_at = datetime('now')`);
+  updates.push(`updated_at = NOW()`);
 
   if (updates.length > 0) {
     await execute(`UPDATE staff SET ${updates.join(', ')} WHERE id = ${id}`);
@@ -537,7 +537,7 @@ export async function updateWorkPattern(id: number, data: Partial<WorkPattern>):
   }
 
   if (data.memo !== undefined) updates.push(`memo = ${data.memo ? `'${data.memo}'` : 'NULL'}`);
-  updates.push(`updated_at = datetime('now')`);
+  updates.push(`updated_at = NOW()`);
 
   if (updates.length > 0) {
     await execute(`UPDATE work_patterns SET ${updates.join(', ')} WHERE id = ${id}`);
@@ -592,7 +592,7 @@ export async function upsertSchedule(staffId: number, workDate: string, shiftTyp
     ON CONFLICT(staff_id, work_date) DO UPDATE SET
       shift_type = '${shiftType}',
       memo = ${memo ? `'${memo}'` : 'NULL'},
-      updated_at = datetime('now')
+      updated_at = NOW()
   `;
   await execute(sql);
 }
@@ -650,7 +650,7 @@ export async function updateSalaryInterview(id: number, data: Partial<SalaryInte
   if (data.interview_summary !== undefined) updates.push(`interview_summary = ${data.interview_summary ? `'${data.interview_summary}'` : 'NULL'}`);
   if (data.title !== undefined) updates.push(`title = ${data.title ? `'${data.title}'` : 'NULL'}`);
   if (data.description !== undefined) updates.push(`description = ${data.description ? `'${data.description}'` : 'NULL'}`);
-  updates.push(`updated_at = datetime('now')`);
+  updates.push(`updated_at = NOW()`);
 
   if (updates.length > 0) {
     await execute(`UPDATE salary_interviews SET ${updates.join(', ')} WHERE id = ${id}`);
@@ -705,7 +705,7 @@ export async function updateLeaveRecord(id: number, data: Partial<LeaveRecord>):
   if (data.approved_by !== undefined) updates.push(`approved_by = ${data.approved_by ? `'${data.approved_by}'` : 'NULL'}`);
   if (data.approved_at !== undefined) updates.push(`approved_at = ${data.approved_at ? `'${data.approved_at}'` : 'NULL'}`);
   if (data.memo !== undefined) updates.push(`memo = ${data.memo ? `'${data.memo}'` : 'NULL'}`);
-  updates.push(`updated_at = datetime('now')`);
+  updates.push(`updated_at = NOW()`);
 
   if (updates.length > 0) {
     await execute(`UPDATE leave_records SET ${updates.join(', ')} WHERE id = ${id}`);

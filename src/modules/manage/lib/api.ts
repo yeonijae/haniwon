@@ -1640,56 +1640,17 @@ export interface ReceiptHistoryResponse {
   };
 }
 
-// 날짜별 수납현황 조회 (MSSQL + SQLite 메모 병합)
+// 날짜별 수납현황 조회 (MSSQL만 - 지연 로딩으로 변경)
 export async function fetchReceiptHistory(date?: string): Promise<ReceiptHistoryResponse> {
   const targetDate = date || new Date().toISOString().split('T')[0];
 
   try {
-    // 1. MSSQL에서 수납 내역 조회
+    // MSSQL에서 수납 내역만 조회 (메모는 모달 열릴 때 지연 로딩)
     const response = await fetch(`${MSSQL_API_BASE_URL}/api/receipts/by-date?date=${targetDate}`);
     if (!response.ok) {
       throw new Error(`MSSQL API 오류: ${response.status}`);
     }
-    const mssqlData: ReceiptHistoryResponse = await response.json();
-
-    // 2. 각 수납건의 SQLite 메모 조회 및 병합 (receipt_id 기준)
-    const receiptsWithMemo: ReceiptHistoryItem[] = [];
-    for (const receipt of mssqlData.receipts) {
-      let packageInfo: string | undefined;
-      let memo: string | undefined;
-
-      try {
-        // 먼저 mssql_receipt_id로 조회 시도
-        const sqliteMemoByReceipt = await queryOne<any>(`
-          SELECT memo, package_info FROM payment_memos
-          WHERE mssql_receipt_id = ${receipt.id}
-        `);
-        if (sqliteMemoByReceipt) {
-          packageInfo = sqliteMemoByReceipt.package_info;
-          memo = sqliteMemoByReceipt.memo;
-        } else {
-          // fallback: patient_id + date로 조회
-          const sqliteMemo = await fetchPaymentMemo(receipt.patient_id, targetDate);
-          if (sqliteMemo) {
-            packageInfo = sqliteMemo.package_info;
-            memo = sqliteMemo.memo;
-          }
-        }
-      } catch (e) {
-        // 메모가 없을 수 있음
-      }
-
-      receiptsWithMemo.push({
-        ...receipt,
-        package_info: packageInfo,
-        memo,
-      });
-    }
-
-    return {
-      ...mssqlData,
-      receipts: receiptsWithMemo,
-    };
+    return await response.json();
   } catch (error) {
     console.error('❌ 수납현황 조회 오류:', error);
     return {
@@ -1706,6 +1667,36 @@ export async function fetchReceiptHistory(date?: string): Promise<ReceiptHistory
         unpaid: 0,
       },
     };
+  }
+}
+
+// 특정 수납건의 메모 조회 (지연 로딩용)
+export async function fetchReceiptMemo(receiptId: number, patientId: number, date: string): Promise<{ package_info?: string; memo?: string } | null> {
+  try {
+    // 먼저 mssql_receipt_id로 조회 시도
+    const memoByReceipt = await queryOne<any>(`
+      SELECT memo, package_info FROM payment_memos
+      WHERE mssql_receipt_id = ${receiptId}
+    `);
+    if (memoByReceipt) {
+      return {
+        package_info: memoByReceipt.package_info,
+        memo: memoByReceipt.memo,
+      };
+    }
+
+    // fallback: patient_id + date로 조회
+    const memoByPatient = await fetchPaymentMemo(patientId, date);
+    if (memoByPatient) {
+      return {
+        package_info: memoByPatient.package_info,
+        memo: memoByPatient.memo,
+      };
+    }
+
+    return null;
+  } catch (e) {
+    return null;
   }
 }
 
