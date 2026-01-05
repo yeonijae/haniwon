@@ -1,6 +1,6 @@
 /**
  * 한의원 운영 관리 시스템 - API 클라이언트
- * SQLite 직접 연결
+ * PostgreSQL 직접 연결
  */
 
 import { Patient, Reservation, Payment, DefaultTreatment, Acting, CompletedPayment, MedicalStaff, MedicalStaffPermissions, Staff, StaffPermissions, UncoveredCategories, TreatmentRoom, SessionTreatment, TreatmentItem, ConsultationItem, ConsultationSubItem, RoomStatus } from '../types';
@@ -8,7 +8,7 @@ import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp, to
 
 /**
  * 환자 관련 API
- * SQLite에는 id, chart_number, name만 저장
+ * PostgreSQL에는 id, chart_number, name만 저장
  * 상세정보(전화번호, 생년월일 등)는 MSSQL에서 실시간 조회
  */
 
@@ -155,8 +155,8 @@ export async function searchPatients(searchTerm: string): Promise<Patient[]> {
     return (data || []).map(mapMssqlToPatient);
   } catch (error) {
     console.error('❌ 환자 검색 오류 (MSSQL):', error);
-    // MSSQL API 실패 시 SQLite 폴백
-    console.log('⚠️ SQLite로 폴백 시도...');
+    // MSSQL API 실패 시 PostgreSQL 폴백
+    console.log('⚠️ PostgreSQL로 폴백 시도...');
     const escapedTerm = searchTerm.replace(/'/g, "''");
     const data = await query<any>(`
       SELECT id, name, chart_number, deletion_date
@@ -166,7 +166,7 @@ export async function searchPatients(searchTerm: string): Promise<Patient[]> {
       ORDER BY id ASC
     `);
 
-    console.log('✅ SQLite 폴백 결과:', data?.length || 0, '명');
+    console.log('✅ PostgreSQL 폴백 결과:', data?.length || 0, '명');
     return (data || []).map(mapDbToPatient);
   }
 }
@@ -1061,10 +1061,9 @@ export async function addToWaitingQueue(item: Omit<WaitingQueueItem, 'id' | 'cre
 
   const nextPosition = (maxData?.max_pos ?? -1) + 1;
 
-  const doctorValue = item.doctor ? escapeString(item.doctor) : 'NULL';
   const id = await insert(`
-    INSERT INTO waiting_queue (patient_id, queue_type, details, doctor, position)
-    VALUES (${item.patient_id}, ${escapeString(item.queue_type)}, ${escapeString(item.details)}, ${doctorValue}, ${nextPosition})
+    INSERT INTO waiting_queue (patient_id, queue_type, details, position, doctor)
+    VALUES (${item.patient_id}, ${escapeString(item.queue_type)}, ${escapeString(item.details)}, ${nextPosition}, ${item.doctor ? escapeString(item.doctor) : 'NULL'})
   `);
 
   const data = await queryOne<any>(`SELECT * FROM waiting_queue WHERE id = ${id}`);
@@ -1512,7 +1511,7 @@ export interface PatientReceiptHistoryParams {
   endDate?: string;
 }
 
-// 환자별 수납 히스토리 조회 (MSSQL + SQLite 메모 병합)
+// 환자별 수납 히스토리 조회 (MSSQL + PostgreSQL 메모 병합)
 export async function fetchPatientReceiptHistory(
   params: PatientReceiptHistoryParams
 ): Promise<PatientReceiptHistoryResponse> {
@@ -1533,7 +1532,7 @@ export async function fetchPatientReceiptHistory(
     }
     const data: PatientReceiptHistoryResponse = await response.json();
 
-    // SQLite 메모 병합
+    // PostgreSQL 메모 병합
     const receiptsWithMemo: ReceiptHistoryItem[] = [];
     for (const receipt of data.receipts) {
       let packageInfo: string | undefined;
@@ -1574,7 +1573,7 @@ export async function fetchPatientReceiptHistory(
 }
 
 /**
- * 수납현황 조회 API (MSSQL + SQLite 메모 병합)
+ * 수납현황 조회 API (MSSQL + PostgreSQL 메모 병합)
  */
 
 // 수납현황 진료 내역 타입
@@ -1619,7 +1618,7 @@ export interface ReceiptHistoryItem {
   };
   // 진료 내역
   treatments: ReceiptTreatment[];
-  // SQLite 메모 (병합됨)
+  // PostgreSQL 메모 (병합됨)
   package_info?: string;
   memo?: string;
 }
@@ -1700,7 +1699,7 @@ export async function fetchReceiptMemo(receiptId: number, patientId: number, dat
   }
 }
 
-// 특정 날짜의 모든 수납 메모 조회 (SQLite)
+// 특정 날짜의 모든 수납 메모 조회 (PostgreSQL)
 export async function fetchPaymentMemosByDate(date: string): Promise<PaymentMemo[]> {
   const data = await query<any>(`
     SELECT * FROM payment_memos

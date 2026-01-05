@@ -4,7 +4,7 @@
  *
  * 주요 기능:
  * 1. MSSQL에서 진료대기/치료대기 환자 목록 폴링 (1초)
- * 2. MSSQL 치료대기 환자를 SQLite waiting_queue에 자동 등록
+ * 2. MSSQL 치료대기 환자를 PostgreSQL waiting_queue에 자동 등록
  * 3. 이미 치료실(베드)에 배정된 환자는 목록에서 필터링
  */
 
@@ -79,13 +79,13 @@ export const useMssqlQueue = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // 치료실에 배정된 환자 차트번호 목록 (SQLite treatment_rooms에서)
+  // 치료실에 배정된 환자 차트번호 목록 (PostgreSQL treatment_rooms에서)
   const [assignedChartNumbers, setAssignedChartNumbers] = useState<Set<string>>(new Set());
 
   // 이미 처리된 MSSQL treating 환자 추적 (중복 등록 방지) - chart_no 기준
   const processedTreatingChartNosRef = useRef<Set<string>>(new Set());
 
-  // SQLite에서 치료실에 배정된 환자 목록 조회 (차트번호 기준)
+  // PostgreSQL에서 치료실에 배정된 환자 목록 조회 (차트번호 기준)
   // 배정된 환자는 waiting_queue에서도 삭제
   const fetchAssignedPatients = useCallback(async () => {
     try {
@@ -117,7 +117,7 @@ export const useMssqlQueue = () => {
     }
   }, []);
 
-  // MSSQL treating 환자를 SQLite waiting_queue에 등록 (최적화)
+  // MSSQL treating 환자를 PostgreSQL waiting_queue에 등록 (최적화)
   const syncTreatingToSqlite = useCallback(async (treatingPatients: MssqlTreatingPatient[]) => {
     // 1. 처리가 필요한 환자만 먼저 필터링
     const patientsToProcess = treatingPatients.filter(patient => {
@@ -166,11 +166,11 @@ export const useMssqlQueue = () => {
       const chartNo = patient.chart_no?.replace(/^0+/, '') || '';
 
       try {
-        // SQLite 환자 ID 찾기
+        // PostgreSQL 환자 ID 찾기
         let patientId = patientByChartNo.get(chartNo) || patientByMssqlId.get(patient.patient_id);
         const gender = patient.sex === 'M' ? 'male' : patient.sex === 'F' ? 'female' : null;
 
-        // SQLite에 환자가 없으면 자동으로 생성
+        // PostgreSQL에 환자가 없으면 자동으로 생성
         if (!patientId) {
           try {
             patientId = await insert(`
@@ -203,12 +203,11 @@ export const useMssqlQueue = () => {
           continue;
         }
 
-        // waiting_queue에 추가
+        // waiting_queue에 추가 (details에 담당의 포함하여 UI 표시, doctor 컬럼에도 별도 저장)
         const details = `${patient.doctor || ''} ${patient.status || ''}`.trim() || '치료대기';
-        const doctorValue = patient.doctor ? escapeString(patient.doctor) : 'NULL';
         await execute(`
-          INSERT OR IGNORE INTO waiting_queue (patient_id, queue_type, details, doctor, position)
-          VALUES (${patientId}, 'treatment', ${escapeString(details)}, ${doctorValue}, ${nextPosition++})
+          INSERT INTO waiting_queue (patient_id, queue_type, details, position, doctor)
+          VALUES (${patientId}, 'treatment', ${escapeString(details)}, ${nextPosition++}, ${patient.doctor ? escapeString(patient.doctor) : 'NULL'})
         `);
 
         existingQueuePatientIds.add(patientId); // 다음 루프에서 중복 방지
@@ -262,7 +261,7 @@ export const useMssqlQueue = () => {
     }
   }, [assignedChartNumbers]);
 
-  // 모든 treating 환자의 성별을 SQLite에 업데이트 (기존 환자 포함)
+  // 모든 treating 환자의 성별을 PostgreSQL에 업데이트 (기존 환자 포함)
   const syncGenderFromMssql = useCallback(async (treatingPatients: MssqlTreatingPatient[]) => {
     for (const patient of treatingPatients) {
       if (!patient.sex) continue;
@@ -295,7 +294,7 @@ export const useMssqlQueue = () => {
       setError(null);
       setLastUpdated(new Date());
 
-      // MSSQL treating 환자를 SQLite에 동기화
+      // MSSQL treating 환자를 PostgreSQL에 동기화
       if (data.treating && data.treating.length > 0) {
         syncTreatingToSqlite(data.treating);
         // 기존 환자들의 성별도 업데이트

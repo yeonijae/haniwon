@@ -8,6 +8,7 @@ import TreatmentView from './components/TreatmentView';
 import TreatmentItemsManagement from './components/TreatmentItemsManagement';
 import * as api from './lib/api';
 import { useTreatmentRecord } from '@shared/hooks/useTreatmentRecord';
+import { useSSE, SSEMessage } from '@shared/hooks/useSSE';
 
 interface TreatmentAppProps {
   user: PortalUser;
@@ -39,7 +40,8 @@ function TreatmentApp({ user }: TreatmentAppProps) {
   const [waitingList, setWaitingList] = useState<Patient[]>([]);
   const [allPatients, setAllPatients] = useState<Patient[]>([]);
   const lastLocalUpdateRef = useRef<number>(0);
-  const IGNORE_SUBSCRIPTION_MS = 4000; // DB 저장 완료까지 충분한 시간
+  const IGNORE_SUBSCRIPTION_MS = 500; // 로컬 업데이트 후 SSE 무시 시간
+  const FALLBACK_POLLING_INTERVAL = 5000; // SSE 실패 시 폴백 폴링 간격
 
   // Load waiting list function (reusable)
   const loadWaitingList = useCallback(async () => {
@@ -47,7 +49,7 @@ function TreatmentApp({ user }: TreatmentAppProps) {
       const queueItems = await api.fetchWaitingQueue('treatment');
       const patientsWithDetails = await Promise.all(
         queueItems.map(async (item) => {
-          // SQLite patients 테이블에서 조회 시도
+          // PostgreSQL patients 테이블에서 조회 시도
           const patient = await api.fetchPatientById(item.patient_id);
 
           // 시간 계산: mssql_intotime 우선, 없으면 created_at
@@ -57,7 +59,7 @@ function TreatmentApp({ user }: TreatmentAppProps) {
             : '';
 
           if (patient) {
-            // SQLite에 환자 정보가 있으면 사용
+            // PostgreSQL에 환자 정보가 있으면 사용
             const defaultTreatments = await api.fetchPatientDefaultTreatments(item.patient_id);
             return {
               ...patient,
@@ -67,7 +69,7 @@ function TreatmentApp({ user }: TreatmentAppProps) {
               doctor: item.doctor,
             };
           } else if (item.patient_name) {
-            // MSSQL 동기화 데이터 사용 (SQLite에 환자 없는 경우)
+            // MSSQL 동기화 데이터 사용 (PostgreSQL에 환자 없는 경우)
             return {
               id: item.patient_id,
               name: item.patient_name,
@@ -96,27 +98,43 @@ function TreatmentApp({ user }: TreatmentAppProps) {
     }
   }, [user, loadWaitingList]);
 
-  // Polling for waiting_queue changes (5초마다)
-  useEffect(() => {
-    if (!user) return;
-
-    const POLLING_INTERVAL = 5000;
-
-    const reloadWaitingList = async () => {
-      // 자기 자신이 일으킨 변경은 무시 (로컬 업데이트 후 일정 시간 이내)
+  // SSE 메시지 핸들러 (waiting_queue 변경 감지)
+  const handleSSEMessage = useCallback((message: SSEMessage) => {
+    if (message.table === 'waiting_queue') {
+      // 자기 자신이 일으킨 변경은 무시
       const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
       if (timeSinceLastUpdate < IGNORE_SUBSCRIPTION_MS) {
         return;
       }
-      await loadWaitingList();
-    };
+      console.log('[SSE] 대기목록 변경 감지:', message);
+      loadWaitingList();
+    }
+  }, [loadWaitingList]);
 
-    const intervalId = setInterval(reloadWaitingList, POLLING_INTERVAL);
+  // SSE 실시간 구독
+  const { isConnected: sseConnected } = useSSE({
+    enabled: !!user,
+    onMessage: handleSSEMessage,
+    onConnect: () => console.log('[SSE] 대기목록 실시간 연결됨'),
+    onDisconnect: () => console.log('[SSE] 대기목록 연결 끊김'),
+  });
+
+  // SSE 연결 실패 시 폴백 폴링
+  useEffect(() => {
+    if (!user || sseConnected) return;
+
+    console.log('[Polling] SSE 연결 안됨, 대기목록 폴백 폴링 시작');
+    const intervalId = setInterval(() => {
+      const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
+      if (timeSinceLastUpdate >= IGNORE_SUBSCRIPTION_MS) {
+        loadWaitingList();
+      }
+    }, FALLBACK_POLLING_INTERVAL);
 
     return () => {
       clearInterval(intervalId);
     };
-  }, [user, loadWaitingList]);
+  }, [user, sseConnected, loadWaitingList]);
 
   // Navigation
   const handleNavigateBack = useCallback(() => {
@@ -139,9 +157,6 @@ function TreatmentApp({ user }: TreatmentAppProps) {
 
     // 백그라운드에서 API 호출 (실패해도 UI는 이미 업데이트됨)
     api.removeFromWaitingQueue(patientId, 'treatment')
-      .then(() => {
-        lastLocalUpdateRef.current = Date.now();
-      })
       .catch(error => {
         console.error('대기 목록 제거 오류:', error);
         // 실패 시 다음 폴링에서 복구됨

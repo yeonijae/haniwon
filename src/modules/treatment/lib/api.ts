@@ -1,6 +1,6 @@
 /**
  * 치료관리 모듈 - API 클라이언트
- * SQLite 직접 연결
+ * PostgreSQL 직접 연결
  */
 
 import { Patient, TreatmentRoom, TreatmentItem, SessionTreatment, DefaultTreatment } from '../types';
@@ -78,7 +78,7 @@ export async function fetchPatientById(patientId: number): Promise<Patient | nul
             }
           }
 
-          // SQLite 업데이트 (비동기)
+          // PostgreSQL 업데이트 (비동기)
           if (updateParts.length > 0) {
             execute(`UPDATE patients SET ${updateParts.join(', ')} WHERE id = ${patientId}`).catch(() => {});
           }
@@ -220,7 +220,7 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
               const parsedDate = new Date(patient.birth);
               if (!isNaN(parsedDate.getTime())) {
                 patientDob = parsedDate.toISOString().split('T')[0];
-                // SQLite patients 테이블과 치료실 테이블 모두 업데이트
+                // PostgreSQL patients 테이블과 치료실 테이블 모두 업데이트
                 execute(`UPDATE patients SET birth_date = ${escapeString(patientDob)} WHERE id = ${room.patient_id}`).catch(() => {});
                 execute(`UPDATE treatment_rooms SET patient_dob = ${escapeString(patientDob)} WHERE id = ${room.id}`).catch(() => {});
               }
@@ -448,7 +448,7 @@ export async function addToWaitingQueue(item: Omit<WaitingQueueItem, 'id' | 'cre
 
   const id = await insert(`
     INSERT INTO waiting_queue (patient_id, queue_type, details, position, doctor)
-    VALUES (${item.patient_id}, ${escapeString(item.queue_type)}, ${escapeString(item.details)}, ${nextPosition}, ${escapeString(item.doctor || '')})
+    VALUES (${item.patient_id}, ${escapeString(item.queue_type)}, ${escapeString(item.details)}, ${nextPosition}, ${item.doctor ? escapeString(item.doctor) : 'NULL'})
   `);
 
   const data = await queryOne<any>(`SELECT * FROM waiting_queue WHERE id = ${id}`);
