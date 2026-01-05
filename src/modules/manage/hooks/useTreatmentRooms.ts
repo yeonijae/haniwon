@@ -3,8 +3,8 @@ import { TreatmentRoom } from '../types';
 import * as api from '../lib/api';
 import { useSSE, SSEMessage } from '@shared/hooks/useSSE';
 
-// 로컬 업데이트 후 해당 룸의 SSE 데이터를 무시할 시간
-const ROOM_UPDATE_GRACE_PERIOD = 3000;
+// 로컬 업데이트 후 해당 룸의 SSE 데이터를 무시할 시간 (SSE 실시간이므로 1초면 충분)
+const ROOM_UPDATE_GRACE_PERIOD = 1000;
 // SSE 실패 시 폴백 폴링 간격
 const FALLBACK_POLLING_INTERVAL = 2000;
 
