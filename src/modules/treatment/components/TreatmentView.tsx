@@ -4,7 +4,7 @@ import TreatmentInfoModal from './TreatmentInfoModal';
 import * as api from '../lib/api';
 import * as actingApi from '@acting/api';
 
-// SQLite UTC 시간을 로컬 타임스탬프로 변환
+// PostgreSQL UTC 시간을 로컬 타임스탬프로 변환
 const parseUtcTime = (timeStr: string | null | undefined): number => {
     if (!timeStr) return 0;
     const utcStr = timeStr.endsWith('Z') ? timeStr : timeStr + 'Z';

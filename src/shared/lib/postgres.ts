@@ -181,10 +181,15 @@ export function toSqlValue(value: any): string {
 }
 
 /**
- * 현재 날짜 (YYYY-MM-DD 형식)
+ * 현재 날짜 (YYYY-MM-DD 형식, 로컬 시간 기준)
  */
 export function getCurrentDate(): string {
-  return new Date().toISOString().split('T')[0];
+  // 로컬 시간 기준 날짜 반환 (UTC가 아닌 한국 시간)
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /**

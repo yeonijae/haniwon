@@ -134,11 +134,12 @@ export async function addActing(request: AddActingRequest): Promise<ActingQueueI
     orderNum = (maxData?.order_num || 0) + 1;
   }
 
+  // status를 명시적으로 'waiting'으로 설정
   const id = await insert(`
-    INSERT INTO acting_queue (patient_id, patient_name, chart_no, doctor_id, doctor_name, acting_type, order_num, source, source_id, memo, work_date)
+    INSERT INTO acting_queue (patient_id, patient_name, chart_no, doctor_id, doctor_name, acting_type, order_num, status, source, source_id, memo, work_date)
     VALUES (${toSqlValue(request.patientId)}, ${escapeString(request.patientName)}, ${escapeString(request.chartNo || '')},
             ${request.doctorId}, ${escapeString(request.doctorName)}, ${escapeString(request.actingType)},
-            ${orderNum}, ${escapeString(request.source || 'manual')}, ${toSqlValue(request.sourceId)},
+            ${orderNum}, 'waiting', ${escapeString(request.source || 'manual')}, ${toSqlValue(request.sourceId)},
             ${escapeString(request.memo || '')}, ${escapeString(today)})
   `);
 
@@ -750,7 +751,7 @@ export async function fetchPatientMainDoctor(patientId: number): Promise<MainDoc
   }
 }
 
-// 로컬 SQLite patient_id로 MSSQL Customer_PK 조회
+// 로컬 PostgreSQL patient_id로 MSSQL Customer_PK 조회
 export async function getMssqlPatientId(localPatientId: number): Promise<number | null> {
   try {
     const patient = await queryOne<{ mssql_id: number | null }>(`
