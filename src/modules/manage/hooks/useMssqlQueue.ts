@@ -203,11 +203,12 @@ export const useMssqlQueue = () => {
           continue;
         }
 
-        // waiting_queue에 추가 (details에 담당의 포함하여 UI 표시, doctor 컬럼에도 별도 저장)
+        // waiting_queue에 추가 (중복 방지: ON CONFLICT DO NOTHING)
         const details = `${patient.doctor || ''} ${patient.status || ''}`.trim() || '치료대기';
         await execute(`
           INSERT INTO waiting_queue (patient_id, queue_type, details, position, doctor)
           VALUES (${patientId}, 'treatment', ${escapeString(details)}, ${nextPosition++}, ${patient.doctor ? escapeString(patient.doctor) : 'NULL'})
+          ON CONFLICT (patient_id, queue_type) DO NOTHING
         `);
 
         existingQueuePatientIds.add(patientId); // 다음 루프에서 중복 방지
