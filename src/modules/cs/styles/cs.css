@@ -7440,6 +7440,14 @@
   font-weight: 500;
 }
 
+.receipt-item-2row .col-receipt-detail .amount-group.clickable {
+  cursor: pointer;
+}
+
+.receipt-item-2row .col-receipt-detail .amount-group.clickable:hover {
+  opacity: 0.7;
+}
+
 .receipt-item-2row .col-receipt-detail .choona-type {
   color: #6b7280;
   font-size: 11px;

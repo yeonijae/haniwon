@@ -23,6 +23,75 @@ import type {
 // MSSQL API 기본 URL
 const MSSQL_API_BASE_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
+// ============================================
+// 진료상세내역 조회 (MSSQL Detail 테이블)
+// ============================================
+
+export interface ReceiptDetailItem {
+  item_name: string;      // PxName
+  amount: number;         // TxMoney
+  days: number;           // TxCount (일수)
+  daily_dose: number;     // DAYTU (일투)
+  is_insurance: boolean;  // InsuYes
+  doctor: string;         // TxDoctor
+  bonin_percent: number;  // BoninPercent
+}
+
+/**
+ * 수납 진료상세내역 조회 (MSSQL Detail 테이블)
+ * @param customerId Customer_PK
+ * @param txDate 진료일 (YYYY-MM-DD)
+ */
+export async function fetchReceiptDetails(customerId: number, txDate: string): Promise<ReceiptDetailItem[]> {
+  try {
+    const sql = `
+      SELECT
+        PxName as item_name,
+        TxMoney as amount,
+        TxCount as days,
+        DAYTU as daily_dose,
+        InsuYes as is_insurance,
+        TxDoctor as doctor,
+        BoninPercent as bonin_percent
+      FROM Detail
+      WHERE Customer_PK = ${customerId}
+      AND CONVERT(varchar, TxDate, 23) = '${txDate}'
+      ORDER BY Detail_PK
+    `;
+
+    const response = await fetch(`${MSSQL_API_BASE_URL}/api/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`MSSQL API 오류: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    // columns + rows 형식을 객체 배열로 변환
+    if (data.columns && data.rows) {
+      return data.rows.map((row: any[]) => {
+        const obj: any = {};
+        data.columns.forEach((col: string, i: number) => {
+          obj[col] = row[i];
+        });
+        return obj as ReceiptDetailItem;
+      });
+    }
+
+    return data.rows || [];
+  } catch (error) {
+    console.error('진료상세내역 조회 오류:', error);
+    return [];
+  }
+}
+
 /**
  * 문의 목록 조회
  */
@@ -265,7 +334,7 @@ export async function ensureReceiptTables(): Promise<void> {
   `);
 
   // 기존 테이블에 quantity 컬럼 추가 (remaining_count → quantity 마이그레이션)
-  await execute(`ALTER TABLE cs_memberships ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1`).catch(() => {});
+  await execute(`ALTER TABLE cs_memberships ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`).catch(() => {});
   await execute(`UPDATE cs_memberships SET quantity = remaining_count WHERE remaining_count IS NOT NULL AND quantity = 1`).catch(() => {});
 
   // 약침 패키지 테이블 (통증마일리지)
@@ -373,11 +442,7 @@ export async function ensureReceiptTables(): Promise<void> {
   `);
 
   // is_completed 컬럼이 없으면 추가 (기존 테이블 마이그레이션)
-  try {
-    await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN is_completed INTEGER DEFAULT 0`);
-  } catch {
-    // 이미 컬럼이 있으면 무시
-  }
+  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS is_completed INTEGER DEFAULT 0`).catch(() => {});
 
   // 상비약 사용내역 테이블
   await execute(`

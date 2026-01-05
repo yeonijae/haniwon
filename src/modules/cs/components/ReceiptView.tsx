@@ -36,6 +36,7 @@ import type { Doctor, Reservation } from '../../reservation/types';
 // manage 모듈의 API 사용
 import { fetchReceiptHistory, type ReceiptHistoryItem } from '../../manage/lib/api';
 import { ReceiptMemoModal } from './ReceiptMemoModal';
+import { ReceiptDetailModal } from './ReceiptDetailModal';
 import YakchimModal from './YakchimModal';
 import HerbalModal from './HerbalModal';
 
@@ -319,6 +320,10 @@ function ReceiptView({ user }: ReceiptViewProps) {
   // 한약 모달 상태
   const [showHerbalModal, setShowHerbalModal] = useState(false);
   const [herbalModalReceipt, setHerbalModalReceipt] = useState<ExpandedReceiptItem | null>(null);
+
+  // 진료상세 모달 상태
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [detailModalReceipt, setDetailModalReceipt] = useState<ExpandedReceiptItem | null>(null);
 
   // 디바운스 검색
   useEffect(() => {
@@ -647,6 +652,19 @@ function ReceiptView({ user }: ReceiptViewProps) {
   const handleCloseHerbalModal = () => {
     setShowHerbalModal(false);
     setHerbalModalReceipt(null);
+  };
+
+  // 진료상세 모달 열기 (본인부담금 클릭 시)
+  const handleOpenDetailModal = (receipt: ExpandedReceiptItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDetailModalReceipt(receipt);
+    setShowDetailModal(true);
+  };
+
+  // 진료상세 모달 닫기
+  const handleCloseDetailModal = () => {
+    setShowDetailModal(false);
+    setDetailModalReceipt(null);
   };
 
   // 행 확장/축소 토글
@@ -1053,29 +1071,37 @@ function ReceiptView({ user }: ReceiptViewProps) {
                         </span>
                       ))}
                     </span>
-                    <span className="amount-item total">{formatMoney(receipt.total_amount)}</span>
-                    <span className="amount-divider">/</span>
-                    <span className={`amount-item self ${receipt.insurance_self >= 20000 ? 'high' : ''}`}>{formatMoney(receipt.insurance_self)}</span>
-                    {receipt.insurance_self > 20000 && (() => {
-                      const choonaTreatment = receipt.treatments?.find(t =>
-                        t.is_covered && t.name?.includes('추나')
-                      );
-                      if (choonaTreatment) {
-                        const label = choonaTreatment.name?.includes('단순') ? '단추' :
-                                      choonaTreatment.name?.includes('복잡') ? '복추' : null;
-                        if (label) {
-                          return <span className="choona-type">({label})</span>;
+                    <span
+                      className="amount-group clickable"
+                      onClick={(e) => handleOpenDetailModal(receipt, e)}
+                      title="클릭하여 진료상세내역 보기"
+                    >
+                      <span className="amount-item total">{formatMoney(receipt.total_amount)}</span>
+                      <span className="amount-divider">/</span>
+                      <span className={`amount-item self ${receipt.insurance_self >= 20000 ? 'high' : ''}`}>
+                        {formatMoney(receipt.insurance_self)}
+                      </span>
+                      {receipt.insurance_self > 20000 && (() => {
+                        const choonaTreatment = receipt.treatments?.find(t =>
+                          t.is_covered && t.name?.includes('추나')
+                        );
+                        if (choonaTreatment) {
+                          const label = choonaTreatment.name?.includes('단순') ? '단추' :
+                                        choonaTreatment.name?.includes('복잡') ? '복추' : null;
+                          if (label) {
+                            return <span className="choona-type">({label})</span>;
+                          }
                         }
-                      }
-                      return null;
-                    })()}
+                        return null;
+                      })()}
+                      <span className="amount-divider">/</span>
+                      <span className="amount-item general">{formatMoney(receipt.general_amount)}</span>
+                    </span>
                   </div>
                   <div className="col-uncovered">
-                    <span className="amount-divider">/</span>
-                    <span className="amount-item general">{formatMoney(receipt.general_amount)}</span>
                     {receipt.treatment_summary?.uncovered && receipt.treatment_summary.uncovered.length > 0 && (
                       <span className="uncovered-items">
-                        ({receipt.treatment_summary.uncovered.map(u => u.name).join(',')})
+                        {receipt.treatment_summary.uncovered.map(u => u.name).join(',')}
                       </span>
                     )}
                   </div>
@@ -1315,6 +1341,20 @@ function ReceiptView({ user }: ReceiptViewProps) {
             // TODO: 데이터 새로고침
             loadReceipts();
           }}
+        />
+      )}
+
+      {/* 진료상세내역 모달 */}
+      {detailModalReceipt && (
+        <ReceiptDetailModal
+          isOpen={showDetailModal}
+          onClose={handleCloseDetailModal}
+          patientId={detailModalReceipt.patient_id}
+          patientName={detailModalReceipt.patient_name}
+          chartNo={detailModalReceipt.chart_no}
+          receiptDate={selectedDate}
+          insuranceSelf={detailModalReceipt.insurance_self}
+          generalAmount={detailModalReceipt.general_amount}
         />
       )}
     </div>
