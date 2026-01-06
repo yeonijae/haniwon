@@ -12,6 +12,7 @@ import {
   type LeadStatus,
   type RetargetingRule,
 } from '../types';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 // 임시 이탈 리드 데이터
 const MOCK_LOST_LEADS: Lead[] = [
@@ -162,7 +163,7 @@ const Retargeting: React.FC = () => {
 
   // 오늘 팔로업 필요 수
   const todayFollowupCount = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getCurrentDate();
     return pendingFollowup.filter(lead =>
       lead.nextFollowUp && lead.nextFollowUp <= today
     ).length;
@@ -349,7 +350,7 @@ const Retargeting: React.FC = () => {
               </h3>
               <div className="grid grid-cols-2 gap-4">
                 {pendingFollowup
-                  .filter(lead => lead.nextFollowUp && lead.nextFollowUp <= new Date().toISOString().split('T')[0])
+                  .filter(lead => lead.nextFollowUp && lead.nextFollowUp <= getCurrentDate())
                   .map(lead => (
                     <div
                       key={lead.id}
@@ -401,7 +402,7 @@ const Retargeting: React.FC = () => {
                   </thead>
                   <tbody className="divide-y">
                     {pendingFollowup
-                      .filter(lead => lead.nextFollowUp && lead.nextFollowUp > new Date().toISOString().split('T')[0])
+                      .filter(lead => lead.nextFollowUp && lead.nextFollowUp > getCurrentDate())
                       .map(lead => (
                         <tr key={lead.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 font-medium text-gray-900">{lead.name}</td>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getCurrentDate } from '@shared/lib/postgres';
 import {
   getMedicineInventory,
   createMedicineInventory,
@@ -190,7 +191,7 @@ function MedicineInventoryAdmin({ onClose }: MedicineInventoryAdminProps) {
   const handleAddStock = async () => {
     if (!stockItem) return;
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getCurrentDate();
       await addMedicineStock(
         stockItem.id,
         stockForm.packs,

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { useDraggableModal } from '../hooks/useDraggableModal';
-import { query, execute, escapeString } from '@shared/lib/postgres';
+import { query, execute, escapeString, getCurrentDate } from '@shared/lib/postgres';
 import { EVENT_TYPES, EventTypeCode } from './NonCoveredManagementView';
 import type { ConsultationPatient } from './CSSidebar';
 
@@ -84,7 +84,7 @@ function PatientTimelineModal({ patient, onClose }: PatientTimelineModalProps) {
   const [eventForm, setEventForm] = useState({
     program_id: null as number | null,
     event_type: 'happy_call' as EventTypeCode,
-    event_date: new Date().toISOString().split('T')[0],
+    event_date: getCurrentDate(),
     event_time: new Date().toTimeString().slice(0, 5),
     content: '',
     result: '',
@@ -95,7 +95,7 @@ function PatientTimelineModal({ patient, onClose }: PatientTimelineModalProps) {
   // ESC 키로 모달 닫기
   useEscapeKey(onClose);
 
-  // 환자 ID 가져오기 (SQLite)
+  // 환자 ID 가져오기 (PostgreSQL)
   const getPatientId = useCallback(async (): Promise<number | null> => {
     const chartNo = patient.chart_no?.replace(/^0+/, '') || '';
     const result = await query<{ id: number }>(`
@@ -200,7 +200,7 @@ function PatientTimelineModal({ patient, onClose }: PatientTimelineModalProps) {
 
     setSaving(true);
     try {
-      // 환자가 SQLite에 없으면 생성
+      // 환자가 PostgreSQL에 없으면 생성
       let patientId = await getPatientId();
       const chartNo = patient.chart_no?.replace(/^0+/, '') || '';
 
@@ -216,7 +216,7 @@ function PatientTimelineModal({ patient, onClose }: PatientTimelineModalProps) {
         patientId = result[0]?.id || patientId;
       }
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = getCurrentDate();
 
       // 프로그램 등록
       await execute(`
@@ -326,7 +326,7 @@ function PatientTimelineModal({ patient, onClose }: PatientTimelineModalProps) {
       setEventForm({
         program_id: null,
         event_type: 'happy_call',
-        event_date: new Date().toISOString().split('T')[0],
+        event_date: getCurrentDate(),
         event_time: new Date().toTimeString().slice(0, 5),
         content: '',
         result: '',
@@ -351,8 +351,11 @@ function PatientTimelineModal({ patient, onClose }: PatientTimelineModalProps) {
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    if (dateStr === today.toISOString().split('T')[0]) return '오늘';
-    if (dateStr === yesterday.toISOString().split('T')[0]) return '어제';
+    const todayStr = getCurrentDate();
+    const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+    if (dateStr === todayStr) return '오늘';
+    if (dateStr === yesterdayStr) return '어제';
 
     return `${date.getMonth() + 1}/${date.getDate()}`;
   };

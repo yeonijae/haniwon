@@ -3,6 +3,7 @@ import type { Reservation, Doctor, TreatmentItem } from '../types';
 import type { ReservationDraft } from './ReservationStep1Modal';
 import type { EditDraft } from './ReservationEditStep1Modal';
 import type { OnSiteReservationCount } from '../lib/api';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 interface DayViewProps {
   date: string;
@@ -401,7 +402,7 @@ export const DayView: React.FC<DayViewProps> = ({
 
   // 원장별 통계 계산
   const doctorStats = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getCurrentDate();
     const isPastDate = date < today;
 
     const stats: Record<string, { total: number; visited: number; canceled: number; noShow: number; onSiteReservation: number }> = {};
@@ -540,7 +541,7 @@ export const DayView: React.FC<DayViewProps> = ({
           <div className="p-3 text-center border-r border-b text-gray-700">시간</div>
           {doctors.map((doctor) => {
             const stats = doctorStats[doctor.name] || { total: 0, visited: 0, canceled: 0, noShow: 0, onSiteReservation: 0 };
-            const today = new Date().toISOString().split('T')[0];
+            const today = getCurrentDate();
             const isPastDate = date < today;
             const pending = stats.total - stats.visited - stats.canceled - stats.noShow;
 

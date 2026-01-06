@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
 import { useFontScale } from '@shared/hooks/useFontScale';
+import { getCurrentDate } from '@shared/lib/postgres';
 import type { HerbalTask, HerbalTasksResponse, FirstVisitTemplateType } from './types';
 import { fetchAllHerbalTasks, markEventBenefitSent, markFirstVisitMessageSent } from './api/herbalApi';
 
@@ -36,7 +37,7 @@ const HerbalApp: React.FC<HerbalAppProps> = ({ user }) => {
   const [tasks, setTasks] = useState<HerbalTasksResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-  const [targetDate, setTargetDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [targetDate, setTargetDate] = useState<string>(getCurrentDate());
 
   // 모달 상태
   const [setupTask, setSetupTask] = useState<HerbalTask | null>(null);
@@ -64,7 +65,7 @@ const HerbalApp: React.FC<HerbalAppProps> = ({ user }) => {
   function handleDateChange(days: number) {
     const date = new Date(targetDate);
     date.setDate(date.getDate() + days);
-    setTargetDate(date.toISOString().split('T')[0]);
+    setTargetDate(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`);
   }
 
   function handleDateInputChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -72,11 +73,11 @@ const HerbalApp: React.FC<HerbalAppProps> = ({ user }) => {
   }
 
   function handleTodayClick() {
-    setTargetDate(new Date().toISOString().split('T')[0]);
+    setTargetDate(getCurrentDate());
   }
 
   // 오늘 날짜인지 확인
-  const isToday = targetDate === new Date().toISOString().split('T')[0];
+  const isToday = targetDate === getCurrentDate();
 
   // 핸들러
   function handleFirstVisitClick(task: HerbalTask) {

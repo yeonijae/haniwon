@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import type { PortalUser } from '@shared/types';
-import { query, execute, escapeString } from '@shared/lib/postgres';
+import { query, execute, escapeString, getCurrentDate } from '@shared/lib/postgres';
 
 interface NonCoveredManagementViewProps {
   user: PortalUser;
@@ -128,9 +128,12 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    if (dateStr === today.toISOString().split('T')[0]) {
+    const todayStr = getCurrentDate();
+    const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+    if (dateStr === todayStr) {
       return '오늘';
-    } else if (dateStr === yesterday.toISOString().split('T')[0]) {
+    } else if (dateStr === yesterdayStr) {
       return '어제';
     }
 
@@ -279,7 +282,7 @@ function AddEventModal({ user, patient, onClose, onSuccess }: AddEventModalProps
     chart_number: patient?.chart_number || '',
     program_id: null as number | null,
     event_type: 'happy_call' as EventTypeCode,
-    event_date: new Date().toISOString().split('T')[0],
+    event_date: getCurrentDate(),
     event_time: new Date().toTimeString().slice(0, 5),
     content: '',
     result: '',

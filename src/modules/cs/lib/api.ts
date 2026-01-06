@@ -1,4 +1,4 @@
-import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp, isTableInitialized, markTableInitialized } from '@shared/lib/postgres';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp, getCurrentDate, isTableInitialized, markTableInitialized } from '@shared/lib/postgres';
 import type {
   Inquiry,
   CreateInquiryRequest,
@@ -123,7 +123,7 @@ export async function getInquiries(options?: {
  * 오늘 문의 조회
  */
 export async function getTodayInquiries(): Promise<Inquiry[]> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
   return getInquiries({ date: today });
 }
 
@@ -737,7 +737,7 @@ export async function initializePackageRounds(packageId: number, totalCount: num
 // 회차 상태 변경 및 패키지 used_count 업데이트
 export async function completePackageRound(roundId: number, deliveredDate?: string): Promise<void> {
   const now = getCurrentTimestamp();
-  const delivered = deliveredDate || new Date().toISOString().split('T')[0];
+  const delivered = deliveredDate || getCurrentDate();
 
   // 회차 정보 조회
   const round = await queryOne<HerbalPackageRound>(
@@ -835,7 +835,7 @@ export async function earnPoints(data: {
 }): Promise<number> {
   const currentBalance = await getPointBalance(data.patient_id);
   const newBalance = currentBalance + data.amount;
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
 
   return insert(`
     INSERT INTO cs_point_transactions (
@@ -862,7 +862,7 @@ export async function usePoints(data: {
     throw new Error(`포인트 부족: 현재 ${currentBalance}P, 사용 요청 ${data.amount}P`);
   }
   const newBalance = currentBalance - data.amount;
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
 
   return insert(`
     INSERT INTO cs_point_transactions (

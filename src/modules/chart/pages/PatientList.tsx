@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { query } from '@shared/lib/postgres';
+import { query, getCurrentDate } from '@shared/lib/postgres';
 import type { Patient } from '../types';
 
 // MSSQL API URL
@@ -33,14 +33,12 @@ const PatientList: React.FC = () => {
     }
   }, [searchTerm]);
 
-  // 차팅이 필요한 약상담 환자 로드 (SQLite + MSSQL)
+  // 차팅이 필요한 약상담 환자 로드 (PostgreSQL + MSSQL)
   const loadPatientsNeedingCharting = async () => {
     try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayStr = today.toISOString().split('T')[0];
+      const todayStr = getCurrentDate();
 
-      // 1. 오늘 약상담 환자 조회 (acting_queue) - SQLite
+      // 1. 오늘 약상담 환자 조회 (acting_queue) - PostgreSQL
       const actingData = await query<{ patient_id: number; created_at: string }>(`
         SELECT patient_id, created_at FROM acting_queue
         WHERE acting_type = '약상담'
@@ -48,7 +46,7 @@ const PatientList: React.FC = () => {
         ORDER BY created_at DESC
       `);
 
-      // 2. 오늘 약상담 예약 환자 조회 - SQLite
+      // 2. 오늘 약상담 예약 환자 조회 - PostgreSQL
       const reservationsData = await query<{ patient_id: number; id: number }>(`
         SELECT r.patient_id, r.id FROM reservations r
         INNER JOIN reservation_treatments rt ON r.id = rt.reservation_id
@@ -71,7 +69,7 @@ const PatientList: React.FC = () => {
         return;
       }
 
-      // 3. 해당 환자들의 차팅 여부 확인 - SQLite
+      // 3. 해당 환자들의 차팅 여부 확인 - PostgreSQL
       const patientIdsArray = Array.from(consultationPatientIds);
       const chartedPatients = await query<{ patient_id: number }>(`
         SELECT DISTINCT patient_id FROM initial_charts
@@ -121,19 +119,19 @@ const PatientList: React.FC = () => {
     }
   };
 
-  // 최근 진료 환자 로드 (SQLite + MSSQL)
+  // 최근 진료 환자 로드 (PostgreSQL + MSSQL)
   const loadRecentPatients = async () => {
     try {
       setLoading(true);
 
-      // 1. 초진차트에서 최근 진료 기록 가져오기 - SQLite
+      // 1. 초진차트에서 최근 진료 기록 가져오기 - PostgreSQL
       const initialCharts = await query<{ patient_id: number; chart_date: string; updated_at: string }>(`
         SELECT patient_id, chart_date, updated_at FROM initial_charts
         ORDER BY updated_at DESC
         LIMIT 100
       `);
 
-      // 2. 경과기록에서 최근 진료 기록 가져오기 - SQLite
+      // 2. 경과기록에서 최근 진료 기록 가져오기 - PostgreSQL
       const progressNotes = await query<{ patient_id: number; note_date: string; updated_at: string }>(`
         SELECT patient_id, note_date, updated_at FROM progress_notes
         ORDER BY updated_at DESC

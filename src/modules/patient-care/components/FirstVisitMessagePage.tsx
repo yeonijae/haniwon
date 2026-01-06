@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../chart/lib/supabaseClient';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 interface FirstVisitTarget {
   treatment_record_id: number;
@@ -96,7 +97,7 @@ const MESSAGE_TEMPLATES = [
 
 const FirstVisitMessagePage: React.FC = () => {
   // 날짜 선택
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(getCurrentDate());
 
   // 데이터
   const [targets, setTargets] = useState<FirstVisitTarget[]>([]);
@@ -309,7 +310,7 @@ const FirstVisitMessagePage: React.FC = () => {
   const changeDate = (days: number) => {
     const current = new Date(selectedDate);
     current.setDate(current.getDate() + days);
-    setSelectedDate(current.toISOString().split('T')[0]);
+    setSelectedDate(`${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`);
   };
 
   // 생년월일로 나이 계산
@@ -359,7 +360,7 @@ const FirstVisitMessagePage: React.FC = () => {
               <i className="fas fa-chevron-right text-gray-500"></i>
             </button>
             <button
-              onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+              onClick={() => setSelectedDate(getCurrentDate())}
               className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded"
             >
               오늘

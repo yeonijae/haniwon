@@ -6,6 +6,7 @@ import React, { useState, useEffect } from 'react';
 import type { HerbalTask, HerbalSetupFormData, HerbalType, DeliveryMethod, HerbalEvent } from '../types';
 import { HERBAL_TYPE_LABELS, DELIVERY_METHOD_LABELS } from '../types';
 import { createHerbalPurchase, fetchEvents } from '../api/herbalApi';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 interface HerbalSetupModalProps {
   task: HerbalTask | null;
@@ -24,7 +25,7 @@ const HerbalSetupModal: React.FC<HerbalSetupModalProps> = ({ task, onClose, onSu
   const [totalCount, setTotalCount] = useState(30);
   const [dosePerDay, setDosePerDay] = useState(3);
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('pickup');
-  const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [deliveryDate, setDeliveryDate] = useState(getCurrentDate());
   const [eventId, setEventId] = useState<number | undefined>();
   const [memo, setMemo] = useState('');
 

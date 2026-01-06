@@ -18,6 +18,7 @@ import {
   GENDER_LABELS,
   DEFAULT_DOCTOR_PERMISSIONS
 } from '../types';
+import { getCurrentDate } from '@shared/lib/postgres';
 import {
   createStaff,
   updateStaff,
@@ -61,7 +62,7 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
 }) => {
   // 의료진인지 확인
   const isDoctor = staff?.employee_type === 'doctor' || defaultType === 'doctor';
-  // SQLite에 등록되었는지 확인 (id가 0이면 미등록)
+  // PostgreSQL에 등록되었는지 확인 (id가 0이면 미등록)
   const isRegisteredInSqlite = staff?.isRegisteredInSqlite !== false && staff?.id !== 0;
 
   const [activeTab, setActiveTab] = useState<TabType>('info');
@@ -93,7 +94,7 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
   const [salaryInterviews, setSalaryInterviews] = useState<SalaryInterview[]>([]);
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([]);
 
-  // SQLite에 등록된 의료진만 추가 데이터 조회 가능
+  // PostgreSQL에 등록된 의료진만 추가 데이터 조회 가능
   const staffIdForData = isRegisteredInSqlite ? staff?.id : undefined;
 
   useEffect(() => {
@@ -119,7 +120,7 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
     }
   }
 
-  // 미등록 의료진을 SQLite에 등록
+  // 미등록 의료진을 PostgreSQL에 등록
   async function handleCreateDoctor() {
     if (!staff?.mssql_doctor_id) {
       alert('MSSQL 의료진 정보를 찾을 수 없습니다.');
@@ -1154,7 +1155,7 @@ const WorkPatternSection: React.FC<{
 
   // 패턴 폼 상태 - Settings.tsx 스타일
   const [patternName, setPatternName] = useState('');
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(getCurrentDate());
   const [endDate, setEndDate] = useState('');
   const [dayEnabled, setDayEnabled] = useState<boolean[]>([false, false, false, false, false, false, false]);
   const [dayTimes, setDayTimes] = useState<{ start: string; end: string }[]>(
@@ -1259,7 +1260,7 @@ const WorkPatternSection: React.FC<{
 
   function resetForm() {
     setPatternName('');
-    setStartDate(new Date().toISOString().split('T')[0]);
+    setStartDate(getCurrentDate());
     setEndDate('');
     setDayEnabled([false, false, false, false, false, false, false]);
     setDayTimes(Array(7).fill(null).map(() => ({ start: '09:00', end: '18:00' })));
@@ -1582,7 +1583,7 @@ const TimelineAddForm: React.FC<{
   isDoctor?: boolean;
 }> = ({ staffId, onClose, onSuccess, isDoctor = false }) => {
   const [eventType, setEventType] = useState<SalaryInterview['event_type']>('interview');
-  const [eventDate, setEventDate] = useState(new Date().toISOString().split('T')[0]);
+  const [eventDate, setEventDate] = useState(getCurrentDate());
   const [title, setTitle] = useState('');
   const [salaryAmount, setSalaryAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -1763,8 +1764,8 @@ const LeaveAddForm: React.FC<{
   onSuccess: () => void;
 }> = ({ staffId, onClose, onSuccess }) => {
   const [leaveType, setLeaveType] = useState<LeaveRecord['leave_type']>('annual');
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(getCurrentDate());
+  const [endDate, setEndDate] = useState(getCurrentDate());
   const [reason, setReason] = useState('');
 
   async function handleSubmit() {

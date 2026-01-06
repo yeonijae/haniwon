@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { getCurrentDate } from '@shared/lib/postgres';
 import { createTreatmentPackage, updateTreatmentPackage, deleteTreatmentPackage } from '../lib/api';
 import type { TreatmentPackage } from '../types';
 
@@ -105,7 +106,7 @@ export function PackageAddModal({
         });
       } else {
         // 추가 모드
-        const today = new Date().toISOString().split('T')[0];
+        const today = getCurrentDate();
         await createTreatmentPackage({
           patient_id: patientId,
           chart_number: chartNo,

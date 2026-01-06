@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import type { PortalUser } from '@shared/types';
-import { query, execute, escapeString } from '@shared/lib/postgres';
+import { query, execute, escapeString, getCurrentDate } from '@shared/lib/postgres';
 
 interface ProgramManagementViewProps {
   user: PortalUser;
@@ -359,7 +359,7 @@ interface AddUsageModalProps {
 
 function AddUsageModal({ program, onClose, onSuccess }: AddUsageModalProps) {
   const [form, setForm] = useState({
-    usage_date: new Date().toISOString().split('T')[0],
+    usage_date: getCurrentDate(),
     usage_count: 1,
     doctor_name: program.doctor_name || '',
     memo: '',

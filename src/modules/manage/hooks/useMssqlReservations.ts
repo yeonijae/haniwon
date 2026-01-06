@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 const API_BASE_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 const POLL_INTERVAL = 5000; // 5초 (예약은 자주 변경되지 않으므로)
@@ -34,7 +35,7 @@ export const useMssqlReservations = () => {
   const fetchReservations = useCallback(async () => {
     try {
       // 오늘 날짜
-      const today = new Date().toISOString().split('T')[0];
+      const today = getCurrentDate();
 
       const response = await fetch(`${API_BASE_URL}/api/reservations?date=${today}`);
 

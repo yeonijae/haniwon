@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { PortalUser } from '@shared/types';
 import { useFontScale } from '@shared/hooks/useFontScale';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 const API_BASE = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
@@ -169,7 +170,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
 
   const [period, setPeriod] = useState<PeriodType>('daily');
   const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
+    getCurrentDate()
   );
   // 월간용 연/월 선택
   const now = new Date();
@@ -643,7 +644,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
       const current = new Date(selectedDate);
       const days = period === 'weekly' ? 7 : 1;
       current.setDate(current.getDate() + (days * direction));
-      setSelectedDate(current.toISOString().split('T')[0]);
+      setSelectedDate(`${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`);
     }
   }
 

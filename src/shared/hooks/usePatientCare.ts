@@ -5,6 +5,7 @@
 
 import { useCallback } from 'react';
 import * as patientCareApi from '@shared/api/patientCareApi';
+import { getCurrentDate } from '@shared/lib/postgres';
 import type { ServiceType } from '@shared/types/treatmentRecord';
 
 export function usePatientCare() {
@@ -150,7 +151,7 @@ export function usePatientCare() {
         care_type: 'reservation_reminder',
         title: `${patientName} 예약 리마인더`,
         description: `내일(${reservationDate}) 예약이 있습니다. 확인 전화를 해주세요.`,
-        scheduled_date: reminderDate.toISOString().split('T')[0],
+        scheduled_date: `${reminderDate.getFullYear()}-${String(reminderDate.getMonth() + 1).padStart(2, '0')}-${String(reminderDate.getDate()).padStart(2, '0')}`,
         trigger_type: 'auto',
         trigger_source: 'reservation_d_minus_1',
       });

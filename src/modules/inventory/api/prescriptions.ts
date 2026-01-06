@@ -1,8 +1,8 @@
 /**
- * 처방전 API - SQLite 연결
+ * 처방전 API - PostgreSQL 연결
  */
 
-import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/postgres';
+import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp, getCurrentDate } from '@shared/lib/postgres';
 
 // 처방 정의 (마스터 데이터)
 export interface PrescriptionDefinition {
@@ -127,7 +127,7 @@ export const prescriptionsApi = {
   // 처방전 발행
   create: async (prescriptionData: Partial<Prescription>): Promise<Prescription> => {
     const now = getCurrentTimestamp();
-    const issuedDate = prescriptionData.issued_date || new Date().toISOString().split('T')[0];
+    const issuedDate = prescriptionData.issued_date || getCurrentDate();
 
     const id = await insert(`
       INSERT INTO prescriptions (

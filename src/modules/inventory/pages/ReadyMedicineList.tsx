@@ -11,6 +11,7 @@ import {
   type MedicineCategory,
   MEDICINE_CATEGORIES,
 } from '../../cs/lib/api';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 function ReadyMedicineList() {
   const [activeTab, setActiveTab] = useState<'inventory' | 'import'>('inventory');
@@ -186,7 +187,7 @@ function ReadyMedicineList() {
   const handleAddStock = async () => {
     if (!stockItem) return;
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getCurrentDate();
       await addMedicineStock(
         stockItem.id,
         stockForm.packs,

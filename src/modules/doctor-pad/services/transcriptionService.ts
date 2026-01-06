@@ -3,7 +3,7 @@
  * - 오디오 파일 업로드
  * - Whisper API로 텍스트 변환
  * - GPT로 SOAP 변환
- * - SQLite에 진료녹취 저장
+ * - PostgreSQL에 진료녹취 저장
  */
 
 const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';

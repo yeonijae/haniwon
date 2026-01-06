@@ -26,7 +26,7 @@ const MedicalRecordList: React.FC<Props> = ({ patientId, onSelectRecord }) => {
   const loadRecords = async () => {
     try {
       setLoading(true);
-      // 초진차트에서 진료기록 가져오기 - SQLite
+      // 초진차트에서 진료기록 가져오기 - PostgreSQL
       const data = await query<{
         id: number;
         patient_id: number;

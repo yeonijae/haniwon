@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { useDraggableModal } from '../hooks/useDraggableModal';
-import { query, insert, execute, escapeString } from '@shared/lib/postgres';
+import { query, insert, execute, escapeString, getCurrentDate } from '@shared/lib/postgres';
 import { ConsultationPatient } from './CSSidebar';
 
 // 타입 정의
@@ -80,7 +80,7 @@ function PatientProgramModal({ patient, onClose, onSuccess }: PatientProgramModa
   const [submitting, setSubmitting] = useState(false);
 
   // 사용 기록 폼 상태
-  const [usageDate, setUsageDate] = useState(new Date().toISOString().split('T')[0]);
+  const [usageDate, setUsageDate] = useState(getCurrentDate());
   const [usageCount, setUsageCount] = useState(1);
   const [usageMemo, setUsageMemo] = useState('');
 
@@ -196,7 +196,7 @@ function PatientProgramModal({ patient, onClose, onSuccess }: PatientProgramModa
         price: a.price,
       })));
       const addonTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0);
-      const today = new Date().toISOString().split('T')[0];
+      const today = getCurrentDate();
 
       await insert(`
         INSERT INTO patient_treatment_programs (

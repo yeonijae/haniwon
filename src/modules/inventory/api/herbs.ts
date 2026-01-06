@@ -1,5 +1,5 @@
 /**
- * 한약재 API - SQLite 연결
+ * 한약재 API - PostgreSQL 연결
  */
 
 import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/postgres';

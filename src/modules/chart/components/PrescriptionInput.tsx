@@ -165,7 +165,7 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
     try {
       setLoading(true);
 
-      // 약재 목록 로드 (ID 매핑용) - SQLite
+      // 약재 목록 로드 (ID 매핑용) - PostgreSQL
       const herbsData = await query<{ id: number; name: string }>(
         `SELECT id, name FROM herbs ORDER BY id`
       );
@@ -176,7 +176,7 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
       });
       setHerbIdMap(idMap);
 
-      // 처방 템플릿 로드 - SQLite
+      // 처방 템플릿 로드 - PostgreSQL
       const data = await query<{
         id: number;
         name: string;

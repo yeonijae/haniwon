@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { getCurrentDate } from '@shared/lib/postgres';
 import { DayView } from '../../reservation/components/DayView';
 import { CalendarHeader } from '../../reservation/components/CalendarHeader';
 import type { ReservationDraft } from '../../reservation/components/ReservationStep1Modal';
@@ -72,8 +73,7 @@ export const QuickReservationModal: React.FC<QuickReservationModalProps> = ({
   const memoText = propMemo || '';
   // 날짜 상태
   const [selectedDate, setSelectedDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
+    return getCurrentDate();
   });
 
   // 데이터 상태
@@ -176,19 +176,21 @@ export const QuickReservationModal: React.FC<QuickReservationModalProps> = ({
   const goToPrevious = () => {
     const current = new Date(selectedDate);
     current.setDate(current.getDate() - 1);
-    setSelectedDate(current.toISOString().split('T')[0]);
+    const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+    setSelectedDate(dateStr);
     setSelectedTime(null);
   };
 
   const goToNext = () => {
     const current = new Date(selectedDate);
     current.setDate(current.getDate() + 1);
-    setSelectedDate(current.toISOString().split('T')[0]);
+    const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+    setSelectedDate(dateStr);
     setSelectedTime(null);
   };
 
   const goToToday = () => {
-    setSelectedDate(new Date().toISOString().split('T')[0]);
+    setSelectedDate(getCurrentDate());
     setSelectedTime(null);
   };
 

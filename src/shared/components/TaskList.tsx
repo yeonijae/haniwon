@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import * as taskApi from '@shared/api/taskApi';
+import { getCurrentDate } from '@shared/lib/postgres';
 import type { Task, TaskStatus, TaskPriority } from '@shared/types/task';
 import { TASK_TYPE_LABELS, PRIORITY_LABELS, STATUS_LABELS } from '@shared/types/task';
 
@@ -161,7 +162,7 @@ const TaskList: React.FC<TaskListProps> = ({
                         <span className="text-gray-400">({task.patient_chart_number})</span>
                       )}
                       {task.due_date && (
-                        <span className={task.due_date < new Date().toISOString().split('T')[0] ? 'text-red-500' : ''}>
+                        <span className={task.due_date < getCurrentDate() ? 'text-red-500' : ''}>
                           마감: {task.due_date}
                         </span>
                       )}

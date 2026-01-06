@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import type { PortalUser } from '@shared/types';
+import { getCurrentDate } from '@shared/lib/postgres';
 import type { HerbalPackage, HerbalPackageRound, DeliveryMethod, RoundStatus } from '../types';
 import { DELIVERY_METHOD_LABELS, ROUND_STATUS_LABELS, ROUND_STATUS_COLORS, PACKAGE_TYPE_LABELS } from '../types';
 import {
@@ -347,7 +348,7 @@ function AddPackageModal({ onClose, onSuccess }: AddPackageModalProps) {
     herbal_name: '',
     package_type: '1month' as HerbalPackage['package_type'],
     total_count: 1,
-    start_date: new Date().toISOString().split('T')[0],
+    start_date: getCurrentDate(),
     memo: '',
   });
   const [saving, setSaving] = useState(false);

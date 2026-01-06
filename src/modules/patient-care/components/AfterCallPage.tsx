@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../chart/lib/supabaseClient';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 // 진료 카테고리 정의
 const TREATMENT_CATEGORIES = [
@@ -82,7 +83,7 @@ const DURATION_OPTIONS = [
 
 const AfterCallPage: React.FC = () => {
   // 날짜 선택
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(getCurrentDate());
 
   // 카테고리 필터
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -390,10 +391,10 @@ const AfterCallPage: React.FC = () => {
   const moveDate = (days: number) => {
     const date = new Date(selectedDate);
     date.setDate(date.getDate() + days);
-    setSelectedDate(date.toISOString().split('T')[0]);
+    setSelectedDate(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`);
   };
 
-  const isToday = selectedDate === new Date().toISOString().split('T')[0];
+  const isToday = selectedDate === getCurrentDate();
 
   // 콜 완료 처리
   const handleCallRecord = () => {
@@ -487,7 +488,7 @@ const AfterCallPage: React.FC = () => {
 
     const defaultDate = new Date();
     defaultDate.setDate(defaultDate.getDate() + 3);
-    setReservationDate(defaultDate.toISOString().split('T')[0]);
+    setReservationDate(`${defaultDate.getFullYear()}-${String(defaultDate.getMonth() + 1).padStart(2, '0')}-${String(defaultDate.getDate()).padStart(2, '0')}`);
     setReservationTime('10:00');
     setReservationDoctor(doctors[0]);
     setReservationDuration(15);
@@ -637,7 +638,7 @@ ${target.patient_name}님, 안녕하세요.
               />
               {!isToday && (
                 <button
-                  onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                  onClick={() => setSelectedDate(getCurrentDate())}
                   className="px-3 py-2 text-sm text-teal-600 hover:bg-teal-50 rounded-lg"
                 >
                   오늘
@@ -1200,7 +1201,7 @@ ${target.patient_name}님, 안녕하세요.
                     type="date"
                     value={reservationDate}
                     onChange={(e) => setReservationDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={getCurrentDate()}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-teal-500"
                   />
                 </div>

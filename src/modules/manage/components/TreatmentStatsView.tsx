@@ -15,7 +15,7 @@ type PeriodType = 'today' | 'week' | 'month' | 'custom';
 
 // 날짜 포맷 함수
 const formatDate = (date: Date): string => {
-  return date.toISOString().split('T')[0];
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
 // 날짜 범위 계산

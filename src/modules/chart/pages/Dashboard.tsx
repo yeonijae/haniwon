@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -46,7 +47,7 @@ const Dashboard: React.FC = () => {
       // 현재는 더미 데이터로 표시
 
       // 오늘 날짜
-      const today = new Date().toISOString().split('T')[0];
+      const today = getCurrentDate();
 
       // 여기에 실제 데이터 로드 로직을 추가할 예정
 

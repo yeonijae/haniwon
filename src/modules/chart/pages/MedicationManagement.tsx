@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/postgres';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp, getCurrentDate } from '@shared/lib/postgres';
 
 // 오늘의 콜 대상 인터페이스
 interface TodayCallTarget {
@@ -76,7 +76,7 @@ const MedicationManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'today' | 'patients'>('today');
 
   // 오늘의 콜 목록
-  const [selectedCallDate, setSelectedCallDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedCallDate, setSelectedCallDate] = useState<string>(getCurrentDate());
   const [deliveryCallTargets, setDeliveryCallTargets] = useState<TodayCallTarget[]>([]);
   const [visitCallTargets, setVisitCallTargets] = useState<TodayCallTarget[]>([]);
   const [loadingTodayCalls, setLoadingTodayCalls] = useState(true);
@@ -165,7 +165,7 @@ const MedicationManagement: React.FC = () => {
     try {
       setLoadingTodayCalls(true);
 
-      // 발급 완료되었고 복약 완료되지 않은 처방 조회 - SQLite
+      // 발급 완료되었고 복약 완료되지 않은 처방 조회 - PostgreSQL
       const prescriptions = await query<any>(
         `SELECT * FROM prescriptions WHERE status = 'issued' AND (medication_completed = 0 OR medication_completed IS NULL) ORDER BY issued_at DESC`
       );
@@ -177,7 +177,7 @@ const MedicationManagement: React.FC = () => {
       const visitTargets: TodayCallTarget[] = [];
 
       for (const p of prescriptions || []) {
-        // 환자 정보 가져오기 - SQLite (patients 테이블이 없으면 스킵)
+        // 환자 정보 가져오기 - PostgreSQL (patients 테이블이 없으면 스킵)
         let phone = '';
         try {
           const patient = await queryOne<{ phone: string }>(
@@ -267,7 +267,7 @@ const MedicationManagement: React.FC = () => {
     try {
       setLoadingPatients(true);
 
-      // SQLite에서 처방 목록 조회
+      // PostgreSQL에서 처방 목록 조회
       const prescriptions = await query<{
         patient_id: number;
         patient_name: string;
@@ -320,7 +320,7 @@ const MedicationManagement: React.FC = () => {
       setSelectedTreatmentId(null);
       setPrescriptions([]);
 
-      // SQLite에서 처방 조회
+      // PostgreSQL에서 처방 조회
       const data = await query<any>(
         `SELECT * FROM prescriptions WHERE patient_id = ${patientId} AND status = 'issued' ORDER BY issued_at DESC`
       );
@@ -380,7 +380,7 @@ const MedicationManagement: React.FC = () => {
       setLoadingPrescriptions(true);
       setSelectedTreatmentId(treatmentId);
 
-      // SQLite에서 처방 상세 조회
+      // PostgreSQL에서 처방 상세 조회
       const data = await queryOne<any>(
         `SELECT * FROM prescriptions WHERE id = ${treatmentId}`
       );
@@ -542,7 +542,7 @@ const MedicationManagement: React.FC = () => {
       const selectedDate = new Date(date);
       const dayOfWeek = selectedDate.getDay();
 
-      // 해당 요일의 원장 근무시간 조회 - SQLite
+      // 해당 요일의 원장 근무시간 조회 - PostgreSQL
       const schedules = await query<any>(
         `SELECT * FROM doctor_schedules WHERE doctor_name = ${escapeString(doctor)} AND day_of_week = ${dayOfWeek} AND is_active = 1`
       );
@@ -571,7 +571,7 @@ const MedicationManagement: React.FC = () => {
         const isBreakTime = breakStart && breakEnd && currentTime >= breakStart && currentTime < breakEnd;
 
         if (!isBreakTime) {
-          // 기존 예약 체크 - SQLite
+          // 기존 예약 체크 - PostgreSQL
           const appointmentDateTime = new Date(date + 'T' + timeStr);
           const endDateTime = new Date(appointmentDateTime.getTime() + slotDuration * 60000);
           const existingAppointments = await query<any>(
@@ -605,7 +605,7 @@ const MedicationManagement: React.FC = () => {
       const appointmentDateTime = new Date(`${selectedDate}T${selectedSlot}`);
       const now = getCurrentTimestamp();
 
-      // SQLite에 예약 저장
+      // PostgreSQL에 예약 저장
       await insert(`
         INSERT INTO appointments (patient_id, prescription_id, doctor_name, appointment_date, appointment_type, status, created_at, updated_at)
         VALUES (
@@ -737,7 +737,7 @@ const MedicationManagement: React.FC = () => {
                 className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-clinic-primary"
               />
               <button
-                onClick={() => setSelectedCallDate(new Date().toISOString().split('T')[0])}
+                onClick={() => setSelectedCallDate(getCurrentDate())}
                 className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
               >
                 오늘
@@ -1491,7 +1491,7 @@ const MedicationManagement: React.FC = () => {
                   <input
                     type="date"
                     value={selectedDate}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={getCurrentDate()}
                     onChange={(e) => {
                       setSelectedDate(e.target.value);
                       setSelectedSlot('');

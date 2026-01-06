@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { getCurrentDate } from '@shared/lib/postgres';
 import type { TreatmentPackage, Membership, PointTransaction } from '../types';
 import {
   // 패키지 API
@@ -279,7 +280,7 @@ function PackageTab({ packages, patientId, patientName, chartNo, onRefresh, onDa
           memo: form.memo || undefined,
         });
       } else {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getCurrentDate();
         await createTreatmentPackage({
           patient_id: patientId,
           chart_number: chartNo,
@@ -480,10 +481,11 @@ function MembershipTab({ memberships, activeMembership, patientId, patientName, 
     // 기본 만료일: 오늘 + 1개월
     const defaultExpire = new Date();
     defaultExpire.setMonth(defaultExpire.getMonth() + 1);
+    const expireDateStr = `${defaultExpire.getFullYear()}-${String(defaultExpire.getMonth() + 1).padStart(2, '0')}-${String(defaultExpire.getDate()).padStart(2, '0')}`;
     setForm({
       membership_type: '',
       quantity: 1,
-      expire_date: defaultExpire.toISOString().split('T')[0],
+      expire_date: expireDateStr,
       memo: '',
     });
     setShowAddForm(false);
@@ -498,7 +500,7 @@ function MembershipTab({ memberships, activeMembership, patientId, patientName, 
 
     setIsSaving(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getCurrentDate();
       if (editingMembership) {
         await updateMembership(editingMembership.id!, {
           membership_type: form.membership_type,

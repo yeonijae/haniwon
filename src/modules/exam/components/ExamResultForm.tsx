@@ -4,6 +4,7 @@ import { EXAM_TYPES, getExamTypeInfo } from '../types';
 import { uploadExamFile, formatFileSize } from '../lib/fileUpload';
 import { createExamResult, addExamAttachment, addExamValue } from '../services/examService';
 import ExamValueEditor, { type ValueInput } from './ExamValueEditor';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 interface ExamResultFormProps {
   patient: Patient;
@@ -21,7 +22,7 @@ interface UploadedFile {
 }
 
 const ExamResultForm: React.FC<ExamResultFormProps> = ({ patient, onClose, onSave }) => {
-  const [examDate, setExamDate] = useState(new Date().toISOString().split('T')[0]);
+  const [examDate, setExamDate] = useState(getCurrentDate());
   const [examType, setExamType] = useState<ExamType | ''>('');
   const [findings, setFindings] = useState('');
   const [memo, setMemo] = useState('');

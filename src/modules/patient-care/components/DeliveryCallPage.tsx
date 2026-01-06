@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../chart/lib/supabaseClient';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 interface DeliveryCallTarget {
   prescription_id: number;
@@ -36,7 +37,7 @@ interface PatientInfo {
 
 const DeliveryCallPage: React.FC = () => {
   // 날짜 선택
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(getCurrentDate());
 
   // 데이터
   const [targets, setTargets] = useState<DeliveryCallTarget[]>([]);
@@ -223,10 +224,10 @@ const DeliveryCallPage: React.FC = () => {
   const moveDate = (days: number) => {
     const date = new Date(selectedDate);
     date.setDate(date.getDate() + days);
-    setSelectedDate(date.toISOString().split('T')[0]);
+    setSelectedDate(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`);
   };
 
-  const isToday = selectedDate === new Date().toISOString().split('T')[0];
+  const isToday = selectedDate === getCurrentDate();
 
   const handleCallRecord = () => {
     if (!selectedTarget) return;
@@ -303,7 +304,7 @@ const DeliveryCallPage: React.FC = () => {
               />
               {!isToday && (
                 <button
-                  onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                  onClick={() => setSelectedDate(getCurrentDate())}
                   className="px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg"
                 >
                   오늘

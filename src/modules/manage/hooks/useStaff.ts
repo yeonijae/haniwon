@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MedicalStaff, Staff, UncoveredCategories, MedicalStaffPermissions } from '../types';
 import * as api from '../lib/api';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 // MSSQL 의료진을 MedicalStaff 형태로 변환
 const convertMssqlDoctorToMedicalStaff = (doc: api.MssqlDoctor, index: number): MedicalStaff => {
@@ -17,7 +18,10 @@ const convertMssqlDoctorToMedicalStaff = (doc: api.MssqlDoctor, index: number): 
     if (!dateStr) return '';
     try {
       const date = new Date(dateStr);
-      return date.toISOString().split('T')[0];
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     } catch {
       return '';
     }
@@ -62,11 +66,11 @@ export const useStaff = (currentUser: any) => {
         );
         setMedicalStaff(convertedStaff);
 
-        // 일반 스태프 로드 (SQLite)
+        // 일반 스태프 로드 (PostgreSQL)
         const staffData = await api.fetchStaff();
         setStaff(staffData);
 
-        // 비급여 카테고리 로드 (SQLite)
+        // 비급여 카테고리 로드 (PostgreSQL)
         const categoriesData = await api.fetchUncoveredCategories();
         setUncoveredCategories(categoriesData);
       } catch (error) {

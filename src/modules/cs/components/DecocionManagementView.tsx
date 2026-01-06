@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getCurrentDate } from '@shared/lib/postgres';
 import {
   getMedicineInventory,
   getMedicineDecoctions,
@@ -28,9 +29,13 @@ function DecocionManagementView({ onClose }: DecocionManagementViewProps) {
   const [isSaving, setIsSaving] = useState(false);
 
   // 필터
-  const [dateRange, setDateRange] = useState({
-    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    end: new Date().toISOString().split('T')[0],
+  const [dateRange, setDateRange] = useState(() => {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const startStr = `${thirtyDaysAgo.getFullYear()}-${String(thirtyDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(thirtyDaysAgo.getDate()).padStart(2, '0')}`;
+    return {
+      start: startStr,
+      end: getCurrentDate(),
+    };
   });
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const LOW_STOCK_THRESHOLD = 10;
@@ -100,7 +105,7 @@ function DecocionManagementView({ onClose }: DecocionManagementViewProps) {
 
     setIsSaving(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getCurrentDate();
       await addMedicineStock(
         selectedItem.id,
         decocForm.packs,

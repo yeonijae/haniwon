@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/postgres';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp, getCurrentDate } from '@shared/lib/postgres';
 import type { InitialChart } from '../types';
 import PrescriptionInput, { PrescriptionData } from './PrescriptionInput';
 
@@ -72,7 +72,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     try {
       setLoading(true);
 
-      // 초진차트 로드 - SQLite
+      // 초진차트 로드 - PostgreSQL
       const chartData = await queryOne<InitialChart>(
         `SELECT * FROM initial_charts WHERE id = ${recordId}`
       );
@@ -84,7 +84,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
       setInitialChart(chartData);
       setInitialChartPrescriptionIssued(chartData.prescription_issued || false);
 
-      // 경과 기록 로드 (progress_notes 테이블에서) - SQLite
+      // 경과 기록 로드 (progress_notes 테이블에서) - PostgreSQL
       const progressData = await query<{
         id: number;
         patient_id: number;
@@ -351,7 +351,8 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
 
   const handleEditProgress = (entry: ProgressEntry) => {
     // 경과 수정 모드로 전환
-    const entryDate = new Date(entry.entry_date).toISOString().split('T')[0];
+    const date = new Date(entry.entry_date);
+    const entryDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     setProgressDate(entryDate);
 
     // 텍스트 재구성 (diagnosis에 이미 [복진], [설진] 등이 포함되어 있을 수 있음)
@@ -451,9 +452,9 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
       const now = new Date();
       const nowTimestamp = getCurrentTimestamp();
       const prescriptionNumber = `RX-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
-      const prescriptionDate = now.toISOString().split('T')[0];
+      const prescriptionDate = getCurrentDate();
 
-      // prescriptions 테이블에 저장 - SQLite
+      // prescriptions 테이블에 저장 - PostgreSQL
       await insert(`
         INSERT INTO prescriptions (
           prescription_number, prescription_date, patient_id, patient_name, chart_number,
@@ -1070,7 +1071,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
                     setAutoSaveStatus('idle');
                   } else {
                     // 새 경과 추가 모드
-                    const today = new Date().toISOString().split('T')[0];
+                    const today = getCurrentDate();
                     setProgressDate(today);
                     setProgressText('');
                     setEditingProgressId(null);

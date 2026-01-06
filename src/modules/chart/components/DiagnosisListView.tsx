@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { query, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/postgres';
+import { query, execute, insert, escapeString, toSqlValue, getCurrentTimestamp, getCurrentDate } from '@shared/lib/postgres';
 import type { Diagnosis, DiagnosisStatus, Severity } from '../types';
 
 interface Props {
@@ -40,7 +40,7 @@ const DiagnosisListView: React.FC<Props> = ({ patientId, patientName, onClose })
   const handleSave = async () => {
     try {
       const now = getCurrentTimestamp();
-      const diagnosisDate = formData.diagnosis_date || new Date().toISOString().split('T')[0];
+      const diagnosisDate = formData.diagnosis_date || getCurrentDate();
 
       if (editingDiagnosis) {
         await execute(`

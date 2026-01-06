@@ -3,7 +3,7 @@
  * 환자별 기본 치료 정보, 당일 치료 기록, 치료 시간 로그, 액팅 시간 로그 관리
  */
 
-import { query, queryOne, execute, insert, escapeString, toSqlValue, tableExists, isTableInitialized, markTableInitialized } from '@shared/lib/postgres';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, tableExists, isTableInitialized, markTableInitialized, getCurrentDate } from '@shared/lib/postgres';
 import type {
   PatientDefaultTreatments,
   DailyTreatmentRecord,
@@ -817,7 +817,7 @@ export async function processPatientForTreatmentQueue(
   chartNumber: string | undefined,
   doctorName?: string
 ): Promise<TreatmentQueueEntryResult> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
 
   // 1. 기본 치료 정보 조회
   let defaultTreatments = await fetchPatientDefaultTreatments(patientId);
@@ -890,7 +890,7 @@ export async function checkIsFirstVisitToday(patientId: number): Promise<{
   hasDefaultTreatments: boolean;
   hasTodayRecord: boolean;
 }> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
 
   const [defaultTreatments, dailyRecord] = await Promise.all([
     fetchPatientDefaultTreatments(patientId),
@@ -948,7 +948,7 @@ export async function loadSessionTreatmentsForRoom(
   dailyRecord: DailyTreatmentRecord;
   isFirstVisit: boolean;
 }> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
 
   // 1. 기본 치료 정보 로드
   let defaultTreatments = await fetchPatientDefaultTreatments(patientId);
@@ -1029,7 +1029,7 @@ export async function logTreatmentStart(
   roomId?: number,
   bedNumber?: number
 ): Promise<number> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
   const now = new Date().toISOString();
 
   return await createTreatmentTimeLog({
@@ -1076,7 +1076,7 @@ export async function fetchActiveTreatmentTimeLog(
   treatmentType: TreatmentTypeCode,
   date?: string
 ): Promise<TreatmentTimeLog | null> {
-  const targetDate = date || new Date().toISOString().split('T')[0];
+  const targetDate = date || getCurrentDate();
 
   const row = await queryOne<any>(`
     SELECT * FROM treatment_time_logs

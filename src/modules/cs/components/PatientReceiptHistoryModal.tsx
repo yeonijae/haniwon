@@ -7,6 +7,7 @@ import {
   type ReceiptHistoryItem,
 } from '../../manage/lib/api';
 import { getPatientMemoData } from '../lib/api';
+import { getCurrentDate } from '@shared/lib/postgres';
 import type {
   TreatmentPackage,
   HerbalPackage,
@@ -142,9 +143,9 @@ const formatDateShort = (dateStr: string): string => {
   return `${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]})`;
 };
 
-// 확장된 수납 데이터 (SQLite 메모 포함)
+// 확장된 수납 데이터 (PostgreSQL 메모 포함)
 interface ExpandedHistoryItem extends ReceiptHistoryItem {
-  // SQLite 데이터
+  // PostgreSQL 데이터
   treatmentPackages: TreatmentPackage[];
   herbalPackages: HerbalPackage[];
   pointBalance: number;
@@ -195,7 +196,7 @@ export function PatientReceiptHistoryModal({
         today.setFullYear(today.getFullYear() - 1);
         break;
     }
-    return today.toISOString().split('T')[0];
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   }, []);
 
   // 데이터 로드
@@ -274,7 +275,7 @@ export function PatientReceiptHistoryModal({
         r.id === receiptId ? { ...r, isExpanded: false } : r
       ));
     } else {
-      // 확장 - SQLite 데이터 로드
+      // 확장 - PostgreSQL 데이터 로드
       setReceipts(prev => prev.map(r =>
         r.id === receiptId ? { ...r, isExpanded: true, isLoading: true } : r
       ));

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { query, execute, escapeString, insert } from '@shared/lib/postgres';
+import { query, execute, escapeString, insert, getCurrentDate } from '@shared/lib/postgres';
 
 interface YakchimPanelProps {
   patientId: number;
@@ -87,7 +87,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // SQLite patient_id 조회
+  // PostgreSQL patient_id 조회
   const [sqlitePatientId, setSqlitePatientId] = useState<number | null>(null);
 
   // 멤버십 인라인 폼 상태
@@ -189,10 +189,11 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
       // 최근 사용 기록 (30일 이내)
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const thirtyDaysAgoStr = `${thirtyDaysAgo.getFullYear()}-${String(thirtyDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(thirtyDaysAgo.getDate()).padStart(2, '0')}`;
       const usageData = await query<UsageRecord>(`
         SELECT * FROM cs_yakchim_usage_records
         WHERE patient_id = ${pid}
-        AND usage_date >= ${escapeString(thirtyDaysAgo.toISOString().split('T')[0])}
+        AND usage_date >= ${escapeString(thirtyDaysAgoStr)}
         ORDER BY usage_date DESC, created_at DESC
         LIMIT 20
       `);
@@ -376,10 +377,11 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
   const resetMembershipForm = () => {
     const defaultExpire = new Date();
     defaultExpire.setFullYear(defaultExpire.getFullYear() + 1);
+    const expireDateStr = `${defaultExpire.getFullYear()}-${String(defaultExpire.getMonth() + 1).padStart(2, '0')}-${String(defaultExpire.getDate()).padStart(2, '0')}`;
     setMembershipForm({
       membership_type: '경근멤버십',
       quantity: 1,
-      expire_date: defaultExpire.toISOString().split('T')[0],
+      expire_date: expireDateStr,
     });
   };
 
@@ -407,7 +409,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
         return;
       }
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = getCurrentDate();
       const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
       const sql = `
@@ -463,7 +465,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
         setSqlitePatientId(pid);
       }
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = getCurrentDate();
       await insert(`
         INSERT INTO cs_treatment_packages (
           patient_id, chart_number, patient_name, package_name,

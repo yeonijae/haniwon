@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import * as patientCareApi from '@shared/api/patientCareApi';
+import { getCurrentDate } from '@shared/lib/postgres';
 import type { PatientCareItem, PatientCareType, PatientCareStatus } from '@shared/types/patientCare';
 import { CARE_TYPE_LABELS, TREATMENT_STATUS_LABELS } from '@shared/types/patientCare';
 
@@ -53,7 +54,7 @@ const PatientCareList: React.FC<PatientCareListProps> = ({
 
   // 필터링된 목록
   const filteredItems = items.filter(item => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getCurrentDate();
     const isOverdue = item.scheduled_date && item.scheduled_date < today;
 
     switch (activeTab) {
@@ -133,7 +134,7 @@ const PatientCareList: React.FC<PatientCareListProps> = ({
 
   const isOverdue = (item: PatientCareItem) => {
     if (!item.scheduled_date) return false;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getCurrentDate();
     return item.scheduled_date < today;
   };
 
@@ -414,7 +415,8 @@ const PatientCareList: React.FC<PatientCareListProps> = ({
                 onClick={() => {
                   const tomorrow = new Date();
                   tomorrow.setDate(tomorrow.getDate() + 1);
-                  handleReschedule(selectedItem, tomorrow.toISOString().split('T')[0]);
+                  const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+                  handleReschedule(selectedItem, tomorrowStr);
                   setSelectedItem(null);
                 }}
                 className="flex-1 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 font-medium"

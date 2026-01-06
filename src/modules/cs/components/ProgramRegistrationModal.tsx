@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { useDraggableModal } from '../hooks/useDraggableModal';
-import { query, insert, escapeString } from '@shared/lib/postgres';
+import { query, insert, escapeString, getCurrentDate } from '@shared/lib/postgres';
 import { ConsultationPatient } from './CSSidebar';
 
 // 타입 정의
@@ -123,7 +123,7 @@ function ProgramRegistrationModal({ patient, onClose, onSuccess }: ProgramRegist
       const addonTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0);
       const totalPrice = addonTotal; // 기본 가격 로직은 추후 추가
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = getCurrentDate();
 
       await insert(`
         INSERT INTO patient_treatment_programs (

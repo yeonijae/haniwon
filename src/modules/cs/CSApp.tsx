@@ -223,7 +223,7 @@ function CSApp({ user }: CSAppProps) {
         console.log(`✅ ${actingModalPatient.patient_name} 환자 액팅 수정 완료 (${actingTypeLabel}, 담당: ${selectedDoctor.name})`);
       } else {
         // 신규 액팅 등록
-        // 1. SQLite에 환자가 있는지 확인, 없으면 생성
+        // 1. PostgreSQL에 환자가 있는지 확인, 없으면 생성
         let patientRecord = await queryOne<{ id: number }>(`
           SELECT id FROM patients WHERE chart_number = ${escapeString(chartNo)} OR mssql_id = ${actingModalPatient.patient_id}
         `);

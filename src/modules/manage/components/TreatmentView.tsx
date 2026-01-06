@@ -607,7 +607,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
         console.log(`[handlePatientDropOnBed] 환자 찾음: ${patient.name} (id: ${patient.id})`);
         console.log(`[handlePatientDropOnBed] 환자 gender: ${patient.gender}, dob: ${patient.dob}`);
 
-        // SQLite에서 환자의 치료 정보 로드
+        // PostgreSQL에서 환자의 치료 정보 로드
         let sessionTreatments: SessionTreatment[];
         let dailyRecordId: number | undefined;
 
@@ -619,9 +619,9 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             );
             sessionTreatments = result.sessionTreatments;
             dailyRecordId = result.dailyRecord.id;
-            console.log(`[handlePatientDropOnBed] SQLite에서 치료 정보 로드 완료: ${sessionTreatments.length}개 항목`);
+            console.log(`[handlePatientDropOnBed] PostgreSQL에서 치료 정보 로드 완료: ${sessionTreatments.length}개 항목`);
         } catch (error) {
-            console.error(`[handlePatientDropOnBed] SQLite 치료 정보 로드 실패, 폴백 사용:`, error);
+            console.error(`[handlePatientDropOnBed] PostgreSQL 치료 정보 로드 실패, 폴백 사용:`, error);
             // 폴백: 기존 방식 사용
             const treatmentsToApply =
                 (patient.defaultTreatments && patient.defaultTreatments.length > 0)

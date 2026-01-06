@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../chart/lib/supabaseClient';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 interface VisitCallTarget {
   prescription_id: number;
@@ -62,7 +63,7 @@ const DURATION_OPTIONS = [
 
 const VisitCallPage: React.FC = () => {
   // 날짜 선택
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(getCurrentDate());
 
   // 데이터
   const [targets, setTargets] = useState<VisitCallTarget[]>([]);
@@ -327,10 +328,10 @@ const VisitCallPage: React.FC = () => {
   const moveDate = (days: number) => {
     const date = new Date(selectedDate);
     date.setDate(date.getDate() + days);
-    setSelectedDate(date.toISOString().split('T')[0]);
+    setSelectedDate(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`);
   };
 
-  const isToday = selectedDate === new Date().toISOString().split('T')[0];
+  const isToday = selectedDate === getCurrentDate();
 
   // 콜 완료 처리
   const handleCallRecord = () => {
@@ -410,13 +411,14 @@ const VisitCallPage: React.FC = () => {
     // 기본 예약일을 오늘 이후 2일로 설정
     const defaultDate = new Date();
     defaultDate.setDate(defaultDate.getDate() + 2);
-    setReservationDate(defaultDate.toISOString().split('T')[0]);
+    const defaultDateStr = `${defaultDate.getFullYear()}-${String(defaultDate.getMonth() + 1).padStart(2, '0')}-${String(defaultDate.getDate()).padStart(2, '0')}`;
+    setReservationDate(defaultDateStr);
     setReservationTime('10:00');
     setReservationDoctor(doctors[0]);
     setReservationDuration(15);
     setReservationMemo('');
 
-    loadReservationSlots(defaultDate.toISOString().split('T')[0]);
+    loadReservationSlots(defaultDateStr);
     setShowReservationModal(true);
   };
 
@@ -562,7 +564,7 @@ ${target.patient_name}님, 안녕하세요.
               />
               {!isToday && (
                 <button
-                  onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                  onClick={() => setSelectedDate(getCurrentDate())}
                   className="px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 rounded-lg"
                 >
                   오늘
@@ -731,7 +733,7 @@ ${target.patient_name}님, 안녕하세요.
                     <button
                       onClick={() => selectedTarget.phone && sendKakaoMessage(
                         selectedTarget,
-                        new Date().toISOString().split('T')[0],
+                        getCurrentDate(),
                         '',
                         ''
                       )}
@@ -1084,7 +1086,7 @@ ${target.patient_name}님, 안녕하세요.
                       setReservationDate(e.target.value);
                       loadReservationSlots(e.target.value);
                     }}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={getCurrentDate()}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-500"
                   />
                 </div>

@@ -4,6 +4,7 @@
  */
 
 import { useState, useCallback } from 'react';
+import { getCurrentDate } from '@shared/lib/postgres';
 import {
   fetchPatientDefaultTreatments,
   savePatientDefaultTreatments,
@@ -91,7 +92,7 @@ export const useTreatmentInfo = (): UseTreatmentInfoResult => {
 
   // 당일 치료 기록 로드
   const loadDailyRecord = useCallback(async (patientId: number, date?: string) => {
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    const targetDate = date || getCurrentDate();
     setIsLoading(true);
     setError(null);
     try {
@@ -134,7 +135,7 @@ export const useTreatmentInfo = (): UseTreatmentInfoResult => {
     chartNumber: string | undefined,
     date?: string
   ) => {
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    const targetDate = date || getCurrentDate();
     setIsLoading(true);
     setError(null);
     try {

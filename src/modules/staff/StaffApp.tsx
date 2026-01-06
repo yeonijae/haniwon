@@ -62,7 +62,7 @@ const StaffApp: React.FC<StaffAppProps> = ({ user }) => {
         }
       }
 
-      // 원장: MSSQL + SQLite 상태 병합, 직원: SQLite에서 불러오기
+      // 원장: MSSQL + PostgreSQL 상태 병합, 직원: PostgreSQL에서 불러오기
       const [doctorData, staffData] = await Promise.all([
         fetchDoctorsWithSqliteStatus(),
         fetchStaffList('staff')

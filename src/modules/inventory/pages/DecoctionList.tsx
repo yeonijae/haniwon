@@ -6,6 +6,7 @@ import {
   type MedicineInventory,
   type MedicineDecoction,
 } from '../../cs/lib/api';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 const LOW_STOCK_THRESHOLD = 10;
 
@@ -26,9 +27,13 @@ function DecoctionList() {
   const [isSaving, setIsSaving] = useState(false);
 
   // 필터
-  const [dateRange, setDateRange] = useState({
-    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    end: new Date().toISOString().split('T')[0],
+  const [dateRange, setDateRange] = useState(() => {
+    const now = new Date();
+    const past = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    return {
+      start: `${past.getFullYear()}-${String(past.getMonth() + 1).padStart(2, '0')}-${String(past.getDate()).padStart(2, '0')}`,
+      end: getCurrentDate(),
+    };
   });
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
 
@@ -97,7 +102,7 @@ function DecoctionList() {
 
     setIsSaving(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getCurrentDate();
       await addMedicineStock(
         selectedItem.id,
         decocForm.packs,

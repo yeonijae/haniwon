@@ -10,7 +10,7 @@ export const usePayments = (currentUser: any) => {
 
   // MSSQL 수납대기 환자를 Payment 객체로 변환
   const convertMssqlToPayment = useCallback(async (mssqlPayment: api.MssqlPendingPayment): Promise<Payment> => {
-    // SQLite 메모 조회
+    // PostgreSQL 메모 조회
     let memo: api.PaymentMemo | null = null;
     try {
       memo = await api.fetchPaymentMemo(mssqlPayment.patient_id);
@@ -42,7 +42,7 @@ export const usePayments = (currentUser: any) => {
       generalAmount: parseFloat(String(mssqlPayment.general_amount)) || 0,
       unpaidAmount: mssqlPayment.unpaid !== null ? parseFloat(String(mssqlPayment.unpaid)) : undefined,
       insuranceType: mssqlPayment.insurance_type,
-      // SQLite 메모
+      // PostgreSQL 메모
       packageInfo: memo?.package_info,
       paymentMemo: memo?.memo,
     };
@@ -78,7 +78,7 @@ export const usePayments = (currentUser: any) => {
         return [...newPayments, ...paidToKeep];
       });
 
-      // 완료된 결제는 SQLite에서 조회
+      // 완료된 결제는 PostgreSQL에서 조회
       const completed = await api.fetchCompletedPayments();
       setCompletedPayments(completed);
     } catch (error) {

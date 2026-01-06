@@ -4,7 +4,7 @@ import { NewPatientData } from '../components/NewPatientForm';
 import { BulkPatientData } from '../components/Settings';
 import * as api from '../lib/api';
 import * as actingApi from '@acting/api';
-import { execute, escapeString } from '@shared/lib/postgres';
+import { execute, escapeString, getCurrentDate } from '@shared/lib/postgres';
 import { DOCTORS } from '../constants';
 
 // 자신의 변경을 무시하기 위한 타임스탬프 (구독 이벤트 무시용)
@@ -300,7 +300,7 @@ export const usePatients = (currentUser: any) => {
         phone: formData.phone,
         address: formData.address,
         referralPath: formData.referral,
-        registrationDate: new Date().toISOString().split('T')[0],
+        registrationDate: getCurrentDate(),
       };
 
       const savedPatient = await api.createPatient(tempPatient);
@@ -537,7 +537,7 @@ export const usePatients = (currentUser: any) => {
             address: data.address,
             phone: data.phone,
             referralPath: data.details || '',
-            registrationDate: data.registrationDate || new Date().toISOString().split('T')[0],
+            registrationDate: data.registrationDate || getCurrentDate(),
           };
           newPatients.push(tempPatient);
         }

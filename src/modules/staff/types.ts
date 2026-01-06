@@ -157,7 +157,7 @@ export interface StaffMember {
   permissions?: DoctorPermissions;       // 권한 (JSON 파싱됨)
   alias?: string;                 // 호칭 (예: 김원장, 강원장)
 
-  // SQLite 등록 여부 (UI용, DB에는 없음)
+  // PostgreSQL 등록 여부 (UI용, DB에는 없음)
   isRegisteredInSqlite?: boolean;
 }
 

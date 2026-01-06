@@ -43,7 +43,7 @@ export async function fetchTodayPatientCare(): Promise<PatientCareItem[]> {
 export async function fetchPatientsNeedFollowup(): Promise<any[]> {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const dateStr = thirtyDaysAgo.toISOString().split('T')[0];
+  const dateStr = `${thirtyDaysAgo.getFullYear()}-${String(thirtyDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(thirtyDaysAgo.getDate()).padStart(2, '0')}`;
 
   const data = await query<any>(`
     SELECT pts.*, p.name, p.chart_number, p.phone,
@@ -324,7 +324,7 @@ export async function createDeliveryHappyCall(
     care_type: 'after_call',
     title: `${patientName} 한약 배송 해피콜`,
     description: '한약이 잘 도착했는지, 복용법을 이해하셨는지 확인해주세요.',
-    scheduled_date: scheduledDate.toISOString().split('T')[0],
+    scheduled_date: `${scheduledDate.getFullYear()}-${String(scheduledDate.getMonth() + 1).padStart(2, '0')}-${String(scheduledDate.getDate()).padStart(2, '0')}`,
     trigger_type: 'auto',
     trigger_source: 'herbal_delivery',
   });
@@ -348,7 +348,7 @@ export async function createMedicationHappyCall(
     care_type: 'medication',
     title: `${patientName} 복약 7일차 해피콜`,
     description: '복약 중 불편한 점이 없는지 확인해주세요.',
-    scheduled_date: scheduledDate.toISOString().split('T')[0],
+    scheduled_date: `${scheduledDate.getFullYear()}-${String(scheduledDate.getMonth() + 1).padStart(2, '0')}-${String(scheduledDate.getDate()).padStart(2, '0')}`,
     trigger_type: 'auto',
     trigger_source: 'herbal_start',
   });

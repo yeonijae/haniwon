@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { Reservation, Doctor, CreateReservationRequest } from '../types';
 import { searchPatients, PatientSearchResult } from '../lib/api';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 interface SlotInfo {
   time: string;
@@ -788,7 +789,7 @@ export const NewReservationModal: React.FC<NewReservationModalProps> = ({
                     setReservationDate(e.target.value);
                     setSelectedTime(''); // 날짜 변경 시 시간 초기화
                   }}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={getCurrentDate()}
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
                 />
                 <p className="mt-1 text-xs text-gray-500">

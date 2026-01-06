@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { PortalUser } from '@shared/types';
+import { getCurrentDate } from '@shared/lib/postgres';
 import {
   ensureReceiptTables,
   getPatientMemoData,
@@ -119,9 +120,9 @@ const isActiveDoctor = (doc: Doctor): boolean => {
   return true;
 };
 
-// 확장된 수납 아이템 (MSSQL + SQLite 데이터)
+// 확장된 수납 아이템 (MSSQL + PostgreSQL 데이터)
 interface ExpandedReceiptItem extends ReceiptHistoryItem {
-  // SQLite 데이터
+  // PostgreSQL 데이터
   treatmentPackages: TreatmentPackage[];
   herbalPackages: HerbalPackage[];
   pointBalance: number;
@@ -267,8 +268,7 @@ const summarizeTreatments = (treatments: { name: string; amount: number; is_cove
 
 function ReceiptView({ user }: ReceiptViewProps) {
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
+    return getCurrentDate();
   });
   const [receipts, setReceipts] = useState<ExpandedReceiptItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -457,7 +457,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
 
   // 다음 예약 찾기 헬퍼 (오늘 이후만, 오늘은 이미 내원했으므로 제외)
   const getNextReservation = (reservations: Reservation[]): Reservation | null => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getCurrentDate();
     const futureReservations = reservations
       .filter(r => !r.canceled && r.date > today)
       .sort((a, b) => {
@@ -470,10 +470,10 @@ function ReceiptView({ user }: ReceiptViewProps) {
   // 모든 환자의 메모 요약 + 다음 예약 로드
   const loadAllPatientData = async (items: ExpandedReceiptItem[]) => {
     // 1. 오늘부터 60일 후까지의 모든 예약을 한 번에 조회
-    const today = new Date().toISOString().split('T')[0];
+    const today = getCurrentDate();
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + 60);
-    const endDate = futureDate.toISOString().split('T')[0];
+    const endDate = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
 
     let allReservations: Reservation[] = [];
     try {
@@ -867,7 +867,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
   const changeDate = (days: number) => {
     const current = new Date(selectedDate);
     current.setDate(current.getDate() + days);
-    setSelectedDate(current.toISOString().split('T')[0]);
+    const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+    setSelectedDate(dateStr);
   };
 
   return (
@@ -887,7 +888,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
           <i className="fa-solid fa-chevron-right"></i>
         </button>
         <button
-          onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+          onClick={() => setSelectedDate(getCurrentDate())}
           className="today-btn"
         >
           오늘

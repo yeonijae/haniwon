@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Patient, MedicalStaff, WorkPattern, Staff, StaffRank, StaffDepartment, UncoveredCategories, ConsultationItem, ConsultationSubItem } from '../types';
 import * as api from '../lib/api';
+import { getCurrentDate } from '@shared/lib/postgres';
 import ConsultationItemsManagement from './ConsultationItemsManagement';
 
 // For sheetjs library loaded from CDN
@@ -278,7 +279,7 @@ const MedicalStaffManagement: React.FC<{
                 alias: '',
                 dob: '',
                 gender: 'male',
-                hireDate: new Date().toISOString().split('T')[0],
+                hireDate: getCurrentDate(),
                 fireDate: null,
                 status: 'working',
                 permissions: { prescription: true, chart: true, payment: false, statistics: false },
@@ -722,8 +723,8 @@ const MedicalStaffManagement: React.FC<{
         );
     }
 
-    const today = new Date().toISOString().split('T')[0];
-    
+    const today = getCurrentDate();
+
     return (
          <div className="space-y-4">
             <div className="flex justify-between items-center">
@@ -852,7 +853,7 @@ const StaffManagement: React.FC<{
                 name: '',
                 dob: '',
                 gender: 'male',
-                hireDate: new Date().toISOString().split('T')[0],
+                hireDate: getCurrentDate(),
                 fireDate: null,
                 status: 'working',
                 rank: '사원',

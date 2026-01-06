@@ -2,7 +2,7 @@
  * 직원관리 API
  */
 
-import { query, execute } from '@shared/lib/postgres';
+import { query, execute, getCurrentDate } from '@shared/lib/postgres';
 import type {
   StaffMember,
   WorkPattern,
@@ -197,9 +197,9 @@ export async function importWorkPatternsFromManageSystem(
   return { imported, skipped };
 }
 
-// MSSQL 의료진을 StaffMember 형태로 변환 (SQLite 미등록 상태)
+// MSSQL 의료진을 StaffMember 형태로 변환 (PostgreSQL 미등록 상태)
 export function convertMssqlDoctorToStaff(doc: MssqlDoctor, sqliteRecord?: StaffMember | null): StaffMember {
-  // SQLite에 등록된 경우 해당 정보 사용
+  // PostgreSQL에 등록된 경우 해당 정보 사용
   if (sqliteRecord) {
     return {
       ...sqliteRecord,
@@ -212,9 +212,9 @@ export function convertMssqlDoctorToStaff(doc: MssqlDoctor, sqliteRecord?: Staff
     };
   }
 
-  // SQLite에 미등록인 경우 MSSQL 정보만으로 구성
+  // PostgreSQL에 미등록인 경우 MSSQL 정보만으로 구성
   return {
-    id: 0, // SQLite에 없으므로 0
+    id: 0, // PostgreSQL에 없으므로 0
     employee_type: 'doctor',
     name: doc.name,
     status: doc.resigned ? 'resigned' : 'active',
@@ -228,10 +228,10 @@ export function convertMssqlDoctorToStaff(doc: MssqlDoctor, sqliteRecord?: Staff
 }
 
 // =====================================================
-// 의료진 동기화 (MSSQL + SQLite)
+// 의료진 동기화 (MSSQL + PostgreSQL)
 // =====================================================
 
-// SQLite에서 의료진(doctor) 목록 조회
+// PostgreSQL에서 의료진(doctor) 목록 조회
 export async function fetchDoctorsFromSqlite(): Promise<StaffMember[]> {
   const data = await query<any>(`SELECT * FROM staff WHERE employee_type = 'doctor' ORDER BY name`);
 
@@ -242,12 +242,12 @@ export async function fetchDoctorsFromSqlite(): Promise<StaffMember[]> {
   }));
 }
 
-// MSSQL 의료진 + SQLite 상태 병합
+// MSSQL 의료진 + PostgreSQL 상태 병합
 export async function fetchDoctorsWithSqliteStatus(): Promise<StaffMember[]> {
   // MSSQL에서 활성 의료진 목록
   const mssqlDoctors = await fetchActiveMssqlDoctors();
 
-  // SQLite에서 의료진 목록
+  // PostgreSQL에서 의료진 목록
   const sqliteDoctors = await fetchDoctorsFromSqlite();
 
   // mssql_doctor_id로 매핑
@@ -265,7 +265,7 @@ export async function fetchDoctorsWithSqliteStatus(): Promise<StaffMember[]> {
     const sqliteRecord = sqliteByMssqlId.get(mssqlDoc.id);
     const merged = convertMssqlDoctorToStaff(mssqlDoc, sqliteRecord);
 
-    // SQLite에 있고 MSSQL 정보가 변경된 경우 자동 동기화
+    // PostgreSQL에 있고 MSSQL 정보가 변경된 경우 자동 동기화
     if (sqliteRecord && needsSync(mssqlDoc, sqliteRecord)) {
       await syncDoctorFromMssql(sqliteRecord.id, mssqlDoc);
       merged.name = mssqlDoc.name;
@@ -279,7 +279,7 @@ export async function fetchDoctorsWithSqliteStatus(): Promise<StaffMember[]> {
   return result;
 }
 
-// MSSQL과 SQLite 간 동기화 필요 여부 확인
+// MSSQL과 PostgreSQL 간 동기화 필요 여부 확인
 function needsSync(mssql: MssqlDoctor, sqlite: StaffMember): boolean {
   const mssqlHireDate = mssql.workStartDate ? mssql.workStartDate.split('T')[0] : null;
   const mssqlResignDate = mssql.workEndDate ? mssql.workEndDate.split('T')[0] : null;
@@ -291,7 +291,7 @@ function needsSync(mssql: MssqlDoctor, sqlite: StaffMember): boolean {
   );
 }
 
-// MSSQL 변경사항을 SQLite에 반영
+// MSSQL 변경사항을 PostgreSQL에 반영
 export async function syncDoctorFromMssql(staffId: number, mssqlDoc: MssqlDoctor): Promise<void> {
   const updates: string[] = [
     `name = '${mssqlDoc.name.replace(/'/g, "''")}'`,
@@ -305,7 +305,7 @@ export async function syncDoctorFromMssql(staffId: number, mssqlDoc: MssqlDoctor
   console.log(`[Sync] Doctor ${staffId} synced from MSSQL: ${mssqlDoc.name}`);
 }
 
-// MSSQL 정보 기반으로 SQLite에 의료진 레코드 생성
+// MSSQL 정보 기반으로 PostgreSQL에 의료진 레코드 생성
 export async function createDoctorFromMssql(
   mssqlDoc: MssqlDoctor,
   additionalData?: Partial<StaffMember>
@@ -367,7 +367,7 @@ export async function migrateMedicalStaffData(): Promise<{
       mssqlByName.set(doc.name, doc);
     }
 
-    // 3. 기존 SQLite 의료진 확인
+    // 3. 기존 PostgreSQL 의료진 확인
     const existingSqlite = await fetchDoctorsFromSqlite();
     const existingByMssqlId = new Map<string, StaffMember>();
     for (const doc of existingSqlite) {
@@ -387,14 +387,14 @@ export async function migrateMedicalStaffData(): Promise<{
           continue;
         }
 
-        // 이미 SQLite에 있는지 확인
+        // 이미 PostgreSQL에 있는지 확인
         if (existingByMssqlId.has(mssqlDoc.id)) {
-          console.log(`[Skip] ${manageStaff.name}: 이미 SQLite에 등록됨`);
+          console.log(`[Skip] ${manageStaff.name}: 이미 PostgreSQL에 등록됨`);
           skipped++;
           continue;
         }
 
-        // SQLite에 의료진 생성
+        // PostgreSQL에 의료진 생성
         const newStaffId = await createDoctorFromMssql(mssqlDoc, {
           dob: manageStaff.dob || undefined,
           gender: manageStaff.gender as Gender,
@@ -763,7 +763,7 @@ export async function applyTemplateToStaff(
     const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Convert to Mon=0, Sun=6
     const shiftType = dayShifts[adjustedDay];
 
-    const dateStr = current.toISOString().split('T')[0];
+    const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
     await upsertSchedule(staffId, dateStr, shiftType);
 
     current.setDate(current.getDate() + 1);

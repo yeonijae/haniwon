@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Reservation, Doctor, CalendarViewType } from '../types';
 import * as api from '../lib/api';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 export function useReservations(initialDate?: string) {
   const [selectedDate, setSelectedDate] = useState(
-    initialDate || new Date().toISOString().split('T')[0]
+    initialDate || getCurrentDate()
   );
   const [viewType, setViewType] = useState<CalendarViewType>('day');
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -37,7 +38,7 @@ export function useReservations(initialDate?: string) {
               try {
                 const date = new Date(dateStr);
                 if (isNaN(date.getTime())) return null;
-                return date.toISOString().split('T')[0];
+                return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
               } catch {
                 return null;
               }
@@ -130,7 +131,7 @@ export function useReservations(initialDate?: string) {
     } else {
       date.setMonth(date.getMonth() - 1);
     }
-    setSelectedDate(date.toISOString().split('T')[0]);
+    setSelectedDate(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`);
   };
 
   const goToNext = () => {
@@ -142,11 +143,11 @@ export function useReservations(initialDate?: string) {
     } else {
       date.setMonth(date.getMonth() + 1);
     }
-    setSelectedDate(date.toISOString().split('T')[0]);
+    setSelectedDate(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`);
   };
 
   const goToToday = () => {
-    setSelectedDate(new Date().toISOString().split('T')[0]);
+    setSelectedDate(getCurrentDate());
   };
 
   // 예약 CRUD
@@ -230,25 +231,25 @@ function getWeekStart(dateStr: string): string {
   const date = new Date(dateStr);
   const day = date.getDay();
   date.setDate(date.getDate() - day);
-  return date.toISOString().split('T')[0];
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function getWeekEnd(dateStr: string): string {
   const date = new Date(dateStr);
   const day = date.getDay();
   date.setDate(date.getDate() + (6 - day));
-  return date.toISOString().split('T')[0];
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function getMonthStart(dateStr: string): string {
   const date = new Date(dateStr);
   date.setDate(1);
-  return date.toISOString().split('T')[0];
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function getMonthEnd(dateStr: string): string {
   const date = new Date(dateStr);
   date.setMonth(date.getMonth() + 1);
   date.setDate(0);
-  return date.toISOString().split('T')[0];
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }

@@ -64,7 +64,7 @@ export async function createTasksFromService(
     if (template.due_days_offset >= 0) {
       const date = new Date();
       date.setDate(date.getDate() + template.due_days_offset);
-      dueDate = date.toISOString().split('T')[0];
+      dueDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     }
 
     const task = await createTask({

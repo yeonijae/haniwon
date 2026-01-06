@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { getCurrentDate } from '@shared/lib/postgres';
 import { createMembership, updateMembership, deleteMembership } from '../lib/api';
 import type { Membership } from '../types';
 
@@ -30,7 +31,7 @@ export function MembershipAddModal({
   editData,
 }: MembershipAddModalProps) {
   const isEditMode = !!editData;
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
 
   // 드래그 기능
   const { modalRef, modalStyle, modalClassName, handleMouseDown } = useDraggableModal({ isOpen });
@@ -157,7 +158,8 @@ export function MembershipAddModal({
     if (!expireDate && date) {
       const d = new Date(date);
       d.setFullYear(d.getFullYear() + 1);
-      setExpireDate(d.toISOString().split('T')[0]);
+      const expireDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      setExpireDate(expireDateStr);
     }
   };
 

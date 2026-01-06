@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Herb } from '../api/herbs'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { getCurrentDate } from '@shared/lib/postgres'
 
 interface OrderFormModalProps {
   lowStockHerbs: Herb[]
@@ -111,7 +112,7 @@ function OrderFormModal({ lowStockHerbs, onClose }: OrderFormModalProps) {
     doc.text(`Total Amount: ${totalAmount.toLocaleString()} won`, 14, yPosition)
 
     // PDF 저장
-    const fileName = `order_${new Date().toISOString().split('T')[0]}.pdf`
+    const fileName = `order_${getCurrentDate()}.pdf`
     doc.save(fileName)
   }
 

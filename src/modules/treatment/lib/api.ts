@@ -4,7 +4,7 @@
  */
 
 import { Patient, TreatmentRoom, TreatmentItem, SessionTreatment, DefaultTreatment } from '../types';
-import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/postgres';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp, getCurrentDate } from '@shared/lib/postgres';
 
 /**
  * 환자 관련 API
@@ -70,7 +70,7 @@ export async function fetchPatientById(patientId: number): Promise<Patient | nul
             try {
               const parsedDate = new Date(patient.birth);
               if (!isNaN(parsedDate.getTime())) {
-                birthDate = parsedDate.toISOString().split('T')[0]; // YYYY-MM-DD 형식
+                birthDate = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')}`; // YYYY-MM-DD 형식
                 updateParts.push(`birth_date = ${escapeString(birthDate)}`);
               }
             } catch {
@@ -219,7 +219,7 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
             try {
               const parsedDate = new Date(patient.birth);
               if (!isNaN(parsedDate.getTime())) {
-                patientDob = parsedDate.toISOString().split('T')[0];
+                patientDob = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')}`;
                 // PostgreSQL patients 테이블과 치료실 테이블 모두 업데이트
                 execute(`UPDATE patients SET birth_date = ${escapeString(patientDob)} WHERE id = ${room.patient_id}`).catch(() => {});
                 execute(`UPDATE treatment_rooms SET patient_dob = ${escapeString(patientDob)} WHERE id = ${room.id}`).catch(() => {});

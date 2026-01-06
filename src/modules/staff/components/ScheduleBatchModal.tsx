@@ -15,6 +15,7 @@ import {
   upsertSchedule,
   applyTemplateToStaff
 } from '../api/staffApi';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 interface ScheduleBatchModalProps {
   staffList: StaffMember[];
@@ -269,7 +270,7 @@ const ScheduleBatchModal: React.FC<ScheduleBatchModalProps> = ({
                       const dayOfWeek = current.getDay();
                       const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
                       const shiftType = dayShifts[adjustedDay];
-                      const dateStr = current.toISOString().split('T')[0];
+                      const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
                       newChanges.set(`${staffId}_${dateStr}`, shiftType);
                       current.setDate(current.getDate() + 1);
                     }

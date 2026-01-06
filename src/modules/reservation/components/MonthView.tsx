@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import type { Reservation } from '../types';
+import { getCurrentDate } from '@shared/lib/postgres';
 
 interface MonthViewProps {
   selectedDate: string;
@@ -63,7 +64,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
     return `${year}-${m}-${d}`;
   };
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDate();
   const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
 
   return (

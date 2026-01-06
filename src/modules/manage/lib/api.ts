@@ -4,7 +4,7 @@
  */
 
 import { Patient, Reservation, Payment, DefaultTreatment, Acting, CompletedPayment, MedicalStaff, MedicalStaffPermissions, Staff, StaffPermissions, UncoveredCategories, TreatmentRoom, SessionTreatment, TreatmentItem, ConsultationItem, ConsultationSubItem, RoomStatus } from '../types';
-import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp, toSqlValue } from '@shared/lib/postgres';
+import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp, getCurrentDate, toSqlValue } from '@shared/lib/postgres';
 
 /**
  * 환자 관련 API
@@ -1363,7 +1363,7 @@ export interface PaymentMemo {
 
 // 환자의 수납 메모 조회 (오늘 날짜 기준)
 export async function fetchPaymentMemo(patientId: number, date?: string): Promise<PaymentMemo | null> {
-  const targetDate = date || new Date().toISOString().split('T')[0];
+  const targetDate = date || getCurrentDate();
 
   const data = await queryOne<any>(`
     SELECT * FROM payment_memos
@@ -1421,7 +1421,7 @@ export async function fetchPaymentMemos(patientId: number, limit: number = 10): 
 // 수납 메모 생성 또는 업데이트 (UPSERT)
 export async function upsertPaymentMemo(memo: PaymentMemo): Promise<PaymentMemo> {
   const now = getCurrentTimestamp();
-  const targetDate = memo.receipt_date || new Date().toISOString().split('T')[0];
+  const targetDate = memo.receipt_date || getCurrentDate();
 
   // 기존 메모 확인
   const existing = await queryOne<any>(`
@@ -1641,7 +1641,7 @@ export interface ReceiptHistoryResponse {
 
 // 날짜별 수납현황 조회 (MSSQL만 - 지연 로딩으로 변경)
 export async function fetchReceiptHistory(date?: string): Promise<ReceiptHistoryResponse> {
-  const targetDate = date || new Date().toISOString().split('T')[0];
+  const targetDate = date || getCurrentDate();
 
   try {
     // MSSQL에서 수납 내역만 조회 (메모는 모달 열릴 때 지연 로딩)

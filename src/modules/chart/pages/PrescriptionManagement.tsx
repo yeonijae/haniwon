@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp } from '@shared/lib/postgres';
+import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp, getCurrentDate } from '@shared/lib/postgres';
 import PrescriptionInput, { PrescriptionData } from '../components/PrescriptionInput';
 import type { Prescription } from '../types';
 
@@ -24,7 +24,7 @@ const PrescriptionManagement: React.FC = () => {
   const loadPrescriptions = async () => {
     try {
       setLoading(true);
-      // SQLite에서 처방 목록 조회
+      // PostgreSQL에서 처방 목록 조회
       const data = await query<Prescription>(
         `SELECT * FROM prescriptions ORDER BY created_at DESC`
       );
@@ -93,9 +93,9 @@ const PrescriptionManagement: React.FC = () => {
       const now = new Date();
       const nowTimestamp = getCurrentTimestamp();
       const prescriptionNumber = `RX-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
-      const prescriptionDate = now.toISOString().split('T')[0];
+      const prescriptionDate = getCurrentDate();
 
-      // SQLite에 처방 저장
+      // PostgreSQL에 처방 저장
       await insert(`
         INSERT INTO prescriptions (
           prescription_number, prescription_date, patient_name, formula,
@@ -178,7 +178,7 @@ const PrescriptionManagement: React.FC = () => {
       // 먼저 삭제할 처방의 source 정보 조회
       const prescriptionToDelete = prescriptions.find(p => p.id === id);
 
-      // SQLite에서 처방 삭제
+      // PostgreSQL에서 처방 삭제
       await execute(`DELETE FROM prescriptions WHERE id = ${id}`);
 
       // source_type과 source_id가 있으면 해당 차트의 처방발급 상태 초기화

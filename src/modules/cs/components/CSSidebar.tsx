@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { query } from '@shared/lib/postgres';
+import { query, getCurrentDate } from '@shared/lib/postgres';
 
 const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
@@ -84,8 +84,8 @@ function CSSidebar({ onPatientRightClick, onPatientClick }: CSSidebarProps) {
         setIsConnected(true);
       }
 
-      // 2. SQLite acting_queue에서 오늘 액팅 조회
-      const today = new Date().toISOString().split('T')[0];
+      // 2. PostgreSQL acting_queue에서 오늘 액팅 조회
+      const today = getCurrentDate();
       const actingList = await query<ActingInfo>(`
         SELECT * FROM acting_queue
         WHERE work_date = '${today}' AND source = 'cs_consultation'

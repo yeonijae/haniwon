@@ -3,6 +3,7 @@ import { ReservationsState, Reservation, Patient, Acting, ActingType, TreatmentD
 import { NewReservationData } from '../components/NewReservationForm';
 import { findAvailableSlot } from '../utils/reservationUtils';
 import * as api from '../lib/api';
+import { getCurrentDate } from '@shared/lib/postgres';
 import { DOCTORS } from '../constants';
 
 export const useReservations = (currentUser: any, allPatients: Patient[]) => {
@@ -21,9 +22,12 @@ export const useReservations = (currentUser: any, allPatients: Patient[]) => {
         const futureDate = new Date();
         futureDate.setDate(today.getDate() + 30);
 
+        const todayStr = getCurrentDate();
+        const futureDateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
+
         const allReservations = await api.fetchReservations({
-          startDate: today.toISOString().split('T')[0],
-          endDate: futureDate.toISOString().split('T')[0],
+          startDate: todayStr,
+          endDate: futureDateStr,
         });
 
         const reservationsNested: { [date: string]: { [doctor: string]: { [time: string]: Reservation[] } } } = {};
@@ -86,9 +90,12 @@ export const useReservations = (currentUser: any, allPatients: Patient[]) => {
       const futureDate = new Date();
       futureDate.setDate(today.getDate() + 30);
 
+      const todayStr = getCurrentDate();
+      const futureDateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
+
       const allReservations = await api.fetchReservations({
-        startDate: today.toISOString().split('T')[0],
-        endDate: futureDate.toISOString().split('T')[0],
+        startDate: todayStr,
+        endDate: futureDateStr,
       });
 
       const reservationsNested: { [date: string]: { [doctor: string]: { [time: string]: Reservation[] } } } = {};

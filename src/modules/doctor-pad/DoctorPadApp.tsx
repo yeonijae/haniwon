@@ -15,6 +15,7 @@ import type { ActingQueueItem, DoctorStatus } from '@modules/acting/types';
 import type { TreatmentRoom } from '@modules/treatment/types';
 import * as actingApi from '@modules/acting/api';
 import type { PatientMemo, TreatmentHistory, DetailComment, ActingTreatmentConfigItem, TreatmentItemSelection } from '@modules/acting/api';
+import { getCurrentDate } from '@shared/lib/postgres';
 import {
   fetchPatientDetailComments,
   getMssqlPatientId,
@@ -599,10 +600,10 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
     setPatientDefaultTreatments(null);
     setPatientDailyRecord(null);
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getCurrentDate();
 
     try {
-      // 로컬 SQLite patient_id -> MSSQL Customer_PK 변환
+      // 로컬 PostgreSQL patient_id -> MSSQL Customer_PK 변환
       const mssqlPatientId = await getMssqlPatientId(acting.patientId);
       const apiPatientId = mssqlPatientId || acting.patientId;
 
@@ -610,8 +611,8 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
         actingApi.fetchPatientMemo(apiPatientId),
         actingApi.fetchPatientTreatments(apiPatientId, 3),
         fetchPatientDetailComments(apiPatientId, 10),
-        fetchPatientDefaultTreatments(acting.patientId),  // 로컬 ID 사용 (SQLite)
-        fetchDailyTreatmentRecord(acting.patientId, today),  // 로컬 ID 사용 (SQLite)
+        fetchPatientDefaultTreatments(acting.patientId),  // 로컬 ID 사용 (PostgreSQL)
+        fetchDailyTreatmentRecord(acting.patientId, today),  // 로컬 ID 사용 (PostgreSQL)
       ]);
 
       setPatientMemo(memo);
@@ -660,11 +661,14 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
     try {
       await actingApi.startActing(selectedActing.id, doctor.id, doctor.fullName);
 
-      // 녹음 시작
-      const started = await audioRecorder.startRecording();
-      if (!started) {
-        console.warn('녹음 시작 실패:', audioRecorder.error);
-        // 녹음 실패해도 진료는 계속 진행
+      // 약상담인 경우에만 녹음 시작
+      const isYakConsult = selectedActing.actingType.includes('약');
+      if (isYakConsult) {
+        const started = await audioRecorder.startRecording();
+        if (!started) {
+          console.warn('녹음 시작 실패:', audioRecorder.error);
+          // 녹음 실패해도 진료는 계속 진행
+        }
       }
 
       // 모달을 닫지 않고 데이터만 새로고침 (모달에서 타이머 + 치료항목 표시)

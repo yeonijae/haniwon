@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp } from '@shared/lib/postgres';
+import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp, getCurrentDate } from '@shared/lib/postgres';
 import type { InitialChart } from '../types';
 
 interface Props {
@@ -129,7 +129,7 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
   useEffect(() => {
     if (forceNew) {
       // 새진료 시작: 빈 폼 데이터로 시작 (오늘 날짜로 초기화)
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD 형식
+      const today = getCurrentDate(); // YYYY-MM-DD 형식
       setFormData({
         patient_id: patientId,
         chart_date: today
@@ -349,7 +349,7 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
                 <div className="flex items-center gap-3">
                   <input
                     type="date"
-                    value={formData.chart_date ? new Date(formData.chart_date).toISOString().split('T')[0] : ''}
+                    value={formData.chart_date || ''}
                     onChange={(e) => setFormData({ ...formData, chart_date: e.target.value })}
                     className="border-2 border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:border-clinic-primary focus:ring-2 focus:ring-clinic-primary focus:ring-opacity-20 transition-colors"
                     required
@@ -399,7 +399,7 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
 
                     // 텍스트에서 날짜를 찾았고, 아직 진료일자가 설정되지 않았거나 오늘 날짜인 경우 자동 설정
                     if (extractedDate) {
-                      const today = new Date().toISOString().split('T')[0];
+                      const today = getCurrentDate();
                       if (!formData.chart_date || formData.chart_date === today) {
                         setFormData({ ...formData, notes: newNotes, chart_date: extractedDate });
                         return;

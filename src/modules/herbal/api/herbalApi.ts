@@ -1,7 +1,7 @@
 /**
  * 한약 복약관리 API
  * - MSSQL (오케이차트): 고액 비급여 결제 조회
- * - SQLite: 복약관리 데이터 저장/조회
+ * - PostgreSQL: 복약관리 데이터 저장/조회
  */
 
 import { query, execute, escapeString, toSqlValue, getCurrentDate } from '@shared/lib/postgres';
@@ -28,7 +28,7 @@ const HERBAL_MIN_AMOUNT = 200000;
  */
 export async function fetchFirstVisitTargets(date?: string): Promise<HerbalTask[]> {
   try {
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    const targetDate = date || getCurrentDate();
 
     // 이미 메시지 발송한 환자 조회
     const sent = await query<{ customer_pk: number; treatment_date: string }>(
@@ -328,7 +328,7 @@ export async function fetchPendingHerbalSetup(days: number = 7, targetDate?: str
 }
 
 /**
- * SQLite에서 콜 예정 조회
+ * PostgreSQL에서 콜 예정 조회
  * @param targetDate 기준 날짜 (YYYY-MM-DD)
  */
 export async function fetchPendingCalls(targetDate?: string): Promise<HerbalTask[]> {
@@ -382,7 +382,7 @@ export async function fetchPendingCalls(targetDate?: string): Promise<HerbalTask
 }
 
 /**
- * SQLite에서 이벤트 혜택 발송 대상 조회
+ * PostgreSQL에서 이벤트 혜택 발송 대상 조회
  */
 export async function fetchPendingEventBenefits(): Promise<HerbalTask[]> {
   const data = await query<any>(`
@@ -417,7 +417,7 @@ export async function fetchPendingEventBenefits(): Promise<HerbalTask[]> {
 }
 
 /**
- * SQLite에서 사후관리 대상 조회
+ * PostgreSQL에서 사후관리 대상 조회
  */
 export async function fetchFollowupNeeded(): Promise<HerbalTask[]> {
   const data = await query<any>(`
@@ -459,7 +459,7 @@ export async function fetchFollowupNeeded(): Promise<HerbalTask[]> {
  * @param targetDate 기준 날짜 (YYYY-MM-DD), 기본값은 오늘
  */
 export async function fetchAllHerbalTasks(targetDate?: string): Promise<HerbalTasksResponse> {
-  const date = targetDate || new Date().toISOString().split('T')[0];
+  const date = targetDate || getCurrentDate();
 
   const [firstVisits, setup, activePurchases, calls, benefits, followup] = await Promise.all([
     fetchFirstVisitTargets(date),
@@ -680,5 +680,5 @@ export async function fetchPatientHerbalHistory(chartNumber: string): Promise<He
 function addDays(dateStr: string, days: number): string {
   const date = new Date(dateStr);
   date.setDate(date.getDate() + days);
-  return date.toISOString().split('T')[0];
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }

@@ -468,7 +468,7 @@ export interface ReceiptMemo {
 // 수납 기록 필터 타입
 export type ReceiptRecordFilter = 'all' | 'completed' | 'incomplete';
 
-// 수납 목록 아이템 (MSSQL + SQLite 병합)
+// 수납 목록 아이템 (MSSQL + PostgreSQL 병합)
 export interface ReceiptListItem {
   // MSSQL 데이터
   id: number;                // MSSQL Receipt ID
@@ -484,7 +484,7 @@ export interface ReceiptListItem {
   payment_method?: string;   // 지불방법
   treatment_summary?: string; // 치료 요약 (복추, 약침 등)
 
-  // SQLite 메모 요약
+  // PostgreSQL 메모 요약
   memo_summary?: string;     // 메모 요약 (통마[12-1=11], 포인트-16000 등)
 
   // 예약 상태
