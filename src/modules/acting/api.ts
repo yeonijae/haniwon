@@ -94,9 +94,9 @@ export async function fetchTodayQueue(): Promise<ActingQueueItem[]> {
   const today = getCurrentDate();
 
   const data = await query<any>(`
-    SELECT * FROM acting_queue
+    SELECT * FROM daily_acting_records
     WHERE work_date = ${escapeString(today)}
-    AND status IN ('waiting', 'in_progress')
+    AND status IN ('waiting', 'acting')
     ORDER BY doctor_id, order_num
   `);
 
@@ -108,10 +108,10 @@ export async function fetchDoctorQueue(doctorId: number): Promise<ActingQueueIte
   const today = getCurrentDate();
 
   const data = await query<any>(`
-    SELECT * FROM acting_queue
+    SELECT * FROM daily_acting_records
     WHERE doctor_id = ${doctorId}
     AND work_date = ${escapeString(today)}
-    AND status IN ('waiting', 'in_progress')
+    AND status IN ('waiting', 'acting')
     ORDER BY order_num
   `);
 
@@ -126,17 +126,17 @@ export async function addActing(request: AddActingRequest): Promise<ActingQueueI
   let orderNum = request.orderNum;
   if (orderNum === undefined) {
     const maxData = await queryOne<{ order_num: number }>(`
-      SELECT MAX(order_num) as order_num FROM acting_queue
+      SELECT MAX(order_num) as order_num FROM daily_acting_records
       WHERE doctor_id = ${request.doctorId}
       AND work_date = ${escapeString(today)}
-      AND status IN ('waiting', 'in_progress')
+      AND status IN ('waiting', 'acting')
     `);
     orderNum = (maxData?.order_num || 0) + 1;
   }
 
   // status를 명시적으로 'waiting'으로 설정
   const id = await insert(`
-    INSERT INTO acting_queue (patient_id, patient_name, chart_no, doctor_id, doctor_name, acting_type, order_num, status, source, source_id, memo, work_date)
+    INSERT INTO daily_acting_records (patient_id, patient_name, chart_no, doctor_id, doctor_name, acting_type, order_num, status, source, source_id, memo, work_date)
     VALUES (${toSqlValue(request.patientId)}, ${escapeString(request.patientName)}, ${escapeString(request.chartNo || '')},
             ${request.doctorId}, ${escapeString(request.doctorName)}, ${escapeString(request.actingType)},
             ${orderNum}, 'waiting', ${escapeString(request.source || 'manual')}, ${toSqlValue(request.sourceId)},
@@ -147,13 +147,13 @@ export async function addActing(request: AddActingRequest): Promise<ActingQueueI
   let data: any = null;
 
   if (id && id > 0) {
-    data = await queryOne<any>(`SELECT * FROM acting_queue WHERE id = ${id}`);
+    data = await queryOne<any>(`SELECT * FROM daily_acting_records WHERE id = ${id}`);
   }
 
   // ID로 못 찾으면 다른 조건으로 조회
   if (!data) {
     data = await queryOne<any>(`
-      SELECT * FROM acting_queue
+      SELECT * FROM daily_acting_records
       WHERE patient_id = ${toSqlValue(request.patientId)}
         AND doctor_id = ${request.doctorId}
         AND work_date = ${escapeString(today)}
@@ -182,10 +182,10 @@ export async function reorderActing(
 
   // 해당 원장의 대기 중인 액팅 목록 조회
   const queue = await query<{ id: number; order_num: number }>(`
-    SELECT id, order_num FROM acting_queue
+    SELECT id, order_num FROM daily_acting_records
     WHERE doctor_id = ${doctorId}
     AND work_date = ${escapeString(today)}
-    AND status IN ('waiting', 'in_progress')
+    AND status IN ('waiting', 'acting')
     ORDER BY order_num ASC
   `);
 
@@ -198,13 +198,13 @@ export async function reorderActing(
 
   // 새 순서로 업데이트
   for (let i = 0; i < items.length; i++) {
-    await execute(`UPDATE acting_queue SET order_num = ${i + 1} WHERE id = ${items[i].id}`);
+    await execute(`UPDATE daily_acting_records SET order_num = ${i + 1} WHERE id = ${items[i].id}`);
   }
 }
 
 // 액팅 삭제 (취소)
 export async function cancelActing(actingId: number): Promise<void> {
-  await execute(`UPDATE acting_queue SET status = 'cancelled' WHERE id = ${actingId}`);
+  await execute(`UPDATE daily_acting_records SET status = 'cancelled' WHERE id = ${actingId}`);
 }
 
 // 환자 ID로 대기 중인 액팅 모두 취소 (베드→대기 이동 시 사용)
@@ -213,11 +213,11 @@ export async function cancelActingsByPatientId(patientId: number): Promise<numbe
 
   // 대기 중이거나 진행 중인 액팅만 취소
   const result = await execute(`
-    UPDATE acting_queue
+    UPDATE daily_acting_records
     SET status = 'cancelled'
     WHERE patient_id = ${patientId}
     AND work_date = ${escapeString(today)}
-    AND status IN ('waiting', 'in_progress')
+    AND status IN ('waiting', 'acting')
   `);
 
   return result.changes || 0;
@@ -242,7 +242,7 @@ export async function updateActing(
 
   if (updateParts.length === 0) return;
 
-  await execute(`UPDATE acting_queue SET ${updateParts.join(', ')} WHERE id = ${actingId}`);
+  await execute(`UPDATE daily_acting_records SET ${updateParts.join(', ')} WHERE id = ${actingId}`);
 }
 
 // 액팅을 다른 원장에게 이동
@@ -255,16 +255,16 @@ export async function moveActingToDoctor(
 
   // 새 원장의 맨 뒤 순서 조회
   const maxData = await queryOne<{ order_num: number }>(`
-    SELECT MAX(order_num) as order_num FROM acting_queue
+    SELECT MAX(order_num) as order_num FROM daily_acting_records
     WHERE doctor_id = ${newDoctorId}
     AND work_date = ${escapeString(today)}
-    AND status IN ('waiting', 'in_progress')
+    AND status IN ('waiting', 'acting')
   `);
 
   const newOrderNum = (maxData?.order_num || 0) + 1;
 
   await execute(`
-    UPDATE acting_queue
+    UPDATE daily_acting_records
     SET doctor_id = ${newDoctorId}, doctor_name = ${escapeString(newDoctorName)}, order_num = ${newOrderNum}
     WHERE id = ${actingId}
   `);
@@ -326,15 +326,15 @@ export async function startActing(actingId: number, doctorId: number, doctorName
 
   // 1. 액팅 상태 업데이트
   await execute(`
-    UPDATE acting_queue
-    SET status = 'in_progress', started_at = ${escapeString(now)}
+    UPDATE daily_acting_records
+    SET status = 'acting', started_at = ${escapeString(now)}
     WHERE id = ${actingId}
   `);
 
   // 2. 원장 상태 업데이트
-  await upsertDoctorStatus(doctorId, doctorName, 'in_progress', actingId);
+  await upsertDoctorStatus(doctorId, doctorName, 'acting', actingId);
 
-  const data = await queryOne<any>(`SELECT * FROM acting_queue WHERE id = ${actingId}`);
+  const data = await queryOne<any>(`SELECT * FROM daily_acting_records WHERE id = ${actingId}`);
   const acting = mapQueueItem(data);
 
   // 3. acting_time_logs에 기록 (환자 타임라인용)
@@ -360,7 +360,7 @@ export async function startActing(actingId: number, doctorId: number, doctorName
         doctor_id: doctorId,
         doctor_name: doctorName,
         started_at: now,
-        status: 'in_progress',
+        status: 'acting',
       });
     }
   } catch (error) {
@@ -439,7 +439,7 @@ export async function completeActing(actingId: number, doctorId: number, doctorN
   const today = getCurrentDate();
 
   // 1. 현재 액팅 조회
-  const acting = await queryOne<any>(`SELECT * FROM acting_queue WHERE id = ${actingId}`);
+  const acting = await queryOne<any>(`SELECT * FROM daily_acting_records WHERE id = ${actingId}`);
   if (!acting) throw new Error('Acting not found');
 
   // 2. 소요시간 계산
@@ -449,18 +449,12 @@ export async function completeActing(actingId: number, doctorId: number, doctorN
 
   // 3. 액팅 상태 업데이트
   await execute(`
-    UPDATE acting_queue
-    SET status = 'completed', completed_at = ${escapeString(now)}, duration_sec = ${durationSec}
+    UPDATE daily_acting_records
+    SET status = 'complete', completed_at = ${escapeString(now)}, duration_sec = ${durationSec}
     WHERE id = ${actingId}
   `);
 
-  // 4. 액팅 기록 저장 (통계용)
-  await execute(`
-    INSERT INTO acting_records (patient_id, patient_name, chart_no, doctor_id, doctor_name, acting_type, started_at, completed_at, duration_sec, work_date)
-    VALUES (${acting.patient_id}, ${escapeString(acting.patient_name)}, ${escapeString(acting.chart_no || '')},
-            ${acting.doctor_id}, ${escapeString(acting.doctor_name)}, ${escapeString(acting.acting_type)},
-            ${escapeString(acting.started_at)}, ${escapeString(now)}, ${durationSec}, ${escapeString(acting.work_date)})
-  `);
+  // 4. daily_acting_records에서 상태만 변경하므로 별도 INSERT 불필요
 
   // 5. acting_time_logs 업데이트 (환자 타임라인용)
   try {
@@ -472,13 +466,13 @@ export async function completeActing(actingId: number, doctorId: number, doctorN
         WHERE patient_id = ${acting.patient_id}
           AND acting_type = ${escapeString(actingTypeCode)}
           AND treatment_date = ${escapeString(today)}
-          AND status = 'in_progress'
+          AND status = 'acting'
         ORDER BY created_at DESC
         LIMIT 1
       `);
 
       if (logRow) {
-        await updateActingTimeLogStatus(logRow.id, 'completed', now);
+        await updateActingTimeLogStatus(logRow.id, 'complete', now);
       }
     }
   } catch (error) {
@@ -505,7 +499,7 @@ export async function completeActing(actingId: number, doctorId: number, doctorN
     await upsertDoctorStatus(doctorId, doctorName, 'office');
   }
 
-  const data = await queryOne<any>(`SELECT * FROM acting_queue WHERE id = ${actingId}`);
+  const data = await queryOne<any>(`SELECT * FROM daily_acting_records WHERE id = ${actingId}`);
   return mapQueueItem(data);
 }
 
@@ -590,7 +584,7 @@ export async function fetchDoctorStats(doctorId?: number): Promise<DoctorActingS
            AVG(duration_sec / 60.0) as avg_duration_min,
            MIN(duration_sec) as min_duration_sec,
            MAX(duration_sec) as max_duration_sec
-    FROM acting_records
+    FROM daily_acting_records
   `;
 
   if (doctorId) {
@@ -625,7 +619,7 @@ export async function fetchDailyStats(
            SUM(duration_sec) as total_duration_sec,
            SUM(duration_sec) / 60.0 as total_duration_min,
            AVG(duration_sec) as avg_duration_sec
-    FROM acting_records
+    FROM daily_acting_records
     WHERE work_date >= ${escapeString(startDate)} AND work_date <= ${escapeString(endDate)}
   `;
 
@@ -660,7 +654,7 @@ export async function fetchDoctorQueueGroups(doctors: { id: number; name: string
   return doctors.map(doctor => {
     const doctorQueue = queue.filter(q => q.doctorId === doctor.id);
     const waitingQueue = doctorQueue.filter(q => q.status === 'waiting');
-    const currentActing = doctorQueue.find(q => q.status === 'in_progress');
+    const currentActing = doctorQueue.find(q => q.status === 'acting');
 
     let status = statuses.find(s => s.doctorId === doctor.id);
 
