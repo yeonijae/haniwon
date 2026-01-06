@@ -456,11 +456,11 @@ export async function addToWaitingQueue(item: Omit<WaitingQueueItem, 'id' | 'cre
 }
 
 // 대기 목록에서 환자 제거
+// NOTE: waiting_queue 테이블은 더 이상 사용하지 않음 (daily_treatment_records로 통합)
+// 베드 배정 시 assignTreatmentBed()가 status를 'treating'으로 변경함
 export async function removeFromWaitingQueue(patientId: number, queueType: 'consultation' | 'treatment'): Promise<void> {
-  await execute(`
-    DELETE FROM waiting_queue
-    WHERE patient_id = ${patientId} AND queue_type = ${escapeString(queueType)}
-  `);
+  // No-op: waiting_queue 테이블 대신 daily_treatment_records 사용
+  console.log(`[removeFromWaitingQueue] Skipped - using daily_treatment_records instead (patient: ${patientId})`);
 }
 
 /**
