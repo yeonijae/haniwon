@@ -798,43 +798,47 @@ export async function saveUncoveredCategories(categories: UncoveredCategories): 
  * 치료실 관리 API
  */
 
-// 모든 치료실 조회 (session_treatments 별도 테이블에서 조인)
+// 모든 치료실 조회 (최적화: 2개 쿼리로 처리)
 export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
-  const data = await query<any>(`
-    SELECT * FROM treatment_rooms ORDER BY id ASC
-  `);
+  // 병렬로 rooms와 treatments 한 번에 조회
+  const [roomsData, treatmentsData] = await Promise.all([
+    query<any>(`SELECT * FROM treatment_rooms ORDER BY id ASC`),
+    query<any>(`SELECT * FROM session_treatments ORDER BY room_id, display_order ASC`),
+  ]);
 
-  const rooms: TreatmentRoom[] = [];
-  for (const room of data || []) {
-    const treatments = await query<any>(`
-      SELECT * FROM session_treatments WHERE room_id = ${room.id} ORDER BY id ASC
-    `);
-
-    rooms.push({
-      id: room.id,
-      name: room.name,
-      status: room.status,
-      sessionId: room.session_id,
-      patientId: room.patient_id,
-      patientName: room.patient_name,
-      patientChartNumber: room.patient_chart_number,
-      patientGender: room.patient_gender,
-      patientDob: room.patient_dob,
-      doctorName: room.doctor_name,
-      inTime: room.in_time,
-      sessionTreatments: (treatments || []).map((st: any) => ({
-        id: st.id,
-        name: st.treatment_name || st.name,
-        status: st.status,
-        duration: st.duration,
-        startTime: st.started_at || st.start_time || null,
-        elapsedSeconds: st.elapsed_seconds || 0,
-        memo: st.memo,
-      })),
-    });
+  // treatments를 room_id별로 그룹화
+  const treatmentsByRoom = new Map<number, any[]>();
+  for (const st of treatmentsData || []) {
+    const roomId = st.room_id;
+    if (!treatmentsByRoom.has(roomId)) {
+      treatmentsByRoom.set(roomId, []);
+    }
+    treatmentsByRoom.get(roomId)!.push(st);
   }
 
-  return rooms;
+  // rooms 매핑
+  return (roomsData || []).map((room: any) => ({
+    id: room.id,
+    name: room.name,
+    status: room.status,
+    sessionId: room.session_id,
+    patientId: room.patient_id,
+    patientName: room.patient_name,
+    patientChartNumber: room.patient_chart_number,
+    patientGender: room.patient_gender,
+    patientDob: room.patient_dob,
+    doctorName: room.doctor_name,
+    inTime: room.in_time,
+    sessionTreatments: (treatmentsByRoom.get(room.id) || []).map((st: any) => ({
+      id: st.id,
+      name: st.treatment_name || st.name,
+      status: st.status,
+      duration: st.duration,
+      startTime: st.started_at || st.start_time || null,
+      elapsedSeconds: st.elapsed_seconds || 0,
+      memo: st.memo,
+    })),
+  }));
 }
 
 // 세션 치료 항목 조회
