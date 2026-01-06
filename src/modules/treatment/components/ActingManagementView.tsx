@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { TreatmentRoom, Patient } from '../types';
 import * as actingApi from '@acting/api';
 import type { ActingQueueItem } from '@acting/types';
+import { useSSE, SSEMessage } from '@shared/hooks/useSSE';
 
 // 원장 정보 (MSSQL doctor_id와 매칭)
 // doctor_1 = 강희종, doctor_3 = 김대현, doctor_13 = 임세열, doctor_15 = 전인태
@@ -320,15 +321,38 @@ const ActingManagementView: React.FC<ActingManagementViewProps> = ({
     loadActings();
   }, [loadActings]);
 
-  // 폴링 (3초마다 - 액팅은 빠른 변경이 필요)
-  useEffect(() => {
-    const POLLING_INTERVAL = 3000;
-    const intervalId = setInterval(loadActings, POLLING_INTERVAL);
+  // SSE 실시간 구독 (폴링 대신)
+  const lastLocalUpdateRef = useRef<number>(0);
+  const IGNORE_SUBSCRIPTION_MS = 500;
 
-    return () => {
-      clearInterval(intervalId);
-    };
+  const handleSSEMessage = useCallback((message: SSEMessage) => {
+    // daily_acting_records 테이블 변경 감지
+    if (message.table === 'daily_acting_records') {
+      const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
+      if (timeSinceLastUpdate < IGNORE_SUBSCRIPTION_MS) return;
+      console.log('[SSE] ActingManagement data changed:', message);
+      loadActings();
+    }
   }, [loadActings]);
+
+  const { isConnected: sseConnected } = useSSE({
+    enabled: true,
+    onMessage: handleSSEMessage,
+  });
+
+  // SSE 실패 시 폴백 폴링
+  useEffect(() => {
+    if (sseConnected) return;
+    console.log('[Polling] SSE not connected, fallback polling');
+    const POLLING_INTERVAL = 5000;
+    const intervalId = setInterval(() => {
+      const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
+      if (timeSinceLastUpdate >= IGNORE_SUBSCRIPTION_MS) {
+        loadActings();
+      }
+    }, POLLING_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, [sseConnected, loadActings]);
 
   // 클릭 외부 감지
   useEffect(() => {
