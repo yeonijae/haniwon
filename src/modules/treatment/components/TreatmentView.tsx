@@ -1349,11 +1349,16 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                             onMouseLeave={handlePatientMouseLeave}
                             onContextMenu={(e) => handlePatientContextMenu(e, patient)}
                         >
-                            <div>
-                                <span className="font-bold text-clinic-text-primary text-sm">{patient.name}</span>
-                                <span className="text-xs text-clinic-text-secondary ml-2">{patient.details}</span>
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1">
+                                    <span className="font-bold text-clinic-text-primary text-sm">{patient.name}</span>
+                                    {patient.doctor && (
+                                        <span className="text-xs text-blue-600 bg-blue-50 px-1 rounded">{patient.doctor.replace(' 원장', '')}</span>
+                                    )}
+                                </div>
+                                <span className="text-xs text-clinic-text-secondary">{patient.details}</span>
                             </div>
-                            <span className="text-xs text-gray-500">{patient.time}</span>
+                            <span className="text-xs text-gray-500 whitespace-nowrap">{patient.time}</span>
                         </li>
                     ))}
                     </ul>
