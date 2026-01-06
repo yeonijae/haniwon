@@ -1129,13 +1129,18 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                 return parts.length > 0 ? parts.join(' ') : '';
             })();
 
+            // 원래 입실시간 유지 (room.inTime에서 가져오기)
+            const originalTime = room.inTime
+                ? new Date(room.inTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+                : new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+
             if (!patient) {
                 patient = {
                     id: room.patientId,
                     name: room.patientName || '알 수 없음',
                     chartNumber: room.patientChartNumber,
                     status: PatientStatus.WAITING_TREATMENT,
-                    time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                    time: originalTime,  // 원래 입실시간 유지
                     details: fallbackDetails,
                     gender: room.patientGender,
                     dob: room.patientDob,
@@ -1146,7 +1151,7 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                 patient = {
                     ...patient,
                     status: PatientStatus.WAITING_TREATMENT,
-                    time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                    time: patient.time || originalTime,  // 기존 time 우선, 없으면 원래 입실시간
                     details: patient.details || fallbackDetails,  // 기존 details 우선
                     doctor: patient.doctor || room.doctorName,    // 기존 doctor 우선
                 };
