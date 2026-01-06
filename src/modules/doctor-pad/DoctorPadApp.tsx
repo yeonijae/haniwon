@@ -16,6 +16,7 @@ import type { TreatmentRoom } from '@modules/treatment/types';
 import * as actingApi from '@modules/acting/api';
 import type { PatientMemo, TreatmentHistory, DetailComment, ActingTreatmentConfigItem, TreatmentItemSelection } from '@modules/acting/api';
 import { getCurrentDate } from '@shared/lib/postgres';
+import { useSSE, SSEMessage } from '@shared/hooks/useSSE';
 import {
   fetchPatientDetailComments,
   getMssqlPatientId,
@@ -557,12 +558,38 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
     loadData();
   }, [loadData]);
 
-  // 폴링 (3초마다)
-  useEffect(() => {
-    const POLLING_INTERVAL = 3000;
-    const intervalId = setInterval(loadData, POLLING_INTERVAL);
-    return () => clearInterval(intervalId);
+  // SSE 실시간 구독 (폴링 대체)
+  const lastLocalUpdateRef = useRef<number>(0);
+  const IGNORE_SUBSCRIPTION_MS = 500;
+  const FALLBACK_POLLING_INTERVAL = 5000;
+
+  const handleSSEMessage = useCallback((message: SSEMessage) => {
+    // acting_queue, treatment_rooms, doctor_status 변경 감지
+    if (message.table === 'acting_queue' || message.table === 'treatment_rooms' || message.table === 'doctor_status') {
+      const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
+      if (timeSinceLastUpdate < IGNORE_SUBSCRIPTION_MS) return;
+      console.log('[SSE] DoctorPad data changed:', message.table);
+      loadData();
+    }
   }, [loadData]);
+
+  const { isConnected: sseConnected } = useSSE({
+    enabled: true,
+    onMessage: handleSSEMessage,
+  });
+
+  // SSE 실패 시 폴백 폴링
+  useEffect(() => {
+    if (sseConnected) return;
+    console.log('[Polling] SSE not connected, fallback polling');
+    const intervalId = setInterval(() => {
+      const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
+      if (timeSinceLastUpdate >= IGNORE_SUBSCRIPTION_MS) {
+        loadData();
+      }
+    }, FALLBACK_POLLING_INTERVAL);
+    return () => clearInterval(intervalId);
+  }, [sseConnected, loadData]);
 
   // 진료중일 때 경과 시간 계산
   useEffect(() => {
