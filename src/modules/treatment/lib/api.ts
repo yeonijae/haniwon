@@ -427,32 +427,26 @@ export interface WaitingQueueItem {
 }
 
 // 대기 목록 조회
+// NOTE: waiting_queue 테이블은 더 이상 사용하지 않음 (daily_treatment_records로 통합)
 export async function fetchWaitingQueue(queueType: 'consultation' | 'treatment'): Promise<WaitingQueueItem[]> {
-  const data = await query<any>(`
-    SELECT * FROM waiting_queue
-    WHERE queue_type = ${escapeString(queueType)}
-    ORDER BY position ASC
-  `);
-
-  return data;
+  console.log(`[fetchWaitingQueue] Skipped - using daily_treatment_records instead`);
+  return [];
 }
 
 // 대기 목록에 환자 추가
+// NOTE: waiting_queue 테이블은 더 이상 사용하지 않음 (daily_treatment_records로 통합)
+// 베드에서 대기실로 돌아갈 때 unassignTreatmentBed()가 status를 'waiting'으로 변경함
 export async function addToWaitingQueue(item: Omit<WaitingQueueItem, 'id' | 'created_at'>): Promise<WaitingQueueItem> {
-  // 현재 최대 position 조회
-  const maxData = await queryOne<{ position: number }>(`
-    SELECT MAX(position) as position FROM waiting_queue WHERE queue_type = ${escapeString(item.queue_type)}
-  `);
-
-  const nextPosition = (maxData?.position ?? -1) + 1;
-
-  const id = await insert(`
-    INSERT INTO waiting_queue (patient_id, queue_type, details, position, doctor)
-    VALUES (${item.patient_id}, ${escapeString(item.queue_type)}, ${escapeString(item.details)}, ${nextPosition}, ${item.doctor ? escapeString(item.doctor) : 'NULL'})
-  `);
-
-  const data = await queryOne<any>(`SELECT * FROM waiting_queue WHERE id = ${id}`);
-  return data;
+  console.log(`[addToWaitingQueue] Skipped - using daily_treatment_records instead (patient: ${item.patient_id})`);
+  // 더미 반환값
+  return {
+    id: 0,
+    patient_id: item.patient_id,
+    queue_type: item.queue_type,
+    details: item.details,
+    position: item.position,
+    doctor: item.doctor,
+  };
 }
 
 // 대기 목록에서 환자 제거
