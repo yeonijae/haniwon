@@ -969,6 +969,12 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
             onSaveRoomToDB(roomId, updatedRoom);
             // 진료내역: 치료 시작 이벤트
             onTreatmentStart?.(patientId, updatedRoom.name);
+
+            // daily_treatment_records status 업데이트 (waiting → treating)
+            if (patient.treatmentRecordId) {
+                api.assignTreatmentBed(patient.treatmentRecordId, roomId, updatedRoom.name)
+                    .catch(err => console.error('assignTreatmentBed error:', err));
+            }
         }
     }, [treatmentItems, onUpdateRooms, onRemoveFromWaitingList, onSaveRoomToDB, onTreatmentStart, addActingForTreatments]);
 
@@ -1078,11 +1084,21 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
         }));
     }, [updateRoom]);
 
-    const handleFinishSession = useCallback((roomId: number) => {
+    const handleFinishSession = useCallback(async (roomId: number) => {
         const room = treatmentRoomsRef.current.find(r => r.id === roomId);
         if (room && room.patientId) {
             onMovePatientToPayment(room.patientId);
             updateRoom(roomId, r => ({ ...r, status: RoomStatus.NEED_CLEAN }), true);
+
+            // daily_treatment_records status 업데이트 (treating → complete)
+            try {
+                const record = await api.findTodayTreatmentByPatientId(room.patientId);
+                if (record?.id) {
+                    await api.completeTreatmentRecord(record.id);
+                }
+            } catch (err) {
+                console.error('completeTreatmentRecord error:', err);
+            }
         }
     }, [onMovePatientToPayment, updateRoom]);
 
@@ -1153,6 +1169,16 @@ const TreatmentView: React.FC<TreatmentViewProps> = ({
                 await actingApi.cancelActingsByPatientId(room.patientId);
             } catch (error) {
                 console.error('❌ 액팅 취소 오류:', error);
+            }
+
+            // daily_treatment_records status 업데이트 (treating → waiting)
+            try {
+                const record = await api.findTodayTreatmentByPatientId(room.patientId);
+                if (record?.id) {
+                    await api.unassignTreatmentBed(record.id);
+                }
+            } catch (error) {
+                console.error('❌ unassignTreatmentBed 오류:', error);
             }
 
             // 로컬 상태 업데이트

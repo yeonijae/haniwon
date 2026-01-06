@@ -529,11 +529,113 @@ export async function findDoctorIdByNameOrAlias(nameOrAlias: string): Promise<{ 
   }
 
   if (found) {
-    return {
-      doctorId: found.mssqlDoctorId,
-      doctorName: found.name,
-    };
+    return { doctorId: found.mssqlDoctorId, doctorName: found.name };
   }
-
   return null;
+}
+
+
+/**
+ * ============================================
+ * 치료 관리 API (daily_treatment_records 기반)
+ * ============================================
+ */
+
+const POSTGRES_API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
+
+export interface TreatmentRecord {
+  id: number;
+  patient_id: number;
+  patient_name: string;
+  chart_number: string;
+  treatment_date: string;
+  status: 'waiting' | 'treating' | 'complete';
+  room_id?: number;
+  bed_name?: string;
+  assigned_at?: string;
+  doctor_name?: string;
+  reception_time?: string;
+  treatment_start?: string;
+  treatment_end?: string;
+  patient_age?: number;
+  patient_sex?: string;
+  visit_number?: number;
+  mssql_waiting_pk?: number;
+  mssql_intotime?: string;
+  synced_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 오늘 치료 목록 조회
+export async function fetchTodayTreatments(status?: 'waiting' | 'treating' | 'complete'): Promise<TreatmentRecord[]> {
+  try {
+    const url = status
+      ? `${POSTGRES_API_URL}/api/treatments/today?status=${status}`
+      : `${POSTGRES_API_URL}/api/treatments/today`;
+
+    const response = await fetch(url, { method: 'GET' });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const result = await response.json();
+    return result.data || [];
+  } catch (error) {
+    console.error('fetchTodayTreatments error:', error);
+    return [];
+  }
+}
+
+// 베드 배정 (waiting -> treating)
+export async function assignTreatmentBed(recordId: number, roomId: number, bedName: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${POSTGRES_API_URL}/api/treatments/${recordId}/assign`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room_id: roomId, bed_name: bedName }),
+    });
+    return response.ok;
+  } catch (error) {
+    console.error('assignTreatmentBed error:', error);
+    return false;
+  }
+}
+
+// 치료 완료 (treating -> complete)
+export async function completeTreatmentRecord(recordId: number): Promise<boolean> {
+  try {
+    const response = await fetch(`${POSTGRES_API_URL}/api/treatments/${recordId}/complete`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return response.ok;
+  } catch (error) {
+    console.error('completeTreatmentRecord error:', error);
+    return false;
+  }
+}
+
+// 베드 배정 해제 (treating -> waiting)
+export async function unassignTreatmentBed(recordId: number): Promise<boolean> {
+  try {
+    const response = await fetch(`${POSTGRES_API_URL}/api/treatments/${recordId}/unassign`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return response.ok;
+  } catch (error) {
+    console.error('unassignTreatmentBed error:', error);
+    return false;
+  }
+}
+
+// patient_id로 오늘 치료 기록 찾기
+export async function findTodayTreatmentByPatientId(patientId: number): Promise<TreatmentRecord | null> {
+  try {
+    const records = await fetchTodayTreatments();
+    return records.find(r => r.patient_id === patientId) || null;
+  } catch (error) {
+    console.error('findTodayTreatmentByPatientId error:', error);
+    return null;
+  }
 }

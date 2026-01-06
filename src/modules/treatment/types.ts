@@ -41,6 +41,7 @@ export interface Patient {
   doctor?: string; // 담당의
   treatmentClothing?: string; // 환자복 설정
   treatmentNotes?: string; // 치료 주의사항
+  treatmentRecordId?: number; // daily_treatment_records의 ID (status 업데이트용)
 }
 
 export enum RoomStatus {

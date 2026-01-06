@@ -44,42 +44,46 @@ function TreatmentApp({ user }: TreatmentAppProps) {
   const FALLBACK_POLLING_INTERVAL = 5000; // SSE 실패 시 폴백 폴링 간격
 
   // Load waiting list function (reusable)
+  // daily_treatment_records에서 status='waiting' 환자 조회
   const loadWaitingList = useCallback(async () => {
     try {
-      const queueItems = await api.fetchWaitingQueue('treatment');
+      const records = await api.fetchTodayTreatments('waiting');
       const patientsWithDetails = await Promise.all(
-        queueItems.map(async (item) => {
+        records.map(async (record) => {
           // PostgreSQL patients 테이블에서 조회 시도
-          const patient = await api.fetchPatientById(item.patient_id);
+          const patient = await api.fetchPatientById(record.patient_id);
 
-          // 시간 계산: mssql_intotime 우선, 없으면 created_at
-          const timeSource = item.mssql_intotime || item.created_at;
+          // 시간 계산: mssql_intotime 또는 reception_time 우선
+          const timeSource = record.mssql_intotime || record.reception_time || record.created_at;
           const time = timeSource
             ? new Date(timeSource).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
             : '';
 
           if (patient) {
             // PostgreSQL에 환자 정보가 있으면 사용
-            const defaultTreatments = await api.fetchPatientDefaultTreatments(item.patient_id);
+            const defaultTreatments = await api.fetchPatientDefaultTreatments(record.patient_id);
             return {
               ...patient,
-              details: item.details,
+              details: '',
               time,
               defaultTreatments,
-              doctor: item.doctor,
+              doctor: record.doctor_name,
+              treatmentRecordId: record.id,
             };
-          } else if (item.patient_name) {
+          } else if (record.patient_name) {
             // MSSQL 동기화 데이터 사용 (PostgreSQL에 환자 없는 경우)
+            const sex = record.patient_sex;
             return {
-              id: item.patient_id,
-              name: item.patient_name,
-              chartNumber: item.chart_number,
+              id: record.patient_id,
+              name: record.patient_name,
+              chartNumber: record.chart_number,
               time,
               status: 'waiting' as const,
-              details: item.details,
-              gender: item.sex === 'M' ? 'male' : item.sex === 'F' ? 'female' : undefined,
-              doctor: item.doctor,
+              details: '',
+              gender: sex === 'M' ? 'male' : sex === 'F' ? 'female' : undefined,
+              doctor: record.doctor_name,
               defaultTreatments: [],
+              treatmentRecordId: record.id,
             };
           }
           return null;
@@ -100,7 +104,7 @@ function TreatmentApp({ user }: TreatmentAppProps) {
 
   // SSE 메시지 핸들러 (waiting_queue 변경 감지)
   const handleSSEMessage = useCallback((message: SSEMessage) => {
-    if (message.table === 'waiting_queue') {
+    if (message.table === 'daily_treatment_records' || message.table === 'waiting_queue') {
       // 자기 자신이 일으킨 변경은 무시
       const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
       if (timeSinceLastUpdate < IGNORE_SUBSCRIPTION_MS) {
