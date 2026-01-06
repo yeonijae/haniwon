@@ -47,7 +47,9 @@ function TreatmentApp({ user }: TreatmentAppProps) {
   // daily_treatment_records에서 status='waiting' 환자 조회
   const loadWaitingList = useCallback(async () => {
     try {
+      console.log('[loadWaitingList] 대기목록 로드 시작...');
       const records = await api.fetchTodayTreatments('waiting');
+      console.log('[loadWaitingList] 서버에서 받은 레코드:', records.length, '개');
       const patientsWithDetails = await Promise.all(
         records.map(async (record) => {
           // PostgreSQL patients 테이블에서 조회 시도
@@ -104,13 +106,15 @@ function TreatmentApp({ user }: TreatmentAppProps) {
 
   // SSE 메시지 핸들러 (waiting_queue 변경 감지)
   const handleSSEMessage = useCallback((message: SSEMessage) => {
+    console.log('[SSE] 메시지 수신:', message);
     if (message.table === 'daily_treatment_records' || message.table === 'waiting_queue') {
       // 자기 자신이 일으킨 변경은 무시
       const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
       if (timeSinceLastUpdate < IGNORE_SUBSCRIPTION_MS) {
+        console.log('[SSE] 로컬 업데이트 직후라 무시함 (', timeSinceLastUpdate, 'ms ago)');
         return;
       }
-      console.log('[SSE] 대기목록 변경 감지:', message);
+      console.log('[SSE] 대기목록 변경 감지, loadWaitingList() 호출:', message);
       loadWaitingList();
     }
   }, [loadWaitingList]);

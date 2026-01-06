@@ -570,11 +570,16 @@ export interface TreatmentRecord {
 // 오늘 치료 목록 조회
 export async function fetchTodayTreatments(status?: 'waiting' | 'treating' | 'complete'): Promise<TreatmentRecord[]> {
   try {
+    // 캐시 방지를 위한 타임스탬프 추가
+    const timestamp = Date.now();
     const url = status
-      ? `${POSTGRES_API_URL}/api/treatments/today?status=${status}`
-      : `${POSTGRES_API_URL}/api/treatments/today`;
+      ? `${POSTGRES_API_URL}/api/treatments/today?status=${status}&_t=${timestamp}`
+      : `${POSTGRES_API_URL}/api/treatments/today?_t=${timestamp}`;
 
-    const response = await fetch(url, { method: 'GET' });
+    const response = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',  // 브라우저 캐시 비활성화
+    });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }

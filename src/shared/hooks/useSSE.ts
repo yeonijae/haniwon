@@ -4,7 +4,7 @@
  * 싱글톤 패턴으로 하나의 연결만 유지
  */
 
-import { useEffect, useCallback, useState, useSyncExternalStore } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 
 const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
 
@@ -180,22 +180,26 @@ export const useSSE = (options: UseSSEOptions = {}) => {
   const [isConnected, setIsConnected] = useState(sseManager.isConnected);
   const [lastMessage, setLastMessage] = useState<SSEMessage | null>(null);
 
+  // 콜백을 ref로 저장하여 의존성에서 제외 (재구독 방지)
+  const callbacksRef = useRef({ onConnect, onMessage, onDisconnect });
+  callbacksRef.current = { onConnect, onMessage, onDisconnect };
+
   useEffect(() => {
     if (!enabled) return;
 
     const handleMessage = (message: SSEMessage) => {
       setLastMessage(message);
-      onMessage?.(message);
+      callbacksRef.current.onMessage?.(message);
     };
 
     const handleConnect = () => {
       setIsConnected(true);
-      onConnect?.();
+      callbacksRef.current.onConnect?.();
     };
 
     const handleDisconnect = () => {
       setIsConnected(false);
-      onDisconnect?.();
+      callbacksRef.current.onDisconnect?.();
     };
 
     const unsubscribe = sseManager.subscribe(
@@ -208,7 +212,7 @@ export const useSSE = (options: UseSSEOptions = {}) => {
     setIsConnected(sseManager.isConnected);
 
     return unsubscribe;
-  }, [enabled, onConnect, onMessage, onDisconnect]);
+  }, [enabled]); // 콜백 의존성 제거
 
   const reconnect = useCallback(() => {
     sseManager.reconnect();
