@@ -167,20 +167,34 @@ export async function savePatientTreatmentSettings(
 // 모든 치료실 조회 (session_treatments 별도 테이블에서 조인)
 export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
   // patients 테이블과 LEFT JOIN하여 성별/생년월일 정보를 보완
-  const rooms = await query<any>(`
-    SELECT tr.*, p.gender as patient_gender_from_patients, p.birth_date as patient_dob_from_patients
-    FROM treatment_rooms tr
-    LEFT JOIN patients p ON tr.patient_id = p.id
-    ORDER BY tr.display_order ASC, tr.id ASC
-  `);
+  // session_treatments도 한 번에 조회하여 N+1 문제 해결
+  const [rooms, allSessionTreatments] = await Promise.all([
+    query<any>(`
+      SELECT tr.*, p.gender as patient_gender_from_patients, p.birth_date as patient_dob_from_patients
+      FROM treatment_rooms tr
+      LEFT JOIN patients p ON tr.patient_id = p.id
+      ORDER BY tr.display_order ASC, tr.id ASC
+    `),
+    query<any>(`
+      SELECT * FROM session_treatments ORDER BY room_id, display_order ASC
+    `)
+  ]);
 
-  // 각 room에 대해 session_treatments 조회
+  // session_treatments를 room_id로 그룹핑 (메모리에서 처리)
+  const sessionTreatmentsByRoom = new Map<number, any[]>();
+  for (const st of allSessionTreatments) {
+    const roomId = st.room_id;
+    if (!sessionTreatmentsByRoom.has(roomId)) {
+      sessionTreatmentsByRoom.set(roomId, []);
+    }
+    sessionTreatmentsByRoom.get(roomId)!.push(st);
+  }
+
   const result: TreatmentRoom[] = [];
 
   for (const room of rooms) {
-    const sessionTreatments = await query<any>(`
-      SELECT * FROM session_treatments WHERE room_id = ${room.id} ORDER BY display_order ASC
-    `);
+    // 메모리에서 해당 room의 session_treatments 가져오기 (DB 호출 없음)
+    const sessionTreatments = sessionTreatmentsByRoom.get(room.id) || [];
 
     // 치료실의 patient_gender가 없으면 patients 테이블에서 가져온 값 사용
     const patientGender = room.patient_gender || room.patient_gender_from_patients;
@@ -207,31 +221,32 @@ export async function fetchTreatmentRooms(): Promise<TreatmentRoom[]> {
       `).catch(() => {}); // 백그라운드로 업데이트
     }
 
-    // 생년월일이 여전히 없고 차트번호가 있으면 MSSQL에서 가져오기 시도
+    // 생년월일이 여전히 없고 차트번호가 있으면 MSSQL에서 가져오기 시도 (백그라운드 - 로딩 차단하지 않음)
     if (!patientDob && room.patient_chart_number && room.patient_id) {
-      try {
-        const mssqlApiUrl2 = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
-        const mssqlRes = await fetch(`${mssqlApiUrl2}/api/patients/search?q=${room.patient_chart_number}`);
-        if (mssqlRes.ok) {
-          const mssqlData = await mssqlRes.json();
-          const patient = mssqlData[0];
-          if (patient?.birth) {
-            try {
+      const roomId = room.id;
+      const patientId = room.patient_id;
+      const chartNumber = room.patient_chart_number;
+      // fire-and-forget: 결과를 기다리지 않음 (다음 폴링에서 반영됨)
+      (async () => {
+        try {
+          const mssqlApiUrl2 = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
+          const mssqlRes = await fetch(`${mssqlApiUrl2}/api/patients/search?q=${chartNumber}`);
+          if (mssqlRes.ok) {
+            const mssqlData = await mssqlRes.json();
+            const patient = mssqlData[0];
+            if (patient?.birth) {
               const parsedDate = new Date(patient.birth);
               if (!isNaN(parsedDate.getTime())) {
-                patientDob = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')}`;
-                // PostgreSQL patients 테이블과 치료실 테이블 모두 업데이트
-                execute(`UPDATE patients SET birth_date = ${escapeString(patientDob)} WHERE id = ${room.patient_id}`).catch(() => {});
-                execute(`UPDATE treatment_rooms SET patient_dob = ${escapeString(patientDob)} WHERE id = ${room.id}`).catch(() => {});
+                const dob = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')}`;
+                execute(`UPDATE patients SET birth_date = ${escapeString(dob)} WHERE id = ${patientId}`).catch(() => {});
+                execute(`UPDATE treatment_rooms SET patient_dob = ${escapeString(dob)} WHERE id = ${roomId}`).catch(() => {});
               }
-            } catch {
-              // 날짜 파싱 실패
             }
           }
+        } catch {
+          // MSSQL 조회 실패 - 무시
         }
-      } catch {
-        // MSSQL 조회 실패
-      }
+      })();
     }
 
     result.push({
