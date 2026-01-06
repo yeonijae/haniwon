@@ -47,7 +47,7 @@ export const APPS: AppInfo[] = [
     name: '액팅관리',
     description: '원장별 액팅 대기열을 관리합니다. 자침, 추나, 초음파 등 액팅 순서를 조정할 수 있습니다.',
     path: '/acting',
-    icon: '👨‍⚕️',
+    icon: '🎛️',
     color: '#14b8a6',
   },
   {

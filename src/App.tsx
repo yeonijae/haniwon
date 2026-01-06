@@ -196,7 +196,7 @@ function App() {
       {/* DB Admin Routes (DB 관리자) */}
       <Route
         path="/db-admin/*"
-        element={user ? <DbAdminApp user={user} /> : <Navigate to="/login" replace />}
+        element={user ? <DbAdminApp /> : <Navigate to="/login" replace />}
       />
 
       {/* Herbal Management Routes (복약관리) */}

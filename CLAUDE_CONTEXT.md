@@ -19,7 +19,7 @@ C:\Users\crimm\Documents\project\
 |------|------|------|------|
 | unified-server (Static) | 11111 | 정적 파일 서빙 | 192.168.0.173 |
 | unified-server (MSSQL API) | 3100 | 오케이차트 MSSQL 프록시 | 192.168.0.173 |
-| unified-server (SQLite API) | 3200 | haniwon 앱 데이터 저장 | 192.168.0.173 |
+| unified-server (PostgreSQL API) | 3200 | haniwon 앱 데이터 저장 | 192.168.0.173 |
 | Vite Dev Server | 5173 | 개발 서버 (로컬) | localhost |
 
 ## 데이터베이스
@@ -30,10 +30,10 @@ C:\Users\crimm\Documents\project\
 - **용도**: 환자정보(Customer), 진료기록(Detail), 결제(Receipt), 예약(Reservation) 등
 - **접근**: unified-server `/api/execute` 엔드포인트 통해 SQL 실행
 
-### 2. SQLite (haniwon 앱 데이터)
+### 2. PostgreSQL (haniwon 앱 데이터)
 - **API**: http://192.168.0.173:3200
 - **용도**: 블로그, 콘텐츠, 복약관리, 퍼널 등 haniwon 자체 데이터
-- **접근**: `@shared/lib/sqlite.ts`의 query/execute 함수 사용
+- **접근**: `@shared/lib/postgres.ts`의 query/execute 함수 사용
 
 ### 3. Supabase (사용 안 함)
 - 현재 프로젝트에서 Supabase는 사용하지 않습니다.
@@ -72,10 +72,10 @@ C:\Users\crimm\Documents\project\
 
 ### 데이터 흐름
 ```
-MSSQL (Detail)   → 초진 환자 감지   → first_visit_messages (SQLite)
-MSSQL (Receipt)  → 고액결제 감지    → herbal_purchases (SQLite)
+MSSQL (Detail)   → 초진 환자 감지   → first_visit_messages (PostgreSQL)
+MSSQL (Receipt)  → 고액결제 감지    → herbal_purchases (PostgreSQL)
                                       ↓
-                              herbal_calls, herbal_events (SQLite)
+                              herbal_calls, herbal_events (PostgreSQL)
 ```
 
 ### 관련 파일
@@ -87,7 +87,7 @@ MSSQL (Receipt)  → 고액결제 감지    → herbal_purchases (SQLite)
   - `HerbalSetupModal.tsx` - 복약관리 설정 모달
   - `CallCompleteModal.tsx` - 콜 완료 모달
   - `HerbalTaskList.tsx` - 과제 목록
-- `database/phase6_herbal_management_sqlite.sql` - SQLite 스키마
+- `database/phase6_herbal_management.sql` - PostgreSQL 스키마
 
 ## API 사용 패턴
 
@@ -102,9 +102,9 @@ const response = await fetch('http://192.168.0.173:3100/api/execute', {
 const { columns, rows } = await response.json();
 ```
 
-### SQLite 쿼리 실행
+### PostgreSQL 쿼리 실행
 ```typescript
-import { query, execute } from '@shared/lib/sqlite';
+import { query, execute } from '@shared/lib/postgres';
 
 // 조회
 const data = await query<MyType>('SELECT * FROM my_table');
@@ -135,7 +135,7 @@ curl -X POST "http://192.168.0.173:3100/api/execute" \
   -H "Content-Type: application/json" \
   -d '{"sql": "SELECT TOP 10 * FROM Customer"}'
 
-# SQLite 테스트 쿼리
+# PostgreSQL 테스트 쿼리
 curl -X POST "http://192.168.0.173:3200/api/query" \
   -H "Content-Type: application/json" \
   -d '{"sql": "SELECT * FROM herbal_purchases LIMIT 10"}'
@@ -144,7 +144,7 @@ curl -X POST "http://192.168.0.173:3200/api/query" \
 ## 주의사항
 
 1. **MSSQL은 읽기 전용**: 오케이차트 데이터는 조회만 가능
-2. **SQLite 테이블 생성**: unified-server API로 CREATE TABLE 실행
+2. **PostgreSQL 테이블 생성**: unified-server API로 CREATE TABLE 실행
 3. **인증**: Portal 로그인 후 각 모듈 접근 가능 (PortalUser)
 4. **CORS**: unified-server에서 모든 origin 허용 설정됨
 
@@ -165,4 +165,4 @@ git push
 ```
 
 ---
-*마지막 업데이트: 2025-12-17*
+*마지막 업데이트: 2026-01-07*
