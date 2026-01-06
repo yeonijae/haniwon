@@ -46,7 +46,7 @@ export interface ActingInfo {
 // 통합 환자 타입 (대기/완료 모두 사용)
 export interface ConsultationPatient {
   // 기본 정보
-  id: number; // MSSQL id 또는 acting_queue id
+  id: number; // MSSQL id 또는 daily_acting_records id
   patient_id: number;
   patient_name: string;
   chart_no: string;
@@ -84,10 +84,10 @@ function CSSidebar({ onPatientRightClick, onPatientClick }: CSSidebarProps) {
         setIsConnected(true);
       }
 
-      // 2. PostgreSQL acting_queue에서 오늘 액팅 조회
+      // 2. PostgreSQL daily_acting_records에서 오늘 액팅 조회
       const today = getCurrentDate();
       const actingList = await query<ActingInfo>(`
-        SELECT * FROM acting_queue
+        SELECT * FROM daily_acting_records
         WHERE work_date = '${today}' AND source = 'cs_consultation'
         ORDER BY created_at DESC
       `);

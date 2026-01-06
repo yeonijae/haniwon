@@ -38,9 +38,9 @@ const PatientList: React.FC = () => {
     try {
       const todayStr = getCurrentDate();
 
-      // 1. 오늘 약상담 환자 조회 (acting_queue) - PostgreSQL
+      // 1. 오늘 약상담 환자 조회 (daily_acting_records) - PostgreSQL
       const actingData = await query<{ patient_id: number; created_at: string }>(`
-        SELECT patient_id, created_at FROM acting_queue
+        SELECT patient_id, created_at FROM daily_acting_records
         WHERE acting_type = '약상담'
         AND work_date = '${todayStr}'
         ORDER BY created_at DESC

@@ -564,8 +564,8 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
   const FALLBACK_POLLING_INTERVAL = 5000;
 
   const handleSSEMessage = useCallback((message: SSEMessage) => {
-    // acting_queue, treatment_rooms, doctor_status 변경 감지
-    if (message.table === 'acting_queue' || message.table === 'treatment_rooms' || message.table === 'doctor_status') {
+    // daily_acting_records, treatment_rooms, doctor_status 변경 감지
+    if (message.table === 'daily_acting_records' || message.table === 'treatment_rooms' || message.table === 'doctor_status') {
       const timeSinceLastUpdate = Date.now() - lastLocalUpdateRef.current;
       if (timeSinceLastUpdate < IGNORE_SUBSCRIPTION_MS) return;
       console.log('[SSE] DoctorPad data changed:', message.table);
