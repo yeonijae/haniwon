@@ -138,4 +138,12 @@ export const APPS: AppInfo[] = [
     icon: '🔬',
     color: '#8b5cf6',
   },
+  {
+    id: 'chat',
+    name: '채팅',
+    description: '직원간 실시간 채팅을 할 수 있습니다. 채널 생성, 메시지 전송, 파일 공유가 가능합니다.',
+    path: '/chat',
+    icon: '💬',
+    color: '#0ea5e9',
+  },
 ];

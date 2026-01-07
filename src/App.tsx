@@ -26,6 +26,7 @@ import StaffApp from './modules/staff/StaffApp';
 import WikiApp from './modules/wiki/WikiApp';
 import CSApp from './modules/cs/CSApp';
 import ExamApp from './modules/exam/ExamApp';
+import ChatApp from './modules/chat/ChatApp';
 
 // Public Blog Pages (공개 - 로그인 불필요)
 import BlogListPage from './modules/blog/pages/BlogListPage';
@@ -227,6 +228,12 @@ function App() {
       <Route
         path="/exam/*"
         element={user ? <ExamApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Chat Routes (채팅) */}
+      <Route
+        path="/chat/*"
+        element={user ? <ChatApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Fallback */}

@@ -19,6 +19,7 @@ export default defineConfig({
       '@content': path.resolve(__dirname, './src/modules/content'),
       '@blog': path.resolve(__dirname, './src/modules/blog'),
       '@acting': path.resolve(__dirname, './src/modules/acting'),
+      '@chat': path.resolve(__dirname, './src/modules/chat'),
     },
   },
   server: {
