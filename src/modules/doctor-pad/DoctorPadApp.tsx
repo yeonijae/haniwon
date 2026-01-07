@@ -892,7 +892,7 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
         <aside className={`w-72 flex-shrink-0 ${themeStyles.sidebar} border-r p-3 overflow-hidden`}>
           <TodaySchedule
             doctorId={doctor.id}
-            doctorName={doctor.name}
+            doctorName={doctor.fullName}
             doctorColor={doctor.color}
             onPatientClick={(reservation) => {
               // 예약 환자 클릭 시 처리 (추후 구현)
