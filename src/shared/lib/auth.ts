@@ -12,6 +12,10 @@ function generateSessionToken(): string {
 
 // 서버에 세션 생성
 async function createServerSession(userId: number): Promise<string> {
+  if (!userId) {
+    throw new Error('유효하지 않은 사용자 ID입니다.');
+  }
+
   const sessionToken = generateSessionToken();
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
@@ -53,6 +57,10 @@ export async function invalidateServerSession(sessionToken: string): Promise<voi
 
 // 사용자 ID로 모든 세션 무효화
 export async function invalidateAllUserSessions(userId: number): Promise<void> {
+  if (!userId) {
+    console.warn('invalidateAllUserSessions: userId is undefined');
+    return;
+  }
   await execute(`DELETE FROM portal_sessions WHERE user_id = ${userId}`);
 }
 
@@ -89,27 +97,36 @@ export function clearSession(): void {
   localStorage.removeItem(SESSION_KEY);
 }
 
-// DB 결과를 PortalUser로 변환
+// DB 결과를 PortalUser로 변환 (대소문자 구분 없이 처리)
 function toPortalUser(data: any): PortalUser {
+  // 대소문자 구분 없이 필드 접근
+  const getField = (obj: any, ...keys: string[]) => {
+    for (const key of keys) {
+      if (obj[key] !== undefined) return obj[key];
+      if (obj[key.toLowerCase()] !== undefined) return obj[key.toLowerCase()];
+      if (obj[key.toUpperCase()] !== undefined) return obj[key.toUpperCase()];
+    }
+    return undefined;
+  };
+
   let permissions: AppType[] = [];
-  if (data.permissions) {
+  const permData = getField(data, 'permissions');
+  if (permData) {
     try {
-      permissions = typeof data.permissions === 'string'
-        ? JSON.parse(data.permissions)
-        : data.permissions;
+      permissions = typeof permData === 'string' ? JSON.parse(permData) : permData;
     } catch {
       permissions = [];
     }
   }
 
   return {
-    id: data.id,
-    username: data.login_id,
-    name: data.name,
-    role: data.role,
+    id: getField(data, 'id', 'ID', 'Id'),
+    username: getField(data, 'login_id', 'LOGIN_ID'),
+    name: getField(data, 'name', 'NAME'),
+    role: getField(data, 'role', 'ROLE'),
     permissions,
-    created_at: data.created_at,
-    updated_at: data.updated_at,
+    created_at: getField(data, 'created_at', 'CREATED_AT'),
+    updated_at: getField(data, 'updated_at', 'UPDATED_AT'),
   };
 }
 
@@ -126,8 +143,15 @@ export async function signIn(username: string, password: string): Promise<Portal
     throw new Error('아이디 또는 비밀번호가 올바르지 않습니다.');
   }
 
+  // ID 컬럼 확인 (SQLite는 대소문자 구분 없이 반환할 수 있음)
+  const userId = data.id || data.ID || data.Id;
+  if (!userId) {
+    console.error('signIn: user data has no id field', data);
+    throw new Error('사용자 정보를 불러올 수 없습니다.');
+  }
+
   // 서버 세션 생성
-  const sessionToken = await createServerSession(data.id);
+  const sessionToken = await createServerSession(userId);
 
   const user = toPortalUser(data);
 
@@ -156,6 +180,14 @@ export async function getCurrentUser(): Promise<PortalUser | null> {
   try {
     const parsed = JSON.parse(session);
     const sessionToken = parsed.sessionToken;
+    const userId = parsed.id || parsed.ID || parsed.Id;
+
+    // 유효하지 않은 세션 데이터
+    if (!userId) {
+      console.warn('getCurrentUser: invalid session data (no user id)');
+      clearSession();
+      return null;
+    }
 
     // 서버 세션 유효성 검증
     if (sessionToken) {
@@ -168,7 +200,7 @@ export async function getCurrentUser(): Promise<PortalUser | null> {
 
     // DB에서 최신 정보 확인
     const data = await queryOne<any>(`
-      SELECT * FROM portal_users WHERE id = ${parsed.id} AND is_active = 1
+      SELECT * FROM portal_users WHERE id = ${userId} AND is_active = 1
     `);
 
     if (!data) {
