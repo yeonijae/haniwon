@@ -32,6 +32,7 @@ import {
 import type { PatientDefaultTreatments, DailyTreatmentRecord } from '@modules/manage/types';
 import { useAudioRecorder } from './hooks/useAudioRecorder';
 import { processRecording } from './services/transcriptionService';
+import { TodaySchedule, DoctorDashboard, CompactPatientStatus, QuickChat } from './components';
 
 interface DoctorPadAppProps {
   user: PortalUser;
@@ -804,33 +805,35 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
   const statusStyle = STATUS_STYLES[status?.status || 'office'];
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col" style={{ fontSize: `${fontSize}px` }}>
+    <div className="min-h-screen bg-gray-900 flex flex-col" style={{ fontSize: `${fontSize}px` }}>
       {/* 헤더 */}
-      <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
-        <button onClick={onBack} className="text-gray-600 text-2xl p-2">←</button>
-        <div className="text-center">
-          <h1 className="text-2xl font-bold" style={{ color: doctor.color }}>{doctor.name}</h1>
-          <span className={`inline-block mt-1 px-3 py-0.5 rounded-full text-xs ${statusStyle.bg} ${statusStyle.text}`}>
-            {statusStyle.label}
-          </span>
+      <header className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="text-gray-400 text-2xl p-2 hover:text-white">←</button>
+          <div>
+            <h1 className="text-xl font-bold" style={{ color: doctor.color }}>{doctor.name}</h1>
+            <span className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-xs ${statusStyle.bg} ${statusStyle.text}`}>
+              {statusStyle.label}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           {/* 폰트 크기 조정 버튼 */}
           <button
             onClick={() => handleFontSizeChange(-1)}
             disabled={fontSizeIndex === 0}
-            className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200"
+            className="w-8 h-8 rounded-lg bg-gray-700 text-gray-300 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-600"
           >
             A-
           </button>
           <button
             onClick={() => handleFontSizeChange(1)}
             disabled={fontSizeIndex === FONT_SIZES.length - 1}
-            className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200"
+            className="w-8 h-8 rounded-lg bg-gray-700 text-gray-300 font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-600"
           >
             A+
           </button>
-          <button onClick={loadData} className="text-gray-600 text-xl p-2 ml-1">↻</button>
+          <button onClick={loadData} className="text-gray-400 text-xl p-2 ml-1 hover:text-white">↻</button>
         </div>
       </header>
 
@@ -865,92 +868,117 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
         </div>
       )}
 
-      {/* 메인 콘텐츠 - 3섹션 */}
-      <main className="flex-1 p-4 flex flex-col gap-4 overflow-y-auto">
-        {/* 섹션 1: 내 액팅 대기 */}
-        <section className="bg-white rounded-xl shadow p-4">
-          <h2 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
-            <span>📋</span> 내 액팅 대기 ({queue.length})
-          </h2>
-          {queue.length > 0 ? (
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {queue.map((acting) => (
-                <button
-                  key={acting.id}
-                  onClick={() => handleSelectPatient(acting)}
-                  className="flex-shrink-0 w-24 h-24 rounded-xl bg-blue-50 border-2 border-blue-200 hover:border-blue-400 flex flex-col items-center justify-center transition-colors"
-                >
-                  <span className="font-bold text-gray-800 truncate w-full px-2 text-center">
-                    {acting.patientName}
-                  </span>
-                  <span className="text-xs text-blue-600 mt-1">{acting.actingType}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-center text-gray-400 py-4">대기중인 액팅이 없습니다</p>
-          )}
-        </section>
+      {/* 메인 콘텐츠 - 2컬럼 레이아웃 */}
+      <main className="flex-1 flex overflow-hidden">
+        {/* 좌측 컬럼: 오늘 예약 + 채팅 */}
+        <aside className="w-72 flex-shrink-0 bg-gray-850 border-r border-gray-700 flex flex-col p-3 gap-3 overflow-hidden">
+          {/* 오늘 예약 현황 */}
+          <div className="flex-1 min-h-0">
+            <TodaySchedule
+              doctorId={doctor.id}
+              doctorName={doctor.name}
+              doctorColor={doctor.color}
+              onPatientClick={(reservation) => {
+                // 예약 환자 클릭 시 처리 (추후 구현)
+                console.log('Reservation clicked:', reservation);
+              }}
+            />
+          </div>
 
-        {/* 섹션 2: 내 환자 치료 현황 */}
-        <section className="bg-white rounded-xl shadow p-4 flex-1">
-          <h2 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
-            <span>🛏️</span> 내 환자 치료 현황 ({myPatientRooms.length})
-          </h2>
-          {myPatientRooms.length > 0 ? (
-            <div className="grid grid-cols-1 gap-2">
-              {myPatientRooms.map(room => (
-                <PatientBedItem key={room.id} room={room} />
-              ))}
-            </div>
-          ) : (
-            <p className="text-center text-gray-400 py-4">치료실에 담당 환자가 없습니다</p>
-          )}
-        </section>
+          {/* 원내 채팅 */}
+          <div className="flex-shrink-0">
+            <QuickChat
+              userId={doctor.id}
+              userName={doctor.fullName}
+              userRole="doctor"
+              maxMessages={3}
+            />
+          </div>
+        </aside>
 
-        {/* 섹션 3: 진행 중인 내 액팅 */}
-        <section className="bg-white rounded-xl shadow p-4">
-          <h2 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
-            <span>⏱️</span> 진행 중인 액팅
-          </h2>
-          {currentActing ? (
-            <div
-              onClick={handleCurrentActingClick}
-              className="bg-green-50 border-2 border-green-300 rounded-xl p-4 cursor-pointer hover:bg-green-100 transition-colors"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                  {/* 녹음 중 표시 */}
-                  {audioRecorder.isRecording && (
-                    <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" title="녹음 중"></div>
-                  )}
-                  <div>
-                    <h3 className="font-bold text-xl text-gray-800">{currentActing.patientName}</h3>
-                    <p className="text-sm text-gray-500">
-                      {currentActing.actingType}
-                      {audioRecorder.isRecording && <span className="ml-2 text-red-500">● REC</span>}
-                    </p>
+        {/* 우측 컬럼: 대시보드 + 기존 기능 */}
+        <div className="flex-1 flex flex-col p-4 gap-3 overflow-y-auto">
+          {/* 대시보드 */}
+          <DoctorDashboard doctorId={doctor.id} doctorName={doctor.name} />
+
+          {/* 내 액팅 대기 */}
+          <section className="bg-gray-800 rounded-lg p-3">
+            <h2 className="text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
+              <span>📋</span> 내 액팅 대기 ({queue.length})
+            </h2>
+            {queue.length > 0 ? (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {queue.map((acting) => (
+                  <button
+                    key={acting.id}
+                    onClick={() => handleSelectPatient(acting)}
+                    className="flex-shrink-0 w-20 h-20 rounded-lg bg-blue-900/30 border border-blue-500/50 hover:border-blue-400 hover:bg-blue-900/50 flex flex-col items-center justify-center transition-colors"
+                  >
+                    <span className="font-bold text-white truncate w-full px-1 text-center text-sm">
+                      {acting.patientName}
+                    </span>
+                    <span className="text-[10px] text-blue-400 mt-1">{acting.actingType}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-gray-500 py-3 text-sm">대기중인 액팅이 없습니다</p>
+            )}
+          </section>
+
+          {/* 내 환자 상태 (축소형) */}
+          <CompactPatientStatus
+            rooms={myPatientRooms}
+            doctorName={doctor.name}
+            onPatientClick={(patientId, roomId) => {
+              console.log('Patient clicked:', patientId, roomId);
+            }}
+          />
+
+          {/* 진행 중인 액팅 */}
+          <section className="bg-gray-800 rounded-lg p-3">
+            <h2 className="text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
+              <span>⚡</span> 진행 중인 액팅
+            </h2>
+            {currentActing ? (
+              <div
+                onClick={handleCurrentActingClick}
+                className="bg-green-900/30 border border-green-500/50 rounded-lg p-3 cursor-pointer hover:bg-green-900/50 transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></div>
+                    {/* 녹음 중 표시 */}
+                    {audioRecorder.isRecording && (
+                      <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" title="녹음 중"></div>
+                    )}
+                    <div>
+                      <h3 className="font-bold text-lg text-white">{currentActing.patientName}</h3>
+                      <p className="text-xs text-gray-400">
+                        {currentActing.actingType}
+                        {audioRecorder.isRecording && <span className="ml-2 text-red-400">● REC</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-2xl font-mono font-bold ${elapsedTime > 180 ? 'text-red-400' : 'text-white'}`}>
+                      {formatTime(elapsedTime)}
+                    </span>
+                    <p className="text-[10px] text-gray-500">경과</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <span className={`text-3xl font-mono font-bold ${elapsedTime > 180 ? 'text-red-600' : 'text-gray-800'}`}>
-                    {formatTime(elapsedTime)}
-                  </span>
-                  <p className="text-xs text-gray-500">경과</p>
-                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleCompleteActing(); }}
+                  className="w-full mt-3 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                >
+                  종료
+                </button>
               </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); handleCompleteActing(); }}
-                className="w-full mt-4 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors"
-              >
-                종료
-              </button>
-            </div>
-          ) : (
-            <p className="text-center text-gray-400 py-4">진행중인 액팅이 없습니다</p>
-          )}
-        </section>
+            ) : (
+              <p className="text-center text-gray-500 py-3 text-sm">진행중인 액팅이 없습니다</p>
+            )}
+          </section>
+        </div>
       </main>
 
       {/* 환자 차트 모달 */}

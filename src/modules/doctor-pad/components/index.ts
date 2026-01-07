@@ -1,0 +1,8 @@
+/**
+ * DoctorPad 컴포넌트 exports
+ */
+
+export { TodaySchedule } from './TodaySchedule';
+export { DoctorDashboard } from './DoctorDashboard';
+export { CompactPatientStatus } from './CompactPatientStatus';
+export { QuickChat } from './QuickChat';
