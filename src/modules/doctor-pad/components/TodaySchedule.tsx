@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import type { TodayReservation, TimeSlot } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface Props {
   doctorId: number;
@@ -133,23 +134,34 @@ export function TodaySchedule({ doctorId, doctorName, doctorColor, onPatientClic
     return curMinutes >= slotMinutes + 30;
   };
 
+  const { isDark } = useTheme();
+
+  // 테마별 스타일
+  const t = {
+    container: isDark ? 'bg-gray-800' : 'bg-white shadow-sm',
+    border: isDark ? 'border-gray-700' : 'border-gray-200',
+    text: isDark ? 'text-white' : 'text-gray-900',
+    textMuted: isDark ? 'text-gray-400' : 'text-gray-500',
+    slotBg: isDark ? 'bg-gray-700/50' : 'bg-gray-100',
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400">
-        <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-400 border-t-transparent" />
+      <div className={`flex items-center justify-center h-full ${t.textMuted}`}>
+        <div className={`animate-spin rounded-full h-6 w-6 border-2 ${isDark ? 'border-gray-400' : 'border-gray-300'} border-t-transparent`} />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-800 rounded-lg overflow-hidden">
+    <div className={`flex flex-col h-full ${t.container} rounded-lg overflow-hidden`}>
       {/* 헤더 */}
-      <div className="px-3 py-2 border-b border-gray-700 flex items-center justify-between">
+      <div className={`px-3 py-2 border-b ${t.border} flex items-center justify-between`}>
         <div className="flex items-center gap-2">
           <span className="text-sm">📅</span>
-          <span className="text-sm font-medium text-white">오늘 예약</span>
+          <span className={`text-sm font-medium ${t.text}`}>오늘 예약</span>
         </div>
-        <span className="text-xs text-gray-400">
+        <span className={`text-xs ${t.textMuted}`}>
           {reservations.length}건
         </span>
       </div>
@@ -167,16 +179,16 @@ export function TodaySchedule({ doctorId, doctorName, doctorColor, onPatientClic
               key={slotTime}
               ref={current ? currentTimeRef : undefined}
               className={`
-                flex border-b border-gray-700/50 min-h-[36px]
-                ${lunch ? 'bg-orange-900/20' : ''}
-                ${current ? 'bg-blue-900/30 border-l-2 border-l-blue-500' : ''}
+                flex border-b ${isDark ? 'border-gray-700/50' : 'border-gray-200'} min-h-[36px]
+                ${lunch ? (isDark ? 'bg-orange-900/20' : 'bg-orange-50') : ''}
+                ${current ? (isDark ? 'bg-blue-900/30' : 'bg-blue-50') + ' border-l-2 border-l-blue-500' : ''}
                 ${past && !current ? 'opacity-50' : ''}
               `}
             >
               {/* 시간 라벨 */}
               <div className={`
                 w-12 flex-shrink-0 px-2 py-1 text-xs font-mono
-                ${current ? 'text-blue-400 font-bold' : 'text-gray-500'}
+                ${current ? 'text-blue-500 font-bold' : t.textMuted}
               `}>
                 {slotTime}
               </div>
@@ -187,7 +199,7 @@ export function TodaySchedule({ doctorId, doctorName, doctorColor, onPatientClic
                   <div className="h-full flex items-center">
                     <div className={`
                       w-full h-[2px] rounded
-                      ${lunch ? 'bg-orange-800/50' : 'bg-gray-700/50'}
+                      ${lunch ? (isDark ? 'bg-orange-800/50' : 'bg-orange-200') : (isDark ? 'bg-gray-700/50' : 'bg-gray-200')}
                     `} />
                   </div>
                 ) : (
@@ -204,14 +216,14 @@ export function TodaySchedule({ doctorId, doctorName, doctorColor, onPatientClic
                           hover:brightness-110 transition-all
                         "
                         style={{
-                          backgroundColor: `${typeColor}30`,
+                          backgroundColor: `${typeColor}${isDark ? '30' : '20'}`,
                           borderLeft: `3px solid ${typeColor}`,
                           opacity: statusStyle.opacity,
                           textDecoration: statusStyle.decoration,
                         }}
                       >
                         <div className="flex items-center justify-between gap-1">
-                          <span className="font-medium text-white truncate">
+                          <span className={`font-medium ${t.text} truncate`}>
                             {reservation.patientName}
                           </span>
                           <span
@@ -222,7 +234,7 @@ export function TodaySchedule({ doctorId, doctorName, doctorColor, onPatientClic
                           </span>
                         </div>
                         {reservation.memo && (
-                          <div className="text-gray-400 text-[10px] truncate mt-0.5">
+                          <div className={`${t.textMuted} text-[10px] truncate mt-0.5`}>
                             {reservation.memo}
                           </div>
                         )}
@@ -237,18 +249,18 @@ export function TodaySchedule({ doctorId, doctorName, doctorColor, onPatientClic
       </div>
 
       {/* 범례 */}
-      <div className="px-3 py-2 border-t border-gray-700 flex gap-3 text-[10px]">
+      <div className={`px-3 py-2 border-t ${t.border} flex gap-3 text-[10px]`}>
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-green-500" />
-          <span className="text-gray-400">초진</span>
+          <span className={t.textMuted}>초진</span>
         </span>
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-blue-500" />
-          <span className="text-gray-400">재진</span>
+          <span className={t.textMuted}>재진</span>
         </span>
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-orange-500" />
-          <span className="text-gray-400">재초진</span>
+          <span className={t.textMuted}>재초진</span>
         </span>
       </div>
     </div>

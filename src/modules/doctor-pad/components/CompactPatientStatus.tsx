@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import type { TreatmentRoom } from '@modules/treatment/types';
 import type { CompactPatientInfo } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface Props {
   rooms: TreatmentRoom[];
@@ -35,9 +36,11 @@ function formatTime(seconds: number): string {
 function PatientStatusItem({
   info,
   onClick,
+  isDark,
 }: {
   info: CompactPatientInfo;
   onClick?: () => void;
+  isDark: boolean;
 }) {
   const [remaining, setRemaining] = useState(info.remainingSeconds);
 
@@ -61,36 +64,38 @@ function PatientStatusItem({
       onClick={onClick}
       className={`
         flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer
-        transition-all hover:bg-gray-700
-        ${isOvertime ? 'bg-red-900/30 border border-red-500/50' : 'bg-gray-800/50'}
+        transition-all ${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-200'}
+        ${isOvertime
+          ? 'bg-red-900/30 border border-red-500/50'
+          : isDark ? 'bg-gray-800/50' : 'bg-gray-100'}
       `}
     >
       {/* 치료실명 */}
-      <span className="text-xs text-gray-500 min-w-[48px]">
+      <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'} min-w-[48px]`}>
         {info.roomName}
       </span>
 
       {/* 구분선 */}
-      <span className="text-gray-600">·</span>
+      <span className={isDark ? 'text-gray-600' : 'text-gray-300'}>·</span>
 
       {/* 환자명 */}
-      <span className="text-sm font-medium text-white truncate min-w-[48px]">
+      <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'} truncate min-w-[48px]`}>
         {info.patientName}
       </span>
 
       {/* 구분선 */}
-      <span className="text-gray-600">·</span>
+      <span className={isDark ? 'text-gray-600' : 'text-gray-300'}>·</span>
 
       {/* 현재 치료 + 남은시간 */}
       <div className="flex items-center gap-1.5">
-        <span className="text-xs px-1.5 py-0.5 bg-teal-500/20 text-teal-400 rounded">
+        <span className="text-xs px-1.5 py-0.5 bg-teal-500/20 text-teal-500 rounded">
           {info.currentTreatment || '대기'}
         </span>
 
         {info.status === 'running' && (
           <span className={`
             text-xs font-mono
-            ${isOvertime ? 'text-red-400 animate-pulse' : isUrgent ? 'text-orange-400' : 'text-gray-400'}
+            ${isOvertime ? 'text-red-400 animate-pulse' : isUrgent ? 'text-orange-400' : isDark ? 'text-gray-400' : 'text-gray-500'}
           `}>
             {isOvertime ? '+' : ''}{formatTime(Math.abs(remaining))}
           </span>
@@ -101,6 +106,16 @@ function PatientStatusItem({
 }
 
 export function CompactPatientStatus({ rooms, doctorName, onPatientClick }: Props) {
+  const { isDark } = useTheme();
+
+  // 테마별 스타일
+  const t = {
+    container: isDark ? 'bg-gray-800' : 'bg-white shadow-sm',
+    border: isDark ? 'border-gray-700' : 'border-gray-200',
+    text: isDark ? 'text-white' : 'text-gray-900',
+    textMuted: isDark ? 'text-gray-500' : 'text-gray-400',
+  };
+
   // 내 환자만 필터링
   const myPatientRooms = rooms.filter(
     room => room.patientId && room.doctorName?.includes(doctorName.replace('원장', ''))
@@ -127,13 +142,13 @@ export function CompactPatientStatus({ rooms, doctorName, onPatientClick }: Prop
 
   if (patients.length === 0) {
     return (
-      <div className="bg-gray-800 rounded-lg p-3">
+      <div className={`${t.container} rounded-lg p-3`}>
         <div className="flex items-center gap-2 mb-2">
           <span className="text-sm">🏥</span>
-          <span className="text-sm font-medium text-white">내 환자 상태</span>
-          <span className="text-xs text-gray-500">(0)</span>
+          <span className={`text-sm font-medium ${t.text}`}>내 환자 상태</span>
+          <span className={`text-xs ${t.textMuted}`}>(0)</span>
         </div>
-        <div className="text-center text-gray-500 text-sm py-2">
+        <div className={`text-center ${t.textMuted} text-sm py-2`}>
           현재 치료 중인 환자가 없습니다
         </div>
       </div>
@@ -141,12 +156,12 @@ export function CompactPatientStatus({ rooms, doctorName, onPatientClick }: Prop
   }
 
   return (
-    <div className="bg-gray-800 rounded-lg overflow-hidden">
+    <div className={`${t.container} rounded-lg overflow-hidden`}>
       {/* 헤더 */}
-      <div className="px-3 py-2 border-b border-gray-700 flex items-center gap-2">
+      <div className={`px-3 py-2 border-b ${t.border} flex items-center gap-2`}>
         <span className="text-sm">🏥</span>
-        <span className="text-sm font-medium text-white">내 환자 상태</span>
-        <span className="text-xs text-gray-500">({patients.length})</span>
+        <span className={`text-sm font-medium ${t.text}`}>내 환자 상태</span>
+        <span className={`text-xs ${t.textMuted}`}>({patients.length})</span>
       </div>
 
       {/* 환자 목록 */}
@@ -156,6 +171,7 @@ export function CompactPatientStatus({ rooms, doctorName, onPatientClick }: Prop
             key={patient.roomId}
             info={patient}
             onClick={() => onPatientClick?.(patient.patientId, patient.roomId)}
+            isDark={isDark}
           />
         ))}
       </div>

@@ -6,3 +6,4 @@ export { TodaySchedule } from './TodaySchedule';
 export { DoctorDashboard } from './DoctorDashboard';
 export { CompactPatientStatus } from './CompactPatientStatus';
 export { QuickChat } from './QuickChat';
+export { ThemeToggle } from './ThemeToggle';

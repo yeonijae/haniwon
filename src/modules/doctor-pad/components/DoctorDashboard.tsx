@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import type { DashboardStats } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface Props {
   doctorId: number;
@@ -29,33 +30,35 @@ function StatCard({
   unit,
   icon,
   color = 'blue',
+  isDark,
 }: {
   label: string;
   value: string | number;
   unit?: string;
   icon: string;
   color?: 'blue' | 'green' | 'orange' | 'red' | 'purple' | 'gray';
+  isDark: boolean;
 }) {
   const colorStyles = {
-    blue: 'bg-blue-500/20 text-blue-400',
-    green: 'bg-green-500/20 text-green-400',
-    orange: 'bg-orange-500/20 text-orange-400',
-    red: 'bg-red-500/20 text-red-400',
-    purple: 'bg-purple-500/20 text-purple-400',
-    gray: 'bg-gray-500/20 text-gray-400',
+    blue: 'bg-blue-500/20 text-blue-500',
+    green: 'bg-green-500/20 text-green-500',
+    orange: 'bg-orange-500/20 text-orange-500',
+    red: 'bg-red-500/20 text-red-500',
+    purple: 'bg-purple-500/20 text-purple-500',
+    gray: 'bg-gray-500/20 text-gray-500',
   };
 
   return (
-    <div className="bg-gray-800/50 rounded-lg p-2 flex flex-col">
+    <div className={`${isDark ? 'bg-gray-800/50' : 'bg-gray-100'} rounded-lg p-2 flex flex-col`}>
       <div className="flex items-center gap-1.5 mb-1">
         <span className={`text-xs px-1.5 py-0.5 rounded ${colorStyles[color]}`}>
           {icon}
         </span>
-        <span className="text-[10px] text-gray-400">{label}</span>
+        <span className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{label}</span>
       </div>
       <div className="flex items-baseline gap-1">
-        <span className="text-lg font-bold text-white">{value}</span>
-        {unit && <span className="text-xs text-gray-500">{unit}</span>}
+        <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{value}</span>
+        {unit && <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{unit}</span>}
       </div>
     </div>
   );
@@ -138,14 +141,25 @@ export function DoctorDashboard({ doctorId, doctorName }: Props) {
     }
   };
 
+  const { isDark } = useTheme();
+
+  // 테마별 스타일
+  const t = {
+    container: isDark ? 'bg-gray-800' : 'bg-white shadow-sm',
+    border: isDark ? 'border-gray-700' : 'border-gray-200',
+    text: isDark ? 'text-white' : 'text-gray-900',
+    textMuted: isDark ? 'text-gray-500' : 'text-gray-400',
+    skeleton: isDark ? 'bg-gray-700' : 'bg-gray-200',
+  };
+
   if (loading) {
     return (
-      <div className="bg-gray-800 rounded-lg p-4">
+      <div className={`${t.container} rounded-lg p-4`}>
         <div className="animate-pulse space-y-3">
-          <div className="h-4 bg-gray-700 rounded w-24" />
+          <div className={`h-4 ${t.skeleton} rounded w-24`} />
           <div className="grid grid-cols-4 gap-2">
             {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-16 bg-gray-700 rounded" />
+              <div key={i} className={`h-16 ${t.skeleton} rounded`} />
             ))}
           </div>
         </div>
@@ -154,47 +168,51 @@ export function DoctorDashboard({ doctorId, doctorName }: Props) {
   }
 
   return (
-    <div className="bg-gray-800 rounded-lg overflow-hidden">
+    <div className={`${t.container} rounded-lg overflow-hidden`}>
       {/* 헤더 */}
-      <div className="px-3 py-2 border-b border-gray-700 flex items-center gap-2">
+      <div className={`px-3 py-2 border-b ${t.border} flex items-center gap-2`}>
         <span className="text-sm">📊</span>
-        <span className="text-sm font-medium text-white">오늘의 대시보드</span>
+        <span className={`text-sm font-medium ${t.text}`}>오늘의 대시보드</span>
       </div>
 
       {/* 환자 통계 */}
       <div className="p-3">
-        <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">환자</div>
+        <div className={`text-[10px] ${t.textMuted} uppercase tracking-wider mb-2`}>환자</div>
         <div className="grid grid-cols-4 gap-2">
           <StatCard
             label="환자수"
             value={formatNumber(stats.totalPatients)}
             icon="👤"
             color="blue"
+            isDark={isDark}
           />
           <StatCard
             label="예약"
             value={formatNumber(stats.reservedPatients)}
             icon="📅"
             color="green"
+            isDark={isDark}
           />
           <StatCard
             label="현장예약"
             value={formatNumber(stats.walkInPatients)}
             icon="🚶"
             color="orange"
+            isDark={isDark}
           />
           <StatCard
             label="취소"
             value={formatNumber(stats.canceledPatients)}
             icon="❌"
             color="red"
+            isDark={isDark}
           />
         </div>
       </div>
 
       {/* 매출/생산성 통계 */}
       <div className="px-3 pb-3">
-        <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">생산성</div>
+        <div className={`text-[10px] ${t.textMuted} uppercase tracking-wider mb-2`}>생산성</div>
         <div className="grid grid-cols-3 gap-2">
           <StatCard
             label="객단가"
@@ -202,12 +220,14 @@ export function DoctorDashboard({ doctorId, doctorName }: Props) {
             unit="원"
             icon="💰"
             color="purple"
+            isDark={isDark}
           />
           <StatCard
             label="액팅시간"
             value={formatMinutes(stats.totalActingMinutes)}
             icon="⏱️"
             color="blue"
+            isDark={isDark}
           />
           <StatCard
             label="생산성"
@@ -215,6 +235,7 @@ export function DoctorDashboard({ doctorId, doctorName }: Props) {
             unit="원/분"
             icon="📈"
             color="green"
+            isDark={isDark}
           />
         </div>
       </div>

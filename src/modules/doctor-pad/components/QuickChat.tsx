@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import type { ChatMessage, QuickMessage } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface Props {
   userId: number;
@@ -152,21 +153,35 @@ export function QuickChat({
     }
   };
 
+  const { isDark } = useTheme();
+
+  // 테마별 스타일
+  const t = {
+    container: isDark ? 'bg-gray-800' : 'bg-white shadow-sm',
+    border: isDark ? 'border-gray-700' : 'border-gray-200',
+    text: isDark ? 'text-white' : 'text-gray-900',
+    textMuted: isDark ? 'text-gray-500' : 'text-gray-400',
+    hover: isDark ? 'hover:bg-gray-700/50' : 'hover:bg-gray-100',
+    msgBg: isDark ? 'bg-gray-900/50' : 'bg-gray-50',
+    otherBubble: isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-800',
+    quickBtn: isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300',
+  };
+
   return (
-    <div className="bg-gray-800 rounded-lg overflow-hidden flex flex-col">
+    <div className={`${t.container} rounded-lg overflow-hidden flex flex-col`}>
       {/* 헤더 */}
       <div
-        className="px-3 py-2 border-b border-gray-700 flex items-center justify-between cursor-pointer hover:bg-gray-700/50"
+        className={`px-3 py-2 border-b ${t.border} flex items-center justify-between cursor-pointer ${t.hover}`}
         onClick={() => setCollapsed(!collapsed)}
       >
         <div className="flex items-center gap-2">
           <span className="text-sm">💬</span>
-          <span className="text-sm font-medium text-white">원내채팅</span>
+          <span className={`text-sm font-medium ${t.text}`}>원내채팅</span>
           {messages.length > 0 && (
             <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
           )}
         </div>
-        <button className="text-gray-400 text-xs hover:text-white">
+        <button className={`${t.textMuted} text-xs ${isDark ? 'hover:text-white' : 'hover:text-gray-900'}`}>
           {collapsed ? '▼' : '▲'}
         </button>
       </div>
@@ -174,9 +189,9 @@ export function QuickChat({
       {!collapsed && (
         <>
           {/* 메시지 목록 */}
-          <div className="flex-1 p-2 space-y-2 max-h-[140px] overflow-y-auto bg-gray-900/50">
+          <div className={`flex-1 p-2 space-y-2 max-h-[140px] overflow-y-auto ${t.msgBg}`}>
             {messages.length === 0 ? (
-              <div className="text-center text-gray-500 text-xs py-4">
+              <div className={`text-center ${t.textMuted} text-xs py-4`}>
                 메시지가 없습니다
               </div>
             ) : (
@@ -188,10 +203,10 @@ export function QuickChat({
                   {/* 발신자 + 시간 */}
                   {!msg.isMe && (
                     <div className="flex items-center gap-1 mb-0.5">
-                      <span className={`text-[10px] ${ROLE_LABELS[msg.senderRole]?.color || 'text-gray-400'}`}>
+                      <span className={`text-[10px] ${ROLE_LABELS[msg.senderRole]?.color || t.textMuted}`}>
                         {msg.senderName}
                       </span>
-                      <span className="text-[10px] text-gray-600">
+                      <span className={`text-[10px] ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
                         {formatTime(msg.timestamp)}
                       </span>
                     </div>
@@ -203,7 +218,7 @@ export function QuickChat({
                       max-w-[85%] px-2.5 py-1.5 rounded-lg text-xs
                       ${msg.isMe
                         ? 'bg-blue-600 text-white rounded-br-none'
-                        : 'bg-gray-700 text-gray-200 rounded-bl-none'
+                        : `${t.otherBubble} rounded-bl-none`
                       }
                     `}
                   >
@@ -212,7 +227,7 @@ export function QuickChat({
 
                   {/* 내 메시지 시간 */}
                   {msg.isMe && (
-                    <span className="text-[10px] text-gray-600 mt-0.5">
+                    <span className={`text-[10px] ${isDark ? 'text-gray-600' : 'text-gray-400'} mt-0.5`}>
                       {formatTime(msg.timestamp)}
                     </span>
                   )}
@@ -223,7 +238,7 @@ export function QuickChat({
           </div>
 
           {/* 빠른 전송 버튼 */}
-          <div className="p-2 border-t border-gray-700 flex flex-wrap gap-1.5">
+          <div className={`p-2 border-t ${t.border} flex flex-wrap gap-1.5`}>
             {DEFAULT_QUICK_MESSAGES.map((qm) => (
               <button
                 key={qm.id}
@@ -233,7 +248,7 @@ export function QuickChat({
                   px-2 py-1 rounded text-xs font-medium transition-all
                   ${sending === qm.id
                     ? 'bg-green-600 text-white'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
+                    : t.quickBtn
                   }
                 `}
               >
