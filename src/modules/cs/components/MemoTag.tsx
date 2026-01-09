@@ -52,16 +52,18 @@ export const MemoTagList: React.FC<MemoTagListProps> = ({ items, onTagClick, onA
       {items.map((item, idx) => (
         <MemoTag key={`${item.type}-${idx}`} item={item} onClick={onTagClick} />
       ))}
-      <span
-        className="memo-tag memo-tag--add"
-        onClick={(e) => {
-          e.stopPropagation();
-          onAddClick?.();
-        }}
-        title="메모 추가"
-      >
-        +메모
-      </span>
+      {onAddClick && (
+        <span
+          className="memo-tag memo-tag--add"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAddClick();
+          }}
+          title="메모 추가"
+        >
+          +메모
+        </span>
+      )}
     </div>
   );
 };
