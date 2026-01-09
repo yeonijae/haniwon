@@ -14,6 +14,8 @@ import {
   DataTable,
   Pagination,
   SqlQueryPanel,
+  SchemaEditorModal,
+  TableCreateModal,
 } from './components';
 import { getColumns, getTableData, getTableCount } from './lib/api';
 import type { DbType, ColumnInfo, QueryResult, SortInfo, Pagination as PaginationType } from './types';
@@ -36,6 +38,10 @@ function DbAdminContent() {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [loading, setLoading] = useState(false);
   const [columnsLoading, setColumnsLoading] = useState(false);
+  const [showSchemaEditor, setShowSchemaEditor] = useState(false);
+  const [showCreateTable, setShowCreateTable] = useState(false);
+  const [schemaEditTable, setSchemaEditTable] = useState<string | null>(null);
+  const [tablesRefreshKey, setTablesRefreshKey] = useState(0);
 
   // DB Type 변경 시 초기화
   useEffect(() => {
@@ -149,6 +155,20 @@ function DbAdminContent() {
     setPagination((prev) => ({ ...prev, pageSize, page: 1 }));
   };
 
+  // 사이드바에서 스키마 편집 클릭 시
+  const handleSchemaEditFromSidebar = (tableName: string) => {
+    setSchemaEditTable(tableName);
+  };
+
+  // 테이블 생성 완료 후
+  const handleTableCreated = (tableName: string) => {
+    setTablesRefreshKey((prev) => prev + 1);
+    setSelectedTable(tableName);
+  };
+
+  // 스키마 에디터에 사용할 테이블명 (사이드바에서 열었을 때 vs 메인에서 열었을 때)
+  const schemaEditorTableName = schemaEditTable || selectedTable;
+
   return (
     <div className={`db-admin ${theme}`}>
       <div className="db-admin-layout">
@@ -161,10 +181,13 @@ function DbAdminContent() {
             onDatabaseChange={setDatabase}
           />
           <TableList
+            key={tablesRefreshKey}
             dbType={dbType}
             database={database}
             selectedTable={selectedTable}
             onTableSelect={handleTableSelect}
+            onCreateTable={() => setShowCreateTable(true)}
+            onSchemaEdit={handleSchemaEditFromSidebar}
           />
         </aside>
 
@@ -213,7 +236,18 @@ function DbAdminContent() {
               <>
                 {/* Column Schema */}
                 {selectedTable && (
-                  <ColumnSchema columns={columns} loading={columnsLoading} />
+                  <div className="column-schema-wrapper">
+                    <ColumnSchema columns={columns} loading={columnsLoading} />
+                    {dbType === 'postgres' && (
+                      <button
+                        className="schema-edit-btn"
+                        onClick={() => setShowSchemaEditor(true)}
+                        disabled={columnsLoading}
+                      >
+                        스키마 편집
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 {/* Search Builder */}
@@ -232,6 +266,10 @@ function DbAdminContent() {
                   sort={sort}
                   onSort={handleSort}
                   loading={loading}
+                  dbType={dbType}
+                  tableName={selectedTable}
+                  columnInfo={columns}
+                  onDataUpdate={loadData}
                 />
 
                 {/* Pagination */}
@@ -250,6 +288,43 @@ function DbAdminContent() {
           </div>
         </main>
       </div>
+
+      {/* Schema Editor Modal (메인 영역에서 열었을 때) */}
+      {showSchemaEditor && selectedTable && (
+        <SchemaEditorModal
+          tableName={selectedTable}
+          columns={columns}
+          onClose={() => setShowSchemaEditor(false)}
+          onSchemaChange={() => {
+            loadColumns();
+            loadData();
+          }}
+        />
+      )}
+
+      {/* Schema Editor Modal (사이드바에서 열었을 때) */}
+      {schemaEditTable && (
+        <SchemaEditorModal
+          tableName={schemaEditTable}
+          columns={schemaEditTable === selectedTable ? columns : []}
+          onClose={() => setSchemaEditTable(null)}
+          onSchemaChange={() => {
+            if (schemaEditTable === selectedTable) {
+              loadColumns();
+              loadData();
+            }
+            setTablesRefreshKey((prev) => prev + 1);
+          }}
+        />
+      )}
+
+      {/* Table Create Modal */}
+      {showCreateTable && (
+        <TableCreateModal
+          onClose={() => setShowCreateTable(false)}
+          onTableCreated={handleTableCreated}
+        />
+      )}
     </div>
   );
 }

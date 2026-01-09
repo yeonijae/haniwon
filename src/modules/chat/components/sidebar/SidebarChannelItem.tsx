@@ -114,10 +114,9 @@ export default function SidebarChannelItem({
       onClick={onSelect}
       onContextMenu={handleContextMenu}
       className={clsx(
-        'w-full px-2 py-1.5 rounded text-left text-sm flex items-center gap-2',
+        'w-full px-2 py-1.5 rounded text-left text-sm flex items-center gap-1',
         'hover:bg-gray-700 cursor-grab active:cursor-grabbing',
         isSelected && 'bg-gray-700',
-        isPinned && 'border-l-2 border-blue-400',
         hasUnread && !isSelected && 'text-white font-semibold'
       )}
     >
@@ -131,7 +130,7 @@ export default function SidebarChannelItem({
       )}
       <span className="truncate flex-1">{channel.name || (isDirectMessage ? 'DM' : '이름 없음')}</span>
       {hasUnread && (
-        <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center flex-shrink-0">
+        <span className="bg-red-400/80 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center flex-shrink-0">
           {channel.unread_count > 99 ? '99+' : channel.unread_count}
         </span>
       )}

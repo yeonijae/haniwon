@@ -2,14 +2,19 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api';
 import { getAbsoluteUrl } from '../../stores/serverConfigStore';
+import { useAuthStore } from '../../stores/authStore';
 
 interface User {
   id: string;
-  email: string;
   display_name: string;
   avatar_url: string | null;
   avatar_color: string | null;
   status: string;
+}
+
+interface ChannelMember {
+  id: string;
+  role: string;
 }
 
 interface InviteMemberModalProps {
@@ -23,16 +28,44 @@ export default function InviteMemberModal({ isOpen, onClose, channelId, channelN
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuthStore();
 
-  const { data: users = [], isLoading } = useQuery<User[]>({
-    queryKey: ['users', searchQuery],
+  // 채널 멤버 목록 조회 (이미 있는 멤버 제외 + 현재 유저 role 확인)
+  const { data: channelMembers = [] } = useQuery<ChannelMember[]>({
+    queryKey: ['channel-members', channelId],
     queryFn: async () => {
-      if (!searchQuery.trim()) return [];
-      const response = await api.get(`/users?q=${encodeURIComponent(searchQuery)}`);
+      const response = await api.get(`/channels/${channelId}/members`);
       return response.data.data;
     },
-    enabled: searchQuery.length > 0,
+    enabled: isOpen,
   });
+
+  // 현재 유저가 admin인지 확인
+  const currentUserRole = channelMembers.find(m => m.id === currentUser?.id)?.role;
+  const isAdmin = currentUserRole === 'admin';
+
+  // 모든 사용자 목록 조회
+  const { data: allUsers = [], isLoading } = useQuery<User[]>({
+    queryKey: ['all-users'],
+    queryFn: async () => {
+      const response = await api.get('/users');
+      return response.data.data;
+    },
+    enabled: isOpen,
+  });
+
+  // 이미 채널에 있는 멤버 ID 목록
+  const existingMemberIds = new Set(channelMembers.map(m => m.id));
+
+  // 초대 가능한 사용자 (채널에 없는 사용자만)
+  const availableUsers = allUsers.filter(u => !existingMemberIds.has(u.id));
+
+  // 검색 필터 적용
+  const filteredUsers = searchQuery.trim()
+    ? availableUsers.filter(u =>
+        u.display_name?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : availableUsers;
 
   const inviteMembers = useMutation({
     mutationFn: async () => {
@@ -106,14 +139,18 @@ export default function InviteMemberModal({ isOpen, onClose, channelId, channelN
         )}
 
         <div className="max-h-60 overflow-y-auto">
-          {isLoading ? (
-            <div className="p-4 text-center text-gray-500">검색 중...</div>
-          ) : users.length === 0 ? (
+          {!isAdmin ? (
             <div className="p-4 text-center text-gray-500">
-              {searchQuery ? '검색 결과가 없습니다' : '사용자 이름을 입력하세요'}
+              채널 관리자만 멤버를 초대할 수 있습니다.
+            </div>
+          ) : isLoading ? (
+            <div className="p-4 text-center text-gray-500">로딩 중...</div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="p-4 text-center text-gray-500">
+              {searchQuery ? '검색 결과가 없습니다' : '초대 가능한 사용자가 없습니다'}
             </div>
           ) : (
-            users.map((user) => {
+            filteredUsers.map((user) => {
               const isSelected = selectedUsers.some(u => u.id === user.id);
               return (
                 <button
@@ -137,7 +174,6 @@ export default function InviteMemberModal({ isOpen, onClose, channelId, channelN
                   </div>
                   <div className="flex-1 text-left">
                     <div className="font-medium">{user.display_name}</div>
-                    <div className="text-sm text-gray-500">{user.email}</div>
                   </div>
                   {isSelected && (
                     <span className="text-blue-500 text-xl">✓</span>
@@ -151,12 +187,14 @@ export default function InviteMemberModal({ isOpen, onClose, channelId, channelN
         <div className="p-4 border-t">
           <button
             onClick={handleInvite}
-            disabled={selectedUsers.length === 0 || inviteMembers.isPending}
+            disabled={!isAdmin || selectedUsers.length === 0 || inviteMembers.isPending}
             className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
           >
             {inviteMembers.isPending
               ? '초대 중...'
-              : `${selectedUsers.length}명 초대하기`}
+              : selectedUsers.length > 0
+                ? `${selectedUsers.length}명 초대하기`
+                : '초대할 멤버를 선택하세요'}
           </button>
         </div>
       </div>

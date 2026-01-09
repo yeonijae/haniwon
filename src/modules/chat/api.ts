@@ -77,6 +77,8 @@ export interface ChannelLayoutData {
   pinnedChannels: string[];
   gridSize: number;
   layoutMode: string;
+  zoom?: number; // 50 ~ 150 (%)
+  fontSize?: number; // 8 ~ 20 (px)
 }
 
 export const channelLayoutApi = {

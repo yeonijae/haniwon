@@ -1,4 +1,4 @@
-import { KeyboardEvent, ClipboardEvent, useRef, useState, useEffect } from 'react';
+import { KeyboardEvent, ClipboardEvent, useRef, useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 
 interface MessageInputProps {
   value: string;
@@ -8,9 +8,14 @@ interface MessageInputProps {
   pastedImage?: File | null;
   onRemoveImage?: () => void;
   placeholder?: string;
+  shortcutNumber?: number; // 1-9 for Ctrl+N shortcut hint
 }
 
-export default function MessageInput({
+export interface MessageInputHandle {
+  focus: () => void;
+}
+
+const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
   value,
   onChange,
   onSend,
@@ -18,8 +23,15 @@ export default function MessageInput({
   pastedImage,
   onRemoveImage,
   placeholder = '메시지를 입력하세요...',
-}: MessageInputProps) {
+  shortcutNumber,
+}, ref) => {
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      inputRef.current?.focus();
+    },
+  }));
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   useEffect(() => {
@@ -108,6 +120,14 @@ export default function MessageInput({
       )}
 
       <div className="flex items-end gap-2">
+        {/* Shortcut hint */}
+        {shortcutNumber && shortcutNumber <= 9 && (
+          <div className="flex-shrink-0 pb-2">
+            <span className="text-[10px] text-gray-400 whitespace-nowrap">
+              <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-300 rounded text-[9px] font-mono">Ctrl+{shortcutNumber}</kbd>
+            </span>
+          </div>
+        )}
         <textarea
           ref={inputRef}
           value={value}
@@ -134,4 +154,8 @@ export default function MessageInput({
       </div>
     </div>
   );
-}
+});
+
+MessageInput.displayName = 'MessageInput';
+
+export default MessageInput;

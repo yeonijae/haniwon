@@ -16,9 +16,9 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import ChatView from '../chat/ChatView';
+import ChatView, { ChatViewHandle } from '../chat/ChatView';
 import ContextMenu, { ContextMenuItem } from '../common/ContextMenu';
-import { useState } from 'react';
+import { useState, useRef, forwardRef, useImperativeHandle } from 'react';
 
 type GridSize = 2 | 3 | 4 | 6 | 8 | 9;
 type LayoutMode = 'grid' | 'vertical';
@@ -27,10 +27,15 @@ interface MainPanelProps {
   pinnedChannels: string[];
   gridSize: GridSize;
   layoutMode: LayoutMode;
+  targetMessageId?: string | null;
+  targetChannelId?: string | null;
   onReorder: (channels: string[]) => void;
   onUnpin: (channelId: string) => void;
   onGridSizeChange: (size: GridSize) => void;
   onLayoutModeChange: (mode: LayoutMode) => void;
+  onTargetMessageReached?: () => void;
+  selectedChannelId?: string | null;
+  onSelectChannel?: (channelId: string) => void;
 }
 
 const GRID_SIZES: GridSize[] = [2, 3, 4, 6, 8, 9];
@@ -50,10 +55,16 @@ const getGridClass = (size: GridSize) => {
 
 interface SortableChatItemProps {
   channelId: string;
+  index: number;
+  targetMessageId?: string | null;
   onUnpin: (channelId: string) => void;
+  onTargetMessageReached?: () => void;
+  chatViewRef?: React.RefObject<ChatViewHandle>;
+  isSelected: boolean;
+  onSelect: (channelId: string) => void;
 }
 
-function SortableChatItem({ channelId, onUnpin }: SortableChatItemProps) {
+function SortableChatItem({ channelId, index, targetMessageId, onUnpin, onTargetMessageReached, chatViewRef, isSelected, onSelect }: SortableChatItemProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const {
@@ -84,23 +95,29 @@ function SortableChatItem({ channelId, onUnpin }: SortableChatItemProps) {
     },
   ];
 
+  // 단축키 번호 (1-9)
+  const shortcutNumber = index + 1;
+  const showShortcut = shortcutNumber <= 9;
+
   return (
     <>
       <div
         ref={setNodeRef}
         style={style}
-        className="bg-white rounded-lg overflow-hidden shadow-sm border flex flex-col"
+        className={`bg-white rounded-lg overflow-hidden shadow-sm border flex flex-col relative ${isSelected ? 'ring-2 ring-blue-400' : ''}`}
         onContextMenu={handleContextMenu}
+        onClick={() => onSelect(channelId)}
       >
-        {/* Drag Handle */}
-        <div
-          {...attributes}
-          {...listeners}
-          className="h-2 bg-gray-200 hover:bg-gray-300 cursor-grab active:cursor-grabbing flex-shrink-0"
-          title="드래그하여 순서 변경"
-        />
         <div className="flex-1 flex flex-col overflow-hidden">
-          <ChatView channelId={channelId} />
+          <ChatView
+            ref={chatViewRef}
+            channelId={channelId}
+            targetMessageId={targetMessageId}
+            onTargetMessageReached={onTargetMessageReached}
+            shortcutNumber={showShortcut ? shortcutNumber : undefined}
+            dragHandleProps={{ ...attributes, ...listeners }}
+            isSelected={isSelected}
+          />
         </div>
       </div>
 
@@ -124,15 +141,42 @@ function EmptyCell() {
   );
 }
 
-export default function MainPanel({
+export interface MainPanelHandle {
+  focusChannel: (index: number) => void;
+}
+
+const MainPanel = forwardRef<MainPanelHandle, MainPanelProps>(({
   pinnedChannels,
   gridSize,
   layoutMode,
+  targetMessageId,
+  targetChannelId,
   onReorder,
   onUnpin,
   onGridSizeChange,
   onLayoutModeChange,
-}: MainPanelProps) {
+  onTargetMessageReached,
+  selectedChannelId,
+  onSelectChannel,
+}, ref) => {
+  // ChatView refs for each pinned channel (up to 9)
+  const chatViewRefs = useRef<Array<React.RefObject<ChatViewHandle>>>([]);
+
+  // Ensure we have enough refs
+  if (chatViewRefs.current.length < 9) {
+    for (let i = chatViewRefs.current.length; i < 9; i++) {
+      chatViewRefs.current.push({ current: null });
+    }
+  }
+
+  useImperativeHandle(ref, () => ({
+    focusChannel: (index: number) => {
+      if (index >= 0 && index < pinnedChannels.length && index < 9) {
+        chatViewRefs.current[index]?.current?.focusInput();
+      }
+    },
+  }));
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -233,7 +277,7 @@ export default function MainPanel({
       </div>
 
       {/* Content */}
-      <div className="flex-1 p-2 overflow-auto">
+      <div className="flex-1 p-1 overflow-auto">
         {pinnedChannels.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <div className="text-center text-gray-500">
@@ -255,12 +299,18 @@ export default function MainPanel({
               strategy={layoutMode === 'grid' ? rectSortingStrategy : verticalListSortingStrategy}
             >
               {layoutMode === 'grid' ? (
-                <div className={`grid ${getGridClass(gridSize)} gap-2 h-full`}>
-                  {displayChannels.map((channelId) => (
+                <div className={`grid ${getGridClass(gridSize)} gap-1 h-full`}>
+                  {displayChannels.map((channelId, index) => (
                     <SortableChatItem
                       key={channelId}
                       channelId={channelId}
+                      index={index}
+                      targetMessageId={targetChannelId === channelId ? targetMessageId : null}
                       onUnpin={onUnpin}
+                      onTargetMessageReached={onTargetMessageReached}
+                      chatViewRef={chatViewRefs.current[index]}
+                      isSelected={selectedChannelId === channelId}
+                      onSelect={onSelectChannel || (() => {})}
                     />
                   ))}
                   {emptyCells.map((_, index) => (
@@ -269,14 +319,20 @@ export default function MainPanel({
                 </div>
               ) : (
                 <div
-                  className="grid gap-2 h-full"
+                  className="grid gap-1 h-full"
                   style={{ gridTemplateColumns: `repeat(${Math.min(displayChannels.length, gridSize)}, 1fr)` }}
                 >
-                  {displayChannels.map((channelId) => (
+                  {displayChannels.map((channelId, index) => (
                     <SortableChatItem
                       key={channelId}
                       channelId={channelId}
+                      index={index}
+                      targetMessageId={targetChannelId === channelId ? targetMessageId : null}
                       onUnpin={onUnpin}
+                      onTargetMessageReached={onTargetMessageReached}
+                      chatViewRef={chatViewRefs.current[index]}
+                      isSelected={selectedChannelId === channelId}
+                      onSelect={onSelectChannel || (() => {})}
                     />
                   ))}
                 </div>
@@ -287,4 +343,8 @@ export default function MainPanel({
       </div>
     </div>
   );
-}
+});
+
+MainPanel.displayName = 'MainPanel';
+
+export default MainPanel;

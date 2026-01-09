@@ -601,3 +601,186 @@ export function generateMemoSummary(data: {
 
   return parts.join(', ');
 }
+
+// ============================================
+// 메모 요약 태그 (클릭 가능한 개별 항목)
+// ============================================
+
+export type MemoTagType =
+  | 'yakchim-membership'    // 약침 멤버십 사용
+  | 'yakchim-package'       // 약침 패키지 사용
+  | 'treatment-package'     // 시술패키지
+  | 'herbal-package'        // 한약패키지 (선결)
+  | 'point-used'            // 포인트 사용
+  | 'point-earned'          // 포인트 적립
+  | 'membership'            // 멤버십 등록정보
+  | 'herbal-dispensing'     // 한약 출납
+  | 'gift-dispensing'       // 증정품 출납
+  | 'document'              // 서류발급
+  | 'medicine';             // 상비약
+
+export interface MemoSummaryItem {
+  type: MemoTagType;
+  label: string;
+  data: unknown;  // 타입별 원본 데이터
+}
+
+// 메모 요약 항목 배열 생성 (클릭 가능한 태그용)
+export function generateMemoSummaryItems(data: {
+  treatmentPackages?: TreatmentPackage[];
+  herbalPackages?: HerbalPackage[];
+  pointUsed?: number;
+  pointEarned?: number;
+  membership?: Membership;
+  herbalDispensings?: HerbalDispensing[];
+  giftDispensings?: GiftDispensing[];
+  documentIssues?: DocumentIssue[];
+  medicineUsages?: MedicineUsage[];
+  yakchimUsageRecords?: YakchimUsageRecord[];
+}): MemoSummaryItem[] {
+  const items: MemoSummaryItem[] = [];
+
+  // 약침 사용 기록 (멤버십/패키지)
+  if (data.yakchimUsageRecords && data.yakchimUsageRecords.length > 0) {
+    // 멤버십 사용: 같은 source별로 그룹화
+    const membershipUsage = new Map<string, { count: number; records: YakchimUsageRecord[] }>();
+    const packageUsage: Array<{ name: string; before: number; used: number; after: number; record: YakchimUsageRecord }> = [];
+
+    data.yakchimUsageRecords.forEach(record => {
+      if (record.source_type === 'membership') {
+        const shortName = record.source_name.replace('멤버십', '멤');
+        const existing = membershipUsage.get(shortName);
+        if (existing) {
+          existing.count++;
+          existing.records.push(record);
+        } else {
+          membershipUsage.set(shortName, { count: 1, records: [record] });
+        }
+      } else if (record.source_type === 'package') {
+        const before = record.remaining_after + 1;
+        packageUsage.push({
+          name: record.source_name,
+          before,
+          used: 1,
+          after: record.remaining_after,
+          record,
+        });
+      }
+    });
+
+    // 멤버십 사용 태그
+    membershipUsage.forEach((usage, name) => {
+      items.push({
+        type: 'yakchim-membership',
+        label: `${name}${usage.count}`,
+        data: usage.records,
+      });
+    });
+
+    // 패키지 사용 태그
+    packageUsage.forEach(pkg => {
+      items.push({
+        type: 'yakchim-package',
+        label: `${pkg.name}[${pkg.before}-${pkg.used}=${pkg.after}]`,
+        data: pkg.record,
+      });
+    });
+  }
+
+  // 시술패키지
+  data.treatmentPackages?.forEach(pkg => {
+    if (pkg.status === 'active') {
+      const includesText = pkg.includes ? `(${pkg.includes})` : '';
+      items.push({
+        type: 'treatment-package',
+        label: `${pkg.package_name}[${pkg.total_count}-${pkg.used_count}=${pkg.remaining_count}]${includesText}`,
+        data: pkg,
+      });
+    } else if (pkg.status === 'completed') {
+      items.push({
+        type: 'treatment-package',
+        label: `${pkg.package_name}[완료]`,
+        data: pkg,
+      });
+    }
+  });
+
+  // 한약패키지 (선결)
+  data.herbalPackages?.forEach(pkg => {
+    if (pkg.status === 'active') {
+      items.push({
+        type: 'herbal-package',
+        label: `선결(${pkg.total_count}-${pkg.used_count})`,
+        data: pkg,
+      });
+    }
+  });
+
+  // 포인트 사용
+  if (data.pointUsed && data.pointUsed > 0) {
+    items.push({
+      type: 'point-used',
+      label: `포인트-${data.pointUsed.toLocaleString()}`,
+      data: { amount: data.pointUsed },
+    });
+  }
+
+  // 포인트 적립
+  if (data.pointEarned && data.pointEarned > 0) {
+    items.push({
+      type: 'point-earned',
+      label: `포인트+${data.pointEarned.toLocaleString()}`,
+      data: { amount: data.pointEarned },
+    });
+  }
+
+  // 멤버십 등록정보
+  if (data.membership && data.membership.status === 'active') {
+    const expireDate = data.membership.expire_date.slice(2, 7).replace('-', '/');
+    items.push({
+      type: 'membership',
+      label: `${data.membership.membership_type} ${data.membership.quantity}개 (${expireDate})`,
+      data: data.membership,
+    });
+  }
+
+  // 한약 출납
+  data.herbalDispensings?.forEach(disp => {
+    const typeLabel = disp.dispensing_type === 'gift' ? '증정>' : '한약>';
+    items.push({
+      type: 'herbal-dispensing',
+      label: `${typeLabel}${disp.herbal_name}(${disp.quantity})`,
+      data: disp,
+    });
+  });
+
+  // 증정품 출납
+  data.giftDispensings?.forEach(disp => {
+    const reasonText = disp.reason ? ` ${disp.reason}` : '';
+    items.push({
+      type: 'gift-dispensing',
+      label: `증정>${disp.item_name}(${disp.quantity})${reasonText}`,
+      data: disp,
+    });
+  });
+
+  // 서류발급
+  data.documentIssues?.forEach(doc => {
+    items.push({
+      type: 'document',
+      label: `서류>${doc.document_type}${doc.quantity > 1 ? ` ${doc.quantity}매` : ''}`,
+      data: doc,
+    });
+  });
+
+  // 상비약 사용
+  data.medicineUsages?.forEach(med => {
+    items.push({
+      type: 'medicine',
+      label: `${med.medicine_name}(${med.quantity})`,
+      data: med,
+    });
+  });
+
+  return items;
+}

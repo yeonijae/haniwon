@@ -23,9 +23,11 @@ import {
   type ReceiptMemo,
   type ReservationStatus,
   type ReceiptRecordFilter,
+  type MemoSummaryItem,
   RESERVATION_STATUS_LABELS,
-  generateMemoSummary,
+  generateMemoSummaryItems,
 } from '../types';
+import { MemoTagList } from './MemoTag';
 import { ReservationStep1Modal, type ReservationDraft, type InitialPatient } from '../../reservation/components/ReservationStep1Modal';
 import { QuickReservationModal } from './QuickReservationModal';
 import { PatientReceiptHistoryModal } from './PatientReceiptHistoryModal';
@@ -139,7 +141,7 @@ interface ExpandedReceiptItem extends ReceiptHistoryItem {
   // UI 상태
   isExpanded: boolean;
   isLoading: boolean;
-  memoSummary: string;
+  memoItems: MemoSummaryItem[];  // 클릭 가능한 메모 태그 배열
   // 기록 완료 여부
   isCompleted: boolean;
   // 빠른 메모 버튼 상태
@@ -433,7 +435,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
         nextReservation: null,
         isExpanded: false,
         isLoading: false,
-        memoSummary: '',
+        memoItems: [],
         isCompleted: completedReceiptIds.has(r.id),
         hasYakchimMemo: false,
         hasHerbalMemo: false,
@@ -509,7 +511,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
       const data = memoDataMap.get(item.patient_id);
 
       if (data) {
-        const summary = generateMemoSummary({
+        const memoItems = generateMemoSummaryItems({
           treatmentPackages: data.treatmentPackages,
           herbalPackages: data.herbalPackages,
           pointUsed: data.todayPointUsed,
@@ -551,7 +553,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
 
         return {
           patient_id: item.patient_id,
-          memoSummary: summary,
+          memoItems,
           reservationStatus: data.memo?.reservation_status || 'none',
           reservationDate: data.memo?.reservation_date,
           nextReservation,
@@ -569,7 +571,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
 
         return {
           patient_id: item.patient_id,
-          memoSummary: '',
+          memoItems: [] as MemoSummaryItem[],
           reservationStatus: 'none' as ReservationStatus,
           nextReservation,
           hasYakchimMemo: false,
@@ -587,7 +589,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
       if (update) {
         return {
           ...item,
-          memoSummary: update.memoSummary,
+          memoItems: update.memoItems,
           nextReservation: update.nextReservation,
           receiptMemo: {
             ...(item.receiptMemo || {}),
@@ -621,6 +623,46 @@ function ReceiptView({ user }: ReceiptViewProps) {
   const handleCloseMemoModal = () => {
     setShowMemoModal(false);
     setMemoModalReceipt(null);
+  };
+
+  // 메모 태그 클릭 핸들러 (타입별 모달 열기)
+  const handleMemoTagClick = (item: MemoSummaryItem, receipt: ExpandedReceiptItem) => {
+    switch (item.type) {
+      case 'yakchim-membership':
+      case 'yakchim-package':
+        // 약침 모달 열기
+        handleOpenYakchimModal(receipt);
+        break;
+      case 'treatment-package':
+        // 시술패키지 → 메모 모달 열기 (상세 수정은 메모 모달에서)
+        handleOpenMemoModal(receipt);
+        break;
+      case 'herbal-package':
+      case 'herbal-dispensing':
+        // 한약 모달 열기
+        handleOpenHerbalModal(receipt);
+        break;
+      case 'point-used':
+      case 'point-earned':
+      case 'membership':
+        // 일반 메모 모달 열기
+        handleOpenMemoModal(receipt);
+        break;
+      case 'gift-dispensing':
+        // 증정품 → 메모 모달 열기
+        handleOpenMemoModal(receipt);
+        break;
+      case 'document':
+        // 서류 → 일반 메모 모달
+        handleOpenMemoModal(receipt);
+        break;
+      case 'medicine':
+        // 상비약 모달 열기
+        setMedicineModalReceipt(receipt);
+        break;
+      default:
+        handleOpenMemoModal(receipt);
+    }
   };
 
   // 약침 모달 열기
@@ -1219,23 +1261,12 @@ function ReceiptView({ user }: ReceiptViewProps) {
                       );
                     })()}
                   </div>
-                  <div
-                    className="col-memo"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenMemoModal(receipt);
-                    }}
-                    title="클릭하여 메모 관리"
-                  >
-                    <div className="memo-summary-display">
-                      {receipt.memoSummary ? (
-                        <span className="memo-text">{receipt.memoSummary}</span>
-                      ) : (
-                        <span className="memo-click-hint">
-                          <i className="fa-solid fa-plus"></i> 클릭하여 메모 추가
-                        </span>
-                      )}
-                    </div>
+                  <div className="col-memo" onClick={(e) => e.stopPropagation()}>
+                    <MemoTagList
+                      items={receipt.memoItems}
+                      onTagClick={(item) => handleMemoTagClick(item, receipt)}
+                      onAddClick={() => handleOpenMemoModal(receipt)}
+                    />
                   </div>
                   <div className="col-complete" onClick={(e) => e.stopPropagation()}>
                     <button

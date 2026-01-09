@@ -62,6 +62,15 @@ export default function SidebarFolder({
 
   const channelCount = children.filter(c => c.type === 'channel').length;
 
+  // 폴더 내 모든 채널의 읽지 않은 메시지 수 합산
+  const totalUnreadCount = children.reduce((sum, item) => {
+    if (item.type === 'channel' && item.channelId) {
+      const channel = channels.get(item.channelId);
+      return sum + (channel?.unread_count || 0);
+    }
+    return sum;
+  }, 0);
+
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -92,12 +101,16 @@ export default function SidebarFolder({
         )}
       >
         <span className="text-base flex-shrink-0">{isExpanded ? '📂' : '📁'}</span>
-        <span className="flex-1 text-sm font-medium truncate">{name}</span>
-        {!isExpanded && channelCount > 0 && (
+        <span className={clsx('flex-1 text-sm font-medium truncate', totalUnreadCount > 0 && 'text-white')}>{name}</span>
+        {totalUnreadCount > 0 ? (
+          <span className="bg-red-400/80 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+            {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+          </span>
+        ) : !isExpanded && channelCount > 0 ? (
           <span className="text-xs text-gray-500 bg-gray-700 px-1.5 py-0.5 rounded-full">
             {channelCount}
           </span>
-        )}
+        ) : null}
       </div>
 
       {/* Folder Children with tree style */}

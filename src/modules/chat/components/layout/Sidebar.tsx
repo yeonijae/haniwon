@@ -24,11 +24,13 @@ import NewDMModal from '../modals/NewDMModal';
 import NewChannelModal from '../modals/NewChannelModal';
 import InviteMemberModal from '../modals/InviteMemberModal';
 import ProfileSettingsModal from '../modals/ProfileSettingsModal';
+import ChannelMembersModal from '../modals/ChannelMembersModal';
 import ContextMenu, { ContextMenuItem } from '../common/ContextMenu';
 import SidebarChannelItem from '../sidebar/SidebarChannelItem';
 import SidebarFolder from '../sidebar/SidebarFolder';
 import SidebarSeparator from '../sidebar/SidebarSeparator';
 import SearchModal from '../modals/SearchModal';
+import AdminSettingsModal from '../modals/AdminSettingsModal';
 import {
   SidebarItem,
   SidebarChannel,
@@ -67,6 +69,7 @@ export default function Sidebar({
   const [showNewChannel, setShowNewChannel] = useState(false);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [inviteChannelId, setInviteChannelId] = useState<string | null>(null);
+  const [viewMembersChannelId, setViewMembersChannelId] = useState<string | null>(null);
   const [sidebarItems, setSidebarItems] = useState<SidebarItem[]>([]);
   const [hiddenChannels, setHiddenChannels] = useState<string[]>([]);
   const [isLayoutLoaded, setIsLayoutLoaded] = useState(false);
@@ -84,6 +87,7 @@ export default function Sidebar({
   const [editingChannelName, setEditingChannelName] = useState('');
   const [showHiddenChannels, setShowHiddenChannels] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showAdminSettings, setShowAdminSettings] = useState(false);
 
   // Fetch channel layout from DB
   const { data: layoutData } = useQuery<ChannelLayoutData>({
@@ -550,6 +554,16 @@ export default function Sidebar({
           : { label: '메인에 고정', icon: '📌', onClick: () => { onPinChannel(contextMenu.channelId!); setContextMenu(null); } },
       ];
 
+      // 참여자 보기 (모든 채널)
+      channelItems.push({
+        label: '참여자 보기',
+        icon: '👤',
+        onClick: () => {
+          setViewMembersChannelId(contextMenu.channelId!);
+          setContextMenu(null);
+        },
+      });
+
       // 그룹/토픽 채널에만 멤버 초대 옵션 추가
       if (!isDirectMessage) {
         channelItems.push({
@@ -837,6 +851,17 @@ export default function Sidebar({
               <div className="text-sm font-medium truncate">{user?.displayName}</div>
               <div className="text-xs text-gray-400 truncate">{user?.email}</div>
             </div>
+            {user?.isAdmin && (
+              <button
+                onClick={() => setShowAdminSettings(true)}
+                className="text-gray-400 hover:text-white p-1"
+                title="관리자 설정"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+              </button>
+            )}
             <button
               onClick={onSettingsClick}
               className="text-gray-400 hover:text-white p-1"
@@ -898,6 +923,15 @@ export default function Sidebar({
         />
       )}
 
+      {viewMembersChannelId && (
+        <ChannelMembersModal
+          isOpen={!!viewMembersChannelId}
+          onClose={() => setViewMembersChannelId(null)}
+          channelId={viewMembersChannelId}
+          channelName={channelMap.get(viewMembersChannelId)?.name || '채널'}
+        />
+      )}
+
       <ProfileSettingsModal
         isOpen={showProfileSettings}
         onClose={() => setShowProfileSettings(false)}
@@ -909,6 +943,11 @@ export default function Sidebar({
         onSelectMessage={(channelId, messageId) => {
           onSelectChannel(channelId, messageId);
         }}
+      />
+
+      <AdminSettingsModal
+        isOpen={showAdminSettings}
+        onClose={() => setShowAdminSettings(false)}
       />
     </>
   );

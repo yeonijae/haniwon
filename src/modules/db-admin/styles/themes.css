@@ -599,3 +599,588 @@
   padding: 40px;
   color: var(--text-muted);
 }
+
+/* ========== Inline Cell Editing ========== */
+
+.db-table td.editable {
+  cursor: pointer;
+}
+
+.db-table td.editable:hover {
+  background-color: var(--bg-table-hover);
+  outline: 2px dashed var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.db-table td.editing {
+  padding: 0;
+  background-color: var(--bg-input) !important;
+}
+
+.cell-edit-input {
+  width: 100%;
+  height: 100%;
+  padding: 8px 12px;
+  border: 2px solid var(--accent-primary);
+  border-radius: 0;
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.cell-edit-input:focus {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.cell-edit-input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ========== Row Delete Button ========== */
+
+.db-table .row-action {
+  width: 36px;
+  text-align: center;
+  padding: 4px;
+  background-color: var(--bg-secondary);
+}
+
+.row-delete-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background-color: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.row-delete-btn:hover:not(:disabled) {
+  background-color: var(--accent-error);
+  color: white;
+}
+
+.row-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ========== Schema Editor ========== */
+
+.column-schema-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding: 12px 16px;
+}
+
+.column-schema-wrapper .column-schema {
+  flex: 1;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.schema-edit-btn {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.schema-edit-btn:hover:not(:disabled) {
+  background-color: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+.schema-edit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Schema Modal */
+.schema-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.schema-modal {
+  background-color: var(--bg-primary);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  width: 90%;
+  max-width: 800px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.schema-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.schema-modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.schema-modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 18px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.schema-modal-close:hover {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.schema-modal-error {
+  padding: 12px 20px;
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--accent-error);
+  font-size: 14px;
+}
+
+.schema-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.schema-modal-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-inverse);
+  font-size: 16px;
+}
+
+/* Schema Table */
+.schema-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.schema-table th {
+  background-color: var(--bg-table-header);
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.schema-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-light);
+  vertical-align: middle;
+}
+
+.schema-table tr.primary-row {
+  background-color: rgba(251, 191, 36, 0.1);
+}
+
+.schema-table .column-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.schema-table .column-type {
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
+.schema-table .default-value {
+  color: var(--text-muted);
+  font-size: 12px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schema-table .action-cell {
+  white-space: nowrap;
+}
+
+.nullable-btn {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.nullable-btn.yes {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: var(--accent-success);
+}
+
+.nullable-btn.no {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: var(--accent-error);
+}
+
+.nullable-btn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.nullable-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.schema-btn {
+  padding: 4px 8px;
+  margin-right: 4px;
+  font-size: 14px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.schema-btn:hover:not(:disabled) {
+  background-color: var(--bg-tertiary);
+}
+
+.schema-btn.danger:hover:not(:disabled) {
+  background-color: rgba(239, 68, 68, 0.2);
+}
+
+.schema-btn.confirm {
+  background-color: var(--accent-success);
+  color: white;
+}
+
+.schema-btn.confirm:hover:not(:disabled) {
+  background-color: #059669;
+}
+
+.schema-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.schema-input {
+  padding: 6px 10px;
+  font-size: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  width: 100%;
+}
+
+.schema-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.schema-select {
+  padding: 6px 10px;
+  font-size: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.schema-select:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+/* Add Column Form */
+.add-column-btn {
+  width: 100%;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.add-column-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.add-column-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.add-column-form {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.add-column-form h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.add-column-form .form-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.add-column-form .form-row label {
+  width: 80px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.add-column-form .form-row input[type="text"],
+.add-column-form .form-row select {
+  flex: 1;
+}
+
+.add-column-form .form-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.add-column-form .form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* ========== Draggable Modal ========== */
+
+.schema-modal-header.draggable {
+  cursor: move;
+  user-select: none;
+}
+
+.schema-modal-header.draggable:active {
+  cursor: grabbing;
+}
+
+.schema-modal.dragging {
+  user-select: none;
+  opacity: 0.95;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.schema-modal.dragging .schema-modal-header {
+  cursor: grabbing;
+}
+
+/* ========== Table List Management ========== */
+
+.create-table-btn {
+  width: 100%;
+  padding: 10px;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.create-table-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+.create-table-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.table-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-light);
+  transition: background-color 0.15s;
+}
+
+.table-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.table-item-actions {
+  display: none;
+  gap: 2px;
+  margin-left: 8px;
+}
+
+.table-item:hover .table-item-actions {
+  display: flex;
+}
+
+.table-action-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.table-action-btn:hover:not(:disabled) {
+  background-color: var(--bg-tertiary);
+}
+
+.table-action-btn.danger:hover:not(:disabled) {
+  background-color: rgba(239, 68, 68, 0.2);
+}
+
+.table-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.table-rename-input {
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 14px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 4px;
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  outline: none;
+}
+
+/* ========== Table Create Modal ========== */
+
+.table-create-modal {
+  max-width: 900px;
+}
+
+.form-section {
+  margin-bottom: 20px;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.column-def-table {
+  margin-bottom: 12px;
+}
+
+.column-def-table th,
+.column-def-table td {
+  padding: 8px;
+}
+
+.column-def-table .center {
+  text-align: center;
+}
+
+.column-def-table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.column-def-table .schema-input {
+  min-width: 100px;
+}
+
+.column-def-table .schema-input.small {
+  min-width: 80px;
+}
+
+.column-def-table .schema-select {
+  min-width: 140px;
+}
+
+.schema-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+}

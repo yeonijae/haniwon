@@ -321,3 +321,231 @@ export async function executeCustomQuery(
 
   return executeQuery(dbType, sql);
 }
+
+/**
+ * 셀 값 업데이트 (PostgreSQL 전용)
+ */
+export async function updateCell(
+  tableName: string,
+  whereCondition: Record<string, any>,
+  setData: Record<string, any>
+): Promise<{ success: boolean; error?: string; affected_rows?: number }> {
+  try {
+    const response = await fetch(`${API_ENDPOINTS.postgres}/api/tables/${tableName}/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        where: whereCondition,
+        set: setData,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      return { success: false, error: data.error };
+    }
+
+    return {
+      success: true,
+      affected_rows: data.affected_rows,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * 행 삭제 (PostgreSQL 전용)
+ */
+export async function deleteRow(
+  tableName: string,
+  whereCondition: Record<string, any>
+): Promise<{ success: boolean; error?: string; affected_rows?: number }> {
+  try {
+    const response = await fetch(`${API_ENDPOINTS.postgres}/api/tables/${tableName}/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        where: whereCondition,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      return { success: false, error: data.error };
+    }
+
+    return {
+      success: true,
+      affected_rows: data.affected_rows,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * DDL 쿼리 실행 (PostgreSQL 전용)
+ */
+export async function executeDDL(
+  sql: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  try {
+    const response = await fetch(`${API_ENDPOINTS.postgres}/api/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql }),
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      return { success: false, error: data.error };
+    }
+
+    return {
+      success: true,
+      message: data.message,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * 컬럼 추가
+ */
+export async function addColumn(
+  tableName: string,
+  columnName: string,
+  columnType: string,
+  isNullable: boolean = true,
+  defaultValue?: string
+): Promise<{ success: boolean; error?: string }> {
+  let sql = `ALTER TABLE "${tableName}" ADD COLUMN "${columnName}" ${columnType}`;
+
+  if (!isNullable) {
+    sql += ' NOT NULL';
+  }
+
+  if (defaultValue !== undefined && defaultValue !== '') {
+    sql += ` DEFAULT ${defaultValue}`;
+  }
+
+  return executeDDL(sql);
+}
+
+/**
+ * 컬럼 삭제
+ */
+export async function dropColumn(
+  tableName: string,
+  columnName: string
+): Promise<{ success: boolean; error?: string }> {
+  const sql = `ALTER TABLE "${tableName}" DROP COLUMN "${columnName}"`;
+  return executeDDL(sql);
+}
+
+/**
+ * 컬럼 이름 변경
+ */
+export async function renameColumn(
+  tableName: string,
+  oldName: string,
+  newName: string
+): Promise<{ success: boolean; error?: string }> {
+  const sql = `ALTER TABLE "${tableName}" RENAME COLUMN "${oldName}" TO "${newName}"`;
+  return executeDDL(sql);
+}
+
+/**
+ * 컬럼 타입 변경
+ */
+export async function alterColumnType(
+  tableName: string,
+  columnName: string,
+  newType: string
+): Promise<{ success: boolean; error?: string }> {
+  const sql = `ALTER TABLE "${tableName}" ALTER COLUMN "${columnName}" TYPE ${newType} USING "${columnName}"::${newType}`;
+  return executeDDL(sql);
+}
+
+/**
+ * 컬럼 NULL 허용 변경
+ */
+export async function alterColumnNullable(
+  tableName: string,
+  columnName: string,
+  isNullable: boolean
+): Promise<{ success: boolean; error?: string }> {
+  const action = isNullable ? 'DROP NOT NULL' : 'SET NOT NULL';
+  const sql = `ALTER TABLE "${tableName}" ALTER COLUMN "${columnName}" ${action}`;
+  return executeDDL(sql);
+}
+
+/**
+ * 테이블 생성
+ */
+export async function createTable(
+  tableName: string,
+  columns: {
+    name: string;
+    type: string;
+    isPrimary?: boolean;
+    isNullable?: boolean;
+    defaultValue?: string;
+  }[]
+): Promise<{ success: boolean; error?: string }> {
+  if (!tableName || columns.length === 0) {
+    return { success: false, error: '테이블명과 최소 1개의 컬럼이 필요합니다.' };
+  }
+
+  const columnDefs = columns.map((col) => {
+    let def = `"${col.name}" ${col.type}`;
+    if (col.isPrimary) {
+      def += ' PRIMARY KEY';
+    }
+    if (!col.isNullable && !col.isPrimary) {
+      def += ' NOT NULL';
+    }
+    if (col.defaultValue) {
+      def += ` DEFAULT ${col.defaultValue}`;
+    }
+    return def;
+  });
+
+  const sql = `CREATE TABLE "${tableName}" (\n  ${columnDefs.join(',\n  ')}\n)`;
+  return executeDDL(sql);
+}
+
+/**
+ * 테이블 삭제
+ */
+export async function dropTable(
+  tableName: string
+): Promise<{ success: boolean; error?: string }> {
+  const sql = `DROP TABLE "${tableName}"`;
+  return executeDDL(sql);
+}
+
+/**
+ * 테이블 이름 변경
+ */
+export async function renameTable(
+  oldName: string,
+  newName: string
+): Promise<{ success: boolean; error?: string }> {
+  const sql = `ALTER TABLE "${oldName}" RENAME TO "${newName}"`;
+  return executeDDL(sql);
+}

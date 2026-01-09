@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { createUser, deleteUser, changePassword, getAllUsers } from '@shared/lib/auth';
 import { execute, escapeString, getCurrentTimestamp } from '@shared/lib/postgres';
@@ -38,10 +38,47 @@ function AdminPage({ user: _currentUser }: AdminPageProps) {
     loadUsers();
   }, []);
 
+  const closeEditModal = useCallback(() => {
+    if (!saving) {
+      setEditingUser(null);
+    }
+  }, [saving]);
+
+  const closeNewModal = useCallback(() => {
+    if (!saving) {
+      setNewUser(null);
+    }
+  }, [saving]);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        if (editingUser) closeEditModal();
+        if (newUser) closeNewModal();
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [editingUser, newUser, closeEditModal, closeNewModal]);
+
+  const roleOrder: Record<UserRole, number> = {
+    super_admin: 1,
+    medical_staff: 2,
+    desk: 3,
+    counseling: 4,
+    treatment: 5,
+    decoction: 6,
+  };
+
   async function loadUsers() {
     try {
       const data = await getAllUsers();
-      setUsers(data || []);
+      const sorted = (data || []).sort((a, b) => {
+        const roleCompare = (roleOrder[a.role] || 99) - (roleOrder[b.role] || 99);
+        if (roleCompare !== 0) return roleCompare;
+        return a.username.localeCompare(b.username);
+      });
+      setUsers(sorted);
     } catch (error) {
       console.error('사용자 목록 로드 실패:', error);
     } finally {
@@ -265,86 +302,97 @@ function AdminPage({ user: _currentUser }: AdminPageProps) {
 
       {/* 새 계정 추가 모달 */}
       {newUser && (
-        <div className="modal-overlay" onClick={() => setNewUser(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2 className="modal-title">새 계정 추가</h2>
-
-            <div className="portal-form-group">
-              <label className="portal-form-label">아이디</label>
-              <input
-                type="text"
-                className="portal-form-input"
-                placeholder="로그인에 사용할 아이디"
-                value={newUser.username}
-                onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
-              />
-            </div>
-
-            <div className="portal-form-group">
-              <label className="portal-form-label">비밀번호</label>
-              <input
-                type="text"
-                className="portal-form-input"
-                placeholder="비밀번호"
-                value={newUser.password}
-                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-              />
-            </div>
-
-            <div className="portal-form-group">
-              <label className="portal-form-label">이름</label>
-              <input
-                type="text"
-                className="portal-form-input"
-                placeholder="표시될 이름"
-                value={newUser.name}
-                onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-              />
-            </div>
-
-            <div className="portal-form-group">
-              <label className="portal-form-label">역할</label>
-              <select
-                className="portal-form-input"
-                value={newUser.role}
-                onChange={(e) =>
-                  setNewUser({
-                    ...newUser,
-                    role: e.target.value as UserRole,
-                  })
-                }
+        <div className="modal-overlay">
+          <div className="modal-content modal-fixed-footer admin-modal">
+            <div className="modal-header-row">
+              <h2 className="modal-title">새 계정 추가</h2>
+              <button
+                className="modal-close-btn"
+                onClick={closeNewModal}
+                disabled={saving}
+                title="닫기 (ESC)"
               >
-                <option value="desk">데스크</option>
-                <option value="counseling">상담실</option>
-                <option value="treatment">치료실</option>
-                <option value="decoction">탕전실</option>
-                <option value="medical_staff">의료진</option>
-                <option value="super_admin">최고관리자</option>
-              </select>
+                ✕
+              </button>
             </div>
 
-            {newUser.role !== 'super_admin' && (
-              <div className="portal-form-group">
-                <label className="portal-form-label">앱 접근 권한</label>
-                <div className="checkbox-group">
-                  {APPS.map((app) => (
-                    <label key={app.id} className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={newUser.permissions.includes(app.id)}
-                        onChange={() => togglePermission(app.id, true)}
-                      />
-                      <span>{app.icon} {app.name}</span>
-                    </label>
-                  ))}
+            <div className="modal-body">
+              <div className="form-row form-row-4">
+                <div className="portal-form-group">
+                  <label className="portal-form-label">아이디</label>
+                  <input
+                    type="text"
+                    className="portal-form-input"
+                    placeholder="로그인에 사용할 아이디"
+                    value={newUser.username}
+                    onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                  />
+                </div>
+                <div className="portal-form-group">
+                  <label className="portal-form-label">비밀번호</label>
+                  <input
+                    type="text"
+                    className="portal-form-input"
+                    placeholder="비밀번호"
+                    value={newUser.password}
+                    onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  />
+                </div>
+                <div className="portal-form-group">
+                  <label className="portal-form-label">이름</label>
+                  <input
+                    type="text"
+                    className="portal-form-input"
+                    placeholder="표시될 이름"
+                    value={newUser.name}
+                    onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                  />
+                </div>
+                <div className="portal-form-group">
+                  <label className="portal-form-label">역할</label>
+                  <select
+                    className="portal-form-input"
+                    value={newUser.role}
+                    onChange={(e) =>
+                      setNewUser({
+                        ...newUser,
+                        role: e.target.value as UserRole,
+                      })
+                    }
+                  >
+                    <option value="desk">데스크</option>
+                    <option value="counseling">상담실</option>
+                    <option value="treatment">치료실</option>
+                    <option value="decoction">탕전실</option>
+                    <option value="medical_staff">의료진</option>
+                    <option value="super_admin">최고관리자</option>
+                  </select>
                 </div>
               </div>
-            )}
+
+              {newUser.role !== 'super_admin' && (
+                <div className="portal-form-group">
+                  <label className="portal-form-label">앱 접근 권한</label>
+                  <div className="checkbox-group">
+                    {APPS.map((app) => (
+                      <label key={app.id} className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={newUser.permissions.includes(app.id)}
+                          onChange={() => togglePermission(app.id, true)}
+                        />
+                        <span>{app.icon} {app.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="modal-actions">
               <button
                 className="modal-button secondary"
-                onClick={() => setNewUser(null)}
+                onClick={closeNewModal}
                 disabled={saving}
               >
                 취소
@@ -359,79 +407,90 @@ function AdminPage({ user: _currentUser }: AdminPageProps) {
 
       {/* 수정 모달 */}
       {editingUser && (
-        <div className="modal-overlay" onClick={() => setEditingUser(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2 className="modal-title">계정 수정</h2>
-
-            <div className="portal-form-group">
-              <label className="portal-form-label">아이디</label>
-              <input type="text" className="portal-form-input" value={editingUser.username} disabled />
-            </div>
-
-            <div className="portal-form-group">
-              <label className="portal-form-label">새 비밀번호 (변경시에만 입력)</label>
-              <input
-                type="text"
-                className="portal-form-input"
-                placeholder="변경하지 않으려면 비워두세요"
-                value={editingUser.newPassword || ''}
-                onChange={(e) => setEditingUser({ ...editingUser, newPassword: e.target.value })}
-              />
-            </div>
-
-            <div className="portal-form-group">
-              <label className="portal-form-label">이름</label>
-              <input
-                type="text"
-                className="portal-form-input"
-                value={editingUser.name}
-                onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
-              />
-            </div>
-
-            <div className="portal-form-group">
-              <label className="portal-form-label">역할</label>
-              <select
-                className="portal-form-input"
-                value={editingUser.role}
-                onChange={(e) =>
-                  setEditingUser({
-                    ...editingUser,
-                    role: e.target.value as UserRole,
-                  })
-                }
+        <div className="modal-overlay">
+          <div className="modal-content modal-fixed-footer admin-modal">
+            <div className="modal-header-row">
+              <h2 className="modal-title">계정 수정</h2>
+              <button
+                className="modal-close-btn"
+                onClick={closeEditModal}
+                disabled={saving}
+                title="닫기 (ESC)"
               >
-                <option value="desk">데스크</option>
-                <option value="counseling">상담실</option>
-                <option value="treatment">치료실</option>
-                <option value="decoction">탕전실</option>
-                <option value="medical_staff">의료진</option>
-                <option value="super_admin">최고관리자</option>
-              </select>
+                ✕
+              </button>
             </div>
 
-            {editingUser.role !== 'super_admin' && (
-              <div className="portal-form-group">
-                <label className="portal-form-label">앱 접근 권한</label>
-                <div className="checkbox-group">
-                  {APPS.map((app) => (
-                    <label key={app.id} className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={editingUser.permissions.includes(app.id)}
-                        onChange={() => togglePermission(app.id)}
-                      />
-                      <span>{app.icon} {app.name}</span>
-                    </label>
-                  ))}
+            <div className="modal-body">
+              <div className="form-row form-row-4">
+                <div className="portal-form-group">
+                  <label className="portal-form-label">아이디</label>
+                  <input type="text" className="portal-form-input" value={editingUser.username} disabled />
+                </div>
+                <div className="portal-form-group">
+                  <label className="portal-form-label">새 비밀번호</label>
+                  <input
+                    type="text"
+                    className="portal-form-input"
+                    placeholder="변경시에만 입력"
+                    value={editingUser.newPassword || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, newPassword: e.target.value })}
+                  />
+                </div>
+                <div className="portal-form-group">
+                  <label className="portal-form-label">이름</label>
+                  <input
+                    type="text"
+                    className="portal-form-input"
+                    value={editingUser.name}
+                    onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
+                  />
+                </div>
+                <div className="portal-form-group">
+                  <label className="portal-form-label">역할</label>
+                  <select
+                    className="portal-form-input"
+                    value={editingUser.role}
+                    onChange={(e) =>
+                      setEditingUser({
+                        ...editingUser,
+                        role: e.target.value as UserRole,
+                      })
+                    }
+                  >
+                    <option value="desk">데스크</option>
+                    <option value="counseling">상담실</option>
+                    <option value="treatment">치료실</option>
+                    <option value="decoction">탕전실</option>
+                    <option value="medical_staff">의료진</option>
+                    <option value="super_admin">최고관리자</option>
+                  </select>
                 </div>
               </div>
-            )}
+
+              {editingUser.role !== 'super_admin' && (
+                <div className="portal-form-group">
+                  <label className="portal-form-label">앱 접근 권한</label>
+                  <div className="checkbox-group">
+                    {APPS.map((app) => (
+                      <label key={app.id} className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={editingUser.permissions.includes(app.id)}
+                          onChange={() => togglePermission(app.id)}
+                        />
+                        <span>{app.icon} {app.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="modal-actions">
               <button
                 className="modal-button secondary"
-                onClick={() => setEditingUser(null)}
+                onClick={closeEditModal}
                 disabled={saving}
               >
                 취소

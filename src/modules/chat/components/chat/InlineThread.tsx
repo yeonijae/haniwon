@@ -4,6 +4,7 @@ import { api } from '../../api';
 import { useSocketEvent, useSocketEmit } from '../../hooks/useSocket';
 import { useAuthStore } from '../../stores/authStore';
 import { getAbsoluteUrl } from '../../stores/serverConfigStore';
+import { useEmojiPresetsStore } from '../../stores/emojiPresetsStore';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 
@@ -34,7 +35,6 @@ interface InlineThreadProps {
 }
 
 const MAX_DEPTH = 5; // 최대 중첩 깊이
-const EMOJI_LIST = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
 
 function ReplyItem({
   reply,
@@ -52,6 +52,7 @@ function ReplyItem({
   const [replyContent, setReplyContent] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emit = useSocketEmit();
+  const { emojis: emojiList } = useEmojiPresetsStore();
   const formattedTime = format(new Date(reply.created_at), 'a h:mm', { locale: ko });
 
   // Parse content to extract text and images
@@ -223,7 +224,7 @@ function ReplyItem({
           </div>
           {showEmojiPicker && (
             <div className="absolute right-0 top-8 bg-white shadow-lg rounded-lg border p-2 flex gap-1 z-10">
-              {EMOJI_LIST.map((emoji) => (
+              {emojiList.map((emoji) => (
                 <button
                   key={emoji}
                   onClick={() => {

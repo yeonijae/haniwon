@@ -6,6 +6,8 @@ interface QuickViewPanelProps {
   targetMessageId?: string | null;
   onPinChannel: (channelId: string) => void;
   onTargetMessageReached?: () => void;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }
 
 const MIN_WIDTH = 280;
@@ -13,7 +15,7 @@ const MAX_WIDTH = 800;
 const DEFAULT_WIDTH = 400;
 const STORAGE_KEY = 'hanichat-quickview-width';
 
-export default function QuickViewPanel({ channelId, targetMessageId, onPinChannel, onTargetMessageReached }: QuickViewPanelProps) {
+export default function QuickViewPanel({ channelId, targetMessageId, onPinChannel, onTargetMessageReached, isSelected = false, onSelect }: QuickViewPanelProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [width, setWidth] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -80,6 +82,7 @@ export default function QuickViewPanel({ channelId, targetMessageId, onPinChanne
       ref={panelRef}
       className="border-r bg-white flex flex-col relative"
       style={{ width: `${width}px`, minWidth: `${MIN_WIDTH}px`, maxWidth: `${MAX_WIDTH}px` }}
+      onClick={onSelect}
     >
       {/* Header */}
       <div className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between">
@@ -111,6 +114,7 @@ export default function QuickViewPanel({ channelId, targetMessageId, onPinChanne
             channelId={channelId}
             targetMessageId={targetMessageId}
             onTargetMessageReached={onTargetMessageReached}
+            isSelected={isSelected}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-400">

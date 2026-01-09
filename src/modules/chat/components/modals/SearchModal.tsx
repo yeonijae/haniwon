@@ -7,6 +7,8 @@ import { ko } from 'date-fns/locale';
 interface SearchResult {
   id: string;
   channel_id: string;
+  channel_name: string | null;
+  channel_type: 'direct' | 'group' | 'topic';
   content: string;
   created_at: string;
   sender: {
@@ -170,7 +172,11 @@ export default function SearchModal({ isOpen, onClose, onSelectMessage, currentC
                     onClick={() => handleSelectResult(result)}
                     className="w-full px-4 py-3 hover:bg-gray-50 text-left"
                   >
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                        {result.channel_type === 'direct' ? '@' : '#'}
+                        {result.channel_name || (result.channel_type === 'direct' ? result.sender?.display_name : '채널')}
+                      </span>
                       <span className="font-medium text-sm text-gray-900">
                         {result.sender?.display_name || '알 수 없음'}
                       </span>

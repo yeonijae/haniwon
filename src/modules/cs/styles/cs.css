@@ -1693,14 +1693,155 @@
   font-size: 12px;
   color: #6b7280;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   min-width: 0;
 }
 
 .receipt-row .col-memo .memo-summary {
   color: #3b82f6;
   font-weight: 500;
+}
+
+/* ===== 메모 태그 리스트 ===== */
+.memo-tag-list {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow: hidden;
+  align-items: center;
+  height: 100%;
+}
+
+/* +메모 버튼 */
+.memo-tag--add {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: #6b7280;
+}
+
+.memo-tag--add:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+/* 개별 메모 태그 */
+.memo-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.memo-tag:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 타입별 색상 */
+.memo-tag--yakchim {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.memo-tag--yakchim:hover {
+  background: #bfdbfe;
+}
+
+.memo-tag--treatment {
+  background: #e0e7ff;
+  border-color: #a5b4fc;
+  color: #4338ca;
+}
+
+.memo-tag--treatment:hover {
+  background: #c7d2fe;
+}
+
+.memo-tag--herbal {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #15803d;
+}
+
+.memo-tag--herbal:hover {
+  background: #bbf7d0;
+}
+
+.memo-tag--point-used {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #b45309;
+}
+
+.memo-tag--point-used:hover {
+  background: #fde68a;
+}
+
+.memo-tag--point-earned {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  color: #047857;
+}
+
+.memo-tag--point-earned:hover {
+  background: #a7f3d0;
+}
+
+.memo-tag--membership {
+  background: #fce7f3;
+  border-color: #f9a8d4;
+  color: #be185d;
+}
+
+.memo-tag--membership:hover {
+  background: #fbcfe8;
+}
+
+.memo-tag--dispensing {
+  background: #fed7aa;
+  border-color: #fdba74;
+  color: #c2410c;
+}
+
+.memo-tag--dispensing:hover {
+  background: #fdba74;
+}
+
+.memo-tag--gift {
+  background: #fecaca;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.memo-tag--gift:hover {
+  background: #fca5a5;
+}
+
+.memo-tag--document {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+  color: #374151;
+}
+
+.memo-tag--document:hover {
+  background: #d1d5db;
+}
+
+.memo-tag--medicine {
+  background: #cffafe;
+  border-color: #67e8f9;
+  color: #0e7490;
+}
+
+.memo-tag--medicine:hover {
+  background: #a5f3fc;
 }
 
 /* 예약 상태 */

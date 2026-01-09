@@ -10,3 +10,5 @@ export { SearchBuilder } from './SearchBuilder';
 export { DataTable } from './DataTable';
 export { Pagination } from './Pagination';
 export { SqlQueryPanel } from './SqlQueryPanel';
+export { SchemaEditorModal } from './SchemaEditorModal';
+export { TableCreateModal } from './TableCreateModal';

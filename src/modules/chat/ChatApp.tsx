@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PortalUser } from '@shared/types';
-import { useAuthStore, autoLoginWithPortalUser } from './stores/authStore';
+import { getSessionToken } from '@shared/lib/auth';
+import { useAuthStore, autoLoginWithPortalSession } from './stores/authStore';
 import { useSocket } from './hooks/useSocket';
 import MainLayout from './components/layout/MainLayout';
 import './chat.css';
@@ -25,18 +26,21 @@ function ChatAppContent({ user }: ChatAppProps) {
   const { isAuthenticated, isLoading } = useAuthStore();
   const { connect, disconnect } = useSocket();
 
-  // 포털 사용자로 자동 로그인
+  // 포털 세션으로 자동 로그인
   useEffect(() => {
     async function init() {
       setIsInitializing(true);
       setError(null);
 
       try {
-        const success = await autoLoginWithPortalUser({
-          id: user.id,
-          username: user.username,
-          name: user.name,
-        });
+        // 포털 세션 토큰 가져오기
+        const portalSessionToken = getSessionToken();
+        if (!portalSessionToken) {
+          setError('포털 세션이 없습니다. 다시 로그인해주세요.');
+          return;
+        }
+
+        const success = await autoLoginWithPortalSession(portalSessionToken);
 
         if (!success) {
           setError('채팅 서버 연결 실패. 서버가 실행 중인지 확인하세요.');

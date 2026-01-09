@@ -5,9 +5,11 @@ import { api } from '../api';
 interface User {
   id: string;
   email: string;
+  username?: string;
   displayName: string;
   avatarUrl?: string;
   avatarColor?: string;
+  isAdmin?: boolean;
 }
 
 interface AuthState {
@@ -22,6 +24,8 @@ interface AuthState {
   checkAuth: () => Promise<void>;
   setTokens: (accessToken: string, refreshToken: string) => void;
   updateUser: (userData: Partial<User>) => void;
+  setUser: (user: User) => void;
+  setAuthenticated: (isAuthenticated: boolean) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -117,6 +121,14 @@ export const useAuthStore = create<AuthState>()(
           set({ user: { ...user, ...userData } });
         }
       },
+
+      setUser: (user: User) => {
+        set({ user, isAuthenticated: true });
+      },
+
+      setAuthenticated: (isAuthenticated: boolean) => {
+        set({ isAuthenticated });
+      },
     }),
     {
       name: 'haniwon-chat-auth',
@@ -130,24 +142,28 @@ export const useAuthStore = create<AuthState>()(
   )
 );
 
-// 포털 사용자로 자동 로그인
-export async function autoLoginWithPortalUser(portalUser: { id: string; username: string; name: string }): Promise<boolean> {
+// 포털 세션 토큰으로 자동 로그인 (통합포탈 세션 기반)
+export async function autoLoginWithPortalSession(portalSessionToken: string): Promise<boolean> {
   const store = useAuthStore.getState();
-  const email = `${portalUser.username}@haniwon.local`;
-  const password = `haniwon_${portalUser.id}_chat`;
 
-  // 먼저 로그인 시도
-  const success = await store.login(email, password);
-  if (success) return true;
-
-  // 로그인 실패 시 회원가입 후 다시 로그인
   try {
-    await api.post('/auth/register', {
-      email,
-      password,
-      displayName: portalUser.name,
+    // 포털 세션 토큰으로 채팅 로그인
+    const response = await api.post('/auth/portal-login', {
+      portalSessionToken,
     });
-    return await store.login(email, password);
+
+    const { user, accessToken } = response.data.data;
+    store.setUser({
+      id: user.id,
+      email: '', // 이메일 불필요
+      username: user.username,
+      displayName: user.display_name,
+      avatarUrl: user.avatar_url,
+      avatarColor: user.avatar_color,
+      isAdmin: user.username === 'admin',
+    });
+    store.setTokens(accessToken, accessToken);
+    return true;
   } catch {
     return false;
   }

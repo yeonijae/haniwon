@@ -5,18 +5,18 @@ import { useAuthStore } from '../../stores/authStore';
 import { getAbsoluteUrl } from '../../stores/serverConfigStore';
 
 const PRESET_COLORS = [
-  '#3B82F6', // blue-500
-  '#EF4444', // red-500
-  '#10B981', // emerald-500
-  '#F59E0B', // amber-500
-  '#8B5CF6', // violet-500
-  '#EC4899', // pink-500
-  '#06B6D4', // cyan-500
-  '#84CC16', // lime-500
-  '#F97316', // orange-500
-  '#6366F1', // indigo-500
-  '#14B8A6', // teal-500
-  '#A855F7', // purple-500
+  '#93C5FD', // blue-300 (파스텔 블루)
+  '#FCA5A5', // red-300 (파스텔 레드)
+  '#6EE7B7', // emerald-300 (파스텔 에메랄드)
+  '#FCD34D', // amber-300 (파스텔 앰버)
+  '#C4B5FD', // violet-300 (파스텔 바이올렛)
+  '#F9A8D4', // pink-300 (파스텔 핑크)
+  '#67E8F9', // cyan-300 (파스텔 시안)
+  '#BEF264', // lime-300 (파스텔 라임)
+  '#FDBA74', // orange-300 (파스텔 오렌지)
+  '#A5B4FC', // indigo-300 (파스텔 인디고)
+  '#5EEAD4', // teal-300 (파스텔 틸)
+  '#D8B4FE', // purple-300 (파스텔 퍼플)
 ];
 
 interface ProfileSettingsModalProps {

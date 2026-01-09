@@ -2,59 +2,53 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Sidebar from './Sidebar';
 import QuickViewPanel from './QuickViewPanel';
-import MainPanel from './MainPanel';
+import MainPanel, { MainPanelHandle } from './MainPanel';
 import { channelLayoutApi, ChannelLayoutData } from '../../api';
 
 type GridSize = 2 | 3 | 4 | 6 | 8 | 9;
 type LayoutMode = 'grid' | 'vertical';
 
-const DISPLAY_SETTINGS_KEY = 'hanichat-display-settings';
-
-interface DisplaySettings {
-  zoom: number; // 50 ~ 150 (%)
-  fontSize: number; // 8 ~ 20 (px)
-}
-
-const DEFAULT_DISPLAY: DisplaySettings = {
-  zoom: 100,
-  fontSize: 14,
-};
-
-function loadDisplaySettings(): DisplaySettings {
-  try {
-    const saved = localStorage.getItem(DISPLAY_SETTINGS_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return {
-        zoom: parsed.zoom || DEFAULT_DISPLAY.zoom,
-        fontSize: parsed.fontSize || DEFAULT_DISPLAY.fontSize,
-      };
-    }
-  } catch (e) {
-    console.error('Failed to load display settings:', e);
-  }
-  return DEFAULT_DISPLAY;
-}
-
-function saveDisplaySettings(settings: DisplaySettings) {
-  try {
-    localStorage.setItem(DISPLAY_SETTINGS_KEY, JSON.stringify(settings));
-  } catch (e) {
-    console.error('Failed to save display settings:', e);
-  }
-}
+const DEFAULT_ZOOM = 100;
+const DEFAULT_FONT_SIZE = 14;
 
 export default function MainLayout() {
   const queryClient = useQueryClient();
   const [quickViewChannelId, setQuickViewChannelId] = useState<string | null>(null);
   const [targetMessageId, setTargetMessageId] = useState<string | null>(null);
+  const [targetChannelId, setTargetChannelId] = useState<string | null>(null);
   const [pinnedChannels, setPinnedChannels] = useState<string[]>([]);
   const [gridSize, setGridSize] = useState<GridSize>(4);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('grid');
   const [isLayoutLoaded, setIsLayoutLoaded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [zoom, setZoom] = useState(DEFAULT_DISPLAY.zoom);
-  const [fontSize, setFontSize] = useState(DEFAULT_DISPLAY.fontSize);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
+
+  // 전역 선택 상태: 'quickview' 또는 고정된 채널 ID
+  const [selectedArea, setSelectedArea] = useState<'quickview' | string | null>(null);
+
+  // Ref for MainPanel to focus pinned channels
+  const mainPanelRef = useRef<MainPanelHandle>(null);
+
+  // Global keyboard shortcut handler for Ctrl+1~9
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+1 ~ Ctrl+9 for quick focus to pinned channels
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+        const key = e.key;
+        if (key >= '1' && key <= '9') {
+          const index = parseInt(key, 10) - 1;
+          if (index < pinnedChannels.length) {
+            e.preventDefault();
+            mainPanelRef.current?.focusChannel(index);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [pinnedChannels.length]);
 
   // Fetch layout from DB
   const { data: layoutData } = useQuery<ChannelLayoutData>({
@@ -74,6 +68,8 @@ export default function MainLayout() {
         pinnedChannels: data.pinnedChannels ?? currentData?.pinnedChannels ?? [],
         gridSize: data.gridSize ?? currentData?.gridSize ?? 4,
         layoutMode: data.layoutMode ?? currentData?.layoutMode ?? 'grid',
+        zoom: data.zoom ?? currentData?.zoom ?? DEFAULT_ZOOM,
+        fontSize: data.fontSize ?? currentData?.fontSize ?? DEFAULT_FONT_SIZE,
       };
       return channelLayoutApi.save(mergedData);
     },
@@ -89,16 +85,11 @@ export default function MainLayout() {
       setPinnedChannels(layoutData.pinnedChannels || []);
       setGridSize((layoutData.gridSize as GridSize) || 4);
       setLayoutMode((layoutData.layoutMode as LayoutMode) || 'grid');
+      setZoom(layoutData.zoom ?? DEFAULT_ZOOM);
+      setFontSize(layoutData.fontSize ?? DEFAULT_FONT_SIZE);
       setIsLayoutLoaded(true);
     }
   }, [layoutData, isLayoutLoaded]);
-
-  // Load display settings on mount
-  useEffect(() => {
-    const displaySettings = loadDisplaySettings();
-    setZoom(displaySettings.zoom);
-    setFontSize(displaySettings.fontSize);
-  }, []);
 
   // Debounced save to DB
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -112,30 +103,43 @@ export default function MainLayout() {
     }, 500);
   }, [saveLayoutMutation]);
 
-  // Save layout state when it changes
+  // Save layout state when it changes (including zoom and fontSize)
   useEffect(() => {
     if (!isLayoutLoaded) return;
-    debouncedSave({ pinnedChannels, gridSize, layoutMode });
-  }, [pinnedChannels, gridSize, layoutMode, isLayoutLoaded, debouncedSave]);
+    debouncedSave({ pinnedChannels, gridSize, layoutMode, zoom, fontSize });
+  }, [pinnedChannels, gridSize, layoutMode, zoom, fontSize, isLayoutLoaded, debouncedSave]);
 
-  // Save and apply display settings
+  // Apply display settings to document
   useEffect(() => {
-    saveDisplaySettings({ zoom, fontSize });
-    // Apply zoom to document
     document.documentElement.style.setProperty('--app-zoom', `${zoom / 100}`);
     document.documentElement.style.setProperty('--app-font-size', `${fontSize}px`);
   }, [zoom, fontSize]);
 
   const handleSelectChannel = (channelId: string, messageId?: string) => {
-    // If channel is pinned, don't show in quickview
+    // If channel is pinned, just set targetMessageId for MainPanel
+    // Otherwise show in quickview
     if (!pinnedChannels.includes(channelId)) {
       setQuickViewChannelId(channelId);
-      setTargetMessageId(messageId || null);
+      setSelectedArea('quickview'); // 퀵뷰 선택
     }
+    // Always set targetMessageId and targetChannelId if provided (for both quickview and pinned)
+    if (messageId) {
+      setTargetMessageId(messageId);
+      setTargetChannelId(channelId);
+    } else {
+      setTargetMessageId(null);
+      setTargetChannelId(null);
+    }
+  };
+
+  // 고정된 채널 선택 핸들러
+  const handleSelectPinnedChannel = (channelId: string) => {
+    setSelectedArea(channelId); // 해당 고정 채널 선택 (퀵뷰 선택 해제)
   };
 
   const clearTargetMessage = () => {
     setTargetMessageId(null);
+    setTargetChannelId(null);
   };
 
   const handlePinChannel = (channelId: string) => {
@@ -183,20 +187,28 @@ export default function MainLayout() {
       {/* QuickView Panel - 선택한 채널 임시 표시 */}
       <QuickViewPanel
         channelId={quickViewChannelId}
-        targetMessageId={targetMessageId}
+        targetMessageId={targetChannelId === quickViewChannelId ? targetMessageId : null}
         onPinChannel={handlePinChannel}
         onTargetMessageReached={clearTargetMessage}
+        isSelected={selectedArea === 'quickview'}
+        onSelect={() => setSelectedArea('quickview')}
       />
 
       {/* Main Panel - 고정된 채널 그리드 */}
       <MainPanel
+        ref={mainPanelRef}
         pinnedChannels={pinnedChannels}
         gridSize={gridSize}
         layoutMode={layoutMode}
+        targetMessageId={targetMessageId}
+        targetChannelId={targetChannelId}
         onReorder={handleReorderChannels}
         onUnpin={handleUnpinChannel}
         onGridSizeChange={handleGridSizeChange}
         onLayoutModeChange={setLayoutMode}
+        onTargetMessageReached={clearTargetMessage}
+        selectedChannelId={selectedArea !== 'quickview' ? selectedArea : null}
+        onSelectChannel={handleSelectPinnedChannel}
       />
 
       {/* Settings Modal */}
@@ -298,8 +310,8 @@ export default function MainLayout() {
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  setZoom(DEFAULT_DISPLAY.zoom);
-                  setFontSize(DEFAULT_DISPLAY.fontSize);
+                  setZoom(DEFAULT_ZOOM);
+                  setFontSize(DEFAULT_FONT_SIZE);
                 }}
                 className="flex-1 px-3 py-2 text-sm border rounded hover:bg-gray-50"
               >

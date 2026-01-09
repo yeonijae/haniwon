@@ -4,9 +4,8 @@ import { ko } from 'date-fns/locale';
 import { useSocketEmit } from '../../hooks/useSocket';
 import { useAuthStore } from '../../stores/authStore';
 import { getAbsoluteUrl } from '../../stores/serverConfigStore';
+import { useEmojiPresetsStore } from '../../stores/emojiPresetsStore';
 import InlineThread from './InlineThread';
-
-const EMOJI_LIST = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
 
 interface Message {
   id: string;
@@ -67,6 +66,7 @@ export default function MessageItem({ message, channelId, onReaction, showThread
   const editInputRef = useRef<HTMLTextAreaElement>(null);
   const emit = useSocketEmit();
   const { user } = useAuthStore();
+  const { emojis: emojiList } = useEmojiPresetsStore();
 
   const isOwnMessage = user?.id === message.sender?.id;
 
@@ -230,22 +230,14 @@ export default function MessageItem({ message, channelId, onReaction, showThread
             </div>
           )}
 
-          {/* 스레드 컨트롤 */}
-          {showThreadControls && channelId && (
+          {/* 스레드 컨트롤 - 답글이 있을 때만 표시 */}
+          {showThreadControls && channelId && message.thread_count > 0 && (
             <div className="flex items-center gap-2 mt-1">
-              {message.thread_count > 0 && (
-                <button
-                  className="text-blue-600 text-sm hover:underline"
-                  onClick={toggleThread}
-                >
-                  {isThreadExpanded ? '답글 접기' : `${message.thread_count}개의 답글`}
-                </button>
-              )}
               <button
-                className="text-gray-500 text-sm hover:text-blue-600"
-                onClick={handleReplyClick}
+                className="text-blue-600 text-sm hover:underline"
+                onClick={toggleThread}
               >
-                답글
+                {isThreadExpanded ? '답글 접기' : `${message.thread_count}개의 답글`}
               </button>
             </div>
           )}
@@ -290,7 +282,7 @@ export default function MessageItem({ message, channelId, onReaction, showThread
             </div>
             {showEmojiPicker && (
               <div className="absolute right-0 top-8 bg-white shadow-lg rounded-lg border p-2 flex gap-1 z-10">
-                {EMOJI_LIST.map((emoji) => (
+                {emojiList.map((emoji) => (
                   <button key={emoji} onClick={() => { onReaction?.(emoji); setShowEmojiPicker(false); }} className="p-1 hover:bg-gray-100 rounded text-lg">{emoji}</button>
                 ))}
               </div>
