@@ -1,5 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  horizontalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { api } from '../../api';
 import { useEmojiPresetsStore, DEFAULT_EMOJI_LIST } from '../../stores/emojiPresetsStore';
 import clsx from 'clsx';
@@ -11,6 +28,70 @@ interface AdminSettingsModalProps {
 
 type TabType = 'system' | 'channels' | 'emoji';
 
+// 이모지 카테고리별 목록 (전체)
+const EMOJI_CATEGORIES: Record<string, string[]> = {
+  '스마일 & 사람': [
+    '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '☺️', '😚',
+    '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥',
+    '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '🥸', '😎',
+    '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖',
+    '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽',
+    '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾',
+  ],
+  '제스처 & 신체': [
+    '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍',
+    '👎', '👊', '✊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✍️', '💅', '🤳', '💪', '🦾', '🦿', '🦵', '🦶', '👂',
+    '🦻', '👃', '🧠', '🫀', '🫁', '🦷', '🦴', '👀', '👁️', '👅', '👄', '👶', '🧒', '👦', '👧', '🧑', '👱', '👨', '🧔', '👩',
+    '🧓', '👴', '👵', '🙍', '🙎', '🙅', '🙆', '💁', '🙋', '🧏', '🙇', '🤦', '🤷', '👮', '🕵️', '💂', '🥷', '👷', '🤴', '👸',
+  ],
+  '하트 & 감정': [
+    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '❤️‍🔥',
+    '❤️‍🩹', '💋', '💯', '💢', '💥', '💫', '💦', '💨', '🕳️', '💣', '💬', '👁️‍🗨️', '🗨️', '🗯️', '💭', '💤', '🔥', '✨', '🌟', '💫',
+  ],
+  '동물 & 자연': [
+    '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐻‍❄️', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🙈', '🙉', '🙊', '🐒',
+    '🐔', '🐧', '🐦', '🐤', '🐣', '🐥', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🪱', '🐛', '🦋', '🐌', '🐞',
+    '🐜', '🪰', '🪲', '🪳', '🦟', '🦗', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠',
+    '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🦬', '🐃',
+    '🌸', '💮', '🏵️', '🌹', '🥀', '🌺', '🌻', '🌼', '🌷', '🌱', '🪴', '🌲', '🌳', '🌴', '🌵', '🌾', '🌿', '☘️', '🍀', '🍁',
+    '🍂', '🍃', '🌍', '🌎', '🌏', '🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘', '🌙', '🌚', '🌛', '🌜', '☀️', '🌝', '🌞',
+    '⭐', '🌟', '🌠', '☁️', '⛅', '🌤️', '🌥️', '🌦️', '🌧️', '🌨️', '🌩️', '🌪️', '🌫️', '🌈', '❄️', '☃️', '⛄', '🔥', '💧', '🌊',
+  ],
+  '음식 & 음료': [
+    '🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑',
+    '🥦', '🥬', '🥒', '🌶️', '🫑', '🌽', '🥕', '🫒', '🧄', '🧅', '🥔', '🍠', '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚', '🍳',
+    '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🦴', '🌭', '🍔', '🍟', '🍕', '🫓', '🥪', '🥙', '🧆', '🌮', '🌯', '🫔', '🥗',
+    '🥘', '🫕', '🍝', '🍜', '🍲', '🍛', '🍣', '🍱', '🥟', '🦪', '🍤', '🍙', '🍚', '🍘', '🍥', '🥠', '🥮', '🍢', '🍡', '🍧',
+    '🍨', '🍦', '🥧', '🧁', '🍰', '🎂', '🍮', '🍭', '🍬', '🍫', '🍿', '🍩', '🍪', '🌰', '🥜', '🍯', '🥛', '🍼', '☕', '🫖',
+    '🍵', '🧃', '🥤', '🧋', '🍶', '🍺', '🍻', '🥂', '🍷', '🥃', '🍸', '🍹', '🧉', '🍾', '🧊', '🥄', '🍴', '🍽️', '🥣', '🥡',
+  ],
+  '활동 & 스포츠': [
+    '⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃', '🥅', '⛳',
+    '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌', '🎿', '⛷️', '🏂', '🪂', '🏋️', '🤼', '🤸', '⛹️',
+    '🤺', '🤾', '🏌️', '🏇', '⛹️', '🏊', '🤽', '🚣', '🧗', '🚵', '🚴', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️', '🏵️', '🎗️', '🎫',
+    '🎟️', '🎪', '🤹', '🎭', '🩰', '🎨', '🎬', '🎤', '🎧', '🎼', '🎹', '🥁', '🪘', '🎷', '🎺', '🪗', '🎸', '🪕', '🎻', '🎲',
+    '♟️', '🎯', '🎳', '🎮', '🎰', '🧩',
+  ],
+  '여행 & 장소': [
+    '🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🛻', '🚚', '🚛', '🚜', '🏍️', '🛵', '🚲', '🛴', '🚨', '🚔',
+    '🚍', '🚘', '🚖', '🚡', '🚠', '🚟', '🚃', '🚋', '🚞', '🚝', '🚄', '🚅', '🚈', '🚂', '🚆', '🚇', '🚊', '🚉', '✈️', '🛫',
+    '🛬', '🛩️', '💺', '🛰️', '🚀', '🛸', '🚁', '🛶', '⛵', '🚤', '🛥️', '🛳️', '⛴️', '🚢', '⚓', '🪝', '⛽', '🚧', '🚦', '🚥',
+    '🗺️', '🗿', '🗽', '🗼', '🏰', '🏯', '🏟️', '🎡', '🎢', '🎠', '⛲', '⛱️', '🏖️', '🏝️', '🏜️', '🌋', '⛰️', '🏔️', '🗻', '🏕️',
+    '🛖', '🏠', '🏡', '🏘️', '🏚️', '🏗️', '🏢', '🏬', '🏣', '🏤', '🏥', '🏦', '🏨', '🏪', '🏫', '🏩', '💒', '🏛️', '⛪', '🕌',
+  ],
+  '사물 & 기호': [
+    '⌚', '📱', '📲', '💻', '⌨️', '🖥️', '🖨️', '🖱️', '🖲️', '🕹️', '🗜️', '💽', '💾', '💿', '📀', '📼', '📷', '📸', '📹', '🎥',
+    '📽️', '🎞️', '📞', '☎️', '📟', '📠', '📺', '📻', '🎙️', '🎚️', '🎛️', '🧭', '⏱️', '⏲️', '⏰', '🕰️', '⌛', '⏳', '📡', '🔋',
+    '🔌', '💡', '🔦', '🕯️', '🧯', '🛢️', '💵', '💴', '💶', '💷', '🪙', '💰', '💳', '💎', '⚖️', '🪜', '🧰', '🪛', '🔧', '🔨',
+    '⚒️', '🛠️', '⛏️', '🪚', '🔩', '⚙️', '🪤', '🧱', '⛓️', '🧲', '🔫', '💣', '🧨', '🪓', '🔪', '🗡️', '⚔️', '🛡️', '🚬', '⚰️',
+    '🪦', '⚱️', '🏺', '🔮', '📿', '🧿', '💈', '⚗️', '🔭', '🔬', '🕳️', '🩹', '🩺', '💊', '💉', '🩸', '🧬', '🦠', '🧫', '🧪',
+    '✅', '✔️', '☑️', '❌', '❎', '➕', '➖', '➗', '✖️', '♾️', '💲', '💱', '™️', '©️', '®️', '〰️', '➰', '➿', '🔚', '🔙',
+    '🔛', '🔝', '🔜', '✳️', '❇️', '‼️', '⁉️', '❓', '❔', '❕', '❗', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✴️', '🈯',
+    '💠', '🔷', '🔶', '🔵', '🔴', '🟠', '🟡', '🟢', '🟣', '🟤', '⚫', '⚪', '🟥', '🟧', '🟨', '🟩', '🟦', '🟪', '🟫', '⬛',
+    '⬜', '◼️', '◻️', '◾', '◽', '▪️', '▫️', '🔳', '🔲', '🔘', '🏁', '🚩', '🎌', '🏴', '🏳️', '🏳️‍🌈', '🏳️‍⚧️', '🏴‍☠️',
+  ],
+};
+
 interface Channel {
   id: string;
   type: 'direct' | 'group' | 'topic';
@@ -19,14 +100,60 @@ interface Channel {
   member_count?: number;
 }
 
+// 드래그 가능한 이모지 아이템
+function SortableEmoji({ id, emoji, onRemove }: { id: string; emoji: string; onRemove: () => void }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="flex items-center justify-center w-10 h-10 text-2xl bg-gray-600 hover:bg-gray-500 rounded-lg cursor-grab active:cursor-grabbing"
+      title="드래그하여 순서 변경, 더블클릭하여 제거"
+      onDoubleClick={onRemove}
+    >
+      {emoji}
+    </div>
+  );
+}
+
 export default function AdminSettingsModal({ isOpen, onClose }: AdminSettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('system');
   const queryClient = useQueryClient();
 
   // Emoji presets state
-  const { emojis, setEmojis, resetToDefault } = useEmojiPresetsStore();
+  const { emojis, setEmojis } = useEmojiPresetsStore();
   const [editingEmojis, setEditingEmojis] = useState<string[]>([]);
-  const [newEmoji, setNewEmoji] = useState('');
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = parseInt(String(active.id).split('-')[1]);
+      const newIndex = parseInt(String(over.id).split('-')[1]);
+      setEditingEmojis((items) => arrayMove(items, oldIndex, newIndex));
+    }
+  };
 
   // System settings state (local storage based for now)
   const [defaultFontSize, setDefaultFontSize] = useState(() =>
@@ -62,19 +189,13 @@ export default function AdminSettingsModal({ isOpen, onClose }: AdminSettingsMod
 
   if (!isOpen) return null;
 
-  const handleAddEmoji = () => {
-    if (newEmoji && !editingEmojis.includes(newEmoji)) {
-      setEditingEmojis([...editingEmojis, newEmoji]);
-      setNewEmoji('');
-    }
-  };
-
   const handleRemoveEmoji = (emoji: string) => {
     setEditingEmojis(editingEmojis.filter((e) => e !== emoji));
   };
 
   const handleSaveEmojis = () => {
     setEmojis(editingEmojis);
+    alert('이모지 프리셋이 저장되었습니다.');
   };
 
   const handleResetEmojis = () => {
@@ -209,53 +330,79 @@ export default function AdminSettingsModal({ isOpen, onClose }: AdminSettingsMod
           {/* Emoji Presets Tab */}
           {activeTab === 'emoji' && (
             <div className="space-y-6">
+              {/* 현재 프리셋 */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-3">
-                  현재 이모지 프리셋
+                  현재 이모지 프리셋 ({editingEmojis.length}개)
                 </label>
-                <div className="flex flex-wrap gap-2 p-4 bg-gray-700 rounded-lg min-h-[60px]">
-                  {editingEmojis.map((emoji, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-1 px-2 py-1 bg-gray-600 rounded-lg group"
-                    >
-                      <span className="text-xl">{emoji}</span>
-                      <button
-                        onClick={() => handleRemoveEmoji(emoji)}
-                        className="text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        ✕
-                      </button>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={editingEmojis.map((_, i) => `emoji-${i}`)}
+                    strategy={horizontalListSortingStrategy}
+                  >
+                    <div className="flex flex-wrap gap-2 p-4 bg-gray-700 rounded-lg min-h-[60px]">
+                      {editingEmojis.map((emoji, index) => (
+                        <SortableEmoji
+                          key={`emoji-${index}`}
+                          id={`emoji-${index}`}
+                          emoji={emoji}
+                          onRemove={() => handleRemoveEmoji(emoji)}
+                        />
+                      ))}
+                      {editingEmojis.length === 0 && (
+                        <span className="text-gray-500">아래에서 이모지를 선택하세요.</span>
+                      )}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+                <p className="mt-1 text-xs text-gray-500">드래그하여 순서 변경, 더블클릭하여 제거</p>
+              </div>
+
+              {/* 이모지 선택 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-3">
+                  이모지 선택
+                </label>
+                <div className="space-y-4 max-h-[300px] overflow-y-auto">
+                  {Object.entries(EMOJI_CATEGORIES).map(([category, emojiList]) => (
+                    <div key={category}>
+                      <div className="text-xs text-gray-400 mb-2">{category}</div>
+                      <div className="flex flex-wrap gap-1">
+                        {emojiList.map((emoji) => {
+                          const isSelected = editingEmojis.includes(emoji);
+                          return (
+                            <button
+                              key={emoji}
+                              onClick={() => {
+                                if (isSelected) {
+                                  handleRemoveEmoji(emoji);
+                                } else {
+                                  setEditingEmojis([...editingEmojis, emoji]);
+                                }
+                              }}
+                              className={clsx(
+                                'w-9 h-9 text-xl rounded-lg transition-colors',
+                                isSelected
+                                  ? 'bg-blue-600 ring-2 ring-blue-400'
+                                  : 'bg-gray-700 hover:bg-gray-600'
+                              )}
+                              title={isSelected ? '선택됨 (클릭하여 제거)' : '클릭하여 추가'}
+                            >
+                              {emoji}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   ))}
-                  {editingEmojis.length === 0 && (
-                    <span className="text-gray-500">이모지가 없습니다.</span>
-                  )}
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  이모지 추가
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newEmoji}
-                    onChange={(e) => setNewEmoji(e.target.value)}
-                    placeholder="이모지 입력 (예: 🚀)"
-                    className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <button
-                    onClick={handleAddEmoji}
-                    disabled={!newEmoji}
-                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 disabled:opacity-50 transition-colors"
-                  >
-                    추가
-                  </button>
-                </div>
-              </div>
-
+              {/* 버튼 */}
               <div className="flex gap-3 pt-4 border-t border-gray-700">
                 <button
                   onClick={handleResetEmojis}

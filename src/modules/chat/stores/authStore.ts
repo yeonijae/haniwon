@@ -28,6 +28,23 @@ interface AuthState {
   setAuthenticated: (isAuthenticated: boolean) => void;
 }
 
+// localStorage 마이그레이션: isAdmin 없으면 강제 재로그인
+const migrateAuthStorage = () => {
+  try {
+    const stored = localStorage.getItem('haniwon-chat-auth');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.state?.user && parsed.state.user.isAdmin === undefined) {
+        console.log('[Auth] isAdmin 없음 - localStorage 초기화');
+        localStorage.removeItem('haniwon-chat-auth');
+      }
+    }
+  } catch (e) {
+    console.error('[Auth] 마이그레이션 오류:', e);
+  }
+};
+migrateAuthStorage();
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -45,7 +62,10 @@ export const useAuthStore = create<AuthState>()(
           const { user, accessToken, refreshToken } = response.data.data;
 
           set({
-            user,
+            user: {
+              ...user,
+              isAdmin: user.username === 'admin' || user.is_admin,
+            },
             accessToken,
             refreshToken,
             isAuthenticated: true,
@@ -77,8 +97,12 @@ export const useAuthStore = create<AuthState>()(
 
         try {
           const response = await api.get('/auth/me');
+          const user = response.data.data.user;
           set({
-            user: response.data.data.user,
+            user: {
+              ...user,
+              isAdmin: user.username === 'admin' || user.is_admin,
+            },
             isAuthenticated: true,
           });
         } catch {
@@ -92,7 +116,10 @@ export const useAuthStore = create<AuthState>()(
               const { user, accessToken: newAccessToken, refreshToken: newRefreshToken } =
                 refreshResponse.data.data;
               set({
-                user,
+                user: {
+                  ...user,
+                  isAdmin: user.username === 'admin' || user.is_admin,
+                },
                 accessToken: newAccessToken,
                 refreshToken: newRefreshToken,
                 isAuthenticated: true,
@@ -155,12 +182,12 @@ export async function autoLoginWithPortalSession(portalSessionToken: string): Pr
     const { user, accessToken } = response.data.data;
     store.setUser({
       id: user.id,
-      email: '', // 이메일 불필요
+      email: '',
       username: user.username,
       displayName: user.display_name,
       avatarUrl: user.avatar_url,
       avatarColor: user.avatar_color,
-      isAdmin: user.username === 'admin',
+      isAdmin: user.is_admin === true,
     });
     store.setTokens(accessToken, accessToken);
     return true;

@@ -7,14 +7,18 @@ import {
   addMedicineStock,
   fetchPrescriptionDefinitions,
   importPrescriptionsToInventory,
+  getMedicineUsagesByDateRange,
+  getMedicineUsageStatsByDateRange,
   type MedicineInventory,
+  type MedicineUsage,
+  type MedicineUsageStats,
   type MedicineCategory,
   MEDICINE_CATEGORIES,
 } from '../../cs/lib/api';
 import { getCurrentDate } from '@shared/lib/postgres';
 
 function ReadyMedicineList() {
-  const [activeTab, setActiveTab] = useState<'inventory' | 'import'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'import' | 'usage'>('inventory');
   const [inventory, setInventory] = useState<MedicineInventory[]>([]);
   const [prescriptions, setPrescriptions] = useState<Array<{id: number; name: string; category: string; alias: string | null; is_active: boolean}>>([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +30,16 @@ function ReadyMedicineList() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [prescriptionSearch, setPrescriptionSearch] = useState('');
   const [prescriptionCategory, setPrescriptionCategory] = useState('');
+
+  // 사용내역 탭 상태
+  const [usageStartDate, setUsageStartDate] = useState(getCurrentDate());
+  const [usageEndDate, setUsageEndDate] = useState(getCurrentDate());
+  const [usages, setUsages] = useState<MedicineUsage[]>([]);
+  const [usageStats, setUsageStats] = useState<MedicineUsageStats[]>([]);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [medicinNameFilter, setMedicineNameFilter] = useState('');
+  const [patientNameFilter, setPatientNameFilter] = useState('');
+  const [usageViewMode, setUsageViewMode] = useState<'list' | 'stats'>('list');
 
   // 선택된 처방정의 (일괄 등록용)
   const [selectedPrescriptions, setSelectedPrescriptions] = useState<Set<number>>(new Set());
@@ -78,6 +92,28 @@ function ReadyMedicineList() {
     }
   }, [prescriptionSearch, prescriptionCategory]);
 
+  // 사용내역 로드
+  const loadUsages = useCallback(async () => {
+    try {
+      setUsageLoading(true);
+      const [usageData, statsData] = await Promise.all([
+        getMedicineUsagesByDateRange(
+          usageStartDate,
+          usageEndDate,
+          medicinNameFilter || undefined,
+          patientNameFilter || undefined
+        ),
+        getMedicineUsageStatsByDateRange(usageStartDate, usageEndDate),
+      ]);
+      setUsages(usageData);
+      setUsageStats(statsData);
+    } catch (err: any) {
+      console.error('사용내역 로드 오류:', err);
+    } finally {
+      setUsageLoading(false);
+    }
+  }, [usageStartDate, usageEndDate, medicinNameFilter, patientNameFilter]);
+
   useEffect(() => {
     loadInventory();
   }, [loadInventory]);
@@ -87,6 +123,12 @@ function ReadyMedicineList() {
       loadPrescriptions();
     }
   }, [activeTab, loadPrescriptions]);
+
+  useEffect(() => {
+    if (activeTab === 'usage') {
+      loadUsages();
+    }
+  }, [activeTab, loadUsages]);
 
   // 필터된 목록
   const filteredInventory = inventory.filter((item) => {
@@ -100,6 +142,49 @@ function ReadyMedicineList() {
     }
     return true;
   });
+
+  // 날짜 빠른 이동
+  const handleDateQuickMove = (type: 'today' | 'week' | 'month' | 'prev' | 'next') => {
+    const today = getCurrentDate();
+    const start = new Date(usageStartDate);
+    const end = new Date(usageEndDate);
+    const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+
+    switch (type) {
+      case 'today':
+        setUsageStartDate(today);
+        setUsageEndDate(today);
+        break;
+      case 'week': {
+        const weekStart = new Date(today);
+        weekStart.setDate(weekStart.getDate() - 6);
+        setUsageStartDate(weekStart.toISOString().split('T')[0]);
+        setUsageEndDate(today);
+        break;
+      }
+      case 'month': {
+        const monthStart = new Date(today);
+        monthStart.setDate(monthStart.getDate() - 29);
+        setUsageStartDate(monthStart.toISOString().split('T')[0]);
+        setUsageEndDate(today);
+        break;
+      }
+      case 'prev': {
+        start.setDate(start.getDate() - diff - 1);
+        end.setDate(end.getDate() - diff - 1);
+        setUsageStartDate(start.toISOString().split('T')[0]);
+        setUsageEndDate(end.toISOString().split('T')[0]);
+        break;
+      }
+      case 'next': {
+        start.setDate(start.getDate() + diff + 1);
+        end.setDate(end.getDate() + diff + 1);
+        setUsageStartDate(start.toISOString().split('T')[0]);
+        setUsageEndDate(end.toISOString().split('T')[0]);
+        break;
+      }
+    }
+  };
 
   // 처방정의 일괄 등록
   const handleImport = async () => {
@@ -163,11 +248,23 @@ function ReadyMedicineList() {
   };
 
   // 상비약 비활성화
-  const handleDelete = async (id: number, name: string) => {
+  const handleDeactivate = async (id: number, name: string) => {
     if (!confirm(`'${name}'을(를) 비활성화하시겠습니까?`)) return;
     try {
       await deleteMedicineInventory(id);
       loadInventory();
+    } catch (err: any) {
+      alert(err.message || '비활성화 실패');
+    }
+  };
+
+  // 상비약 완전 삭제
+  const handleHardDelete = async (id: number, name: string) => {
+    if (!confirm(`'${name}'을(를) 완전히 삭제하시겠습니까?\n\n⚠️ 이 작업은 되돌릴 수 없습니다.`)) return;
+    try {
+      await deleteMedicineInventory(id, true);
+      loadInventory();
+      alert(`'${name}'이(가) 삭제되었습니다.`);
     } catch (err: any) {
       alert(err.message || '삭제 실패');
     }
@@ -258,6 +355,16 @@ function ReadyMedicineList() {
           }`}
         >
           처방정의에서 등록
+        </button>
+        <button
+          onClick={() => setActiveTab('usage')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'usage'
+              ? 'bg-blue-500 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          사용내역
         </button>
       </div>
 
@@ -410,10 +517,14 @@ function ReadyMedicineList() {
                             >수정</button>
                             {item.is_active && (
                               <button
-                                onClick={() => handleDelete(item.id, item.name)}
-                                className="px-2 py-1 bg-red-50 text-red-600 rounded text-xs hover:bg-red-100"
+                                onClick={() => handleDeactivate(item.id, item.name)}
+                                className="px-2 py-1 mr-1 bg-yellow-50 text-yellow-700 rounded text-xs hover:bg-yellow-100"
                               >비활성</button>
                             )}
+                            <button
+                              onClick={() => handleHardDelete(item.id, item.name)}
+                              className="px-2 py-1 bg-red-50 text-red-600 rounded text-xs hover:bg-red-100"
+                            >삭제</button>
                           </td>
                         </>
                       )}
@@ -534,6 +645,247 @@ function ReadyMedicineList() {
               </table>
             )}
           </div>
+        </div>
+      )}
+
+      {/* 사용내역 탭 */}
+      {activeTab === 'usage' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          {/* 검색 필터 */}
+          <div className="p-4 border-b border-gray-200 space-y-3">
+            {/* 날짜 선택 및 빠른 이동 */}
+            <div className="flex gap-2 flex-wrap items-center">
+              <button
+                onClick={() => handleDateQuickMove('prev')}
+                className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
+              >
+                ◀ 이전
+              </button>
+              <input
+                type="date"
+                value={usageStartDate}
+                onChange={(e) => setUsageStartDate(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-gray-500">~</span>
+              <input
+                type="date"
+                value={usageEndDate}
+                onChange={(e) => setUsageEndDate(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={() => handleDateQuickMove('next')}
+                className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
+              >
+                다음 ▶
+              </button>
+              <div className="h-6 w-px bg-gray-300 mx-1" />
+              <button
+                onClick={() => handleDateQuickMove('today')}
+                className="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm"
+              >
+                오늘
+              </button>
+              <button
+                onClick={() => handleDateQuickMove('week')}
+                className="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm"
+              >
+                최근 1주
+              </button>
+              <button
+                onClick={() => handleDateQuickMove('month')}
+                className="px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm"
+              >
+                최근 1달
+              </button>
+            </div>
+
+            {/* 검색 필터 및 보기 모드 */}
+            <div className="flex gap-3 flex-wrap items-center">
+              <input
+                type="text"
+                placeholder="처방명 검색..."
+                value={medicinNameFilter}
+                onChange={(e) => setMedicineNameFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="text"
+                placeholder="환자명 검색..."
+                value={patientNameFilter}
+                onChange={(e) => setPatientNameFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={loadUsages}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+              >
+                검색
+              </button>
+              <div className="flex-1" />
+              <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                <button
+                  onClick={() => setUsageViewMode('list')}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    usageViewMode === 'list' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  상세내역
+                </button>
+                <button
+                  onClick={() => setUsageViewMode('stats')}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    usageViewMode === 'stats' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  사용통계
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 상세내역 뷰 */}
+          {usageViewMode === 'list' && (
+            <>
+              <div className="overflow-auto max-h-[calc(100vh-400px)]">
+                {usageLoading ? (
+                  <div className="p-10 text-center text-gray-500">로딩 중...</div>
+                ) : usages.length === 0 ? (
+                  <div className="p-10 text-center text-gray-500">
+                    <div className="text-4xl mb-3">📋</div>
+                    해당 기간의 사용내역이 없습니다.
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">사용일</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">환자명</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">차트번호</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">상비약명</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">수량</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">용도</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">메모</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usages.map((usage) => (
+                        <tr key={usage.id} className="border-t border-gray-100 hover:bg-gray-50">
+                          <td className="px-4 py-3 text-center text-sm text-gray-500">{usage.usage_date}</td>
+                          <td className="px-4 py-3 font-medium">{usage.patient_name || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{usage.chart_number}</td>
+                          <td className="px-4 py-3">{usage.medicine_name}</td>
+                          <td className="px-4 py-3 text-center font-semibold text-blue-600">{usage.quantity}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              usage.purpose === '상비약' ? 'bg-green-100 text-green-700' :
+                              usage.purpose === '감기약' ? 'bg-blue-100 text-blue-700' :
+                              usage.purpose === '치료약' ? 'bg-purple-100 text-purple-700' :
+                              usage.purpose === '증정' ? 'bg-yellow-100 text-yellow-700' :
+                              usage.purpose === '보완' ? 'bg-orange-100 text-orange-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {usage.purpose || '상비약'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{usage.memo || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* 합계 */}
+              {usages.length > 0 && (
+                <div className="p-4 border-t border-gray-200 bg-gray-50">
+                  <div className="flex gap-6 text-sm">
+                    <span>총 {usages.length}건</span>
+                    <span>총 사용량: <strong className="text-blue-600">{usages.reduce((sum, u) => sum + u.quantity, 0)}</strong>개</span>
+                    <span>환자 수: <strong>{new Set(usages.map(u => u.patient_id)).size}</strong>명</span>
+                    <span>상비약 종류: <strong>{new Set(usages.map(u => u.medicine_name)).size}</strong>종</span>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 사용통계 뷰 */}
+          {usageViewMode === 'stats' && (
+            <>
+              <div className="overflow-auto max-h-[calc(100vh-400px)]">
+                {usageLoading ? (
+                  <div className="p-10 text-center text-gray-500">로딩 중...</div>
+                ) : usageStats.length === 0 ? (
+                  <div className="p-10 text-center text-gray-500">
+                    <div className="text-4xl mb-3">📊</div>
+                    해당 기간의 사용 통계가 없습니다.
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700 w-16">순위</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">상비약명</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">총 사용량</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">사용 횟수</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">환자 수</th>
+                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">사용 비율</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usageStats.map((stat, index) => {
+                        const totalQuantity = usageStats.reduce((sum, s) => sum + Number(s.total_quantity), 0);
+                        const percentage = totalQuantity > 0 ? (Number(stat.total_quantity) / totalQuantity * 100).toFixed(1) : '0';
+                        return (
+                          <tr key={stat.medicine_name} className="border-t border-gray-100 hover:bg-gray-50">
+                            <td className="px-4 py-3 text-center">
+                              {index < 3 ? (
+                                <span className={`inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold text-white ${
+                                  index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : 'bg-amber-600'
+                                }`}>
+                                  {index + 1}
+                                </span>
+                              ) : (
+                                <span className="text-gray-500">{index + 1}</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 font-medium">{stat.medicine_name}</td>
+                            <td className="px-4 py-3 text-center font-semibold text-blue-600">{stat.total_quantity}</td>
+                            <td className="px-4 py-3 text-center text-gray-600">{stat.usage_count}회</td>
+                            <td className="px-4 py-3 text-center text-gray-600">{stat.patient_count}명</td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-blue-500 rounded-full"
+                                    style={{ width: `${percentage}%` }}
+                                  />
+                                </div>
+                                <span className="text-sm text-gray-500 w-12 text-right">{percentage}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* 통계 요약 */}
+              {usageStats.length > 0 && (
+                <div className="p-4 border-t border-gray-200 bg-gray-50">
+                  <div className="flex gap-6 text-sm">
+                    <span>상비약 종류: <strong>{usageStats.length}</strong>종</span>
+                    <span>총 사용량: <strong className="text-blue-600">{usageStats.reduce((sum, s) => sum + Number(s.total_quantity), 0)}</strong>개</span>
+                    <span>총 사용 횟수: <strong>{usageStats.reduce((sum, s) => sum + Number(s.usage_count), 0)}</strong>회</span>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 

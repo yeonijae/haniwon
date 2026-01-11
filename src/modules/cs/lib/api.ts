@@ -465,6 +465,9 @@ export async function ensureReceiptTables(): Promise<void> {
   await execute(`ALTER TABLE cs_medicine_usage ADD COLUMN IF NOT EXISTS inventory_id INTEGER`).catch(() => {});
   await execute(`ALTER TABLE cs_medicine_usage ADD COLUMN IF NOT EXISTS purpose TEXT DEFAULT '상비약'`).catch(() => {});
 
+  // 상비약 재고관리 테이블 - last_decoction_date 컬럼 추가
+  await execute(`ALTER TABLE cs_medicine_inventory ADD COLUMN IF NOT EXISTS last_decoction_date TEXT`).catch(() => {});
+
   // 상비약 재고관리 테이블
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_medicine_inventory (
@@ -1069,9 +1072,15 @@ export async function getReceiptMemo(patientId: number, date: string): Promise<R
 
 export async function getReceiptMemoByReceiptId(receiptId: number): Promise<ReceiptMemo | null> {
   const results = await query<ReceiptMemo>(
-    `SELECT * FROM cs_receipt_memos WHERE mssql_receipt_id = ${receiptId}`
+    `SELECT * FROM cs_receipt_memos WHERE mssql_receipt_id = ${receiptId} ORDER BY id DESC LIMIT 1`
   );
   return results.length > 0 ? results[0] : null;
+}
+
+export async function getReceiptMemosByReceiptId(receiptId: number): Promise<ReceiptMemo[]> {
+  return query<ReceiptMemo>(
+    `SELECT * FROM cs_receipt_memos WHERE mssql_receipt_id = ${receiptId} ORDER BY created_at ASC`
+  );
 }
 
 export async function upsertReceiptMemo(data: {
@@ -1087,8 +1096,13 @@ export async function upsertReceiptMemo(data: {
 }): Promise<number> {
   const now = getCurrentTimestamp();
 
-  // 기존 메모 확인
-  const existing = await getReceiptMemo(data.patient_id, data.receipt_date);
+  // mssql_receipt_id가 있으면 해당 수납건 기준으로 조회, 없으면 환자+날짜 기준
+  let existing: ReceiptMemo | null = null;
+  if (data.mssql_receipt_id) {
+    existing = await getReceiptMemoByReceiptId(data.mssql_receipt_id);
+  } else {
+    existing = await getReceiptMemo(data.patient_id, data.receipt_date);
+  }
 
   if (existing) {
     // 업데이트
@@ -1117,6 +1131,50 @@ export async function upsertReceiptMemo(data: {
       )
     `);
   }
+}
+
+/**
+ * 수납 메모 추가 (항상 INSERT - 덮어쓰지 않음)
+ */
+export async function addReceiptMemo(data: {
+  patient_id: number;
+  chart_number?: string;
+  patient_name?: string;
+  mssql_receipt_id?: number;
+  receipt_date: string;
+  memo: string;
+}): Promise<number> {
+  const now = getCurrentTimestamp();
+  return insert(`
+    INSERT INTO cs_receipt_memos (
+      patient_id, chart_number, patient_name, mssql_receipt_id, receipt_date,
+      memo, reservation_status, is_completed, created_at, updated_at
+    ) VALUES (
+      ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
+      ${data.mssql_receipt_id || 'NULL'}, ${escapeString(data.receipt_date)},
+      ${toSqlValue(data.memo)}, 'none', 0,
+      ${escapeString(now)}, ${escapeString(now)}
+    )
+  `);
+}
+
+/**
+ * 수납 메모 수정 (ID 기준)
+ */
+export async function updateReceiptMemoById(id: number, memo: string): Promise<void> {
+  const now = getCurrentTimestamp();
+  await execute(`
+    UPDATE cs_receipt_memos
+    SET memo = ${toSqlValue(memo)}, updated_at = ${escapeString(now)}
+    WHERE id = ${id}
+  `);
+}
+
+/**
+ * 수납 메모 삭제 (ID 기준)
+ */
+export async function deleteReceiptMemoById(id: number): Promise<void> {
+  await execute(`DELETE FROM cs_receipt_memos WHERE id = ${id}`);
 }
 
 /**
@@ -1426,6 +1484,55 @@ export async function getMedicineUsagesByDate(date: string): Promise<MedicineUsa
   );
 }
 
+/**
+ * 기간별 상비약 사용내역 조회
+ */
+export async function getMedicineUsagesByDateRange(
+  startDate: string,
+  endDate: string,
+  medicineName?: string,
+  patientName?: string
+): Promise<MedicineUsage[]> {
+  let sql = `SELECT * FROM cs_medicine_usage WHERE usage_date >= ${escapeString(startDate)} AND usage_date <= ${escapeString(endDate)}`;
+
+  if (medicineName) {
+    sql += ` AND medicine_name ILIKE ${escapeString('%' + medicineName + '%')}`;
+  }
+  if (patientName) {
+    sql += ` AND patient_name ILIKE ${escapeString('%' + patientName + '%')}`;
+  }
+
+  sql += ' ORDER BY usage_date DESC, created_at DESC';
+  return query<MedicineUsage>(sql);
+}
+
+/**
+ * 기간별 상비약 사용 통계
+ */
+export interface MedicineUsageStats {
+  medicine_name: string;
+  total_quantity: number;
+  usage_count: number;
+  patient_count: number;
+}
+
+export async function getMedicineUsageStatsByDateRange(
+  startDate: string,
+  endDate: string
+): Promise<MedicineUsageStats[]> {
+  return query<MedicineUsageStats>(`
+    SELECT
+      medicine_name,
+      SUM(quantity) as total_quantity,
+      COUNT(*) as usage_count,
+      COUNT(DISTINCT patient_id) as patient_count
+    FROM cs_medicine_usage
+    WHERE usage_date >= ${escapeString(startDate)} AND usage_date <= ${escapeString(endDate)}
+    GROUP BY medicine_name
+    ORDER BY total_quantity DESC
+  `);
+}
+
 // ============================================
 // 약침 사용 기록 API
 // ============================================
@@ -1453,6 +1560,32 @@ export async function getYakchimUsageRecordsByReceiptId(receiptId: number): Prom
 }
 
 /**
+ * 약침 사용 기록 추가
+ */
+export async function createYakchimUsageRecord(data: {
+  patient_id: number;
+  source_type: 'package' | 'membership' | 'one-time';
+  source_id: number;
+  source_name: string;
+  usage_date: string;
+  item_name: string;
+  remaining_after: number;
+  receipt_id?: number;
+  memo?: string;
+}): Promise<number> {
+  const now = getCurrentTimestamp();
+  return insert(`
+    INSERT INTO cs_yakchim_usage_records (
+      patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id, memo, created_at
+    ) VALUES (
+      ${data.patient_id}, ${escapeString(data.source_type)}, ${data.source_id}, ${escapeString(data.source_name)},
+      ${escapeString(data.usage_date)}, ${escapeString(data.item_name)}, ${data.remaining_after},
+      ${data.receipt_id || 'NULL'}, ${toSqlValue(data.memo)}, ${escapeString(now)}
+    )
+  `);
+}
+
+/**
  * 상비약 사용내역 추가
  */
 export async function createMedicineUsage(data: Omit<MedicineUsage, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
@@ -1471,12 +1604,95 @@ export async function createMedicineUsage(data: Omit<MedicineUsage, 'id' | 'crea
 }
 
 /**
- * 상비약 사용내역 수정
+ * 상비약 사용내역 단건 조회
  */
-export async function updateMedicineUsage(id: number, updates: Partial<MedicineUsage>): Promise<void> {
+export async function getMedicineUsageById(id: number): Promise<MedicineUsage | null> {
+  const results = await query<MedicineUsage>(
+    `SELECT * FROM cs_medicine_usage WHERE id = ${id}`
+  );
+  return results.length > 0 ? results[0] : null;
+}
+
+/**
+ * 상비약 사용내역 수정 (재고 반영)
+ * - 약 종류 변경: 기존 재고 복원 + 새 재고 차감
+ * - 수량만 변경: 차이만큼 재고 조정
+ */
+export async function updateMedicineUsage(
+  id: number,
+  updates: Partial<MedicineUsage> & { newInventoryId?: number }
+): Promise<void> {
+  // 기존 사용내역 조회
+  const existing = await getMedicineUsageById(id);
+  if (!existing) {
+    throw new Error('사용내역을 찾을 수 없습니다.');
+  }
+
+  const oldInventoryId = existing.inventory_id;
+  const oldQuantity = existing.quantity;
+  const newInventoryId = updates.newInventoryId;
+  const newQuantity = updates.quantity ?? oldQuantity;
+
+  // 약 종류가 변경된 경우
+  if (newInventoryId && newInventoryId !== oldInventoryId) {
+    // 새 재고 확인
+    const newInventory = await getMedicineInventoryById(newInventoryId);
+    if (!newInventory) {
+      throw new Error('선택한 상비약을 찾을 수 없습니다.');
+    }
+    if (newInventory.current_stock < newQuantity) {
+      throw new Error(`재고가 부족합니다. (현재: ${newInventory.current_stock}${newInventory.unit})`);
+    }
+
+    // 기존 재고 복원 (oldInventoryId가 있는 경우)
+    if (oldInventoryId) {
+      await execute(`
+        UPDATE cs_medicine_inventory
+        SET current_stock = current_stock + ${oldQuantity},
+            updated_at = ${escapeString(getCurrentTimestamp())}
+        WHERE id = ${oldInventoryId}
+      `);
+    }
+
+    // 새 재고 차감
+    await execute(`
+      UPDATE cs_medicine_inventory
+      SET current_stock = current_stock - ${newQuantity},
+          updated_at = ${escapeString(getCurrentTimestamp())}
+      WHERE id = ${newInventoryId}
+    `);
+
+    // 사용내역 업데이트 (inventory_id, medicine_name 변경)
+    updates.inventory_id = newInventoryId;
+    updates.medicine_name = newInventory.name;
+  }
+  // 수량만 변경된 경우
+  else if (updates.quantity !== undefined && updates.quantity !== oldQuantity && oldInventoryId) {
+    const quantityDiff = newQuantity - oldQuantity;
+
+    // 증가한 경우 재고 확인
+    if (quantityDiff > 0) {
+      const inventory = await getMedicineInventoryById(oldInventoryId);
+      if (inventory && inventory.current_stock < quantityDiff) {
+        throw new Error(`재고가 부족합니다. (현재: ${inventory.current_stock}${inventory.unit})`);
+      }
+    }
+
+    // 재고 조정 (증가 시 차감, 감소 시 복원)
+    await execute(`
+      UPDATE cs_medicine_inventory
+      SET current_stock = current_stock - ${quantityDiff},
+          updated_at = ${escapeString(getCurrentTimestamp())}
+      WHERE id = ${oldInventoryId}
+    `);
+  }
+
+  // 사용내역 업데이트
   const parts: string[] = [];
   if (updates.medicine_name !== undefined) parts.push(`medicine_name = ${escapeString(updates.medicine_name)}`);
   if (updates.quantity !== undefined) parts.push(`quantity = ${updates.quantity}`);
+  if (updates.inventory_id !== undefined) parts.push(`inventory_id = ${updates.inventory_id}`);
+  if (updates.purpose !== undefined) parts.push(`purpose = ${escapeString(updates.purpose)}`);
   if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
   if (updates.usage_date !== undefined) parts.push(`usage_date = ${escapeString(updates.usage_date)}`);
   parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
@@ -1487,9 +1703,26 @@ export async function updateMedicineUsage(id: number, updates: Partial<MedicineU
 }
 
 /**
- * 상비약 사용내역 삭제
+ * 상비약 사용내역 삭제 (재고 복원)
  */
 export async function deleteMedicineUsage(id: number): Promise<void> {
+  // 기존 사용내역 조회
+  const existing = await getMedicineUsageById(id);
+  if (!existing) {
+    throw new Error('사용내역을 찾을 수 없습니다.');
+  }
+
+  // 재고 복원 (inventory_id가 있는 경우)
+  if (existing.inventory_id) {
+    await execute(`
+      UPDATE cs_medicine_inventory
+      SET current_stock = current_stock + ${existing.quantity},
+          updated_at = ${escapeString(getCurrentTimestamp())}
+      WHERE id = ${existing.inventory_id}
+    `);
+  }
+
+  // 사용내역 삭제
   await execute(`DELETE FROM cs_medicine_usage WHERE id = ${id}`);
 }
 
@@ -1502,7 +1735,7 @@ export interface MedicineInventory {
   prescription_id: number | null;
   name: string;
   alias: string | null;
-  category: string; // 상비약, 공진단, 증정품, 치료약, 감기약
+  category: string; // 관리 목적 분류 (자유 입력)
   total_stock: number;
   current_stock: number;
   doses_per_batch: number;
@@ -1511,6 +1744,7 @@ export interface MedicineInventory {
   is_active: boolean;
   sort_order: number;
   memo: string | null;
+  last_decoction_date: string | null;  // 최근탕전일
   created_at?: string;
   updated_at?: string;
 }
@@ -1830,4 +2064,126 @@ export async function importPrescriptionsToInventory(
   }
 
   return result;
+}
+
+// ============================================
+// 상비약 일괄 등록 API
+// ============================================
+
+export interface BulkImportItem {
+  name: string;              // 처방명
+  lastDecoction?: string;    // 최근탕전일
+  totalStock: number;        // 누적
+  currentStock: number;      // 재고
+  dosesPerBatch: number;     // 첩
+  packsPerBatch: number;     // 팩
+  category: string;          // 분류
+  isActive: boolean;         // 사용
+}
+
+export interface BulkImportResult {
+  inserted: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+}
+
+/**
+ * 상비약 일괄 등록/수정
+ * @param items 등록할 항목 배열
+ * @param mode 'overwrite' = 덮어쓰기, 'newOnly' = 신규만
+ */
+export async function bulkUpsertMedicineInventory(
+  items: BulkImportItem[],
+  mode: 'overwrite' | 'newOnly'
+): Promise<BulkImportResult> {
+  const result: BulkImportResult = {
+    inserted: 0,
+    updated: 0,
+    skipped: 0,
+    failed: 0,
+    errors: [],
+  };
+
+  const now = getCurrentTimestamp();
+
+  for (const item of items) {
+    try {
+      // 기존 데이터 확인 (이름으로 검색)
+      const existing = await query<MedicineInventory>(
+        `SELECT * FROM cs_medicine_inventory WHERE name = ${escapeString(item.name)}`
+      );
+
+      if (existing.length > 0) {
+        // 기존 데이터 있음
+        if (mode === 'newOnly') {
+          result.skipped++;
+          continue;
+        }
+
+        // 덮어쓰기 모드: 업데이트
+        await execute(`
+          UPDATE cs_medicine_inventory SET
+            total_stock = ${item.totalStock},
+            current_stock = ${item.currentStock},
+            doses_per_batch = ${item.dosesPerBatch},
+            packs_per_batch = ${item.packsPerBatch},
+            category = ${escapeString(item.category)},
+            is_active = ${item.isActive},
+            last_decoction_date = ${item.lastDecoction ? escapeString(item.lastDecoction) : 'NULL'},
+            updated_at = ${escapeString(now)}
+          WHERE id = ${existing[0].id}
+        `);
+        result.updated++;
+      } else {
+        // 신규 등록
+        await execute(`
+          INSERT INTO cs_medicine_inventory (
+            name, category, total_stock, current_stock,
+            doses_per_batch, packs_per_batch, unit, is_active,
+            sort_order, last_decoction_date, created_at, updated_at
+          ) VALUES (
+            ${escapeString(item.name)}, ${escapeString(item.category)},
+            ${item.totalStock}, ${item.currentStock},
+            ${item.dosesPerBatch}, ${item.packsPerBatch}, '팩', ${item.isActive},
+            0, ${item.lastDecoction ? escapeString(item.lastDecoction) : 'NULL'},
+            ${escapeString(now)}, ${escapeString(now)}
+          )
+        `);
+        result.inserted++;
+      }
+    } catch (error: any) {
+      result.failed++;
+      result.errors.push(`${item.name}: ${error.message}`);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * 이름으로 상비약 조회 (일괄등록 검증용)
+ */
+export async function getMedicineInventoryByName(name: string): Promise<MedicineInventory | null> {
+  const results = await query<MedicineInventory>(
+    `SELECT * FROM cs_medicine_inventory WHERE name = ${escapeString(name)}`
+  );
+  return results.length > 0 ? results[0] : null;
+}
+
+/**
+ * 여러 이름으로 상비약 조회 (일괄등록 검증용)
+ */
+export async function getMedicineInventoryByNames(names: string[]): Promise<Map<string, MedicineInventory>> {
+  if (names.length === 0) return new Map();
+
+  const escapedNames = names.map(n => escapeString(n)).join(', ');
+  const results = await query<MedicineInventory>(
+    `SELECT * FROM cs_medicine_inventory WHERE name IN (${escapedNames})`
+  );
+
+  const map = new Map<string, MedicineInventory>();
+  results.forEach(item => map.set(item.name, item));
+  return map;
 }

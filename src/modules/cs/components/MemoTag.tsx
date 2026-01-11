@@ -10,6 +10,7 @@ interface MemoTagProps {
 const TAG_TYPE_CLASSES: Record<MemoTagType, string> = {
   'yakchim-membership': 'memo-tag--yakchim',
   'yakchim-package': 'memo-tag--yakchim',
+  'yakchim-onetime': 'memo-tag--yakchim-onetime',
   'treatment-package': 'memo-tag--treatment',
   'herbal-package': 'memo-tag--herbal',
   'point-used': 'memo-tag--point-used',

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getCurrentDate } from '@shared/lib/postgres';
 import {
   getMedicineInventory,
@@ -8,17 +8,37 @@ import {
   addMedicineStock,
   fetchPrescriptionDefinitions,
   importPrescriptionsToInventory,
+  bulkUpsertMedicineInventory,
+  getMedicineInventoryByNames,
   type MedicineInventory,
   type MedicineCategory,
+  type BulkImportItem,
   MEDICINE_CATEGORIES,
 } from '../lib/api';
+import * as XLSX from 'xlsx';
 
 interface MedicineInventoryAdminProps {
   onClose?: () => void;
 }
 
+// 검증된 행 타입
+interface ValidatedRow {
+  rowIndex: number;
+  name: string;
+  lastDecoction: string;
+  totalStock: string;
+  currentStock: string;
+  dosesPerBatch: string;
+  packsPerBatch: string;
+  category: string;
+  isActive: string;
+  status: 'insert' | 'update' | 'skip' | 'error';
+  errors: { field: string; message: string }[];
+  existingId?: number;
+}
+
 function MedicineInventoryAdmin({ onClose }: MedicineInventoryAdminProps) {
-  const [activeTab, setActiveTab] = useState<'inventory' | 'import'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'import' | 'bulkImport'>('inventory');
   const [inventory, setInventory] = useState<MedicineInventory[]>([]);
   const [prescriptions, setPrescriptions] = useState<Array<{id: number; name: string; category: string; alias: string | null; is_active: boolean}>>([]);
   const [loading, setLoading] = useState(true);
@@ -56,6 +76,14 @@ function MedicineInventoryAdmin({ onClose }: MedicineInventoryAdminProps) {
     packs: 30,
     memo: '',
   });
+
+  // 파일 일괄등록 상태
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [bulkImportMode, setBulkImportMode] = useState<'overwrite' | 'newOnly'>('overwrite');
+  const [validatedRows, setValidatedRows] = useState<ValidatedRow[]>([]);
+  const [bulkImportStep, setBulkImportStep] = useState<'upload' | 'validate' | 'saving'>('upload');
+  const [showOnlyErrors, setShowOnlyErrors] = useState(false);
+  const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null);
 
   // 데이터 로드
   const loadInventory = useCallback(async () => {
@@ -281,6 +309,20 @@ function MedicineInventoryAdmin({ onClose }: MedicineInventoryAdminProps) {
           }}
         >
           처방정의에서 등록
+        </button>
+        <button
+          onClick={() => { setActiveTab('bulkImport'); setBulkImportStep('upload'); setValidatedRows([]); }}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            borderRadius: '6px',
+            background: activeTab === 'bulkImport' ? '#3b82f6' : '#f3f4f6',
+            color: activeTab === 'bulkImport' ? 'white' : '#374151',
+            cursor: 'pointer',
+            fontWeight: 500,
+          }}
+        >
+          파일 일괄등록
         </button>
       </div>
 
@@ -603,6 +645,28 @@ function MedicineInventoryAdmin({ onClose }: MedicineInventoryAdminProps) {
         </div>
       )}
 
+      {/* 파일 일괄등록 탭 */}
+      {activeTab === 'bulkImport' && (
+        <BulkImportTab
+          bulkImportStep={bulkImportStep}
+          setBulkImportStep={setBulkImportStep}
+          bulkImportMode={bulkImportMode}
+          setBulkImportMode={setBulkImportMode}
+          validatedRows={validatedRows}
+          setValidatedRows={setValidatedRows}
+          showOnlyErrors={showOnlyErrors}
+          setShowOnlyErrors={setShowOnlyErrors}
+          editingRowIndex={editingRowIndex}
+          setEditingRowIndex={setEditingRowIndex}
+          fileInputRef={fileInputRef}
+          onSuccess={() => {
+            loadInventory();
+            setBulkImportStep('upload');
+            setValidatedRows([]);
+          }}
+        />
+      )}
+
       {/* 입고(탕전) 모달 */}
       {showStockModal && stockItem && (
         <div
@@ -684,6 +748,636 @@ function MedicineInventoryAdmin({ onClose }: MedicineInventoryAdminProps) {
                 입고
               </button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// 파일 일괄등록 탭 컴포넌트
+// ============================================
+
+interface BulkImportTabProps {
+  bulkImportStep: 'upload' | 'validate' | 'saving';
+  setBulkImportStep: (step: 'upload' | 'validate' | 'saving') => void;
+  bulkImportMode: 'overwrite' | 'newOnly';
+  setBulkImportMode: (mode: 'overwrite' | 'newOnly') => void;
+  validatedRows: ValidatedRow[];
+  setValidatedRows: (rows: ValidatedRow[]) => void;
+  showOnlyErrors: boolean;
+  setShowOnlyErrors: (show: boolean) => void;
+  editingRowIndex: number | null;
+  setEditingRowIndex: (index: number | null) => void;
+  fileInputRef: React.RefObject<HTMLInputElement>;
+  onSuccess: () => void;
+}
+
+// 헤더 매핑
+const HEADER_MAP: Record<string, keyof ValidatedRow> = {
+  '처방명': 'name',
+  '최근탕전일': 'lastDecoction',
+  '누적': 'totalStock',
+  '재고': 'currentStock',
+  '첩': 'dosesPerBatch',
+  '팩': 'packsPerBatch',
+  '분류': 'category',
+  '사용': 'isActive',
+};
+
+// 날짜 형식 검증 (YYYY-MM-DD 또는 빈값)
+const isValidDate = (value: string): boolean => {
+  if (!value || value.trim() === '') return true;
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(value)) return false;
+  const date = new Date(value);
+  return !isNaN(date.getTime());
+};
+
+// 사용 여부 파싱
+const parseIsActive = (value: string): boolean => {
+  const lower = value.toLowerCase().trim();
+  return ['o', 'y', '1', 'true', '사용', 'yes'].includes(lower);
+};
+
+function BulkImportTab({
+  bulkImportStep,
+  setBulkImportStep,
+  bulkImportMode,
+  setBulkImportMode,
+  validatedRows,
+  setValidatedRows,
+  showOnlyErrors,
+  setShowOnlyErrors,
+  editingRowIndex,
+  setEditingRowIndex,
+  fileInputRef,
+  onSuccess,
+}: BulkImportTabProps) {
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // 파일 선택 핸들러
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessing(true);
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { header: 1 });
+
+      if (jsonData.length < 2) {
+        alert('데이터가 없습니다.');
+        return;
+      }
+
+      // 헤더 파싱
+      const headers = jsonData[0] as string[];
+      const headerIndices: Record<string, number> = {};
+
+      headers.forEach((header, idx) => {
+        const trimmed = header?.toString().trim();
+        if (trimmed && HEADER_MAP[trimmed]) {
+          headerIndices[HEADER_MAP[trimmed]] = idx;
+        }
+      });
+
+      // 필수 헤더 확인
+      if (!('name' in headerIndices)) {
+        alert('필수 헤더 "처방명"이 없습니다.');
+        return;
+      }
+
+      // 데이터 행 파싱
+      const rows: ValidatedRow[] = [];
+      for (let i = 1; i < jsonData.length; i++) {
+        const row = jsonData[i] as string[];
+        if (!row || row.length === 0) continue;
+
+        const name = row[headerIndices['name']]?.toString().trim() || '';
+        if (!name) continue;  // 이름 없는 행 스킵
+
+        rows.push({
+          rowIndex: i,
+          name,
+          lastDecoction: row[headerIndices['lastDecoction']]?.toString().trim() || '',
+          totalStock: row[headerIndices['totalStock']]?.toString().trim() || '0',
+          currentStock: row[headerIndices['currentStock']]?.toString().trim() || '0',
+          dosesPerBatch: row[headerIndices['dosesPerBatch']]?.toString().trim() || '20',
+          packsPerBatch: row[headerIndices['packsPerBatch']]?.toString().trim() || '30',
+          category: row[headerIndices['category']]?.toString().trim() || '상비약',
+          isActive: row[headerIndices['isActive']]?.toString().trim() || 'O',
+          status: 'insert',
+          errors: [],
+        });
+      }
+
+      if (rows.length === 0) {
+        alert('유효한 데이터가 없습니다.');
+        return;
+      }
+
+      // 기존 데이터 조회 및 검증
+      const names = rows.map(r => r.name);
+      const existingMap = await getMedicineInventoryByNames(names);
+
+      const validatedRows = rows.map(row => validateRow(row, existingMap, bulkImportMode));
+      setValidatedRows(validatedRows);
+      setBulkImportStep('validate');
+
+    } catch (err: any) {
+      alert(`파일 파싱 오류: ${err.message}`);
+    } finally {
+      setIsProcessing(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // 행 검증
+  const validateRow = (
+    row: ValidatedRow,
+    existingMap: Map<string, MedicineInventory>,
+    mode: 'overwrite' | 'newOnly'
+  ): ValidatedRow => {
+    const errors: { field: string; message: string }[] = [];
+    const existing = existingMap.get(row.name);
+
+    // 이름 검증
+    if (!row.name) {
+      errors.push({ field: 'name', message: '처방명 필수' });
+    }
+
+    // 날짜 검증
+    if (row.lastDecoction && !isValidDate(row.lastDecoction)) {
+      errors.push({ field: 'lastDecoction', message: '날짜형식 오류 (YYYY-MM-DD)' });
+    }
+
+    // 숫자 검증
+    const numFields = [
+      { field: 'totalStock', label: '누적' },
+      { field: 'currentStock', label: '재고' },
+      { field: 'dosesPerBatch', label: '첩' },
+      { field: 'packsPerBatch', label: '팩' },
+    ] as const;
+
+    numFields.forEach(({ field, label }) => {
+      const value = row[field];
+      if (value && (isNaN(Number(value)) || Number(value) < 0)) {
+        errors.push({ field, message: `${label}: 0 이상 숫자` });
+      }
+    });
+
+    // 상태 결정
+    let status: ValidatedRow['status'] = 'insert';
+    if (errors.length > 0) {
+      status = 'error';
+    } else if (existing) {
+      if (mode === 'newOnly') {
+        status = 'skip';
+      } else {
+        status = 'update';
+      }
+    }
+
+    return {
+      ...row,
+      status,
+      errors,
+      existingId: existing?.id,
+    };
+  };
+
+  // 행 수정
+  const handleRowChange = (rowIndex: number, field: keyof ValidatedRow, value: string) => {
+    setValidatedRows(validatedRows.map(row => {
+      if (row.rowIndex === rowIndex) {
+        return { ...row, [field]: value };
+      }
+      return row;
+    }));
+  };
+
+  // 행 재검증
+  const revalidateRow = async (rowIndex: number) => {
+    const row = validatedRows.find(r => r.rowIndex === rowIndex);
+    if (!row) return;
+
+    const existingMap = await getMedicineInventoryByNames([row.name]);
+    const validated = validateRow(row, existingMap, bulkImportMode);
+
+    setValidatedRows(validatedRows.map(r =>
+      r.rowIndex === rowIndex ? validated : r
+    ));
+    setEditingRowIndex(null);
+  };
+
+  // 전체 재검증
+  const revalidateAll = async () => {
+    setIsProcessing(true);
+    try {
+      const names = validatedRows.map(r => r.name);
+      const existingMap = await getMedicineInventoryByNames(names);
+      const revalidated = validatedRows.map(row => validateRow(row, existingMap, bulkImportMode));
+      setValidatedRows(revalidated);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // 등록 실행
+  const handleSave = async () => {
+    const validRows = validatedRows.filter(r => r.status === 'insert' || r.status === 'update');
+    if (validRows.length === 0) {
+      alert('등록할 항목이 없습니다.');
+      return;
+    }
+
+    const errorRows = validatedRows.filter(r => r.status === 'error');
+    if (errorRows.length > 0) {
+      if (!confirm(`${errorRows.length}개 오류 항목이 있습니다. 오류 항목은 건너뛰고 진행할까요?`)) {
+        return;
+      }
+    }
+
+    setBulkImportStep('saving');
+    setIsProcessing(true);
+
+    try {
+      const items: BulkImportItem[] = validRows.map(row => ({
+        name: row.name,
+        lastDecoction: row.lastDecoction || undefined,
+        totalStock: parseInt(row.totalStock) || 0,
+        currentStock: parseInt(row.currentStock) || 0,
+        dosesPerBatch: parseInt(row.dosesPerBatch) || 20,
+        packsPerBatch: parseInt(row.packsPerBatch) || 30,
+        category: row.category || '상비약',
+        isActive: parseIsActive(row.isActive),
+      }));
+
+      const result = await bulkUpsertMedicineInventory(items, bulkImportMode);
+
+      alert(
+        `등록 완료!\n` +
+        `- 신규: ${result.inserted}건\n` +
+        `- 업데이트: ${result.updated}건\n` +
+        `- 건너뜀: ${result.skipped}건\n` +
+        `- 실패: ${result.failed}건` +
+        (result.errors.length > 0 ? `\n\n오류:\n${result.errors.slice(0, 5).join('\n')}` : '')
+      );
+
+      onSuccess();
+    } catch (err: any) {
+      alert(`저장 오류: ${err.message}`);
+      setBulkImportStep('validate');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // 통계 계산
+  const stats = {
+    total: validatedRows.length,
+    insert: validatedRows.filter(r => r.status === 'insert').length,
+    update: validatedRows.filter(r => r.status === 'update').length,
+    skip: validatedRows.filter(r => r.status === 'skip').length,
+    error: validatedRows.filter(r => r.status === 'error').length,
+  };
+
+  const displayRows = showOnlyErrors
+    ? validatedRows.filter(r => r.status === 'error')
+    : validatedRows;
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* 업로드 단계 */}
+      {bulkImportStep === 'upload' && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '24px' }}>
+          <div style={{ textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: '18px' }}>엑셀 파일 일괄 등록</h3>
+            <p style={{ margin: 0, color: '#6b7280', fontSize: '14px' }}>
+              엑셀 파일(.xlsx, .xls)을 선택하여 상비약을 일괄 등록합니다.
+            </p>
+          </div>
+
+          <div style={{ padding: '20px', background: '#f9fafb', borderRadius: '8px', maxWidth: '500px' }}>
+            <p style={{ margin: '0 0 12px', fontWeight: 500, fontSize: '14px' }}>필수 헤더 (첫 행)</p>
+            <code style={{ display: 'block', padding: '12px', background: '#e5e7eb', borderRadius: '4px', fontSize: '13px' }}>
+              처방명 | 최근탕전일 | 누적 | 재고 | 첩 | 팩 | 분류 | 사용
+            </code>
+            <p style={{ margin: '12px 0 0', fontSize: '12px', color: '#6b7280' }}>
+              분류: 자유 입력 (관리 목적에 맞게 분류)<br />
+              사용: O/X 또는 사용/미사용
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '16px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="importMode"
+                  checked={bulkImportMode === 'overwrite'}
+                  onChange={() => setBulkImportMode('overwrite')}
+                />
+                <span>덮어쓰기</span>
+                <span style={{ fontSize: '12px', color: '#6b7280' }}>(기존 데이터 업데이트)</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="importMode"
+                  checked={bulkImportMode === 'newOnly'}
+                  onChange={() => setBulkImportMode('newOnly')}
+                />
+                <span>신규만</span>
+                <span style={{ fontSize: '12px', color: '#6b7280' }}>(새 처방만 등록)</span>
+              </label>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={handleFileSelect}
+              style={{ display: 'none' }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isProcessing}
+              style={{
+                padding: '12px 32px',
+                border: 'none',
+                borderRadius: '8px',
+                background: '#3b82f6',
+                color: 'white',
+                fontSize: '15px',
+                fontWeight: 500,
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isProcessing ? '처리 중...' : '파일 선택'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 검증 단계 */}
+      {bulkImportStep === 'validate' && (
+        <>
+          {/* 통계 및 컨트롤 */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+              <span style={{ fontSize: '14px' }}>
+                총 <strong>{stats.total}</strong>건
+              </span>
+              <span style={{ color: '#059669' }}>등록: {stats.insert}</span>
+              <span style={{ color: '#3b82f6' }}>업데이트: {stats.update}</span>
+              <span style={{ color: '#6b7280' }}>건너뜀: {stats.skip}</span>
+              <span style={{ color: '#dc2626' }}>오류: {stats.error}</span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '13px' }}>
+                <input
+                  type="checkbox"
+                  checked={showOnlyErrors}
+                  onChange={(e) => setShowOnlyErrors(e.target.checked)}
+                />
+                오류만 보기
+              </label>
+              <button
+                onClick={revalidateAll}
+                disabled={isProcessing}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  background: 'white',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                }}
+              >
+                전체 재검증
+              </button>
+              <button
+                onClick={() => { setBulkImportStep('upload'); setValidatedRows([]); }}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  background: 'white',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                }}
+              >
+                다시 선택
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isProcessing || (stats.insert === 0 && stats.update === 0)}
+                style={{
+                  padding: '6px 16px',
+                  border: 'none',
+                  borderRadius: '4px',
+                  background: (stats.insert > 0 || stats.update > 0) && !isProcessing ? '#3b82f6' : '#d1d5db',
+                  color: 'white',
+                  cursor: (stats.insert > 0 || stats.update > 0) && !isProcessing ? 'pointer' : 'not-allowed',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                }}
+              >
+                등록하기
+              </button>
+            </div>
+          </div>
+
+          {/* 검증 결과 테이블 */}
+          <div style={{ flex: 1, overflow: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0 }}>
+                  <th style={{ padding: '10px', textAlign: 'center', width: '60px' }}>상태</th>
+                  <th style={{ padding: '10px', textAlign: 'left' }}>처방명</th>
+                  <th style={{ padding: '10px', textAlign: 'center', width: '100px' }}>최근탕전일</th>
+                  <th style={{ padding: '10px', textAlign: 'center', width: '70px' }}>누적</th>
+                  <th style={{ padding: '10px', textAlign: 'center', width: '70px' }}>재고</th>
+                  <th style={{ padding: '10px', textAlign: 'center', width: '50px' }}>첩</th>
+                  <th style={{ padding: '10px', textAlign: 'center', width: '50px' }}>팩</th>
+                  <th style={{ padding: '10px', textAlign: 'center', width: '80px' }}>분류</th>
+                  <th style={{ padding: '10px', textAlign: 'center', width: '50px' }}>사용</th>
+                  <th style={{ padding: '10px', textAlign: 'left' }}>오류</th>
+                  <th style={{ padding: '10px', textAlign: 'center', width: '60px' }}>관리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayRows.map((row) => {
+                  const isEditing = editingRowIndex === row.rowIndex;
+                  const statusColors = {
+                    insert: { bg: '#f0fdf4', color: '#059669', label: '등록' },
+                    update: { bg: '#eff6ff', color: '#3b82f6', label: '업데이트' },
+                    skip: { bg: '#f9fafb', color: '#6b7280', label: '건너뜀' },
+                    error: { bg: '#fef2f2', color: '#dc2626', label: '오류' },
+                  };
+                  const statusStyle = statusColors[row.status];
+                  const errorFields = new Set(row.errors.map(e => e.field));
+
+                  return (
+                    <tr
+                      key={row.rowIndex}
+                      style={{
+                        borderBottom: '1px solid #f3f4f6',
+                        background: statusStyle.bg,
+                      }}
+                    >
+                      <td style={{ padding: '8px', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: 500,
+                          color: statusStyle.color,
+                          background: 'white',
+                          border: `1px solid ${statusStyle.color}`,
+                        }}>
+                          {statusStyle.label}
+                        </span>
+                      </td>
+                      <td style={{ padding: '8px', borderLeft: errorFields.has('name') ? '3px solid #dc2626' : 'none' }}>
+                        {isEditing ? (
+                          <input
+                            value={row.name}
+                            onChange={(e) => handleRowChange(row.rowIndex, 'name', e.target.value)}
+                            style={{ width: '100%', padding: '4px', border: '1px solid #d1d5db', borderRadius: '4px' }}
+                          />
+                        ) : row.name}
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'center', borderLeft: errorFields.has('lastDecoction') ? '3px solid #dc2626' : 'none' }}>
+                        {isEditing ? (
+                          <input
+                            value={row.lastDecoction}
+                            onChange={(e) => handleRowChange(row.rowIndex, 'lastDecoction', e.target.value)}
+                            placeholder="YYYY-MM-DD"
+                            style={{ width: '100%', padding: '4px', border: '1px solid #d1d5db', borderRadius: '4px', textAlign: 'center' }}
+                          />
+                        ) : (row.lastDecoction || '-')}
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'center', borderLeft: errorFields.has('totalStock') ? '3px solid #dc2626' : 'none' }}>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={row.totalStock}
+                            onChange={(e) => handleRowChange(row.rowIndex, 'totalStock', e.target.value)}
+                            style={{ width: '60px', padding: '4px', border: '1px solid #d1d5db', borderRadius: '4px', textAlign: 'center' }}
+                          />
+                        ) : row.totalStock}
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'center', borderLeft: errorFields.has('currentStock') ? '3px solid #dc2626' : 'none' }}>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={row.currentStock}
+                            onChange={(e) => handleRowChange(row.rowIndex, 'currentStock', e.target.value)}
+                            style={{ width: '60px', padding: '4px', border: '1px solid #d1d5db', borderRadius: '4px', textAlign: 'center' }}
+                          />
+                        ) : row.currentStock}
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'center', borderLeft: errorFields.has('dosesPerBatch') ? '3px solid #dc2626' : 'none' }}>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={row.dosesPerBatch}
+                            onChange={(e) => handleRowChange(row.rowIndex, 'dosesPerBatch', e.target.value)}
+                            style={{ width: '50px', padding: '4px', border: '1px solid #d1d5db', borderRadius: '4px', textAlign: 'center' }}
+                          />
+                        ) : row.dosesPerBatch}
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'center', borderLeft: errorFields.has('packsPerBatch') ? '3px solid #dc2626' : 'none' }}>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={row.packsPerBatch}
+                            onChange={(e) => handleRowChange(row.rowIndex, 'packsPerBatch', e.target.value)}
+                            style={{ width: '50px', padding: '4px', border: '1px solid #d1d5db', borderRadius: '4px', textAlign: 'center' }}
+                          />
+                        ) : row.packsPerBatch}
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'center' }}>
+                        {isEditing ? (
+                          <input
+                            value={row.category}
+                            onChange={(e) => handleRowChange(row.rowIndex, 'category', e.target.value)}
+                            style={{ width: '80px', padding: '4px', border: '1px solid #d1d5db', borderRadius: '4px', textAlign: 'center' }}
+                          />
+                        ) : (row.category || '-')}
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'center' }}>
+                        {isEditing ? (
+                          <select
+                            value={row.isActive}
+                            onChange={(e) => handleRowChange(row.rowIndex, 'isActive', e.target.value)}
+                            style={{ padding: '4px', border: '1px solid #d1d5db', borderRadius: '4px' }}
+                          >
+                            <option value="O">O</option>
+                            <option value="X">X</option>
+                          </select>
+                        ) : row.isActive}
+                      </td>
+                      <td style={{ padding: '8px', fontSize: '12px', color: '#dc2626' }}>
+                        {row.errors.map(e => e.message).join(', ')}
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'center' }}>
+                        {isEditing ? (
+                          <button
+                            onClick={() => revalidateRow(row.rowIndex)}
+                            style={{
+                              padding: '4px 8px',
+                              border: 'none',
+                              borderRadius: '4px',
+                              background: '#10b981',
+                              color: 'white',
+                              cursor: 'pointer',
+                              fontSize: '11px',
+                            }}
+                          >
+                            확인
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setEditingRowIndex(row.rowIndex)}
+                            style={{
+                              padding: '4px 8px',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '4px',
+                              background: 'white',
+                              cursor: 'pointer',
+                              fontSize: '11px',
+                            }}
+                          >
+                            수정
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* 저장 중 */}
+      {bulkImportStep === 'saving' && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: '16px', marginBottom: '8px' }}>저장 중...</p>
+            <p style={{ color: '#6b7280' }}>잠시만 기다려주세요.</p>
           </div>
         </div>
       )}

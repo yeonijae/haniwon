@@ -433,6 +433,8 @@ export interface MedicineUsage {
   usage_date: string;        // 사용일 (YYYY-MM-DD)
   medicine_name: string;     // 약 이름 (소화제, 진통제, 파스 등)
   quantity: number;          // 수량
+  inventory_id?: number;     // 재고 관리 ID
+  purpose?: string;          // 목적 (상비약, 치료약, 감기약, 증정, 보완)
   memo?: string;             // 비고
   created_at?: string;
   updated_at?: string;
@@ -609,6 +611,7 @@ export function generateMemoSummary(data: {
 export type MemoTagType =
   | 'yakchim-membership'    // 약침 멤버십 사용
   | 'yakchim-package'       // 약침 패키지 사용
+  | 'yakchim-onetime'       // 약침 일회성 사용
   | 'treatment-package'     // 시술패키지
   | 'herbal-package'        // 한약패키지 (선결)
   | 'point-used'            // 포인트 사용
@@ -646,6 +649,8 @@ export function generateMemoSummaryItems(data: {
     const membershipUsage = new Map<string, { count: number; records: YakchimUsageRecord[] }>();
     const packageUsage: Array<{ name: string; before: number; used: number; after: number; record: YakchimUsageRecord }> = [];
 
+    const onetimeUsage: YakchimUsageRecord[] = [];
+
     data.yakchimUsageRecords.forEach(record => {
       if (record.source_type === 'membership') {
         const shortName = record.source_name.replace('멤버십', '멤');
@@ -665,6 +670,8 @@ export function generateMemoSummaryItems(data: {
           after: record.remaining_after,
           record,
         });
+      } else if (record.source_type === 'one-time') {
+        onetimeUsage.push(record);
       }
     });
 
@@ -683,6 +690,15 @@ export function generateMemoSummaryItems(data: {
         type: 'yakchim-package',
         label: `${pkg.name}[${pkg.before}-${pkg.used}=${pkg.after}]`,
         data: pkg.record,
+      });
+    });
+
+    // 일회성 사용 태그
+    onetimeUsage.forEach(record => {
+      items.push({
+        type: 'yakchim-onetime',
+        label: record.memo || `${record.item_name} 일회성`,
+        data: record,
       });
     });
   }

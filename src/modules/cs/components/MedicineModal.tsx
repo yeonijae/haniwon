@@ -3,10 +3,13 @@ import {
   getMedicineInventory,
   searchMedicineInventory,
   useMedicineStock,
+  updateMedicineUsage,
+  deleteMedicineUsage,
   type MedicineInventory,
   MEDICINE_PURPOSES,
   type MedicinePurpose,
 } from '../lib/api';
+import type { MedicineUsage } from '../types';
 
 interface MedicineModalProps {
   isOpen: boolean;
@@ -17,6 +20,8 @@ interface MedicineModalProps {
   usageDate: string;
   receiptId?: number;
   onSuccess?: () => void;
+  editData?: MedicineUsage;  // 수정 모드용 기존 데이터
+  initialSearchKeyword?: string;  // 초기 검색어
 }
 
 export function MedicineModal({
@@ -28,8 +33,11 @@ export function MedicineModal({
   usageDate,
   receiptId,
   onSuccess,
+  editData,
+  initialSearchKeyword,
 }: MedicineModalProps) {
-  const [searchKeyword, setSearchKeyword] = useState('');
+  const isEditMode = !!editData;
+  const [searchKeyword, setSearchKeyword] = useState(initialSearchKeyword || '');
   const [inventoryList, setInventoryList] = useState<MedicineInventory[]>([]);
   const [filteredList, setFilteredList] = useState<MedicineInventory[]>([]);
   const [selectedItem, setSelectedItem] = useState<MedicineInventory | null>(null);
@@ -38,10 +46,38 @@ export function MedicineModal({
   const [memo, setMemo] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 수정 모드용 - 약 이름 (직접 입력)
+  const [editMedicineName, setEditMedicineName] = useState('');
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+
+  // 초기 검색어 설정
+  useEffect(() => {
+    if (isOpen && initialSearchKeyword && !isEditMode) {
+      setSearchKeyword(initialSearchKeyword);
+    }
+  }, [isOpen, initialSearchKeyword, isEditMode]);
+
+  // 수정 모드일 때 기존 데이터로 폼 초기화 (재고 목록 로드 후)
+  useEffect(() => {
+    if (isOpen && isEditMode && editData && inventoryList.length > 0) {
+      setEditMedicineName(editData.medicine_name);
+      setQuantity(editData.quantity);
+      setPurpose((editData.purpose as MedicinePurpose) || '상비약');
+      setMemo(editData.memo || '');
+      // inventory_id로 현재 선택된 항목 찾기
+      if (editData.inventory_id) {
+        const currentItem = inventoryList.find(item => item.id === editData.inventory_id);
+        if (currentItem) {
+          setSelectedItem(currentItem);
+        }
+      }
+    }
+  }, [isOpen, isEditMode, editData, inventoryList]);
 
   // 상비약 재고 목록 로드
   const loadInventory = useCallback(async () => {
@@ -135,6 +171,81 @@ export function MedicineModal({
     }
   };
 
+  // 수정 (편집 모드)
+  const handleUpdate = async () => {
+    if (!editData) return;
+
+    if (!selectedItem) {
+      setError('상비약을 선택해주세요.');
+      return;
+    }
+
+    if (quantity < 1) {
+      setError('수량은 1 이상이어야 합니다.');
+      return;
+    }
+
+    // 약 종류가 변경되었는지 확인
+    const isMedicineChanged = selectedItem.id !== editData.inventory_id;
+
+    // 약 종류 변경 시 새 재고 확인
+    if (isMedicineChanged && selectedItem.current_stock < quantity) {
+      setError(`재고가 부족합니다. (현재: ${selectedItem.current_stock}${selectedItem.unit})`);
+      return;
+    }
+
+    // 같은 약인데 수량 증가 시 재고 확인
+    if (!isMedicineChanged && selectedItem) {
+      const quantityDiff = quantity - editData.quantity;
+      if (quantityDiff > 0 && selectedItem.current_stock < quantityDiff) {
+        setError(`재고가 부족합니다. (추가 필요: ${quantityDiff}, 현재: ${selectedItem.current_stock}${selectedItem.unit})`);
+        return;
+      }
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      await updateMedicineUsage(editData.id!, {
+        quantity,
+        purpose,
+        memo: memo || undefined,
+        newInventoryId: isMedicineChanged ? selectedItem.id : undefined,
+      });
+
+      onSuccess?.();
+      handleClose();
+    } catch (err: any) {
+      setError(err.message || '수정에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 삭제 (편집 모드)
+  const handleDelete = async () => {
+    if (!editData) return;
+
+    if (!window.confirm('이 상비약 사용 기록을 삭제하시겠습니까?')) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setError(null);
+
+    try {
+      await deleteMedicineUsage(editData.id);
+
+      onSuccess?.();
+      handleClose();
+    } catch (err: any) {
+      setError(err.message || '삭제에 실패했습니다.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // 닫기
   const handleClose = () => {
     setSearchKeyword('');
@@ -143,6 +254,7 @@ export function MedicineModal({
     setPurpose('상비약');
     setMemo('');
     setError(null);
+    setEditMedicineName('');
     onClose();
   };
 
@@ -215,7 +327,7 @@ export function MedicineModal({
         >
           <div>
             <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>
-              상비약 처방
+              {isEditMode ? '상비약 수정' : '상비약 처방'}
             </h3>
             <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6b7280' }}>
               {patientName} ({chartNumber})
@@ -238,6 +350,28 @@ export function MedicineModal({
 
         {/* 본문 */}
         <div style={{ flex: 1, overflow: 'auto', padding: '16px 20px' }}>
+          {/* 수정 모드: 현재 선택된 약 표시 + 변경 안내 */}
+          {isEditMode && (
+            <div
+              style={{
+                marginBottom: '12px',
+                padding: '10px 12px',
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: '6px',
+                fontSize: '13px',
+                color: '#1e40af',
+              }}
+            >
+              현재: <strong>{editMedicineName}</strong> ({editData?.quantity}개)
+              {selectedItem && selectedItem.id !== editData?.inventory_id && (
+                <span style={{ marginLeft: '8px', color: '#dc2626' }}>
+                  → <strong>{selectedItem.name}</strong>으로 변경
+                </span>
+              )}
+            </div>
+          )}
+
           {/* 검색 */}
           <div style={{ marginBottom: '16px' }}>
             <input
@@ -475,39 +609,93 @@ export function MedicineModal({
             padding: '16px 20px',
             borderTop: '1px solid #e5e7eb',
             display: 'flex',
-            justifyContent: 'flex-end',
+            justifyContent: isEditMode ? 'space-between' : 'flex-end',
             gap: '8px',
           }}
         >
-          <button
-            onClick={handleClose}
-            style={{
-              padding: '8px 16px',
-              border: '1px solid #d1d5db',
-              borderRadius: '6px',
-              background: 'white',
-              cursor: 'pointer',
-              fontSize: '14px',
-            }}
-          >
-            취소
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!selectedItem || isSaving}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderRadius: '6px',
-              background: selectedItem && !isSaving ? '#3b82f6' : '#9ca3af',
-              color: 'white',
-              cursor: selectedItem && !isSaving ? 'pointer' : 'not-allowed',
-              fontSize: '14px',
-              fontWeight: 500,
-            }}
-          >
-            {isSaving ? '저장 중...' : '처방 (Ctrl+Enter)'}
-          </button>
+          {isEditMode ? (
+            <>
+              {/* 삭제 버튼 (왼쪽) */}
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting || isSaving}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #fecaca',
+                  borderRadius: '6px',
+                  background: '#fef2f2',
+                  color: '#dc2626',
+                  cursor: isDeleting || isSaving ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                }}
+              >
+                {isDeleting ? '삭제 중...' : '삭제'}
+              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={handleClose}
+                  style={{
+                    padding: '8px 16px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    background: 'white',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleUpdate}
+                  disabled={!selectedItem || isSaving || isDeleting}
+                  style={{
+                    padding: '8px 16px',
+                    border: 'none',
+                    borderRadius: '6px',
+                    background: selectedItem && !isSaving && !isDeleting ? '#3b82f6' : '#9ca3af',
+                    color: 'white',
+                    cursor: selectedItem && !isSaving && !isDeleting ? 'pointer' : 'not-allowed',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                  }}
+                >
+                  {isSaving ? '수정 중...' : '수정'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={handleClose}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  background: 'white',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                }}
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!selectedItem || isSaving}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  background: selectedItem && !isSaving ? '#3b82f6' : '#9ca3af',
+                  color: 'white',
+                  cursor: selectedItem && !isSaving ? 'pointer' : 'not-allowed',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                }}
+              >
+                {isSaving ? '저장 중...' : '처방 (Ctrl+Enter)'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -1,5 +1,28 @@
 /* CS관리 앱 스타일 */
 
+/* 스크롤바 - 가는 스타일 */
+.cs-app ::-webkit-scrollbar,
+.cs-app-new ::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.cs-app ::-webkit-scrollbar-track,
+.cs-app-new ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cs-app ::-webkit-scrollbar-thumb,
+.cs-app-new ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
+}
+
+.cs-app ::-webkit-scrollbar-thumb:hover,
+.cs-app-new ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 .cs-app {
   display: flex;
   height: 100vh;
@@ -789,7 +812,11 @@
 
 /* 수납관리 뷰 */
 .receipt-view {
-  padding: 20px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .receipt-search-bar {
@@ -1478,8 +1505,12 @@
 .receipt-accordion-table {
   background: white;
   border-radius: 12px;
-  overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 /* 테이블 헤더 */
@@ -1729,7 +1760,7 @@
   align-items: center;
   padding: 2px 6px;
   border-radius: 3px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -1744,6 +1775,7 @@
 
 /* 타입별 색상 */
 .memo-tag--yakchim { color: #1d4ed8; background: #dbeafe; }        /* 약침: 파랑 */
+.memo-tag--yakchim-onetime { color: #1d4ed8; background: #dbeafe; font-size: 14px; }  /* 약침 일회성: 파랑, 큰 폰트 */
 .memo-tag--treatment { color: #6d28d9; background: #ede9fe; }      /* 시술패키지: 보라 */
 .memo-tag--herbal { color: #047857; background: #d1fae5; }         /* 한약: 초록 */
 .memo-tag--point-used { color: #b45309; background: #fef3c7; }     /* 포인트사용: 노랑 */
@@ -4052,8 +4084,10 @@
 
 .cs-main-new .cs-content {
   flex: 1;
-  overflow-y: auto;
-  padding: 20px;
+  overflow: hidden;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 헤더 내 폰트 스케일 컨트롤 조정 */
@@ -6246,7 +6280,7 @@
   gap: 3px;
   padding: 2px 6px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -7273,21 +7307,27 @@
    ============================================ */
 
 .receipt-2row-layout {
-  /* 기존 스타일 유지 */
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 /* 2행 헤더 */
 .receipt-header-2row {
   background: #f9fafb;
   border-bottom: 2px solid #e5e7eb;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .receipt-header-2row .header-row-1,
 .receipt-header-2row .header-row-2 {
   display: grid;
-  grid-template-columns: 28px 44px 100px 40px 200px 1fr 70px;
-  /* #, 시간, 환자, 담당, 수납내역, 임의메모, 예약 */
-  gap: 6px;
+  grid-template-columns: 24px 40px 80px 32px 70px 55px 55px;
+  /* #, 시간, 환자, 담당, 총수납, 본부금, 비급여 */
+  gap: 4px;
   padding: 8px 16px;
   font-weight: 600;
   font-size: 13px;
@@ -7306,11 +7346,19 @@
   font-size: 11px;
 }
 
-/* Row 1 헤더 */
-.receipt-header-2row .col-receipt-detail,
-.receipt-header-2row .col-uncovered {
+/* Row 1 헤더 - 금액 컬럼 */
+.receipt-header-2row .col-total {
   text-align: left;
   margin-left: 5px;
+}
+
+.receipt-header-2row .col-self,
+.receipt-header-2row .col-general {
+  text-align: right;
+}
+
+.receipt-header-2row .col-uncovered {
+  text-align: left;
 }
 
 /* Row 2 헤더 - 열 정렬 */
@@ -7323,17 +7371,26 @@
 }
 
 .receipt-header-2row .header-row-2 .col-uncovered {
-  grid-column: 5;  /* 수납내역 아래: 비급여내역 */
+  grid-column: 5 / span 3;  /* 결제+총수납/본부금/비급여 아래: 비급여내역 (3컬럼 병합) */
   text-align: left;
+}
+
+.receipt-header-2row .col-custom-memo {
+  margin-left: 10px;
+}
+
+.receipt-header-2row .col-reservation {
+  text-align: center;
 }
 
 .receipt-header-2row .header-row-2 .col-memo {
-  grid-column: 6;  /* 임의메모 아래: 빠른메모+메모요약 */
+  grid-column: 8;  /* 임의메모 아래: 빠른메모+메모요약 */
   text-align: left;
+  margin-left: 10px;
 }
 
 .receipt-header-2row .header-row-2 .col-complete {
-  grid-column: 7;  /* 예약 아래: 완료 */
+  grid-column: 8;  /* 예약 아래: 완료 */
   text-align: center;
 }
 
@@ -7364,9 +7421,9 @@
 .receipt-item-2row .receipt-row-1,
 .receipt-item-2row .receipt-row-2 {
   display: grid;
-  grid-template-columns: 28px 44px 100px 40px 200px 1fr 70px;
-  /* #, 시간, 환자, 담당, 수납내역, 임의메모, 예약 */
-  gap: 6px;
+  grid-template-columns: 24px 40px 80px 32px 70px 55px 55px;
+  /* #, 시간, 환자, 담당, 총수납, 본부금, 비급여 */
+  gap: 4px;
   padding: 6px 16px;
   cursor: pointer;
   font-size: 13px;
@@ -7445,17 +7502,75 @@
   color: #d97706;
 }
 
-/* 수납내역 (Row 1 - column 6) */
-.receipt-item-2row .col-receipt-detail {
+/* 결제+총수납 (Row 1 - column 5) */
+.receipt-item-2row .col-total {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   margin-left: 5px;
   font-family: monospace;
   font-size: 12px;
+  text-align: left;
+  color: #1f2937;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-/* 비급여내역 (Row 1 - column 6) */
+.receipt-item-2row .col-total .payment-icons {
+  display: flex;
+  gap: 3px;
+}
+
+.receipt-item-2row .col-total .payment-icons span {
+  font-size: 11px;
+}
+
+.receipt-item-2row .col-total:hover {
+  opacity: 0.7;
+}
+
+.receipt-item-2row .col-total.clickable {
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.receipt-item-2row .col-total.clickable:hover {
+  color: #2563eb;
+  opacity: 1;
+}
+
+/* 본부금 (Row 1 - column 6) */
+.receipt-item-2row .col-self {
+  font-family: monospace;
+  font-size: 12px;
+  text-align: right;
+  color: #0369a1;
+  cursor: pointer;
+}
+
+.receipt-item-2row .col-self.high {
+  color: #dc2626;
+  font-weight: 500;
+}
+
+.receipt-item-2row .col-self:hover {
+  opacity: 0.7;
+}
+
+/* 비급여 (Row 1 - column 7) */
+.receipt-item-2row .col-general {
+  font-family: monospace;
+  font-size: 12px;
+  text-align: right;
+  color: #ea580c;
+  cursor: pointer;
+}
+
+.receipt-item-2row .col-general:hover {
+  opacity: 0.7;
+}
+
+/* 비급여내역 (Row 2 - column 5-7) */
 .receipt-item-2row .col-uncovered {
   display: flex;
   align-items: center;
@@ -7464,10 +7579,11 @@
   font-size: 12px;
 }
 
-/* 임의메모 (Row 1 - column 7) */
+/* 임의메모 (Row 1 - column 8) */
 .receipt-item-2row .col-custom-memo {
   display: flex;
   align-items: center;
+  margin-left: 10px;
   font-size: 13px;
   color: #374151;
   min-width: 0;
@@ -7530,25 +7646,17 @@
   grid-column: 4;
 }
 
-/* Row 2 - 비급여내역 (column 5) */
+/* Row 2 - 비급여내역 (column 5-7, 3컬럼 병합) */
 .receipt-item-2row .receipt-row-2 .col-uncovered {
-  grid-column: 5;
+  grid-column: 5 / span 3;
   font-size: 12px;
-}
-
-/* Row 2 - 빠른메모+메모요약 (column 6) */
-.receipt-item-2row .receipt-row-2 .col-memo {
-  grid-column: 6;
-  min-height: 24px;
-  padding: 2px 0;
-  display: flex;
   align-items: center;
   gap: 6px;
 }
 
-/* Row 2 - 완료 버튼 (column 7) */
+/* Row 2 - 완료 버튼 (column 9) */
 .receipt-item-2row .receipt-row-2 .col-complete {
-  grid-column: 7;
+  grid-column: 8;
 }
 
 /* 수납내역 금액 스타일 */
@@ -7611,88 +7719,97 @@
   color: #4b5563;
   font-size: 11px;
   font-family: inherit;
-  margin-left: 2px;
+}
+
+.receipt-item-2row .col-uncovered .choona-type {
+  color: #ea580c;
+  font-weight: 500;
+}
+
+.receipt-item-2row .col-uncovered .uncovered-divider {
+  color: #9ca3af;
+  margin: 0 2px;
 }
 
 /* 빠른 메모 버튼 스타일 (Row 2) */
-.receipt-item-2row .col-quick-memo .quick-memo-btns {
+.receipt-item-2row .col-memo .quick-memo-btns {
   display: inline-flex;
   gap: 4px;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn {
-  padding: 2px 8px;
+.receipt-item-2row .col-memo .quick-memo-btn {
+  padding: 3px 10px;
   font-size: 11px;
   font-weight: 500;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn.yakchim {
-  background: #f3f4f6;
-  color: #9ca3af;
+.receipt-item-2row .col-memo .quick-memo-btn.yakchim {
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn.yakchim:hover {
-  background: #e5e7eb;
-  color: #6b7280;
+.receipt-item-2row .col-memo .quick-memo-btn.yakchim:hover {
+  background: #bfdbfe;
+  color: #1e40af;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn.herbal {
+.receipt-item-2row .col-memo .quick-memo-btn.herbal {
   background: #dcfce7;
   color: #15803d;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn.herbal:hover {
+.receipt-item-2row .col-memo .quick-memo-btn.herbal:hover {
   background: #bbf7d0;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn.medicine {
+.receipt-item-2row .col-memo .quick-memo-btn.medicine {
   background: #fef3c7;
   color: #b45309;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn.medicine:hover {
+.receipt-item-2row .col-memo .quick-memo-btn.medicine:hover {
   background: #fde68a;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn.gongjindan {
+.receipt-item-2row .col-memo .quick-memo-btn.gongjindan {
   background: #fce7f3;
   color: #be185d;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn.gongjindan:hover {
+.receipt-item-2row .col-memo .quick-memo-btn.gongjindan:hover {
   background: #fbcfe8;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn.gyeongokgo {
+.receipt-item-2row .col-memo .quick-memo-btn.gyeongokgo {
   background: #e0e7ff;
   color: #4338ca;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn.gyeongokgo:hover {
+.receipt-item-2row .col-memo .quick-memo-btn.gyeongokgo:hover {
   background: #c7d2fe;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn.diet {
+.receipt-item-2row .col-memo .quick-memo-btn.diet {
   background: #ccfbf1;
   color: #0d9488;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn.diet:hover {
+.receipt-item-2row .col-memo .quick-memo-btn.diet:hover {
   background: #99f6e4;
 }
 
 /* 메모 완료 상태 - 회색 */
-.receipt-item-2row .col-quick-memo .quick-memo-btn.completed {
+.receipt-item-2row .col-memo .quick-memo-btn.completed {
   background: #e5e7eb;
   color: #9ca3af;
   cursor: default;
 }
 
-.receipt-item-2row .col-quick-memo .quick-memo-btn.completed:hover {
+.receipt-item-2row .col-memo .quick-memo-btn.completed:hover {
   background: #e5e7eb;
 }
 
@@ -9734,5 +9851,1420 @@
 
 .modal-content.dragging .modal-header {
   cursor: grabbing;
+}
+
+/* ===================================
+   수납 2단 레이아웃
+   =================================== */
+
+/* 2단 레이아웃 컨테이너 */
+.receipt-two-column-layout {
+  display: flex;
+  gap: 5px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 왼쪽: 수납 목록 패널 */
+/* min-width 계산: columns(356) + gaps(24) + padding(32) + scrollbar(17) = 429px */
+.receipt-list-panel {
+  flex: 0 0 auto;
+  min-width: 430px;
+  max-width: 50%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 리사이즈 핸들 */
+.resize-handle {
+  flex: 0 0 6px;
+  background: #e5e7eb;
+  cursor: col-resize;
+  position: relative;
+  transition: background 0.2s;
+}
+
+.resize-handle:hover,
+.resize-handle.dragging {
+  background: #3b82f6;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 30px;
+  background: #9ca3af;
+  border-radius: 1px;
+}
+
+.resize-handle:hover::after,
+.resize-handle.dragging::after {
+  background: white;
+}
+
+/* 오른쪽 패널 빈 상태 */
+.side-panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #9ca3af;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.side-panel-empty i {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.side-panel-empty p {
+  font-size: 16px;
+  font-weight: 500;
+  color: #6b7280;
+  margin: 0 0 8px 0;
+}
+
+.side-panel-empty span {
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+/* 선택된 행 스타일 */
+.receipt-item-2row.selected {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%) !important;
+  border-left: 3px solid #3b82f6;
+}
+
+.receipt-item-2row.selected .receipt-row-1,
+.receipt-item-2row.selected .receipt-row-2 {
+  background: transparent !important;
+}
+
+/* 행에 커서 스타일 추가 */
+.receipt-item-2row {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.receipt-item-2row:hover:not(.selected) {
+  background: #f8fafc;
+}
+
+/* 오른쪽: 상세 패널 */
+.receipt-detail-side-panel {
+  flex: 1;
+  min-width: 400px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 상세 패널 스크롤 영역 */
+.side-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* 상세 패널 2단 레이아웃 */
+.side-panel-body.side-panel-two-column {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  overflow: hidden;
+}
+
+/* 왼쪽 단: 진료상세내역 */
+.side-panel-two-column .detail-column {
+  flex: 1;
+  min-width: 0;
+  background: white;
+  border-radius: 8px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.side-panel-two-column .detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: #6c757d;
+  gap: 8px;
+}
+
+.side-panel-two-column .detail-empty i {
+  font-size: 32px;
+  color: #9ca3af;
+}
+
+.side-panel-two-column .detail-empty p {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* 진료상세내역 컨텐츠 (모달 스타일) */
+.side-panel-two-column .receipt-detail-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.side-panel-two-column .receipt-detail-section {
+  margin-bottom: 16px;
+}
+
+.side-panel-two-column .receipt-detail-section .section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  padding: 6px 10px;
+  border-radius: 4px;
+}
+
+.side-panel-two-column .receipt-detail-section .section-title.insurance {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.side-panel-two-column .receipt-detail-section .section-title.general {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+/* 급여 항목 2단 그리드 */
+.side-panel-two-column .insurance-items-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+}
+
+.side-panel-two-column .insurance-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 8px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.side-panel-two-column .insurance-item .item-name {
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  margin-right: 4px;
+}
+
+.side-panel-two-column .insurance-item .item-amount {
+  color: #1f2937;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.side-panel-two-column .insurance-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: #e3f2fd;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1565c0;
+}
+
+.side-panel-two-column .insurance-total .amount {
+  font-variant-numeric: tabular-nums;
+}
+
+.side-panel-two-column .receipt-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.side-panel-two-column .receipt-detail-table th,
+.side-panel-two-column .receipt-detail-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.side-panel-two-column .receipt-detail-table th {
+  background: #f8f9fa;
+  font-weight: 500;
+  color: #495057;
+  text-align: left;
+}
+
+.side-panel-two-column .receipt-detail-table .col-name {
+  width: auto;
+}
+
+.side-panel-two-column .receipt-detail-table .col-amount {
+  width: 120px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.side-panel-two-column .receipt-detail-table tfoot .total-row {
+  font-weight: 600;
+  background: #f8f9fa;
+}
+
+.side-panel-two-column .receipt-detail-table tfoot .total-row.general {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.side-panel-two-column .receipt-detail-table tfoot .total-row td {
+  border-bottom: none;
+}
+
+.side-panel-two-column .receipt-detail-table tbody tr.clickable-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.side-panel-two-column .receipt-detail-table tbody tr.clickable-row:hover {
+  background-color: #fff3e0;
+}
+
+.side-panel-two-column .receipt-detail-table tbody tr.clickable-row.active {
+  background-color: #fef3c7;
+  font-weight: 500;
+}
+
+/* 메모 입력 패널 */
+.memo-input-panel {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.memo-input-panel.loading {
+  padding: 20px;
+  text-align: center;
+  color: #92400e;
+}
+
+.memo-input-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #fef3c7;
+  border-bottom: 1px solid #fcd34d;
+}
+
+.memo-input-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #92400e;
+}
+
+.memo-input-title i {
+  margin-right: 6px;
+}
+
+.memo-input-amount {
+  font-weight: 400;
+  color: #b45309;
+  margin-left: 6px;
+}
+
+.memo-input-close {
+  background: none;
+  border: none;
+  color: #92400e;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.memo-input-close:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.memo-input-body {
+  padding: 10px 12px;
+}
+
+/* 탭 버튼 */
+.memo-input-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.memo-input-tabs .tab-btn {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.memo-input-tabs .tab-btn:hover {
+  background: #f3f4f6;
+}
+
+.memo-input-tabs .tab-btn.active {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #fff;
+}
+
+.memo-input-content {
+  min-height: 60px;
+}
+
+/* 일회성 섹션 */
+.onetime-section {
+  text-align: center;
+}
+
+.onetime-desc {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 10px;
+}
+
+/* 패키지/멤버십 리스트 */
+.package-list,
+.membership-list,
+.medicine-list,
+.herbal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.package-item,
+.membership-item,
+.medicine-item,
+.herbal-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.medicine-item,
+.herbal-item {
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.medicine-item:hover,
+.herbal-item:hover {
+  border-color: #f59e0b;
+}
+
+.medicine-item.selected,
+.herbal-item.selected {
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+
+.pkg-name,
+.mem-type,
+.med-name,
+.herbal-name {
+  flex: 1;
+  font-weight: 500;
+  color: #374151;
+}
+
+.pkg-count,
+.mem-expire,
+.med-stock,
+.herbal-count {
+  color: #6b7280;
+  font-size: 11px;
+}
+
+/* 액션 버튼 */
+.btn-deduct,
+.btn-use,
+.btn-save,
+.btn-process {
+  padding: 6px 12px;
+  font-size: 13px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-deduct {
+  background: #ef4444;
+  color: #fff;
+}
+
+.btn-deduct:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.btn-use {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.btn-use:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-save,
+.btn-process {
+  background: #10b981;
+  color: #fff;
+  width: 100%;
+  padding: 8px;
+  margin-top: 8px;
+}
+
+.btn-save:hover:not(:disabled),
+.btn-process:hover:not(:disabled) {
+  background: #059669;
+}
+
+.btn-save:disabled,
+.btn-process:disabled,
+.btn-deduct:disabled,
+.btn-use:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 상비약/한약 액션 영역 */
+.medicine-action,
+.herbal-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.medicine-action .input-qty,
+.herbal-action .input-qty {
+  width: 60px;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.qty-unit {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.medicine-action .btn-deduct,
+.herbal-action .btn-process {
+  width: auto;
+  margin-top: 0;
+  padding: 6px 12px;
+}
+
+/* 한약 액션 버튼 */
+.herbal-actions {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.herbal-actions .action-btn {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.herbal-actions .action-btn:hover {
+  background: #f3f4f6;
+}
+
+.herbal-actions .action-btn.active {
+  background: #10b981;
+  border-color: #10b981;
+  color: #fff;
+}
+
+/* 일반 메모 입력 */
+.general-section .memo-textarea {
+  width: 100%;
+  padding: 10px;
+  font-size: 13px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  resize: vertical;
+  min-height: 60px;
+}
+
+.general-section .memo-textarea:focus {
+  outline: none;
+  border-color: #f59e0b;
+}
+
+/* 빈 상태 메시지 */
+.memo-input-panel .empty-msg {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 12px;
+  padding: 16px 0;
+}
+
+.side-panel-two-column .receipt-detail-grand-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: #e5e7eb;
+  color: #1f2937;
+  border-radius: 6px;
+  margin-top: 10px;
+}
+
+.side-panel-two-column .receipt-detail-grand-total .label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.side-panel-two-column .receipt-detail-grand-total .amount {
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 오른쪽 단: 수납정보 + 메모 */
+.side-panel-two-column .info-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+/* 수납 금액 요약 */
+.side-panel-two-column .amount-summary {
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  border-radius: 8px;
+  padding: 10px;
+  color: white;
+}
+
+.side-panel-two-column .amount-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.side-panel-two-column .amount-row.total {
+  font-size: 15px;
+  font-weight: 700;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.side-panel-two-column .amount-row .label {
+  opacity: 0.9;
+}
+
+.side-panel-two-column .amount-row .value {
+  font-weight: 600;
+}
+
+/* 메모 섹션 */
+.side-panel-two-column .memo-section {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.side-panel-two-column .memo-section .memo-tags-wrapper {
+  margin-top: 6px;
+}
+
+.side-panel-two-column .memo-section .no-memo {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.side-panel-two-column .memo-section .custom-memo {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: white;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #374151;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+
+.side-panel-two-column .memo-section .custom-memo:hover {
+  background: #f8fafc;
+  border-color: #e5e7eb;
+}
+
+.side-panel-two-column .memo-section .custom-memo .memo-emoji {
+  font-size: 16px;
+}
+
+.side-panel-two-column .memo-section .custom-memo .memo-text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.side-panel-two-column .memo-section .custom-memo i {
+  color: #3b82f6;
+  margin-top: 2px;
+}
+
+/* ============================================ */
+/* 메모 3단 구성: 오늘메모 / 메모입력 / 이전메모    */
+/* ============================================ */
+
+/* 공통 섹션 타이틀 */
+.side-panel-two-column .info-column .section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.side-panel-two-column .info-column .section-title i {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+/* 1. 오늘메모 섹션 */
+.side-panel-two-column .today-memo-section {
+  background: #f0fdf4;
+  border-radius: 8px;
+  padding: 10px;
+  border: 1px solid #bbf7d0;
+}
+
+.side-panel-two-column .today-memo-section .section-title {
+  color: #166534;
+}
+
+.side-panel-two-column .today-memo-section .section-title i {
+  color: #22c55e;
+}
+
+.side-panel-two-column .today-memo-section .memo-tags-wrapper {
+  margin-bottom: 6px;
+}
+
+.side-panel-two-column .today-memo-section .section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.side-panel-two-column .today-memo-section .section-title-row .section-title {
+  margin-bottom: 0;
+}
+
+.side-panel-two-column .today-memo-section .add-memo-btn {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: #22c55e;
+  color: white;
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  transition: all 0.15s;
+}
+
+.side-panel-two-column .today-memo-section .add-memo-btn:hover {
+  background: #16a34a;
+}
+
+.side-panel-two-column .today-memo-section .custom-memo {
+  padding: 10px 12px;
+  background: white;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #374151;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+
+.side-panel-two-column .today-memo-section .custom-memo:hover {
+  background: #f8fafc;
+  border-color: #22c55e;
+}
+
+.side-panel-two-column .today-memo-section .custom-memo .memo-emoji {
+  font-size: 16px;
+}
+
+.side-panel-two-column .today-memo-section .custom-memo .memo-text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.side-panel-two-column .today-memo-section .custom-memo.editing {
+  padding: 6px 8px;
+}
+
+.side-panel-two-column .today-memo-section .custom-memo .memo-edit-input {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 14px;
+  border: 1px solid #22c55e;
+  border-radius: 4px;
+  outline: none;
+  background: white;
+}
+
+.side-panel-two-column .today-memo-section .custom-memo .memo-edit-input:focus {
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+}
+
+.side-panel-two-column .today-memo-section .custom-memo .memo-delete-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: #fee2e2;
+  color: #dc2626;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.side-panel-two-column .today-memo-section .custom-memo .memo-delete-btn:hover {
+  background: #dc2626;
+  color: white;
+}
+
+.side-panel-two-column .today-memo-section .no-memo {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.side-panel-two-column .today-memo-section .today-memo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 2. 메모입력 섹션 */
+.side-panel-two-column .memo-input-section {
+  background: #fffbeb;
+  border-radius: 8px;
+  padding: 8px;
+  border: 1px solid #fcd34d;
+}
+
+/* 3. 이전메모 섹션 */
+.side-panel-two-column .history-memo-section {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.side-panel-two-column .history-memo-section .section-title {
+  color: #6b7280;
+}
+
+.side-panel-two-column .history-memo-section .section-title i {
+  color: #9ca3af;
+}
+
+.side-panel-two-column .history-memo-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.side-panel-two-column .history-memo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  background: white;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.side-panel-two-column .history-memo-item .history-date {
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  min-width: 75px;
+}
+
+.side-panel-two-column .history-memo-item .history-memo-text {
+  flex: 1;
+  color: #374151;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.side-panel-two-column .history-memo-item .memo-emoji {
+  font-size: 14px;
+}
+
+.side-panel-two-column .history-memo-section .no-memo {
+  color: #9ca3af;
+  font-size: 12px;
+  text-align: center;
+  padding: 16px;
+}
+
+/* 상태 섹션 */
+.side-panel-two-column .status-section {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.side-panel-two-column .status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.side-panel-two-column .status-row .section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  width: 32px;
+}
+
+/* 액션 버튼 */
+.side-panel-two-column .action-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.side-panel-two-column .action-buttons .action-btn {
+  flex: 1;
+  padding: 8px 6px;
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.15s;
+}
+
+.side-panel-two-column .action-buttons .action-btn.memo {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.side-panel-two-column .action-buttons .action-btn.memo:hover {
+  background: #bfdbfe;
+}
+
+.side-panel-two-column .action-buttons .action-btn.reservation {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.side-panel-two-column .action-buttons .action-btn.reservation:hover {
+  background: #bbf7d0;
+}
+
+.side-panel-two-column .action-buttons .action-btn.history {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.side-panel-two-column .action-buttons .action-btn.history:hover {
+  background: #d1d5db;
+}
+
+/* 상세 패널 헤더 */
+.side-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #e5e7eb;
+  color: #1f2937;
+}
+
+.side-panel-header .patient-info {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.side-panel-header .header-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.side-panel-header .status-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  background: #f3f4f6;
+  color: #4b5563;
+  border: none;
+}
+
+/* 예약 상태 배지 */
+.side-panel-header .status-badge.reservation {
+  padding: 0;
+  background: transparent;
+}
+
+.side-panel-header .status-badge.reservation .reservation-status.confirmed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.side-panel-header .status-badge.reservation .reservation-status.confirmed::before {
+  content: '\f073';
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  font-size: 11px;
+}
+
+.side-panel-header .status-badge.reservation .reservation-btn.empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px dashed #d1d5db;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.side-panel-header .status-badge.reservation .reservation-btn.empty:hover {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+/* 완료 상태 배지 */
+.side-panel-header .status-badge.complete {
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.side-panel-header .status-badge.complete:hover {
+  background: #d1d5db;
+}
+
+.side-panel-header .status-badge.complete.completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.side-panel-header .header-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.side-panel-header .header-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e5e7eb;
+  border: none;
+  border-radius: 6px;
+  color: #4b5563;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 18px;
+}
+
+.side-panel-header .header-btn:hover {
+  background: #d1d5db;
+  color: #1f2937;
+}
+
+.side-panel-header .patient-name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.side-panel-header .chart-no {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.side-panel-header .patient-age {
+  font-size: 13px;
+  opacity: 0.8;
+  margin-left: 4px;
+}
+
+.side-panel-close {
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  transition: background 0.2s;
+}
+
+.side-panel-close:hover {
+  background: #e5e7eb;
+  color: #1f2937;
+}
+
+/* 섹션 공통 스타일 */
+.side-panel-section {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.side-panel-section h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 0 0 12px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* 오늘 메모 섹션 */
+.side-panel-section.today-memo .memo-tags-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.side-panel-section.today-memo .no-memo {
+  color: #9ca3af;
+  font-size: 13px;
+  font-style: italic;
+}
+
+.side-panel-section.today-memo .custom-memo {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #374151;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.side-panel-section.today-memo .custom-memo i {
+  color: #9ca3af;
+  margin-top: 2px;
+}
+
+/* 예약/완료 섹션 */
+.side-panel-section.reservation-complete-section {
+  display: flex;
+  gap: 20px;
+  padding: 12px 20px;
+}
+
+.reservation-status-row,
+.complete-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reservation-status-row .section-label,
+.complete-status-row .section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  min-width: 32px;
+}
+
+.reservation-display {
+  display: flex;
+  align-items: center;
+}
+
+.complete-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #f9fafb;
+  font-size: 13px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.complete-toggle-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.complete-toggle-btn.completed {
+  background: #dcfce7;
+  border-color: #10b981;
+  color: #059669;
+}
+
+.complete-toggle-btn.completed:hover {
+  background: #bbf7d0;
+}
+
+/* 수납 이력 섹션 */
+.side-panel-section.history-section {
+  flex: 1;
+  overflow: auto;
+  border-bottom: none;
+}
+
+.history-loading,
+.history-empty {
+  text-align: center;
+  padding: 20px;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.history-loading i {
+  margin-right: 6px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+
+.history-item:hover {
+  background: #f3f4f6;
+}
+
+.history-item.current {
+  background: #dbeafe;
+  border-left: 3px solid #3b82f6;
+}
+
+.history-item .history-date {
+  flex: 0 0 80px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.history-item .history-treatments {
+  flex: 1;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-item .history-amount {
+  flex: 0 0 70px;
+  text-align: right;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* 빠른 액션 버튼 */
+.side-panel-actions {
+  padding: 16px 20px;
+  display: flex;
+  gap: 8px;
+  background: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+}
+
+.side-panel-actions .action-btn {
+  flex: 1;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.side-panel-actions .action-btn.memo {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.side-panel-actions .action-btn.memo:hover {
+  background: #fde68a;
+}
+
+.side-panel-actions .action-btn.reservation {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.side-panel-actions .action-btn.reservation:hover {
+  background: #bfdbfe;
+}
+
+.side-panel-actions .action-btn.history {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.side-panel-actions .action-btn.history:hover {
+  background: #d1d5db;
+}
+
+/* 반응형: 작은 화면 */
+@media (max-width: 1400px) {
+  .receipt-list-panel {
+    flex: 0 0 45%;
+    max-width: 45%;
+  }
+
+  .receipt-detail-side-panel {
+    flex: 1;
+  }
+}
+
+@media (max-width: 1100px) {
+  .receipt-two-column-layout {
+    flex-direction: column;
+    overflow: auto;
+  }
+
+  .receipt-list-panel {
+    flex: 0 0 auto;
+    max-width: 100%;
+    min-height: 300px;
+    max-height: 50%;
+  }
+
+  .receipt-detail-side-panel {
+    flex: 1;
+    min-height: 300px;
+  }
 }
 
