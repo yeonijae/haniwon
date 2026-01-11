@@ -14,7 +14,7 @@ interface ServerConfigState extends ServerConfig {
 }
 
 const DEFAULT_CONFIG: ServerConfig = {
-  serverUrl: 'localhost',  // 개발 테스트용 (프로덕션: 192.168.0.173)
+  serverUrl: '192.168.0.173',  // 프로덕션 서버
   serverPort: '3300',
 };
 

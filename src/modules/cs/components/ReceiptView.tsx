@@ -573,6 +573,16 @@ function ReceiptView({ user }: ReceiptViewProps) {
         });
 
         setSelectedPatientHistory(expandedHistory);
+
+        // selectedReceipt도 확장된 데이터로 업데이트 (medicineUsages 등 포함)
+        // receipt.receipt_date가 없을 수 있음 (날짜별 조회 시) -> selectedDate 사용
+        const targetDate = receipt.receipt_date || selectedDate;
+        const updatedReceipt = expandedHistory.find(
+          h => h.id === receipt.id && h.receipt_date === targetDate
+        );
+        if (updatedReceipt) {
+          setSelectedReceipt(updatedReceipt);
+        }
       } catch (err) {
         console.error('수납이력 로드 실패:', err);
         setSelectedPatientHistory([]);
