@@ -465,6 +465,11 @@ export async function ensureReceiptTables(): Promise<void> {
   await execute(`ALTER TABLE cs_medicine_usage ADD COLUMN IF NOT EXISTS inventory_id INTEGER`).catch(() => {});
   await execute(`ALTER TABLE cs_medicine_usage ADD COLUMN IF NOT EXISTS purpose TEXT DEFAULT '상비약'`).catch(() => {});
 
+  // mssql_detail_id 컬럼 추가 (비급여 항목별 메모 연결용)
+  await execute(`ALTER TABLE cs_yakchim_usage_records ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {});
+  await execute(`ALTER TABLE cs_medicine_usage ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {});
+  await execute(`ALTER TABLE cs_herbal_dispensings ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {});
+
   // 상비약 재고관리 테이블 - last_decoction_date 컬럼 추가
   await execute(`ALTER TABLE cs_medicine_inventory ADD COLUMN IF NOT EXISTS last_decoction_date TEXT`).catch(() => {});
 
@@ -953,11 +958,11 @@ export async function createHerbalDispensing(data: Omit<HerbalDispensing, 'id' |
   return insert(`
     INSERT INTO cs_herbal_dispensings (
       patient_id, chart_number, patient_name, herbal_name, quantity, dispensing_type,
-      delivery_method, receipt_id, memo, dispensing_date, created_at
+      delivery_method, receipt_id, mssql_detail_id, memo, dispensing_date, created_at
     ) VALUES (
       ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
       ${escapeString(data.herbal_name)}, ${data.quantity}, ${escapeString(data.dispensing_type)},
-      ${escapeString(data.delivery_method)}, ${data.receipt_id || 'NULL'},
+      ${escapeString(data.delivery_method)}, ${data.receipt_id || 'NULL'}, ${data.mssql_detail_id || 'NULL'},
       ${toSqlValue(data.memo)}, ${escapeString(data.dispensing_date)}, ${escapeString(getCurrentTimestamp())}
     )
   `);
@@ -1571,16 +1576,17 @@ export async function createYakchimUsageRecord(data: {
   item_name: string;
   remaining_after: number;
   receipt_id?: number;
+  mssql_detail_id?: number;
   memo?: string;
 }): Promise<number> {
   const now = getCurrentTimestamp();
   return insert(`
     INSERT INTO cs_yakchim_usage_records (
-      patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id, memo, created_at
+      patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id, mssql_detail_id, memo, created_at
     ) VALUES (
       ${data.patient_id}, ${escapeString(data.source_type)}, ${data.source_id}, ${escapeString(data.source_name)},
       ${escapeString(data.usage_date)}, ${escapeString(data.item_name)}, ${data.remaining_after},
-      ${data.receipt_id || 'NULL'}, ${toSqlValue(data.memo)}, ${escapeString(now)}
+      ${data.receipt_id || 'NULL'}, ${data.mssql_detail_id || 'NULL'}, ${toSqlValue(data.memo)}, ${escapeString(now)}
     )
   `);
 }
@@ -1593,11 +1599,11 @@ export async function createMedicineUsage(data: Omit<MedicineUsage, 'id' | 'crea
   return insert(`
     INSERT INTO cs_medicine_usage (
       patient_id, chart_number, patient_name, receipt_id, usage_date,
-      medicine_name, quantity, memo, created_at, updated_at
+      medicine_name, quantity, mssql_detail_id, memo, created_at, updated_at
     ) VALUES (
       ${data.patient_id}, ${escapeString(data.chart_number)}, ${toSqlValue(data.patient_name)},
       ${data.receipt_id || 'NULL'}, ${escapeString(data.usage_date)},
-      ${escapeString(data.medicine_name)}, ${data.quantity}, ${toSqlValue(data.memo)},
+      ${escapeString(data.medicine_name)}, ${data.quantity}, ${data.mssql_detail_id || 'NULL'}, ${toSqlValue(data.memo)},
       ${escapeString(now)}, ${escapeString(now)}
     )
   `);
@@ -2186,4 +2192,71 @@ export async function getMedicineInventoryByNames(names: string[]): Promise<Map<
   const map = new Map<string, MedicineInventory>();
   results.forEach(item => map.set(item.name, item));
   return map;
+}
+
+// ============================================
+// CS 설정 관리
+// ============================================
+
+export interface CsSetting {
+  id: number;
+  key: string;
+  value: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * CS 설정 조회
+ */
+export async function getCsSetting(key: string): Promise<string | null> {
+  const result = await queryOne<{ value: string }>(
+    `SELECT value FROM cs_settings WHERE key = ${escapeString(key)}`
+  );
+  return result?.value || null;
+}
+
+/**
+ * CS 설정 저장 (upsert)
+ */
+export async function setCsSetting(key: string, value: string, description?: string): Promise<void> {
+  await execute(`
+    INSERT INTO cs_settings (key, value, description, updated_at)
+    VALUES (${escapeString(key)}, ${escapeString(value)}, ${toSqlValue(description)}, NOW())
+    ON CONFLICT (key) DO UPDATE SET
+      value = ${escapeString(value)},
+      description = COALESCE(${toSqlValue(description)}, cs_settings.description),
+      updated_at = NOW()
+  `);
+}
+
+/**
+ * 모든 CS 설정 조회
+ */
+export async function getAllCsSettings(): Promise<CsSetting[]> {
+  return query<CsSetting>(`SELECT * FROM cs_settings ORDER BY key`);
+}
+
+/**
+ * 상비약 사용목적 옵션 조회
+ */
+export async function getMedicinePurposes(): Promise<string[]> {
+  const value = await getCsSetting('medicine_purposes');
+  if (value) {
+    try {
+      const purposes = JSON.parse(value);
+      if (Array.isArray(purposes)) return purposes;
+    } catch {
+      // JSON 파싱 실패
+    }
+  }
+  return ['감기약', '상비약', '보완처방', '증정', '치료약'];
+}
+
+/**
+ * 상비약 사용목적 옵션 저장
+ */
+export async function setMedicinePurposes(purposes: string[]): Promise<void> {
+  await setCsSetting('medicine_purposes', JSON.stringify(purposes), '상비약 사용목적 옵션');
 }

@@ -231,6 +231,7 @@ export interface YakchimUsageRecord {
   item_name: string;                       // 사용된 항목명 (녹용약침 등)
   remaining_after: number;                 // 사용 후 잔여 (패키지만 의미 있음)
   receipt_id?: number;
+  mssql_detail_id?: number;                // MSSQL Detail_PK (비급여 항목 연결)
   memo?: string;
   created_at: string;
 }
@@ -246,6 +247,7 @@ export interface HerbalDispensing {
   dispensing_type: 'sale' | 'gift' | 'package';  // 판매/증정/패키지
   delivery_method: 'pickup' | 'local' | 'express';  // 내원/시내/시외
   receipt_id?: number;       // 연관 수납 ID
+  mssql_detail_id?: number;  // MSSQL Detail_PK (비급여 항목 연결)
   memo?: string;
   dispensing_date: string;
   created_at?: string;
@@ -436,6 +438,7 @@ export interface MedicineUsage {
   inventory_id?: number;     // 재고 관리 ID
   purpose?: string;          // 목적 (상비약, 치료약, 감기약, 증정, 보완)
   memo?: string;             // 비고
+  mssql_detail_id?: number;  // MSSQL Detail_PK (비급여 항목 연결)
   created_at?: string;
   updated_at?: string;
 }
@@ -791,9 +794,10 @@ export function generateMemoSummaryItems(data: {
 
   // 상비약 사용
   data.medicineUsages?.forEach(med => {
+    const purposeText = med.purpose ? `-${med.purpose}` : '';
     items.push({
       type: 'medicine',
-      label: `${med.medicine_name}(${med.quantity})`,
+      label: `${med.medicine_name}(${med.quantity})${purposeText}`,
       data: med,
     });
   });

@@ -26,6 +26,7 @@ import {
   type GiftDispensing,
   type DocumentIssue,
   type MedicineUsage,
+  type YakchimUsageRecord,
   type ReceiptMemo,
   type ReservationStatus,
   type ReceiptRecordFilter,
@@ -49,6 +50,8 @@ import YakchimModal from './YakchimModal';
 import HerbalModal from './HerbalModal';
 import { MedicineModal } from './MedicineModal';
 import MemoInputPanel from './MemoInputPanel';
+import { CsSettingsModal } from './CsSettingsModal';
+import { useAuthStore } from '../../chat/stores/authStore';
 
 const MSSQL_API_BASE = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
@@ -141,6 +144,7 @@ interface ExpandedReceiptItem extends ReceiptHistoryItem {
   giftDispensings: GiftDispensing[];
   documentIssues: DocumentIssue[];
   medicineUsages: MedicineUsage[];
+  yakchimUsageRecords: YakchimUsageRecord[];
   receiptMemos: ReceiptMemo[];
   // 다음 예약 정보
   nextReservation: Reservation | null;
@@ -359,10 +363,17 @@ function ReceiptView({ user }: ReceiptViewProps) {
     itemName: string;
     itemType: 'yakchim' | 'medicine' | 'herbal' | 'other';
     amount?: number;
+    detailId?: number;         // MSSQL Detail_PK (비급여 항목 연결)
+    editData?: MedicineUsage;  // 상비약 수정 모드용
   } | null>(null);
 
   // 메모 인라인 편집 상태
   const [editingMemo, setEditingMemo] = useState<{ id: number; text: string } | null>(null);
+
+  // CS 설정 모달 상태
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const authUser = useAuthStore((state) => state.user);
+  const isAdmin = authUser?.isAdmin || false;
 
   // 인라인 메모 추가 상태
   const [isAddingMemo, setIsAddingMemo] = useState(false);
@@ -545,6 +556,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
             giftDispensings: [],
             documentIssues: [],
             medicineUsages: [],
+            yakchimUsageRecords: [],
             receiptMemos: individualMemos, // 수납별 메모 배열
             nextReservation: null,
             isExpanded: false,
@@ -640,6 +652,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
             giftDispensings: data.giftDispensings || [],
             documentIssues: data.documentIssues || [],
             medicineUsages: data.medicineUsages || [],
+            yakchimUsageRecords: data.yakchimUsageRecords || [],
             receiptMemos: individualMemos,
             nextReservation: null,
             isExpanded: false,
@@ -667,6 +680,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
           giftDispensings: [],
           documentIssues: [],
           medicineUsages: [],
+          yakchimUsageRecords: [],
           receiptMemos: individualMemos,
           nextReservation: null,
           isExpanded: false,
@@ -683,6 +697,16 @@ function ReceiptView({ user }: ReceiptViewProps) {
       });
 
       setSelectedPatientHistory(expandedHistory);
+
+      // selectedReceipt도 갱신 (hasMemoForDetail이 최신 데이터 참조하도록)
+      if (selectedReceipt) {
+        const updatedReceipt = expandedHistory.find(
+          h => h.id === selectedReceipt.id && h.receipt_date === selectedReceipt.receipt_date
+        );
+        if (updatedReceipt) {
+          setSelectedReceipt(updatedReceipt);
+        }
+      }
     } catch (err) {
       console.error('메모 데이터 새로고침 실패:', err);
     }
@@ -767,6 +791,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
         giftDispensings: [],
         documentIssues: [],
         medicineUsages: [],
+        yakchimUsageRecords: [],
         receiptMemos: [],
         nextReservation: null,
         isExpanded: false,
@@ -1032,9 +1057,12 @@ function ReceiptView({ user }: ReceiptViewProps) {
         handleOpenMemoModal(receipt);
         break;
       case 'medicine':
-        // 상비약 모달 열기 (수정 모드)
-        setMedicineEditData(item.data as MedicineUsage || null);
-        setMedicineModalReceipt(receipt);
+        // 상비약 인라인 패널 열기 (수정 모드)
+        setMemoInputMode({
+          itemName: '상비약 수정',
+          itemType: 'medicine',
+          editData: item.data as MedicineUsage,
+        });
         break;
       default:
         handleOpenMemoModal(receipt);
@@ -1075,19 +1103,27 @@ function ReceiptView({ user }: ReceiptViewProps) {
     setHerbalModalReceipt(null);
   };
 
+  // 메모 입력 제외 항목
+  const isExcludedFromMemo = (itemName: string) => itemName.includes('부항술혈명');
+
   // 비급여 항목 클릭 시 사이드패널 메모 입력 모드 활성화
-  const handleUncoveredItemClick = (itemName: string, amount: number) => {
-    console.log('비급여 항목 클릭:', itemName, amount);
+  const handleUncoveredItemClick = (itemName: string, amount: number, detailId?: number) => {
+    console.log('비급여 항목 클릭:', itemName, amount, 'detailId:', detailId);
+
+    // 메모 입력 제외 항목
+    if (isExcludedFromMemo(itemName)) {
+      return;
+    }
 
     // 약침 → 약침 입력 (일회성/패키지/멤버십)
     if (itemName.includes('약침')) {
-      setMemoInputMode({ itemName, itemType: 'yakchim', amount });
+      setMemoInputMode({ itemName, itemType: 'yakchim', amount, detailId });
       return;
     }
 
     // 한약 → 한약 입력 (발송/수령)
     if (itemName.includes('한약')) {
-      setMemoInputMode({ itemName, itemType: 'herbal', amount });
+      setMemoInputMode({ itemName, itemType: 'herbal', amount, detailId });
       return;
     }
 
@@ -1099,17 +1135,28 @@ function ReceiptView({ user }: ReceiptViewProps) {
         itemName.includes('치료약') ||
         itemName.includes('보완처방') ||
         itemName.includes('증정')) {
-      setMemoInputMode({ itemName, itemType: 'medicine', amount });
+      setMemoInputMode({ itemName, itemType: 'medicine', amount, detailId });
       return;
     }
 
     // 기본값: 일반 메모 입력
-    setMemoInputMode({ itemName, itemType: 'other', amount });
+    setMemoInputMode({ itemName, itemType: 'other', amount, detailId });
   };
 
   // 메모 입력 모드 닫기
   const handleCloseMemoInput = () => {
     setMemoInputMode(null);
+  };
+
+  // 비급여 항목에 대한 메모 존재 여부 확인
+  const hasMemoForDetail = (detailId: number): boolean => {
+    if (!selectedReceipt) return false;
+    return (
+      selectedReceipt.yakchimUsageRecords?.some(r => r.mssql_detail_id === detailId) ||
+      selectedReceipt.medicineUsages?.some(m => m.mssql_detail_id === detailId) ||
+      selectedReceipt.herbalDispensings?.some(h => h.mssql_detail_id === detailId) ||
+      false
+    );
   };
 
   // 메모 인라인 편집 시작
@@ -1507,6 +1554,17 @@ function ReceiptView({ user }: ReceiptViewProps) {
         <button onClick={loadReceipts} className="refresh-btn">
           <i className="fa-solid fa-rotate-right"></i> 새로고침
         </button>
+
+        {/* 설정 버튼 (관리자만) */}
+        {isAdmin && (
+          <button
+            className="settings-btn"
+            onClick={() => setShowSettingsModal(true)}
+            title="CS 설정"
+          >
+            <i className="fa-solid fa-gear"></i> 설정
+          </button>
+        )}
       </div>
 
       {/* 2단 레이아웃 */}
@@ -1754,11 +1812,20 @@ function ReceiptView({ user }: ReceiptViewProps) {
                               {selectedReceipt.treatments.filter(t => !t.is_covered).map((item, idx) => (
                                 <tr
                                   key={idx}
-                                  className={`clickable-row ${memoInputMode?.itemName === item.name ? 'active' : ''}`}
-                                  onClick={() => handleUncoveredItemClick(item.name, item.amount || 0)}
-                                  title="클릭하여 메모 추가"
+                                  className={`${isExcludedFromMemo(item.name) ? '' : 'clickable-row'} ${memoInputMode?.itemName === item.name ? 'active' : ''}`}
+                                  onClick={() => handleUncoveredItemClick(item.name, item.amount || 0, item.id)}
+                                  title={isExcludedFromMemo(item.name) ? undefined : '클릭하여 메모 추가'}
                                 >
-                                  <td className="col-name">{item.name}</td>
+                                  <td className="col-name">
+                                    {item.name}
+                                    {!isExcludedFromMemo(item.name) && (
+                                      hasMemoForDetail(item.id) ? (
+                                        <span className="memo-badge filled">✓</span>
+                                      ) : (
+                                        <span className="memo-badge empty">미입력</span>
+                                      )
+                                    )}
+                                  </td>
                                   <td className="col-amount">{(item.amount || 0).toLocaleString()}원</td>
                                 </tr>
                               ))}
@@ -1900,6 +1967,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
                   {memoInputMode && (
                     <div className="memo-input-section">
                       <MemoInputPanel
+                        key={memoInputMode.editData?.id || `new-${memoInputMode.itemName}`}
                         patientId={selectedReceipt.patient_id}
                         patientName={selectedReceipt.patient_name}
                         chartNumber={selectedReceipt.chart_no}
@@ -1908,6 +1976,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
                         itemName={memoInputMode.itemName}
                         itemType={memoInputMode.itemType}
                         amount={memoInputMode.amount}
+                        detailId={memoInputMode.detailId}
+                        editData={memoInputMode.editData}
                         onClose={handleCloseMemoInput}
                         onSuccess={async () => {
                           handleCloseMemoInput();
@@ -2070,6 +2140,12 @@ function ReceiptView({ user }: ReceiptViewProps) {
           }}
         />
       )}
+
+      {/* CS 설정 모달 (관리자만) */}
+      <CsSettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+      />
     </div>
   );
 }

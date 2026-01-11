@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { query, execute, escapeString, insert, getCurrentDate } from '@shared/lib/postgres';
-import { addReceiptMemo, createYakchimUsageRecord } from '../lib/api';
+import { addReceiptMemo, createYakchimUsageRecord, updateMedicineUsage, deleteMedicineUsage } from '../lib/api';
+import type { MedicineUsage } from '../types';
 
 interface MemoInputPanelProps {
   patientId: number;
@@ -11,6 +12,8 @@ interface MemoInputPanelProps {
   itemName: string;
   itemType: 'yakchim' | 'medicine' | 'herbal' | 'other';
   amount?: number;
+  detailId?: number;         // MSSQL Detail_PK (비급여 항목 연결)
+  editData?: MedicineUsage;  // 상비약 수정 모드용
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -64,9 +67,13 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
   itemName,
   itemType,
   amount = 0,
+  detailId,
+  editData,
   onClose,
   onSuccess,
 }) => {
+  const isEditMode = !!editData;
+
   // 공통 상태
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -80,7 +87,23 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
   // 상비약 상태
   const [medicineStocks, setMedicineStocks] = useState<MedicineStock[]>([]);
   const [selectedMedicine, setSelectedMedicine] = useState<MedicineStock | null>(null);
-  const [medicineQty, setMedicineQty] = useState(1);
+  const [medicineQty, setMedicineQty] = useState(editData?.quantity || 1);
+  const [medicineSearch, setMedicineSearch] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [medicinePurpose, setMedicinePurpose] = useState(editData?.purpose || '상비약');
+  const [purposeOptions, setPurposeOptions] = useState<string[]>(['감기약', '상비약', '보완처방', '증정', '치료약']);
+
+  // 수정 모드에서 editData 값 반영
+  useEffect(() => {
+    if (isEditMode && editData) {
+      if (editData.purpose) {
+        setMedicinePurpose(editData.purpose);
+      }
+      if (editData.quantity) {
+        setMedicineQty(editData.quantity);
+      }
+    }
+  }, [isEditMode, editData]);
 
   // 한약 상태
   const [herbalPackages, setHerbalPackages] = useState<HerbalPackage[]>([]);
@@ -149,18 +172,50 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
         setPackages(packageData);
 
       } else if (itemType === 'medicine') {
-        // 상비약 재고 조회 (검색어로 필터링)
-        const searchKeyword = itemName.includes('공진단') ? '공진단'
+        // 상비약: 초기 검색어 설정
+        const initialSearch = itemName.includes('공진단') ? '공진단'
           : itemName.includes('경옥고') ? '경옥고'
           : '';
+        setMedicineSearch(initialSearch);
 
+        // 사용목적 설정 로드
+        try {
+          const purposeSettings = await query<{ value: string }>(`
+            SELECT value FROM cs_settings WHERE key = 'medicine_purposes'
+          `);
+          if (purposeSettings.length > 0 && purposeSettings[0].value) {
+            const purposes = JSON.parse(purposeSettings[0].value);
+            if (Array.isArray(purposes) && purposes.length > 0) {
+              setPurposeOptions(purposes);
+            }
+          }
+        } catch {
+          // 설정이 없으면 기본값 사용
+        }
+
+        // 비급여 항목명에 따른 기본 사용목적 설정 (신규 등록 시에만)
+        if (!isEditMode) {
+          if (itemName.includes('감기약')) {
+            setMedicinePurpose('감기약');
+          } else if (itemName.includes('치료약')) {
+            setMedicinePurpose('치료약');
+          } else if (itemName.includes('보완처방')) {
+            setMedicinePurpose('보완처방');
+          } else if (itemName.includes('증정')) {
+            setMedicinePurpose('증정');
+          } else {
+            setMedicinePurpose('상비약');
+          }
+        }
+
+        // 초기 데이터 로드
         const medicineData = await query<MedicineStock>(`
           SELECT id, prescription_id, name, category, current_stock
           FROM cs_medicine_inventory
           WHERE current_stock > 0
-          ${searchKeyword ? `AND name ILIKE ${escapeString('%' + searchKeyword + '%')}` : ''}
+          ${initialSearch ? `AND name ILIKE ${escapeString('%' + initialSearch + '%')}` : ''}
           ORDER BY name ASC
-          LIMIT 20
+          LIMIT 30
         `);
         setMedicineStocks(medicineData);
 
@@ -185,6 +240,35 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
     loadData();
   }, [loadData]);
 
+  // 상비약 검색
+  const searchMedicines = useCallback(async (searchTerm: string) => {
+    try {
+      const medicineData = await query<MedicineStock>(`
+        SELECT id, prescription_id, name, category, current_stock
+        FROM cs_medicine_inventory
+        WHERE current_stock > 0
+        ${searchTerm.trim() ? `AND name ILIKE ${escapeString('%' + searchTerm.trim() + '%')}` : ''}
+        ORDER BY name ASC
+        LIMIT 30
+      `);
+      setMedicineStocks(medicineData);
+      setSelectedMedicine(null);
+    } catch (err) {
+      console.error('상비약 검색 오류:', err);
+    }
+  }, []);
+
+  // 검색어 변경 시 디바운스 처리
+  useEffect(() => {
+    if (itemType !== 'medicine') return;
+
+    const timer = setTimeout(() => {
+      searchMedicines(medicineSearch);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [medicineSearch, itemType, searchMedicines]);
+
   // 약침 일회성 저장
   const handleYakchimOnetime = async () => {
     setIsSaving(true);
@@ -208,6 +292,7 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
         item_name: itemName,
         remaining_after: 0,
         receipt_id: receiptId,
+        mssql_detail_id: detailId,
         memo: `${itemName} 일회성`,
       });
 
@@ -325,10 +410,10 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
 
       // 사용 기록 추가
       await insert(`
-        INSERT INTO cs_medicine_usages
-        (patient_id, chart_number, patient_name, inventory_id, medicine_name, quantity, usage_date, receipt_id, created_at)
+        INSERT INTO cs_medicine_usage
+        (patient_id, chart_number, patient_name, inventory_id, medicine_name, quantity, usage_date, receipt_id, mssql_detail_id, purpose, created_at)
         VALUES (
-          ${sqlitePatientId},
+          ${patientId},
           ${escapeString(chartNumber)},
           ${escapeString(patientName)},
           ${selectedMedicine.id},
@@ -336,6 +421,8 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
           ${medicineQty},
           ${escapeString(receiptDate)},
           ${receiptId},
+          ${detailId || 'NULL'},
+          ${escapeString(medicinePurpose)},
           NOW()
         )
       `);
@@ -347,6 +434,59 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
       alert('차감에 실패했습니다.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // 상비약 수정
+  const handleMedicineUpdate = async () => {
+    if (!editData?.id) return;
+    if (!selectedMedicine && !editData.medicine_name) {
+      alert('약품을 선택해주세요.');
+      return;
+    }
+    if (medicineQty <= 0) {
+      alert('올바른 수량을 입력해주세요.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // api.ts의 updateMedicineUsage가 재고 조정을 처리함
+      // newInventoryId: 약품 변경 시 새 약품 ID (api.ts에서 재고 복원/차감 처리)
+      // quantity: 수량 변경 시 차이만큼 재고 조정 (api.ts에서 처리)
+      await updateMedicineUsage(editData.id, {
+        medicine_name: selectedMedicine?.name || editData.medicine_name,
+        quantity: medicineQty,
+        purpose: medicinePurpose,
+        newInventoryId: selectedMedicine?.id,  // 약품 변경 시에만 설정
+      });
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('상비약 수정 오류:', err);
+      alert('수정에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 상비약 삭제
+  const handleMedicineDelete = async () => {
+    if (!editData?.id) return;
+    if (!confirm('이 상비약 사용 기록을 삭제하시겠습니까?')) return;
+
+    setIsDeleting(true);
+    try {
+      // api.ts의 deleteMedicineUsage가 재고 복원을 처리함
+      await deleteMedicineUsage(editData.id);
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('상비약 삭제 오류:', err);
+      alert('삭제에 실패했습니다.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -380,7 +520,7 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
       // 처리 기록 추가
       await insert(`
         INSERT INTO cs_herbal_dispensings
-        (patient_id, chart_number, patient_name, package_id, package_name, packs, dispensing_type, dispensing_date, receipt_id, created_at)
+        (patient_id, chart_number, patient_name, package_id, package_name, packs, dispensing_type, dispensing_date, receipt_id, mssql_detail_id, created_at)
         VALUES (
           ${sqlitePatientId},
           ${escapeString(chartNumber)},
@@ -391,6 +531,7 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
           ${escapeString(herbalAction)},
           ${escapeString(receiptDate)},
           ${receiptId},
+          ${detailId || 'NULL'},
           NOW()
         )
       `);
@@ -543,46 +684,121 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
           </>
         )}
 
-        {/* 상비약 입력 */}
+        {/* 상비약 입력/수정 */}
         {itemType === 'medicine' && (
           <div className="medicine-section">
-            {medicineStocks.length === 0 ? (
-              <p className="empty-msg">해당하는 재고가 없습니다.</p>
-            ) : (
-              <>
-                <div className="medicine-list">
-                  {medicineStocks.map(med => (
-                    <div
-                      key={med.id}
-                      className={`medicine-item ${selectedMedicine?.id === med.id ? 'selected' : ''}`}
-                      onClick={() => setSelectedMedicine(med)}
+            {/* 수정 모드: 현재 선택된 약품 표시 */}
+            {isEditMode && editData && (
+              <div className="edit-current-info">
+                <span className="current-label">현재:</span>
+                <span className="current-value">{editData.medicine_name} × {editData.quantity}개</span>
+              </div>
+            )}
+
+            <div className="medicine-search">
+              <i className="fa-solid fa-search"></i>
+              <input
+                type="text"
+                value={medicineSearch}
+                onChange={(e) => setMedicineSearch(e.target.value)}
+                placeholder={isEditMode ? '다른 약품으로 변경...' : '상비약 검색...'}
+                className="search-input"
+                autoFocus={!isEditMode}
+              />
+              {medicineSearch && (
+                <button
+                  className="search-clear"
+                  onClick={() => setMedicineSearch('')}
+                >
+                  <i className="fa-solid fa-times"></i>
+                </button>
+              )}
+            </div>
+
+            {medicineStocks.length === 0 && medicineSearch ? (
+              <p className="empty-msg">검색 결과가 없습니다.</p>
+            ) : medicineStocks.length > 0 && (
+              <div className="medicine-list">
+                {medicineStocks.map(med => (
+                  <div
+                    key={med.id}
+                    className={`medicine-item ${selectedMedicine?.id === med.id ? 'selected' : ''}`}
+                    onClick={() => setSelectedMedicine(med)}
+                  >
+                    <span className="med-name">{med.name}</span>
+                    <span className="med-stock">재고: {med.current_stock}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 사용목적 선택 */}
+            {(selectedMedicine || isEditMode) && (
+              <div className="purpose-selector">
+                <label>사용목적:</label>
+                <div className="purpose-buttons">
+                  {purposeOptions.map((purpose) => (
+                    <button
+                      key={purpose}
+                      type="button"
+                      className={`purpose-btn ${medicinePurpose === purpose ? 'active' : ''}`}
+                      onClick={() => setMedicinePurpose(purpose)}
                     >
-                      <span className="med-name">{med.name}</span>
-                      <span className="med-stock">재고: {med.current_stock}</span>
-                    </div>
+                      {purpose}
+                    </button>
                   ))}
                 </div>
-                {selectedMedicine && (
-                  <div className="medicine-action">
-                    <input
-                      type="number"
-                      value={medicineQty}
-                      onChange={(e) => setMedicineQty(Number(e.target.value))}
-                      min={1}
-                      max={selectedMedicine.current_stock}
-                      className="input-qty"
-                    />
-                    <span className="qty-unit">개</span>
-                    <button
-                      className="btn-deduct"
-                      onClick={handleMedicineDeduct}
-                      disabled={isSaving}
-                    >
-                      {isSaving ? '처리 중...' : '차감'}
-                    </button>
-                  </div>
-                )}
-              </>
+              </div>
+            )}
+
+            {/* 수정 모드: 수량 조절 + 수정/삭제 버튼 */}
+            {isEditMode && (
+              <div className="medicine-action edit-mode">
+                <input
+                  type="number"
+                  value={medicineQty}
+                  onChange={(e) => setMedicineQty(Number(e.target.value))}
+                  min={1}
+                  className="input-qty"
+                />
+                <span className="qty-unit">개</span>
+                <button
+                  className="btn-update"
+                  onClick={handleMedicineUpdate}
+                  disabled={isSaving || isDeleting}
+                >
+                  {isSaving ? '처리 중...' : '수정'}
+                </button>
+                <button
+                  className="btn-delete"
+                  onClick={handleMedicineDelete}
+                  disabled={isSaving || isDeleting}
+                >
+                  {isDeleting ? '삭제 중...' : '삭제'}
+                </button>
+              </div>
+            )}
+
+            {/* 추가 모드: 선택 후 차감 버튼 */}
+            {!isEditMode && selectedMedicine && (
+              <div className="medicine-action">
+                <input
+                  type="number"
+                  value={medicineQty}
+                  onChange={(e) => setMedicineQty(Number(e.target.value))}
+                  min={1}
+                  max={selectedMedicine.current_stock}
+                  className="input-qty"
+                />
+                <span className="qty-unit">개</span>
+                <button
+                  className="btn-deduct"
+                  onClick={handleMedicineDeduct}
+                  disabled={isSaving}
+                >
+                  {isSaving ? '처리 중...' : '차감'}
+                </button>
+              </div>
             )}
           </div>
         )}
