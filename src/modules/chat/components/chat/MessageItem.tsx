@@ -5,6 +5,7 @@ import { useSocketEmit } from '../../hooks/useSocket';
 import { useAuthStore } from '../../stores/authStore';
 import { getAbsoluteUrl } from '../../stores/serverConfigStore';
 import { useEmojiPresetsStore } from '../../stores/emojiPresetsStore';
+import { generateUUID } from '../../utils/uuid';
 import InlineThread from './InlineThread';
 
 interface Message {
@@ -81,7 +82,7 @@ export default function MessageItem({ message, channelId, onReaction, showThread
       content: replyContent.trim(),
       type: 'text',
       parent_id: message.id,
-      temp_id: crypto.randomUUID(),
+      temp_id: generateUUID(),
     });
     setReplyContent('');
     setShowReplyInput(false);

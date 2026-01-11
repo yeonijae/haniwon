@@ -5,6 +5,7 @@ import { useSocketEvent, useSocketEmit } from '../../hooks/useSocket';
 import { useAuthStore } from '../../stores/authStore';
 import { getAbsoluteUrl } from '../../stores/serverConfigStore';
 import { useEmojiPresetsStore } from '../../stores/emojiPresetsStore';
+import { generateUUID } from '../../utils/uuid';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 
@@ -77,7 +78,7 @@ function ReplyItem({
       content: replyContent.trim(),
       type: 'text',
       parent_id: reply.id,
-      temp_id: crypto.randomUUID(),
+      temp_id: generateUUID(),
     });
     setReplyContent('');
     setShowReplyInput(false);

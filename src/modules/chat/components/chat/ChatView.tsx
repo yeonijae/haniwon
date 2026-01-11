@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api';
 import { useSocketEvent, useSocketEmit } from '../../hooks/useSocket';
 import { useAuthStore } from '../../stores/authStore';
+import { generateUUID } from '../../utils/uuid';
 import MessageItem from './MessageItem';
 import MessageInput, { MessageInputHandle } from './MessageInput';
 
@@ -390,10 +391,10 @@ const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(({ channelId, targetM
     if (imageUrl) {
       // Send image message
       const content = inputValue.trim() ? `${inputValue.trim()}\n![image](${imageUrl})` : `![image](${imageUrl})`;
-      emit('message:send', { channel_id: channelId, content, type: 'image', temp_id: crypto.randomUUID(), metadata: { image_url: imageUrl } });
+      emit('message:send', { channel_id: channelId, content, type: 'image', temp_id: generateUUID(), metadata: { image_url: imageUrl } });
     } else {
       // Send text message
-      emit('message:send', { channel_id: channelId, content: inputValue.trim(), type: 'text', temp_id: crypto.randomUUID() });
+      emit('message:send', { channel_id: channelId, content: inputValue.trim(), type: 'text', temp_id: generateUUID() });
     }
 
     setInputValue('');
