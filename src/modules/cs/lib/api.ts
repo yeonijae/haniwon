@@ -907,11 +907,11 @@ export async function createMembership(membership: Omit<Membership, 'id' | 'crea
   const now = getCurrentTimestamp();
   return insert(`
     INSERT INTO cs_memberships (
-      patient_id, chart_number, patient_name, membership_type, quantity,
+      patient_id, chart_number, patient_name, membership_type, quantity, remaining_count,
       start_date, expire_date, memo, mssql_detail_id, status, created_at, updated_at
     ) VALUES (
       ${membership.patient_id}, ${toSqlValue(membership.chart_number)}, ${toSqlValue(membership.patient_name)},
-      ${escapeString(membership.membership_type)}, ${membership.quantity},
+      ${escapeString(membership.membership_type)}, ${membership.quantity}, ${membership.quantity},
       ${escapeString(membership.start_date)}, ${escapeString(membership.expire_date)},
       ${toSqlValue(membership.memo)}, ${membership.mssql_detail_id || 'NULL'},
       ${escapeString(membership.status)}, ${escapeString(now)}, ${escapeString(now)}
@@ -1698,6 +1698,30 @@ export async function createYakchimUsageRecord(data: {
       ${data.receipt_id || 'NULL'}, ${data.mssql_detail_id || 'NULL'}, ${toSqlValue(data.memo)}, ${data.quantity || 1}, ${escapeString(now)}
     )
   `);
+}
+
+/**
+ * 약침 사용내역 수정
+ */
+export async function updateYakchimUsageRecord(id: number, updates: {
+  item_name?: string;
+  quantity?: number;
+  memo?: string;
+}): Promise<boolean> {
+  const parts: string[] = [];
+  if (updates.item_name !== undefined) parts.push(`item_name = ${escapeString(updates.item_name)}`);
+  if (updates.quantity !== undefined) parts.push(`quantity = ${updates.quantity}`);
+  if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
+
+  if (parts.length === 0) return true;
+
+  try {
+    await execute(`UPDATE cs_yakchim_usage_records SET ${parts.join(', ')} WHERE id = ${id}`);
+    return true;
+  } catch (err) {
+    console.error('약침 사용내역 수정 오류:', err);
+    return false;
+  }
 }
 
 /**

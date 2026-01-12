@@ -226,7 +226,7 @@ export interface Membership {
 export interface YakchimUsageRecord {
   id: number;
   patient_id: number;
-  source_type: 'membership' | 'package';  // 멤버십 or 패키지
+  source_type: 'membership' | 'package' | 'one-time';  // 멤버십, 패키지, 일회성
   source_id: number;
   source_name: string;                     // 경근멤버십, 통마 등
   usage_date: string;
@@ -235,6 +235,7 @@ export interface YakchimUsageRecord {
   receipt_id?: number;
   mssql_detail_id?: number;                // MSSQL Detail_PK (비급여 항목 연결)
   memo?: string;
+  quantity?: number;                       // 사용 갯수
   created_at: string;
 }
 

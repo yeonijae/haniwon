@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { query, execute, escapeString, insert, getCurrentDate } from '@shared/lib/postgres';
-import { addReceiptMemo, createYakchimUsageRecord, updateMedicineUsage, deleteMedicineUsage, createTreatmentPackage, updateTreatmentPackage, deleteTreatmentPackage, createMembership, getPackageTypes, getMembershipTypes, type PackageType } from '../lib/api';
+import { addReceiptMemo, createYakchimUsageRecord, updateYakchimUsageRecord, updateMedicineUsage, deleteMedicineUsage, createTreatmentPackage, updateTreatmentPackage, deleteTreatmentPackage, createMembership, updateMembership, deleteMembership, getPackageTypes, getMembershipTypes, type PackageType } from '../lib/api';
 import type { MedicineUsage, YakchimUsageRecord, TreatmentPackage, Membership as MembershipType } from '../types';
 
 interface MemoInputPanelProps {
@@ -10,12 +10,13 @@ interface MemoInputPanelProps {
   receiptId: number;
   receiptDate: string;
   itemName: string;
-  itemType: 'yakchim' | 'medicine' | 'herbal' | 'other' | 'package-register' | 'package-edit' | 'membership-register';
+  itemType: 'yakchim' | 'medicine' | 'herbal' | 'other' | 'package-register' | 'package-edit' | 'membership-register' | 'membership-edit';
   amount?: number;
   detailId?: number;         // MSSQL Detail_PK (비급여 항목 연결)
   editData?: MedicineUsage;  // 상비약 수정 모드용
   yakchimEditData?: YakchimUsageRecord;  // 약침 수정 모드용
   packageEditData?: TreatmentPackage;    // 패키지 수정 모드용
+  membershipEditData?: MembershipType;   // 멤버십 수정 모드용
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -73,11 +74,13 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
   editData,
   yakchimEditData,
   packageEditData,
+  membershipEditData,
   onClose,
   onSuccess,
 }) => {
   const isEditMode = !!editData;
   const isYakchimEditMode = !!yakchimEditData;
+  const isMembershipEditMode = !!membershipEditData;
   const isPackageEditMode = !!packageEditData;
 
   // 포인트 패키지 여부 (비급여 항목명에 "포인트" 포함 시)
@@ -102,6 +105,15 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
     deductionCount: number;
     qty: number;
   }>>([]);
+
+  // 약침 수정 상태
+  const [editYakchimItemName, setEditYakchimItemName] = useState('');
+  const [editYakchimQty, setEditYakchimQty] = useState(1);
+  const [editYakchimMemo, setEditYakchimMemo] = useState('');
+  const [isYakchimEditing, setIsYakchimEditing] = useState(false);
+
+  // 멤버십 수정 상태
+  const [editMembershipMemo, setEditMembershipMemo] = useState('');
 
   // 상비약 상태
   const [medicineStocks, setMedicineStocks] = useState<MedicineStock[]>([]);
@@ -130,6 +142,23 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
       setEditPackageCount(packageEditData.total_count);
     }
   }, [isPackageEditMode, packageEditData]);
+
+  // 약침 수정 모드에서 초기값 반영
+  useEffect(() => {
+    if (isYakchimEditMode && yakchimEditData) {
+      setEditYakchimItemName(yakchimEditData.item_name || '');
+      setEditYakchimQty(yakchimEditData.quantity || 1);
+      setEditYakchimMemo(yakchimEditData.memo || '');
+      setIsYakchimEditing(false);
+    }
+  }, [isYakchimEditMode, yakchimEditData]);
+
+  // 멤버십 수정 모드에서 초기값 반영
+  useEffect(() => {
+    if (isMembershipEditMode && membershipEditData) {
+      setEditMembershipMemo(membershipEditData.memo || '');
+    }
+  }, [isMembershipEditMode, membershipEditData]);
 
   // 한약 상태
   const [herbalPackages, setHerbalPackages] = useState<HerbalPackage[]>([]);
@@ -632,6 +661,32 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
   };
 
   // 약침 사용 기록 삭제 (패키지인 경우 잔여 수량 복원)
+  // 약침 사용 기록 수정
+  const handleYakchimUpdate = async () => {
+    if (!yakchimEditData?.id) return;
+
+    setIsSaving(true);
+    try {
+      const success = await updateYakchimUsageRecord(yakchimEditData.id, {
+        item_name: editYakchimItemName,
+        quantity: editYakchimQty,
+        memo: editYakchimMemo,
+      });
+
+      if (success) {
+        onSuccess();
+        onClose();
+      } else {
+        alert('수정에 실패했습니다.');
+      }
+    } catch (err) {
+      console.error('약침 수정 오류:', err);
+      alert('수정에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleYakchimDelete = async () => {
     if (!yakchimEditData?.id) return;
     if (!confirm('이 약침 사용 기록을 삭제하시겠습니까?\n패키지/멤버십 사용의 경우 사용 내역이 취소됩니다.')) return;
@@ -806,6 +861,43 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
     }
   };
 
+  // 멤버십 수정
+  const handleMembershipUpdate = async () => {
+    if (!membershipEditData?.id) return;
+
+    setIsSaving(true);
+    try {
+      await updateMembership(membershipEditData.id, {
+        memo: editMembershipMemo || undefined,
+      });
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('멤버십 수정 오류:', err);
+      alert('수정에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 멤버십 삭제
+  const handleMembershipDelete = async () => {
+    if (!membershipEditData?.id) return;
+    if (!confirm('이 멤버십을 삭제하시겠습니까?\n삭제된 멤버십은 복구할 수 없습니다.')) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteMembership(membershipEditData.id);
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('멤버십 삭제 오류:', err);
+      alert('삭제에 실패했습니다.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // 한약 처리
   const handleHerbalProcess = async () => {
     if (!selectedHerbal) {
@@ -927,19 +1019,9 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
                 <span className="value">{yakchimEditData.source_name || '-'}</span>
               </div>
               <div className="info-row">
-                <span className="label">항목:</span>
-                <span className="value">{yakchimEditData.item_name || '-'}</span>
-              </div>
-              <div className="info-row">
                 <span className="label">사용일:</span>
                 <span className="value">{yakchimEditData.usage_date}</span>
               </div>
-              {yakchimEditData.memo && (
-                <div className="info-row">
-                  <span className="label">메모:</span>
-                  <span className="value">{yakchimEditData.memo}</span>
-                </div>
-              )}
               {yakchimEditData.source_type === 'package' && (
                 <div className="info-row">
                   <span className="label">사용 후 잔여:</span>
@@ -947,13 +1029,70 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
                 </div>
               )}
             </div>
+
+            {/* 수정 폼 */}
+            <div className="yakchim-edit-form">
+              <div className="form-row">
+                <label>항목:</label>
+                <input
+                  type="text"
+                  value={editYakchimItemName}
+                  onChange={(e) => setEditYakchimItemName(e.target.value)}
+                  placeholder="약침 종류"
+                />
+              </div>
+              <div className="form-row">
+                <label>갯수:</label>
+                <div className="qty-input-wrap">
+                  <button
+                    type="button"
+                    className="qty-btn"
+                    onClick={() => setEditYakchimQty(Math.max(1, editYakchimQty - 1))}
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    value={editYakchimQty}
+                    onChange={(e) => setEditYakchimQty(Math.max(1, parseInt(e.target.value) || 1))}
+                    min={1}
+                    className="qty-input"
+                  />
+                  <button
+                    type="button"
+                    className="qty-btn"
+                    onClick={() => setEditYakchimQty(editYakchimQty + 1)}
+                  >
+                    +
+                  </button>
+                  <span className="qty-unit">개</span>
+                </div>
+              </div>
+              <div className="form-row">
+                <label>메모:</label>
+                <input
+                  type="text"
+                  value={editYakchimMemo}
+                  onChange={(e) => setEditYakchimMemo(e.target.value)}
+                  placeholder="메모 (선택)"
+                />
+              </div>
+            </div>
+
             <div className="yakchim-edit-actions">
+              <button
+                className="btn-update"
+                onClick={handleYakchimUpdate}
+                disabled={isSaving || isDeleting}
+              >
+                {isSaving ? '저장 중...' : '수정 저장'}
+              </button>
               <button
                 className="btn-delete"
                 onClick={handleYakchimDelete}
-                disabled={isDeleting}
+                disabled={isSaving || isDeleting}
               >
-                {isDeleting ? '삭제 중...' : '사용 취소 (삭제)'}
+                {isDeleting ? '삭제 중...' : '사용 취소'}
               </button>
             </div>
           </div>
@@ -1109,6 +1248,62 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
                 disabled={isSaving || !membershipType}
               >
                 {isSaving ? '등록 중...' : `${membershipType || '멤버십'} 등록`}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 멤버십 수정 */}
+        {itemType === 'membership-edit' && isMembershipEditMode && membershipEditData && (
+          <div className="membership-edit-section">
+            <div className="membership-edit-info">
+              <div className="info-row">
+                <span className="label">멤버십:</span>
+                <span className="value">{membershipEditData.membership_type}</span>
+              </div>
+              <div className="info-row">
+                <span className="label">시작일:</span>
+                <span className="value">{membershipEditData.start_date}</span>
+              </div>
+              <div className="info-row">
+                <span className="label">만료일:</span>
+                <span className="value expire">{membershipEditData.expire_date}</span>
+              </div>
+              <div className="info-row">
+                <span className="label">상태:</span>
+                <span className={`value status-${membershipEditData.status}`}>
+                  {membershipEditData.status === 'active' ? '활성' : '만료'}
+                </span>
+              </div>
+            </div>
+
+            {/* 수정 폼 */}
+            <div className="membership-edit-form">
+              <div className="form-row">
+                <label>메모:</label>
+                <input
+                  type="text"
+                  value={editMembershipMemo}
+                  onChange={(e) => setEditMembershipMemo(e.target.value)}
+                  placeholder="메모 (선택)"
+                />
+              </div>
+            </div>
+
+            <div className="membership-edit-actions">
+              <button
+                className="btn-update"
+                onClick={handleMembershipUpdate}
+                disabled={isSaving || isDeleting}
+              >
+                {isSaving ? '저장 중...' : '수정 저장'}
+              </button>
+              <button
+                className="btn-delete"
+                onClick={handleMembershipDelete}
+                disabled={isSaving || isDeleting}
+              >
+                {isDeleting ? '삭제 중...' : '멤버십 삭제'}
               </button>
             </div>
           </div>

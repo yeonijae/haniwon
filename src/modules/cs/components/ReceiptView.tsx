@@ -47,7 +47,6 @@ import { fetchDoctors, fetchReservationsByDateRange } from '../../reservation/li
 import type { Doctor, Reservation } from '../../reservation/types';
 // manage 모듈의 API 사용
 import { fetchReceiptHistory, fetchPatientReceiptHistory, type ReceiptHistoryItem } from '../../manage/lib/api';
-import { ReceiptMemoModal } from './ReceiptMemoModal';
 import YakchimModal from './YakchimModal';
 import HerbalModal from './HerbalModal';
 import { MedicineModal } from './MedicineModal';
@@ -337,10 +336,6 @@ function ReceiptView({ user }: ReceiptViewProps) {
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
 
-  // 수납 메모 모달 상태
-  const [showMemoModal, setShowMemoModal] = useState(false);
-  const [memoModalReceipt, setMemoModalReceipt] = useState<ExpandedReceiptItem | null>(null);
-
   // 약침 모달 상태
   const [showYakchimModal, setShowYakchimModal] = useState(false);
   const [yakchimModalReceipt, setYakchimModalReceipt] = useState<ExpandedReceiptItem | null>(null);
@@ -364,12 +359,13 @@ function ReceiptView({ user }: ReceiptViewProps) {
   // 사이드패널 메모 입력 모드
   const [memoInputMode, setMemoInputMode] = useState<{
     itemName: string;
-    itemType: 'yakchim' | 'medicine' | 'herbal' | 'other' | 'package-register' | 'package-edit' | 'membership-register';
+    itemType: 'yakchim' | 'medicine' | 'herbal' | 'other' | 'package-register' | 'package-edit' | 'membership-register' | 'membership-edit';
     amount?: number;
     detailId?: number;         // MSSQL Detail_PK (비급여 항목 연결)
     editData?: MedicineUsage;  // 상비약 수정 모드용
     yakchimEditData?: YakchimUsageRecord;  // 약침 수정 모드용
     packageEditData?: TreatmentPackage;    // 패키지 수정 모드용
+    membershipEditData?: Membership;       // 멤버십 수정 모드용
   } | null>(null);
 
   // 메모 인라인 편집 상태
@@ -1048,19 +1044,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
     loadReceipts();
   }, [loadReceipts]);
 
-  // 수납 메모 모달 열기
-  const handleOpenMemoModal = (receipt: ExpandedReceiptItem) => {
-    setMemoModalReceipt(receipt);
-    setShowMemoModal(true);
-  };
-
-  // 수납 메모 모달 닫기
-  const handleCloseMemoModal = () => {
-    setShowMemoModal(false);
-    setMemoModalReceipt(null);
-  };
-
-  // 메모 태그 클릭 핸들러 (타입별 모달 열기)
+  // 메모 태그 클릭 핸들러 (타입별 인라인 패널 열기)
   const handleMemoTagClick = (item: MemoSummaryItem, receipt: ExpandedReceiptItem) => {
     switch (item.type) {
       case 'yakchim-membership':
@@ -1092,17 +1076,21 @@ function ReceiptView({ user }: ReceiptViewProps) {
         break;
       case 'point-used':
       case 'point-earned':
+        // 포인트 → 현재는 특별 처리 없음
+        break;
       case 'membership':
-        // 일반 메모 모달 열기
-        handleOpenMemoModal(receipt);
+        // 멤버십 인라인 패널 열기 (수정 모드)
+        if (item.data) {
+          setMemoInputMode({
+            itemName: '멤버십 수정',
+            itemType: 'membership-edit',
+            membershipEditData: item.data as Membership,
+          });
+        }
         break;
       case 'gift-dispensing':
-        // 증정품 → 메모 모달 열기
-        handleOpenMemoModal(receipt);
-        break;
       case 'document':
-        // 서류 → 일반 메모 모달
-        handleOpenMemoModal(receipt);
+        // 증정품/서류 → 현재는 특별 처리 없음
         break;
       case 'medicine':
         // 상비약 인라인 패널 열기 (수정 모드)
@@ -1113,7 +1101,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
         });
         break;
       default:
-        handleOpenMemoModal(receipt);
+        // 기타 타입은 현재 특별 처리 없음
+        break;
     }
   };
 
@@ -2046,7 +2035,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
                   {memoInputMode && (
                     <div className="memo-input-section">
                       <MemoInputPanel
-                        key={memoInputMode.yakchimEditData?.id || memoInputMode.editData?.id || `new-${memoInputMode.itemName}`}
+                        key={memoInputMode.yakchimEditData?.id || memoInputMode.editData?.id || memoInputMode.membershipEditData?.id || `new-${memoInputMode.itemName}`}
                         patientId={selectedReceipt.patient_id}
                         patientName={selectedReceipt.patient_name}
                         chartNumber={selectedReceipt.chart_no}
@@ -2059,6 +2048,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
                         editData={memoInputMode.editData}
                         yakchimEditData={memoInputMode.yakchimEditData}
                         packageEditData={memoInputMode.packageEditData}
+                        membershipEditData={memoInputMode.membershipEditData}
                         onClose={handleCloseMemoInput}
                         onSuccess={async () => {
                           handleCloseMemoInput();
@@ -2139,20 +2129,6 @@ function ReceiptView({ user }: ReceiptViewProps) {
           patientId={historyPatient.patientId}
           patientName={historyPatient.patientName}
           chartNo={historyPatient.chartNo}
-        />
-      )}
-
-      {/* 수납 메모 모달 */}
-      {memoModalReceipt && (
-        <ReceiptMemoModal
-          isOpen={showMemoModal}
-          onClose={handleCloseMemoModal}
-          patientId={memoModalReceipt.patient_id}
-          patientName={memoModalReceipt.patient_name}
-          chartNo={memoModalReceipt.chart_no}
-          receiptId={memoModalReceipt.id}
-          receiptDate={selectedDate}
-          onDataChange={loadReceipts}
         />
       )}
 
