@@ -16,7 +16,9 @@ import {
   toggleReceiptCompleted,
   getCompletedReceiptIds,
   fetchReceiptDetails,
+  fetchPatientPreviousMemos,
   type ReceiptDetailItem,
+  type PreviousMemoItem,
 } from '../lib/api';
 import {
   type TreatmentPackage,
@@ -357,14 +359,17 @@ function ReceiptView({ user }: ReceiptViewProps) {
   const [selectedReceipt, setSelectedReceipt] = useState<ExpandedReceiptItem | null>(null);
   const [selectedPatientHistory, setSelectedPatientHistory] = useState<ExpandedReceiptItem[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [previousMemos, setPreviousMemos] = useState<PreviousMemoItem[]>([]);
 
   // 사이드패널 메모 입력 모드
   const [memoInputMode, setMemoInputMode] = useState<{
     itemName: string;
-    itemType: 'yakchim' | 'medicine' | 'herbal' | 'other';
+    itemType: 'yakchim' | 'medicine' | 'herbal' | 'other' | 'package-register' | 'package-edit' | 'membership-register';
     amount?: number;
     detailId?: number;         // MSSQL Detail_PK (비급여 항목 연결)
     editData?: MedicineUsage;  // 상비약 수정 모드용
+    yakchimEditData?: YakchimUsageRecord;  // 약침 수정 모드용
+    packageEditData?: TreatmentPackage;    // 패키지 수정 모드용
   } | null>(null);
 
   // 메모 인라인 편집 상태
@@ -461,6 +466,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
     if (selectedReceipt?.id === receipt.id) {
       setSelectedReceipt(null);
       setSelectedPatientHistory([]);
+      setPreviousMemos([]);
       setDetailItems([]);
       setMemoInputMode(null);
       return;
@@ -515,6 +521,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
               documentIssues: data.documentIssues,
               medicineUsages: data.medicineUsages,
               yakchimUsageRecords: data.yakchimUsageRecords,
+              date: r.receipt_date,  // 등록일 확인용
             });
 
             return {
@@ -529,6 +536,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
               giftDispensings: data.giftDispensings || [],
               documentIssues: data.documentIssues || [],
               medicineUsages: data.medicineUsages || [],
+              yakchimUsageRecords: data.yakchimUsageRecords || [],
+              memberships: data.membership ? [data.membership] : [],
               receiptMemos: individualMemos, // 수납별 메모 배열
               nextReservation: null,
               isExpanded: false,
@@ -557,6 +566,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
             documentIssues: [],
             medicineUsages: [],
             yakchimUsageRecords: [],
+            memberships: [],
             receiptMemos: individualMemos, // 수납별 메모 배열
             nextReservation: null,
             isExpanded: false,
@@ -574,6 +584,14 @@ function ReceiptView({ user }: ReceiptViewProps) {
 
         setSelectedPatientHistory(expandedHistory);
 
+        // 이전 메모 로드 (일반메모 + 비급여메모 통합)
+        const prevMemos = await fetchPatientPreviousMemos(
+          receipt.patient_id,
+          selectedDate,  // 오늘 날짜 제외
+          20
+        ).catch(() => []);
+        setPreviousMemos(prevMemos);
+
         // selectedReceipt도 확장된 데이터로 업데이트 (medicineUsages 등 포함)
         // receipt.receipt_date가 없을 수 있음 (날짜별 조회 시) -> selectedDate 사용
         const targetDate = receipt.receipt_date || selectedDate;
@@ -586,6 +604,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
       } catch (err) {
         console.error('수납이력 로드 실패:', err);
         setSelectedPatientHistory([]);
+        setPreviousMemos([]);
       } finally {
         setIsLoadingHistory(false);
       }
@@ -648,6 +667,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
             documentIssues: data.documentIssues,
             medicineUsages: data.medicineUsages,
             yakchimUsageRecords: data.yakchimUsageRecords,
+            date: r.receipt_date,  // 등록일 확인용
           });
 
           return {
@@ -663,6 +683,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
             documentIssues: data.documentIssues || [],
             medicineUsages: data.medicineUsages || [],
             yakchimUsageRecords: data.yakchimUsageRecords || [],
+            memberships: data.membership ? [data.membership] : [],
             receiptMemos: individualMemos,
             nextReservation: null,
             isExpanded: false,
@@ -691,6 +712,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
           documentIssues: [],
           medicineUsages: [],
           yakchimUsageRecords: [],
+          memberships: [],
           receiptMemos: individualMemos,
           nextReservation: null,
           isExpanded: false,
@@ -709,9 +731,11 @@ function ReceiptView({ user }: ReceiptViewProps) {
       setSelectedPatientHistory(expandedHistory);
 
       // selectedReceipt도 갱신 (hasMemoForDetail이 최신 데이터 참조하도록)
+      // receipt_date가 없을 수 있음 (날짜별 조회 시) -> selectedDate 사용
       if (selectedReceipt) {
+        const targetDate = selectedReceipt.receipt_date || selectedDate;
         const updatedReceipt = expandedHistory.find(
-          h => h.id === selectedReceipt.id && h.receipt_date === selectedReceipt.receipt_date
+          h => h.id === selectedReceipt.id && h.receipt_date === targetDate
         );
         if (updatedReceipt) {
           setSelectedReceipt(updatedReceipt);
@@ -893,6 +917,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
           documentIssues: data.documentIssues,
           medicineUsages: data.medicineUsages,
           yakchimUsageRecords: data.yakchimUsageRecords,
+          date: selectedDate,  // 등록일 확인용
         });
 
         // 해당 환자의 다음 예약 찾기
@@ -1040,12 +1065,25 @@ function ReceiptView({ user }: ReceiptViewProps) {
     switch (item.type) {
       case 'yakchim-membership':
       case 'yakchim-package':
-        // 약침 모달 열기
-        handleOpenYakchimModal(receipt);
+      case 'yakchim-onetime':
+        // 약침 인라인 패널 열기 (수정 모드)
+        // item.data가 배열인 경우 (멤버십) 첫 번째 레코드 사용
+        const yakchimRecord = Array.isArray(item.data) ? item.data[0] : item.data;
+        if (yakchimRecord) {
+          setMemoInputMode({
+            itemName: '약침 수정',
+            itemType: 'yakchim',
+            yakchimEditData: yakchimRecord as YakchimUsageRecord,
+          });
+        }
         break;
       case 'treatment-package':
-        // 시술패키지 → 메모 모달 열기 (상세 수정은 메모 모달에서)
-        handleOpenMemoModal(receipt);
+        // 시술패키지 → 인라인 패널 열기 (수정/삭제)
+        setMemoInputMode({
+          itemName: '패키지 수정',
+          itemType: 'package-edit',
+          packageEditData: item.data as TreatmentPackage,
+        });
         break;
       case 'herbal-package':
       case 'herbal-dispensing':
@@ -1118,15 +1156,30 @@ function ReceiptView({ user }: ReceiptViewProps) {
 
   // 비급여 항목 클릭 시 사이드패널 메모 입력 모드 활성화
   const handleUncoveredItemClick = (itemName: string, amount: number, detailId?: number) => {
-    console.log('비급여 항목 클릭:', itemName, amount, 'detailId:', detailId);
-
     // 메모 입력 제외 항목
     if (isExcludedFromMemo(itemName)) {
       return;
     }
 
-    // 약침 → 약침 입력 (일회성/패키지/멤버십)
-    if (itemName.includes('약침')) {
+    // 이미 연관 메모가 있으면 패널 열지 않음 (비급여 항목당 메모 1개)
+    if (detailId && hasMemoForDetail(detailId)) {
+      return;
+    }
+
+    // 약침포인트 → 패키지(통증마일리지) 등록
+    if (itemName.includes('약침포인트')) {
+      setMemoInputMode({ itemName: '통증마일리지', itemType: 'package-register', amount, detailId });
+      return;
+    }
+
+    // 멤버십 → 멤버십 등록
+    if (itemName.includes('멤버십')) {
+      setMemoInputMode({ itemName, itemType: 'membership-register', amount, detailId });
+      return;
+    }
+
+    // 약침/요법 → 약침 입력 (일회성/패키지/멤버십)
+    if (itemName.includes('약침') || itemName.includes('요법')) {
       setMemoInputMode({ itemName, itemType: 'yakchim', amount, detailId });
       return;
     }
@@ -1165,6 +1218,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
       selectedReceipt.yakchimUsageRecords?.some(r => r.mssql_detail_id === detailId) ||
       selectedReceipt.medicineUsages?.some(m => m.mssql_detail_id === detailId) ||
       selectedReceipt.herbalDispensings?.some(h => h.mssql_detail_id === detailId) ||
+      selectedReceipt.treatmentPackages?.some(p => p.mssql_detail_id === detailId) ||
+      selectedReceipt.memberships?.some(m => m.mssql_detail_id === detailId) ||
       false
     );
   };
@@ -1742,6 +1797,20 @@ function ReceiptView({ user }: ReceiptViewProps) {
                 <div className="header-actions">
                   <button
                     className="header-btn"
+                    onClick={() => setMemoInputMode({ itemName: '패키지등록', itemType: 'package-register' })}
+                    title="패키지 등록"
+                  >
+                    <i className="fa-solid fa-cubes"></i>
+                  </button>
+                  <button
+                    className="header-btn"
+                    onClick={() => setMemoInputMode({ itemName: '멤버십등록', itemType: 'membership-register' })}
+                    title="멤버십 등록"
+                  >
+                    <i className="fa-solid fa-id-card"></i>
+                  </button>
+                  <button
+                    className="header-btn"
                     onClick={() => setMemoInputMode({ itemName: '일반메모', itemType: 'other' })}
                     title="일반메모"
                   >
@@ -1977,7 +2046,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
                   {memoInputMode && (
                     <div className="memo-input-section">
                       <MemoInputPanel
-                        key={memoInputMode.editData?.id || `new-${memoInputMode.itemName}`}
+                        key={memoInputMode.yakchimEditData?.id || memoInputMode.editData?.id || `new-${memoInputMode.itemName}`}
                         patientId={selectedReceipt.patient_id}
                         patientName={selectedReceipt.patient_name}
                         chartNumber={selectedReceipt.chart_no}
@@ -1988,6 +2057,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
                         amount={memoInputMode.amount}
                         detailId={memoInputMode.detailId}
                         editData={memoInputMode.editData}
+                        yakchimEditData={memoInputMode.yakchimEditData}
+                        packageEditData={memoInputMode.packageEditData}
                         onClose={handleCloseMemoInput}
                         onSuccess={async () => {
                           handleCloseMemoInput();
@@ -2003,24 +2074,16 @@ function ReceiptView({ user }: ReceiptViewProps) {
                       <i className="fa-solid fa-clock-rotate-left"></i> 이전메모
                     </h4>
                     <div className="history-memo-list">
-                      {(() => {
-                        // 이전 날짜의 모든 메모를 평탄화
-                        const pastMemos = selectedPatientHistory
-                          .filter(h => h.receipt_date !== selectedDate)
-                          .flatMap(h => h.receiptMemos.filter(m => m.memo).map(m => ({ date: h.receipt_date, memo: m })))
-                          .slice(0, 10);
-
-                        return pastMemos.length > 0 ? (
-                          pastMemos.map(({ date, memo }, idx) => (
-                            <div key={idx} className="history-memo-item">
-                              <span className="history-date">{date}</span>
-                              <span className="history-memo-text">{memo.memo}</span>
-                            </div>
-                          ))
-                        ) : (
-                          <span className="no-memo">이전 메모 없음</span>
-                        );
-                      })()}
+                      {previousMemos.length > 0 ? (
+                        previousMemos.map((item, idx) => (
+                          <div key={idx} className="history-memo-item">
+                            <span className="history-date">{item.date}</span>
+                            <span className="history-memo-text">{item.memos.join(' / ')}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="no-memo">이전 메모 없음</span>
+                      )}
                     </div>
                   </div>
                 </div>

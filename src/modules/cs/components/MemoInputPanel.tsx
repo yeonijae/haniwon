@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { query, execute, escapeString, insert, getCurrentDate } from '@shared/lib/postgres';
-import { addReceiptMemo, createYakchimUsageRecord, updateMedicineUsage, deleteMedicineUsage } from '../lib/api';
-import type { MedicineUsage } from '../types';
+import { addReceiptMemo, createYakchimUsageRecord, updateMedicineUsage, deleteMedicineUsage, createTreatmentPackage, updateTreatmentPackage, deleteTreatmentPackage, createMembership, getPackageTypes, getMembershipTypes, type PackageType } from '../lib/api';
+import type { MedicineUsage, YakchimUsageRecord, TreatmentPackage, Membership as MembershipType } from '../types';
 
 interface MemoInputPanelProps {
   patientId: number;
@@ -10,10 +10,12 @@ interface MemoInputPanelProps {
   receiptId: number;
   receiptDate: string;
   itemName: string;
-  itemType: 'yakchim' | 'medicine' | 'herbal' | 'other';
+  itemType: 'yakchim' | 'medicine' | 'herbal' | 'other' | 'package-register' | 'package-edit' | 'membership-register';
   amount?: number;
   detailId?: number;         // MSSQL Detail_PK (비급여 항목 연결)
   editData?: MedicineUsage;  // 상비약 수정 모드용
+  yakchimEditData?: YakchimUsageRecord;  // 약침 수정 모드용
+  packageEditData?: TreatmentPackage;    // 패키지 수정 모드용
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -69,10 +71,17 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
   amount = 0,
   detailId,
   editData,
+  yakchimEditData,
+  packageEditData,
   onClose,
   onSuccess,
 }) => {
   const isEditMode = !!editData;
+  const isYakchimEditMode = !!yakchimEditData;
+  const isPackageEditMode = !!packageEditData;
+
+  // 포인트 패키지 여부 (비급여 항목명에 "포인트" 포함 시)
+  const isPointPackage = itemType === 'package-register' && itemName.includes('포인트');
 
   // 공통 상태
   const [isLoading, setIsLoading] = useState(true);
@@ -83,6 +92,16 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
   const [yakchimTab, setYakchimTab] = useState<'onetime' | 'package' | 'membership'>('onetime');
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
+
+  // 약침 일회성 상태
+  const [yakchimTypeOptions, setYakchimTypeOptions] = useState<PackageType[]>([]);
+  // 다중 선택 구조: { typeId, typeName, deductionCount, qty }
+  const [selectedYakchims, setSelectedYakchims] = useState<Array<{
+    typeId: number;
+    typeName: string;
+    deductionCount: number;
+    qty: number;
+  }>>([]);
 
   // 상비약 상태
   const [medicineStocks, setMedicineStocks] = useState<MedicineStock[]>([]);
@@ -105,11 +124,96 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
     }
   }, [isEditMode, editData]);
 
+  // 패키지 수정 모드에서 초기값 반영
+  useEffect(() => {
+    if (isPackageEditMode && packageEditData) {
+      setEditPackageCount(packageEditData.total_count);
+    }
+  }, [isPackageEditMode, packageEditData]);
+
   // 한약 상태
   const [herbalPackages, setHerbalPackages] = useState<HerbalPackage[]>([]);
   const [herbalAction, setHerbalAction] = useState<'dispense' | 'pickup'>('dispense');
   const [selectedHerbal, setSelectedHerbal] = useState<HerbalPackage | null>(null);
   const [herbalQty, setHerbalQty] = useState(1);
+
+  // 패키지 등록 상태
+  const [packageCount, setPackageCount] = useState(10);  // 기본 10회
+  const [packageMemo, setPackageMemo] = useState('');
+  const [packageTypeOptions, setPackageTypeOptions] = useState<PackageType[]>([]);
+  const [selectedPackageType, setSelectedPackageType] = useState('');
+
+  // 패키지 수정 상태
+  const [editPackageCount, setEditPackageCount] = useState(0);
+
+  // 멤버십 등록 상태
+  const [membershipType, setMembershipType] = useState('');
+  const [membershipPeriod, setMembershipPeriod] = useState(1);  // 기본 1개월
+  const [membershipMemo, setMembershipMemo] = useState('');
+  const [membershipTypeOptions, setMembershipTypeOptions] = useState<string[]>(['녹용']);
+  const periodOptions = [
+    { value: 1, label: '1개월' },
+    { value: 3, label: '3개월' },
+    { value: 6, label: '6개월' },
+    { value: 12, label: '1년' },
+  ];
+
+  // 멤버십 종류 로드
+  useEffect(() => {
+    const loadMembershipTypes = async () => {
+      try {
+        const types = await getMembershipTypes();
+        setMembershipTypeOptions(types);
+        if (types.length > 0 && !membershipType) {
+          setMembershipType(types[0]);
+        }
+      } catch (err) {
+        console.error('멤버십 종류 로드 실패:', err);
+      }
+    };
+    if (itemType === 'membership-register') {
+      loadMembershipTypes();
+    }
+  }, [itemType]);
+
+  // 패키지 종류 로드 (차감형만)
+  useEffect(() => {
+    const loadPackageTypes = async () => {
+      try {
+        const allTypes = await getPackageTypes();
+        const deductionTypes = allTypes.filter(t => t.type === 'deduction');
+        setPackageTypeOptions(deductionTypes);
+        if (deductionTypes.length > 0 && !selectedPackageType) {
+          setSelectedPackageType(deductionTypes[0].name);
+        }
+      } catch (err) {
+        console.error('패키지 종류 로드 실패:', err);
+      }
+    };
+    if (itemType === 'package-register') {
+      loadPackageTypes();
+    }
+  }, [itemType]);
+
+  // 약침/요법 종류 로드 (itemName에 따라 yakchim 또는 yobup 타입)
+  useEffect(() => {
+    const loadYakchimTypes = async () => {
+      try {
+        const allTypes = await getPackageTypes();
+        // 요법이 포함된 항목이면 yobup 타입, 아니면 yakchim 타입
+        const filterType = itemName.includes('요법') ? 'yobup' : 'yakchim';
+        const filteredTypes = allTypes.filter(t => t.type === filterType);
+        setYakchimTypeOptions(filteredTypes);
+        // 다중 선택이므로 자동 선택 제거
+        setSelectedYakchims([]);
+      } catch (err) {
+        console.error('약침/요법 종류 로드 실패:', err);
+      }
+    };
+    if (itemType === 'yakchim') {
+      loadYakchimTypes();
+    }
+  }, [itemType, itemName]);
 
   // 일반 메모 상태
   const [generalMemo, setGeneralMemo] = useState('');
@@ -153,20 +257,20 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
       if (!pid) return;
 
       if (itemType === 'yakchim') {
-        // 멤버십 조회
+        // 멤버십 조회 (MSSQL patient_id 사용)
         const membershipData = await query<Membership>(`
           SELECT id, membership_type, quantity, expire_date, status
           FROM cs_memberships
-          WHERE patient_id = ${pid} AND status = 'active'
+          WHERE patient_id = ${patientId} AND status = 'active'
           ORDER BY expire_date ASC
         `);
         setMemberships(membershipData);
 
-        // 패키지 조회
+        // 패키지 조회 (MSSQL patient_id 사용)
         const packageData = await query<Package>(`
           SELECT id, package_name, total_count, used_count, remaining_count, expire_date, status
           FROM cs_treatment_packages
-          WHERE patient_id = ${pid} AND status = 'active' AND remaining_count > 0
+          WHERE patient_id = ${patientId} AND status = 'active' AND remaining_count > 0
           ORDER BY created_at DESC
         `);
         setPackages(packageData);
@@ -220,11 +324,11 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
         setMedicineStocks(medicineData);
 
       } else if (itemType === 'herbal') {
-        // 한약 패키지 조회
+        // 한약 패키지 조회 (MSSQL patient_id 사용)
         const herbalData = await query<HerbalPackage>(`
           SELECT id, package_type, herbal_name, total_count, used_count, remaining_count, status
           FROM cs_herbal_packages
-          WHERE patient_id = ${pid} AND status = 'active' AND remaining_count > 0
+          WHERE patient_id = ${patientId} AND status = 'active' AND remaining_count > 0
           ORDER BY created_at DESC
         `);
         setHerbalPackages(herbalData);
@@ -271,8 +375,24 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
 
   // 약침 일회성 저장
   const handleYakchimOnetime = async () => {
+    if (selectedYakchims.length === 0) {
+      alert('약침 종류를 선택해주세요.');
+      return;
+    }
+    // 갯수가 0인 항목이 있는지 확인
+    const invalidItem = selectedYakchims.find(y => y.qty <= 0);
+    if (invalidItem) {
+      alert(`${invalidItem.typeName}의 갯수를 1개 이상 입력해주세요.`);
+      return;
+    }
+
     setIsSaving(true);
     try {
+      // 선택된 모든 약침 정보를 문자열로 만들기
+      const yakchimInfoParts = selectedYakchims.map(y => `${y.typeName} ${y.qty}개`);
+      const yakchimInfo = yakchimInfoParts.join(', ');
+      const totalQty = selectedYakchims.reduce((sum, y) => sum + y.qty, 0);
+
       console.log('약침 일회성 저장 시작:', {
         patientId,
         chartNumber,
@@ -280,6 +400,7 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
         receiptId,
         receiptDate,
         itemName,
+        selectedYakchims,
       });
 
       // 약침 사용 기록 테이블에 저장 (일반 메모 덮어쓰지 않음)
@@ -287,13 +408,14 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
         patient_id: patientId,
         source_type: 'one-time',
         source_id: 0,
-        source_name: '일회성',
+        source_name: yakchimInfo,  // 약침 종류와 갯수 저장
         usage_date: receiptDate,
-        item_name: itemName,
+        item_name: selectedYakchims.map(y => y.typeName).join(', '),  // 약침 종류들
         remaining_after: 0,
         receipt_id: receiptId,
         mssql_detail_id: detailId,
-        memo: `${itemName} 일회성`,
+        memo: `${itemName} - ${yakchimInfo}`,
+        quantity: totalQty,  // 총 갯수
       });
 
       console.log('약침 일회성 저장 완료, 결과:', result);
@@ -310,15 +432,25 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
 
   // 약침 패키지 차감
   const handleYakchimPackage = async (pkg: Package) => {
-    if (pkg.remaining_count <= 0) {
-      alert('잔여 횟수가 없습니다.');
+    if (selectedYakchims.length === 0) {
+      alert('약침 종류를 선택해주세요.');
+      return;
+    }
+
+    // 총 차감 포인트 계산: Σ(deductionCount × qty)
+    const totalDeductPoints = selectedYakchims.reduce(
+      (sum, y) => sum + (y.deductionCount * y.qty), 0
+    );
+
+    if (pkg.remaining_count < totalDeductPoints) {
+      alert(`잔여 횟수(${pkg.remaining_count})가 총 차감 포인트(${totalDeductPoints}p)보다 적습니다.`);
       return;
     }
 
     setIsSaving(true);
     try {
-      const newRemaining = pkg.remaining_count - 1;
-      const newUsed = pkg.used_count + 1;
+      const newRemaining = pkg.remaining_count - totalDeductPoints;
+      const newUsed = pkg.used_count + totalDeductPoints;
       const newStatus = newRemaining <= 0 ? 'completed' : 'active';
 
       // 패키지 차감
@@ -331,19 +463,27 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
         WHERE id = ${pkg.id}
       `);
 
-      // 사용 기록 추가
+      // 사용 기록 추가 (MSSQL patient_id 사용 - 다른 메모 테이블과 일관성)
+      const yakchimInfoParts = selectedYakchims.map(y => `${y.typeName} ${y.qty}개`);
+      const yakchimInfo = yakchimInfoParts.join(', ');
+      const totalQty = selectedYakchims.reduce((sum, y) => sum + y.qty, 0);
+      const itemNames = selectedYakchims.map(y => y.typeName).join(', ');
+
       await execute(`
         INSERT INTO cs_yakchim_usage_records
-        (patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id)
+        (patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id, mssql_detail_id, memo, quantity)
         VALUES (
-          ${sqlitePatientId},
+          ${patientId},
           'package',
           ${pkg.id},
           ${escapeString(pkg.package_name)},
           ${escapeString(receiptDate)},
-          ${escapeString(itemName)},
+          ${escapeString(itemNames || itemName)},
           ${newRemaining},
-          ${receiptId}
+          ${receiptId},
+          ${detailId || 'NULL'},
+          ${escapeString(`${itemName} - ${yakchimInfo} (총 ${totalDeductPoints}p 차감)`)},
+          ${totalQty}
         )
       `);
 
@@ -361,19 +501,20 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
   const handleYakchimMembership = async (mem: Membership) => {
     setIsSaving(true);
     try {
-      // 사용 기록 추가 (차감 없음)
+      // 사용 기록 추가 (차감 없음) - MSSQL patient_id 사용
       await execute(`
         INSERT INTO cs_yakchim_usage_records
-        (patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id)
+        (patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id, mssql_detail_id)
         VALUES (
-          ${sqlitePatientId},
+          ${patientId},
           'membership',
           ${mem.id},
           ${escapeString(mem.membership_type)},
           ${escapeString(receiptDate)},
           ${escapeString(itemName)},
           ${mem.quantity},
-          ${receiptId}
+          ${receiptId},
+          ${detailId || 'NULL'}
         )
       `);
 
@@ -490,6 +631,181 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
     }
   };
 
+  // 약침 사용 기록 삭제 (패키지인 경우 잔여 수량 복원)
+  const handleYakchimDelete = async () => {
+    if (!yakchimEditData?.id) return;
+    if (!confirm('이 약침 사용 기록을 삭제하시겠습니까?\n패키지/멤버십 사용의 경우 사용 내역이 취소됩니다.')) return;
+
+    setIsDeleting(true);
+    try {
+      // 패키지인 경우 잔여 수량 복원
+      if (yakchimEditData.source_type === 'package' && yakchimEditData.source_id) {
+        await execute(`
+          UPDATE cs_treatment_packages
+          SET used_count = used_count - 1,
+              remaining_count = remaining_count + 1,
+              status = CASE WHEN remaining_count + 1 > 0 THEN 'active' ELSE status END,
+              updated_at = NOW()
+          WHERE id = ${yakchimEditData.source_id}
+        `);
+      }
+
+      // 사용 기록 삭제
+      await execute(`DELETE FROM cs_yakchim_usage_records WHERE id = ${yakchimEditData.id}`);
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('약침 삭제 오류:', err);
+      alert('삭제에 실패했습니다.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // 패키지 등록
+  const handlePackageRegister = async () => {
+    // 포인트 패키지가 아닐 때만 패키지 종류 필수 체크
+    if (!isPointPackage && !selectedPackageType) {
+      alert('패키지 종류를 선택해주세요.');
+      return;
+    }
+    if (packageCount <= 0) {
+      alert('올바른 횟수를 입력해주세요.');
+      return;
+    }
+
+    // 포인트 패키지면 비급여 항목명을 그대로 사용, 아니면 선택된 패키지 종류 사용
+    const packageName = isPointPackage ? itemName : selectedPackageType;
+
+    setIsSaving(true);
+    try {
+      await createTreatmentPackage({
+        patient_id: patientId,  // MSSQL patient_id 사용 (다른 메모 테이블과 일관성)
+        chart_number: chartNumber,
+        patient_name: patientName,
+        package_name: packageName,
+        total_count: packageCount,
+        used_count: 0,
+        remaining_count: packageCount,
+        includes: undefined,
+        start_date: receiptDate,
+        expire_date: undefined,
+        memo: packageMemo || undefined,
+        mssql_detail_id: detailId,  // 비급여 항목 연결
+        status: 'active',
+      });
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('패키지 등록 오류:', err);
+      alert('등록에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 멤버십 등록
+  const handleMembershipRegister = async () => {
+    if (!membershipType) {
+      alert('멤버십 종류를 선택해주세요.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // 만료일 계산 (시작일 + N개월 - 1일)
+      const startDate = new Date(receiptDate);
+      const expireDate = new Date(startDate);
+      expireDate.setMonth(expireDate.getMonth() + membershipPeriod);
+      expireDate.setDate(expireDate.getDate() - 1);
+      const expireDateStr = expireDate.toISOString().split('T')[0];
+
+      await createMembership({
+        patient_id: patientId,  // MSSQL patient_id 사용
+        chart_number: chartNumber,
+        patient_name: patientName,
+        membership_type: membershipType,
+        quantity: 1,  // 하루 1회 사용 제한
+        start_date: receiptDate,
+        expire_date: expireDateStr,
+        memo: membershipMemo || undefined,
+        mssql_detail_id: detailId,  // 비급여 항목 연결
+        status: 'active',
+      });
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('멤버십 등록 오류:', err);
+      alert('등록에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 만료일 계산 헬퍼
+  const calculateExpireDate = (startDate: string, months: number): string => {
+    const start = new Date(startDate);
+    const expire = new Date(start);
+    expire.setMonth(expire.getMonth() + months);
+    expire.setDate(expire.getDate() - 1);
+    return expire.toISOString().split('T')[0];
+  };
+
+  // 패키지 수정 (총 횟수 변경)
+  const handlePackageUpdate = async () => {
+    if (!packageEditData?.id) return;
+    if (editPackageCount <= 0) {
+      alert('올바른 횟수를 입력해주세요.');
+      return;
+    }
+    // 이미 사용한 횟수보다 적게 설정 불가
+    if (editPackageCount < packageEditData.used_count) {
+      alert(`이미 ${packageEditData.used_count}회 사용했습니다. ${packageEditData.used_count}회 이상으로 설정해주세요.`);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const newRemaining = editPackageCount - packageEditData.used_count;
+      const newStatus = newRemaining <= 0 ? 'completed' : 'active';
+
+      await updateTreatmentPackage(packageEditData.id, {
+        total_count: editPackageCount,
+        remaining_count: newRemaining,
+        status: newStatus,
+      });
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('패키지 수정 오류:', err);
+      alert('수정에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 패키지 삭제
+  const handlePackageDelete = async () => {
+    if (!packageEditData?.id) return;
+    if (!confirm('이 패키지를 삭제하시겠습니까?\n사용 기록이 있는 경우 복원되지 않습니다.')) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteTreatmentPackage(packageEditData.id);
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('패키지 삭제 오류:', err);
+      alert('삭제에 실패했습니다.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // 한약 처리
   const handleHerbalProcess = async () => {
     if (!selectedHerbal) {
@@ -517,12 +833,12 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
         WHERE id = ${selectedHerbal.id}
       `);
 
-      // 처리 기록 추가
+      // 처리 기록 추가 (MSSQL patient_id 사용 - 다른 메모 테이블과 일관성)
       await insert(`
         INSERT INTO cs_herbal_dispensings
         (patient_id, chart_number, patient_name, package_id, package_name, packs, dispensing_type, dispensing_date, receipt_id, mssql_detail_id, created_at)
         VALUES (
-          ${sqlitePatientId},
+          ${patientId},
           ${escapeString(chartNumber)},
           ${escapeString(patientName)},
           ${selectedHerbal.id},
@@ -595,9 +911,411 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
       </div>
 
       <div className="memo-input-body">
+        {/* 약침 수정 */}
+        {itemType === 'yakchim' && isYakchimEditMode && yakchimEditData && (
+          <div className="yakchim-edit-section">
+            <div className="yakchim-edit-info">
+              <div className="info-row">
+                <span className="label">유형:</span>
+                <span className="value">
+                  {yakchimEditData.source_type === 'membership' ? '멤버십' :
+                   yakchimEditData.source_type === 'package' ? '패키지' : '일회성'}
+                </span>
+              </div>
+              <div className="info-row">
+                <span className="label">출처:</span>
+                <span className="value">{yakchimEditData.source_name || '-'}</span>
+              </div>
+              <div className="info-row">
+                <span className="label">항목:</span>
+                <span className="value">{yakchimEditData.item_name || '-'}</span>
+              </div>
+              <div className="info-row">
+                <span className="label">사용일:</span>
+                <span className="value">{yakchimEditData.usage_date}</span>
+              </div>
+              {yakchimEditData.memo && (
+                <div className="info-row">
+                  <span className="label">메모:</span>
+                  <span className="value">{yakchimEditData.memo}</span>
+                </div>
+              )}
+              {yakchimEditData.source_type === 'package' && (
+                <div className="info-row">
+                  <span className="label">사용 후 잔여:</span>
+                  <span className="value">{yakchimEditData.remaining_after}회</span>
+                </div>
+              )}
+            </div>
+            <div className="yakchim-edit-actions">
+              <button
+                className="btn-delete"
+                onClick={handleYakchimDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? '삭제 중...' : '사용 취소 (삭제)'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 패키지 등록 */}
+        {itemType === 'package-register' && (
+          <div className="package-register-section">
+            <div className="register-info">
+              <div className="info-label">결제금액</div>
+              <div className="info-value">{(amount || 0).toLocaleString()}원</div>
+            </div>
+
+            <div className="register-form">
+              {/* 포인트 패키지가 아닐 때만 패키지 종류 선택 표시 */}
+              {!isPointPackage && (
+                <div className="form-row">
+                  <label>패키지 종류</label>
+                  <div className="package-type-buttons">
+                    {packageTypeOptions.map((type) => (
+                      <button
+                        key={type.id}
+                        type="button"
+                        className={`type-btn ${selectedPackageType === type.name ? 'active' : ''}`}
+                        onClick={() => setSelectedPackageType(type.name)}
+                      >
+                        {type.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="form-row">
+                <label>횟수</label>
+                <div className="count-input-wrap">
+                  <button
+                    type="button"
+                    className="count-btn"
+                    onClick={() => setPackageCount(Math.max(1, packageCount - 1))}
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    className="count-input"
+                    value={packageCount}
+                    onChange={(e) => setPackageCount(Math.max(1, parseInt(e.target.value) || 1))}
+                    min={1}
+                  />
+                  <button
+                    type="button"
+                    className="count-btn"
+                    onClick={() => setPackageCount(packageCount + 1)}
+                  >
+                    +
+                  </button>
+                  <span className="count-unit">회</span>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <label>메모 (선택)</label>
+                <input
+                  type="text"
+                  className="memo-input"
+                  value={packageMemo}
+                  onChange={(e) => setPackageMemo(e.target.value)}
+                  placeholder="메모를 입력하세요"
+                />
+              </div>
+            </div>
+
+            <div className="register-action">
+              <button
+                className="btn-register"
+                onClick={handlePackageRegister}
+                disabled={isSaving || packageCount <= 0 || (!isPointPackage && !selectedPackageType)}
+              >
+                {isSaving ? '등록 중...' : `${isPointPackage ? itemName : (selectedPackageType || '패키지')} 등록`}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 멤버십 등록 */}
+        {itemType === 'membership-register' && (
+          <div className="membership-register-section">
+            <div className="register-info">
+              <div className="info-label">결제금액</div>
+              <div className="info-value">{(amount || 0).toLocaleString()}원</div>
+            </div>
+
+            <div className="register-form">
+              <div className="form-row">
+                <label>멤버십 종류</label>
+                <div className="membership-type-buttons">
+                  {membershipTypeOptions.map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      className={`type-btn ${membershipType === type ? 'active' : ''}`}
+                      onClick={() => setMembershipType(type)}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-row">
+                <label>기간</label>
+                <div className="period-buttons">
+                  {periodOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`period-btn ${membershipPeriod === opt.value ? 'active' : ''}`}
+                      onClick={() => setMembershipPeriod(opt.value)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-row">
+                <label>시작일</label>
+                <div className="date-display">{receiptDate}</div>
+              </div>
+
+              <div className="form-row">
+                <label>만료일</label>
+                <div className="date-display expire">{calculateExpireDate(receiptDate, membershipPeriod)}</div>
+              </div>
+
+              <div className="form-row">
+                <label>메모 (선택)</label>
+                <input
+                  type="text"
+                  className="memo-input"
+                  value={membershipMemo}
+                  onChange={(e) => setMembershipMemo(e.target.value)}
+                  placeholder="메모를 입력하세요"
+                />
+              </div>
+            </div>
+
+            <div className="register-action">
+              <button
+                className="btn-register membership"
+                onClick={handleMembershipRegister}
+                disabled={isSaving || !membershipType}
+              >
+                {isSaving ? '등록 중...' : `${membershipType || '멤버십'} 등록`}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 패키지 수정 */}
+        {itemType === 'package-edit' && isPackageEditMode && packageEditData && (
+          <div className="package-edit-section">
+            <div className="package-edit-info">
+              <div className="info-row">
+                <span className="label">패키지명:</span>
+                <span className="value">{packageEditData.package_name}</span>
+              </div>
+              <div className="info-row editable">
+                <span className="label">총 횟수:</span>
+                <div className="count-edit-wrap">
+                  <button
+                    type="button"
+                    className="count-btn"
+                    onClick={() => setEditPackageCount(Math.max(packageEditData.used_count, editPackageCount - 1))}
+                    disabled={editPackageCount <= packageEditData.used_count}
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    className="count-input"
+                    value={editPackageCount}
+                    onChange={(e) => setEditPackageCount(Math.max(packageEditData.used_count, parseInt(e.target.value) || packageEditData.used_count))}
+                    min={packageEditData.used_count}
+                  />
+                  <button
+                    type="button"
+                    className="count-btn"
+                    onClick={() => setEditPackageCount(editPackageCount + 1)}
+                  >
+                    +
+                  </button>
+                  <span className="count-unit">회</span>
+                </div>
+              </div>
+              <div className="info-row">
+                <span className="label">사용:</span>
+                <span className="value">{packageEditData.used_count}회</span>
+              </div>
+              <div className="info-row">
+                <span className="label">잔여:</span>
+                <span className="value highlight">
+                  {editPackageCount - packageEditData.used_count}회
+                  {editPackageCount !== packageEditData.total_count && (
+                    <span className="change-indicator">
+                      ({packageEditData.remaining_count} → {editPackageCount - packageEditData.used_count})
+                    </span>
+                  )}
+                </span>
+              </div>
+              <div className="info-row">
+                <span className="label">시작일:</span>
+                <span className="value">{packageEditData.start_date}</span>
+              </div>
+              {packageEditData.memo && (
+                <div className="info-row">
+                  <span className="label">메모:</span>
+                  <span className="value">{packageEditData.memo}</span>
+                </div>
+              )}
+              <div className="info-row">
+                <span className="label">상태:</span>
+                <span className={`value status-${packageEditData.status}`}>
+                  {packageEditData.status === 'active' ? '진행중' :
+                   packageEditData.status === 'completed' ? '완료' : '만료'}
+                </span>
+              </div>
+            </div>
+            <div className="package-edit-actions">
+              {editPackageCount !== packageEditData.total_count && (
+                <button
+                  className="btn-update"
+                  onClick={handlePackageUpdate}
+                  disabled={isSaving || isDeleting}
+                >
+                  {isSaving ? '저장 중...' : '횟수 변경 저장'}
+                </button>
+              )}
+              <button
+                className="btn-delete"
+                onClick={handlePackageDelete}
+                disabled={isSaving || isDeleting}
+              >
+                {isDeleting ? '삭제 중...' : '패키지 삭제'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 약침 입력 */}
-        {itemType === 'yakchim' && (
+        {itemType === 'yakchim' && !isYakchimEditMode && (
           <>
+            {/* 약침/요법 종류 선택 (다중 선택) */}
+            <div className="yakchim-type-selector">
+              <label>{itemName.includes('요법') ? '요법 종류 (다중 선택 가능)' : '약침 종류 (다중 선택 가능)'}</label>
+              {yakchimTypeOptions.length === 0 ? (
+                <p className="empty-hint">설정에서 {itemName.includes('요법') ? '요법' : '약침'} 종류를 먼저 등록해주세요.</p>
+              ) : (
+                <div className="yakchim-type-buttons">
+                  {yakchimTypeOptions.map((type) => {
+                    const isSelected = selectedYakchims.some(y => y.typeId === type.id);
+                    return (
+                      <button
+                        key={type.id}
+                        type="button"
+                        className={`type-btn ${isSelected ? 'active' : ''}`}
+                        onClick={() => {
+                          if (isSelected) {
+                            // 선택 해제
+                            setSelectedYakchims(prev => prev.filter(y => y.typeId !== type.id));
+                          } else {
+                            // 선택 추가
+                            setSelectedYakchims(prev => [...prev, {
+                              typeId: type.id,
+                              typeName: type.name,
+                              deductionCount: type.deduction_count || 1,
+                              qty: 1
+                            }]);
+                          }
+                        }}
+                        title={`${type.deduction_count || 1}p 차감`}
+                      >
+                        {type.name}
+                        <span className="deduct-badge">{type.deduction_count || 1}p</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 선택된 약침 목록 및 갯수 입력 */}
+            {selectedYakchims.length > 0 && (
+              <div className="selected-yakchims">
+                <label>선택된 항목</label>
+                <div className="selected-list">
+                  {selectedYakchims.map((item) => (
+                    <div key={item.typeId} className="selected-item">
+                      <span className="item-name">{item.typeName}</span>
+                      <span className="item-point">{item.deductionCount}p</span>
+                      <div className="item-qty-wrap">
+                        <button
+                          type="button"
+                          className="qty-btn"
+                          onClick={() => {
+                            setSelectedYakchims(prev => prev.map(y =>
+                              y.typeId === item.typeId
+                                ? { ...y, qty: Math.max(1, y.qty - 1) }
+                                : y
+                            ));
+                          }}
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          className="qty-input"
+                          value={item.qty}
+                          onChange={(e) => {
+                            const newQty = Math.max(1, parseInt(e.target.value) || 1);
+                            setSelectedYakchims(prev => prev.map(y =>
+                              y.typeId === item.typeId ? { ...y, qty: newQty } : y
+                            ));
+                          }}
+                          min={1}
+                        />
+                        <button
+                          type="button"
+                          className="qty-btn"
+                          onClick={() => {
+                            setSelectedYakchims(prev => prev.map(y =>
+                              y.typeId === item.typeId ? { ...y, qty: y.qty + 1 } : y
+                            ));
+                          }}
+                        >
+                          +
+                        </button>
+                        <span className="qty-unit">개</span>
+                      </div>
+                      <span className="item-subtotal">= {item.deductionCount * item.qty}p</span>
+                      <button
+                        type="button"
+                        className="btn-remove"
+                        onClick={() => setSelectedYakchims(prev => prev.filter(y => y.typeId !== item.typeId))}
+                        title="제거"
+                      >
+                        <i className="fa-solid fa-times"></i>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {/* 합계 표시 */}
+                <div className="selected-total">
+                  <span className="total-label">총 차감 포인트:</span>
+                  <span className="total-value">
+                    {selectedYakchims.reduce((sum, y) => sum + (y.deductionCount * y.qty), 0)}p
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="memo-input-tabs">
               <button
                 className={`tab-btn ${yakchimTab === 'onetime' ? 'active' : ''}`}
@@ -622,11 +1340,18 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
             <div className="memo-input-content">
               {yakchimTab === 'onetime' && (
                 <div className="onetime-section">
-                  <p className="onetime-desc">"{itemName} 일회성"으로 메모에 기록합니다.</p>
+                  <div className="onetime-summary">
+                    {selectedYakchims.length > 0 && (
+                      <p className="summary-text">
+                        {selectedYakchims.map(y => `${y.typeName} ${y.qty}개`).join(', ')}로 기록합니다.
+                      </p>
+                    )}
+                  </div>
+
                   <button
                     className="btn-save"
                     onClick={handleYakchimOnetime}
-                    disabled={isSaving}
+                    disabled={isSaving || selectedYakchims.length === 0}
                   >
                     {isSaving ? '저장 중...' : '일회성 기록'}
                   </button>
@@ -635,25 +1360,41 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
 
               {yakchimTab === 'package' && (
                 <div className="package-section">
-                  {packages.length === 0 ? (
-                    <p className="empty-msg">등록된 패키지가 없습니다.</p>
-                  ) : (
-                    <div className="package-list">
-                      {packages.map(pkg => (
-                        <div key={pkg.id} className="package-item">
-                          <span className="pkg-name">{pkg.package_name}</span>
-                          <span className="pkg-count">{pkg.remaining_count}/{pkg.total_count}회</span>
-                          <button
-                            className="btn-deduct"
-                            onClick={() => handleYakchimPackage(pkg)}
-                            disabled={isSaving}
-                          >
-                            차감
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {(() => {
+                    const totalDeductPoints = selectedYakchims.reduce(
+                      (sum, y) => sum + (y.deductionCount * y.qty), 0
+                    );
+                    return (
+                      <>
+                        {selectedYakchims.length > 0 && (
+                          <div className="deduction-info">
+                            <i className="fa-solid fa-info-circle"></i>
+                            패키지에서 총 <strong>{totalDeductPoints}p</strong> 차감됩니다.
+                          </div>
+                        )}
+                        {packages.length === 0 ? (
+                          <p className="empty-msg">등록된 패키지가 없습니다.</p>
+                        ) : (
+                          <div className="package-list">
+                            {packages.map(pkg => (
+                              <div key={pkg.id} className="package-item">
+                                <span className="pkg-name">{pkg.package_name}</span>
+                                <span className="pkg-count">{pkg.remaining_count}/{pkg.total_count}회</span>
+                                <button
+                                  className="btn-deduct"
+                                  onClick={() => handleYakchimPackage(pkg)}
+                                  disabled={isSaving || selectedYakchims.length === 0 || pkg.remaining_count < totalDeductPoints}
+                                  title={selectedYakchims.length === 0 ? '약침 종류를 선택하세요' : ''}
+                                >
+                                  {totalDeductPoints > 0 ? `${totalDeductPoints}p 차감` : '차감'}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 

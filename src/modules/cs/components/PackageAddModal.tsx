@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { getCurrentDate } from '@shared/lib/postgres';
-import { createTreatmentPackage, updateTreatmentPackage, deleteTreatmentPackage } from '../lib/api';
+import { createTreatmentPackage, updateTreatmentPackage, deleteTreatmentPackage, getPackageTypes, type PackageType } from '../lib/api';
 import type { TreatmentPackage } from '../types';
 
 interface PackageAddModalProps {
@@ -14,15 +14,6 @@ interface PackageAddModalProps {
   chartNo: string;
   editData?: TreatmentPackage; // 수정 모드일 때 기존 데이터
 }
-
-// 시술패키지 프리셋
-const PACKAGE_PRESETS = [
-  { value: '통마', label: '통마' },
-  { value: '약침', label: '약침' },
-  { value: '향기요법', label: '향기요법' },
-  { value: '스파인엠티', label: '스파인엠티' },
-  { value: 'custom', label: '직접입력' },
-];
 
 export function PackageAddModal({
   isOpen,
@@ -38,8 +29,11 @@ export function PackageAddModal({
   // 드래그 기능
   const { modalRef, modalStyle, modalClassName, handleMouseDown } = useDraggableModal({ isOpen });
 
+  // 패키지 종류 목록
+  const [packageTypes, setPackageTypes] = useState<PackageType[]>([]);
+
   // 폼 상태
-  const [packageType, setPackageType] = useState('통마');
+  const [packageType, setPackageType] = useState('');
   const [customPackageName, setCustomPackageName] = useState('');
   const [totalCount, setTotalCount] = useState(10);
   const [usedCount, setUsedCount] = useState(0);
@@ -51,11 +45,25 @@ export function PackageAddModal({
   // ESC 키로 모달 닫기
   useEscapeKey(onClose, isOpen);
 
+  // 패키지 종류 목록 로드 (type이 'deduction'인 것만)
+  useEffect(() => {
+    if (isOpen) {
+      getPackageTypes().then((allTypes) => {
+        const deductionTypes = allTypes.filter(t => t.type === 'deduction');
+        setPackageTypes(deductionTypes);
+        // 첫 번째 항목을 기본값으로 설정 (수정 모드가 아닐 때)
+        if (!editData && deductionTypes.length > 0) {
+          setPackageType(deductionTypes[0].name);
+        }
+      });
+    }
+  }, [isOpen, editData]);
+
   // 수정 모드일 때 데이터 로드
   useEffect(() => {
     if (editData) {
-      const preset = PACKAGE_PRESETS.find(p => p.value === editData.package_name);
-      if (preset && preset.value !== 'custom') {
+      const preset = packageTypes.find(p => p.name === editData.package_name);
+      if (preset) {
         setPackageType(editData.package_name);
         setCustomPackageName('');
       } else {
@@ -68,7 +76,7 @@ export function PackageAddModal({
       setExpireDate(editData.expire_date || '');
       setMemo(editData.memo || '');
     }
-  }, [editData]);
+  }, [editData, packageTypes]);
 
   if (!isOpen) return null;
 
@@ -153,7 +161,7 @@ export function PackageAddModal({
 
   const handleClose = () => {
     // 폼 초기화
-    setPackageType('통마');
+    setPackageType(packageTypes.length > 0 ? packageTypes[0].name : '');
     setCustomPackageName('');
     setTotalCount(10);
     setUsedCount(0);
@@ -191,9 +199,10 @@ export function PackageAddModal({
                 value={packageType}
                 onChange={(e) => setPackageType(e.target.value)}
               >
-                {PACKAGE_PRESETS.map((p) => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
+                {packageTypes.map((p) => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
                 ))}
+                <option value="custom">직접입력</option>
               </select>
               {packageType === 'custom' && (
                 <input

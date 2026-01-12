@@ -6,17 +6,16 @@ import {
   type PatientReceiptHistoryResponse,
   type ReceiptHistoryItem,
 } from '../../manage/lib/api';
-import { getPatientMemoData } from '../lib/api';
-import { getCurrentDate } from '@shared/lib/postgres';
+import { getPatientMemoData, fetchPatientPreviousMemos } from '../lib/api';
 import type {
   TreatmentPackage,
   HerbalPackage,
   Membership,
   HerbalDispensing,
   GiftDispensing,
+  MedicineUsage,
+  YakchimUsageRecord,
   ReceiptMemo,
-  ReservationStatus,
-  RESERVATION_STATUS_LABELS,
 } from '../types';
 
 interface PatientReceiptHistoryModalProps {
@@ -53,7 +52,6 @@ const TREATMENT_NAME_MAP: Record<string, string> = {
   '자락관법': '습부',
   '자락관법이체': '습부이체',
   '경피적외선조사': '적외선',
-  // 추가 매핑
   '기타침/자석침': '자석침',
   '수양명경경락검사': '경락검사',
   '추나요법(복잡)': '추나복잡',
@@ -68,34 +66,108 @@ const TREATMENT_NAME_MAP: Record<string, string> = {
   '흉복강침술': '흉복강',
 };
 
-// 진료명 간소화 함수 (매핑에 없으면 축약)
+// 진료명 간소화 함수
 const shortenTreatmentName = (name: string): string => {
-  // 매핑에 있으면 사용
-  if (TREATMENT_NAME_MAP[name]) {
-    return TREATMENT_NAME_MAP[name];
-  }
-  // 6글자 이하면 그대로
-  if (name.length <= 6) {
-    return name;
-  }
-  // 긴 이름은 앞 4글자만
+  if (TREATMENT_NAME_MAP[name]) return TREATMENT_NAME_MAP[name];
+  if (name.length <= 6) return name;
   return name.substring(0, 4);
 };
 
-// 진료 항목 요약
+// 금액 포맷
+const formatMoney = (amount?: number | null): string => {
+  if (amount === undefined || amount === null || amount === 0) return '-';
+  return Math.floor(amount).toLocaleString();
+};
+
+// 날짜 포맷 (YY/MM/DD)
+const formatDateShort = (dateStr: string): string => {
+  if (!dateStr) return '-';
+  // "2026-01-12" 또는 "2026-01-12T10:30:00" 형식 처리
+  const datePart = dateStr.split(/[\sT]/)[0]; // 공백 또는 T로 분리
+  const parts = datePart.split('-');
+  if (parts.length >= 3 && parts[0] && parts[1] && parts[2]) {
+    const year = parts[0].slice(-2); // 마지막 2자리
+    const month = parts[1].padStart(2, '0');
+    const day = parts[2].substring(0, 2).padStart(2, '0'); // 혹시 뒤에 다른 문자가 있으면 제거
+    return `${year}/${month}/${day}`;
+  }
+  return '-';
+};
+
+// 확장된 수납 데이터
+interface ExpandedHistoryItem extends ReceiptHistoryItem {
+  treatmentPackages: TreatmentPackage[];
+  herbalPackages: HerbalPackage[];
+  pointBalance: number;
+  todayPointUsed: number;
+  todayPointEarned: number;
+  activeMembership: Membership | null;
+  herbalDispensings: HerbalDispensing[];
+  giftDispensings: GiftDispensing[];
+  medicineUsages: MedicineUsage[];
+  yakchimUsageRecords: YakchimUsageRecord[];
+  receiptMemo: ReceiptMemo | null;
+  memoLoaded: boolean;
+}
+
+// 메모 요약 생성
+const generateMemoSummary = (receipt: ExpandedHistoryItem): string => {
+  const parts: string[] = [];
+
+  // 패키지
+  for (const pkg of receipt.treatmentPackages) {
+    parts.push(`${pkg.package_name}(${pkg.remaining_count}/${pkg.total_count})`);
+  }
+  for (const pkg of receipt.herbalPackages) {
+    parts.push(`선결(${pkg.remaining_count}/${pkg.total_count})`);
+  }
+
+  // 약침 사용
+  for (const y of receipt.yakchimUsageRecords) {
+    if (y.remaining_count !== undefined && y.total_count !== undefined) {
+      parts.push(`약침(${y.remaining_count}/${y.total_count})`);
+    }
+  }
+
+  // 상비약
+  const totalMedicine = receipt.medicineUsages.reduce((sum, m) => sum + (m.amount || 0), 0);
+  if (totalMedicine > 0) {
+    parts.push(`상비약${totalMedicine.toLocaleString()}`);
+  }
+
+  // 포인트
+  if (receipt.todayPointUsed > 0) {
+    parts.push(`포인트-${receipt.todayPointUsed.toLocaleString()}`);
+  }
+  if (receipt.todayPointEarned > 0) {
+    parts.push(`적립+${receipt.todayPointEarned.toLocaleString()}`);
+  }
+
+  // 일반 메모
+  const memo = receipt.receiptMemo?.memo || receipt.memo;
+  if (memo && memo.trim() && memo !== '/' && memo !== 'x' && memo !== 'X') {
+    // 메모가 너무 길면 자르기
+    const trimmed = memo.length > 20 ? memo.slice(0, 20) + '...' : memo;
+    parts.push(trimmed);
+  }
+
+  return parts.join(' / ') || '-';
+};
+
+// 진료 항목 분류
 interface TreatmentSummary {
   consultType: string | null;
   coveredItems: string[];
-  yakchim: { name: string; amount: number }[];
-  sangbiyak: number;
+  chunaItems: string[];  // 추나 항목 별도 분류
+  uncoveredItems: { name: string; amount: number }[];
 }
 
 const summarizeTreatments = (treatments: { name: string; amount: number; is_covered: boolean }[]): TreatmentSummary => {
   const result: TreatmentSummary = {
     consultType: null,
     coveredItems: [],
-    yakchim: [],
-    sangbiyak: 0,
+    chunaItems: [],
+    uncoveredItems: [],
   };
 
   for (const t of treatments) {
@@ -107,58 +179,27 @@ const summarizeTreatments = (treatments: { name: string; amount: number; is_cove
       continue;
     }
 
-    if (name.includes('약침')) {
-      const yakchimName = name.replace('약침', '').trim() || name;
-      result.yakchim.push({ name: yakchimName, amount: t.amount });
+    // 추나 항목 별도 분류
+    if (name.includes('추나')) {
+      const shortName = shortenTreatmentName(name);
+      if (shortName && !result.chunaItems.includes(shortName)) {
+        result.chunaItems.push(shortName);
+      }
       continue;
     }
 
-    if (name.includes('상비약') || name.includes('상비')) {
-      result.sangbiyak += t.amount;
-      continue;
-    }
-
-    // 급여 항목은 매핑 또는 축약된 이름으로 표시
     if (t.is_covered) {
       const shortName = shortenTreatmentName(name);
       if (shortName && !result.coveredItems.includes(shortName)) {
         result.coveredItems.push(shortName);
       }
+    } else {
+      result.uncoveredItems.push({ name, amount: t.amount });
     }
   }
 
   return result;
 };
-
-// 금액 포맷
-const formatMoney = (amount?: number | null): string => {
-  if (amount === undefined || amount === null || amount === 0) return '-';
-  return Math.floor(amount).toLocaleString();
-};
-
-// 날짜 포맷 (MM/DD(요일))
-const formatDateShort = (dateStr: string): string => {
-  const d = new Date(dateStr);
-  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-  return `${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]})`;
-};
-
-// 확장된 수납 데이터 (PostgreSQL 메모 포함)
-interface ExpandedHistoryItem extends ReceiptHistoryItem {
-  // PostgreSQL 데이터
-  treatmentPackages: TreatmentPackage[];
-  herbalPackages: HerbalPackage[];
-  pointBalance: number;
-  todayPointUsed: number;
-  todayPointEarned: number;
-  activeMembership: Membership | null;
-  herbalDispensings: HerbalDispensing[];
-  giftDispensings: GiftDispensing[];
-  receiptMemo: ReceiptMemo | null;
-  // UI 상태
-  isExpanded: boolean;
-  isLoading: boolean;
-}
 
 export function PatientReceiptHistoryModal({
   isOpen,
@@ -174,27 +215,19 @@ export function PatientReceiptHistoryModal({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 드래그 기능
+  // 세부내역 모달 상태
+  const [detailReceipt, setDetailReceipt] = useState<ExpandedHistoryItem | null>(null);
+
   const { modalRef, modalStyle, modalClassName, handleMouseDown } = useDraggableModal({ isOpen });
 
-  // 기간에 따른 시작일 계산
   const getStartDate = useCallback((periodFilter: PeriodFilter): string | undefined => {
     if (periodFilter === 'all') return undefined;
-
     const today = new Date();
     switch (periodFilter) {
-      case '1month':
-        today.setMonth(today.getMonth() - 1);
-        break;
-      case '3months':
-        today.setMonth(today.getMonth() - 3);
-        break;
-      case '6months':
-        today.setMonth(today.getMonth() - 6);
-        break;
-      case '1year':
-        today.setFullYear(today.getFullYear() - 1);
-        break;
+      case '1month': today.setMonth(today.getMonth() - 1); break;
+      case '3months': today.setMonth(today.getMonth() - 3); break;
+      case '6months': today.setMonth(today.getMonth() - 6); break;
+      case '1year': today.setFullYear(today.getFullYear() - 1); break;
     }
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   }, []);
@@ -228,12 +261,48 @@ export function PatientReceiptHistoryModal({
         activeMembership: null,
         herbalDispensings: [],
         giftDispensings: [],
+        medicineUsages: [],
+        yakchimUsageRecords: [],
         receiptMemo: null,
-        isExpanded: false,
-        isLoading: false,
+        memoLoaded: false,
       }));
 
-      setReceipts(expandedReceipts);
+      // 각 날짜별 메모 데이터 로드 (병렬)
+      const uniqueDates = [...new Set(response.receipts.map(r => r.receipt_date).filter(Boolean))];
+      const dateDataMap = new Map<string, any>();
+
+      await Promise.all(
+        uniqueDates.map(async (date) => {
+          if (!date) return;
+          const memoData = await getPatientMemoData(patientId, date).catch(() => null);
+          if (memoData) dateDataMap.set(date, memoData);
+        })
+      );
+
+      // 메모 데이터 병합
+      const mergedReceipts = expandedReceipts.map(r => {
+        const memoData = dateDataMap.get(r.receipt_date || '');
+        if (memoData) {
+          return {
+            ...r,
+            treatmentPackages: memoData.treatmentPackages || [],
+            herbalPackages: memoData.herbalPackages || [],
+            pointBalance: memoData.pointBalance || 0,
+            todayPointUsed: memoData.todayPointUsed || 0,
+            todayPointEarned: memoData.todayPointEarned || 0,
+            activeMembership: memoData.membership || null,
+            herbalDispensings: memoData.herbalDispensings || [],
+            giftDispensings: memoData.giftDispensings || [],
+            medicineUsages: memoData.medicineUsages || [],
+            yakchimUsageRecords: memoData.yakchimUsageRecords || [],
+            receiptMemo: memoData.memo || null,
+            memoLoaded: true,
+          };
+        }
+        return r;
+      });
+
+      setReceipts(mergedReceipts);
     } catch (err) {
       console.error('수납이력 조회 오류:', err);
       setError('수납이력을 불러오는데 실패했습니다.');
@@ -242,7 +311,6 @@ export function PatientReceiptHistoryModal({
     }
   }, [isOpen, patientId, page, period, getStartDate]);
 
-  // 모달 열릴 때 데이터 로드
   useEffect(() => {
     if (isOpen) {
       setPage(1);
@@ -250,60 +318,27 @@ export function PatientReceiptHistoryModal({
     }
   }, [isOpen]);
 
-  // 페이지/기간 변경 시 데이터 로드
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // ESC 키로 모달 닫기
-  useEscapeKey(onClose, isOpen);
+  useEscapeKey(() => {
+    if (detailReceipt) {
+      setDetailReceipt(null);
+    } else {
+      onClose();
+    }
+  }, isOpen);
 
-  // 기간 변경 시 페이지 리셋
   const handlePeriodChange = (newPeriod: PeriodFilter) => {
     setPeriod(newPeriod);
     setPage(1);
   };
 
-  // 행 확장/축소 토글
-  const toggleExpand = async (receiptId: number, receiptDate: string) => {
-    const receipt = receipts.find(r => r.id === receiptId);
-    if (!receipt) return;
-
-    if (receipt.isExpanded) {
-      // 축소
-      setReceipts(prev => prev.map(r =>
-        r.id === receiptId ? { ...r, isExpanded: false } : r
-      ));
-    } else {
-      // 확장 - PostgreSQL 데이터 로드
-      setReceipts(prev => prev.map(r =>
-        r.id === receiptId ? { ...r, isExpanded: true, isLoading: true } : r
-      ));
-
-      try {
-        const memoData = await getPatientMemoData(patientId, receiptDate);
-        setReceipts(prev => prev.map(r =>
-          r.id === receiptId ? {
-            ...r,
-            treatmentPackages: memoData.treatmentPackages,
-            herbalPackages: memoData.herbalPackages,
-            pointBalance: memoData.pointBalance,
-            todayPointUsed: memoData.todayPointUsed,
-            todayPointEarned: memoData.todayPointEarned,
-            activeMembership: memoData.membership,
-            herbalDispensings: memoData.herbalDispensings,
-            giftDispensings: memoData.giftDispensings,
-            receiptMemo: memoData.memo,
-            isLoading: false,
-          } : r
-        ));
-      } catch (err) {
-        console.error('메모 데이터 로드 실패:', err);
-        setReceipts(prev => prev.map(r =>
-          r.id === receiptId ? { ...r, isLoading: false } : r
-        ));
-      }
-    }
+  // 진료항목 클릭 시 세부내역 모달
+  const handleTreatmentClick = (receipt: ExpandedHistoryItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDetailReceipt(receipt);
   };
 
   if (!isOpen) return null;
@@ -312,7 +347,7 @@ export function PatientReceiptHistoryModal({
     <div className="patient-history-modal-overlay" onClick={onClose}>
       <div
         ref={modalRef}
-        className={`patient-history-modal ${modalClassName}`}
+        className={`patient-history-modal patient-history-modal-v2 ${modalClassName}`}
         style={modalStyle}
         onClick={(e) => e.stopPropagation()}
       >
@@ -369,64 +404,87 @@ export function PatientReceiptHistoryModal({
           )}
 
           {!isLoading && !error && receipts.length > 0 && (
-            <div className="history-table">
+            <div className="history-table-v2">
               {/* 테이블 헤더 */}
-              <div className="history-header-row">
+              <div className="history-header-row-v2">
                 <div className="col-date">날짜</div>
-                <div className="col-items">진료항목</div>
+                <div className="col-time">시간</div>
+                <div className="col-insu">종별</div>
+                <div className="col-method">결제</div>
+                <div className="col-total">총금액</div>
                 <div className="col-self">본인부담</div>
                 <div className="col-general">비급여</div>
-                <div className="col-method">방식</div>
                 <div className="col-memo">메모</div>
               </div>
 
               {/* 테이블 바디 */}
-              {receipts.map((receipt) => (
-                <React.Fragment key={receipt.id}>
-                  {/* 메인 행 */}
-                  <div
-                    className={`history-row ${receipt.isExpanded ? 'expanded' : ''}`}
-                    onClick={() => receipt.receipt_date && toggleExpand(receipt.id, receipt.receipt_date)}
-                  >
-                    <div className="col-date">
-                      {receipt.receipt_date ? formatDateShort(receipt.receipt_date) : '-'}
+              {receipts.map((receipt) => {
+                const summary = summarizeTreatments(receipt.treatments || []);
+                const memoSummary = generateMemoSummary(receipt);
+
+                return (
+                  <div key={receipt.id} className="history-item-v2">
+                    {/* 첫째줄: 날짜, 시간, 결제, 금액, 메모 */}
+                    <div className="history-row-main">
+                      <div className="col-date">
+                        {receipt.receipt_date ? formatDateShort(receipt.receipt_date) : '-'}
+                      </div>
+                      <div className="col-time">
+                        {receipt.receipt_time
+                          ? receipt.receipt_time.split(' ')[1] || '-'
+                          : '-'}
+                      </div>
+                      <div className="col-insu">
+                        {receipt.insurance_type || '-'}
+                      </div>
+                      <div className="col-method">
+                        {receipt.card > 0 && <i className="fa-solid fa-credit-card" title="카드"></i>}
+                        {receipt.cash > 0 && <i className="fa-solid fa-money-bill" title="현금"></i>}
+                        {receipt.transfer > 0 && <i className="fa-solid fa-building-columns" title="이체"></i>}
+                      </div>
+                      <div className="col-total">{formatMoney(receipt.total_amount)}</div>
+                      <div className="col-self">{formatMoney(receipt.insurance_self)}</div>
+                      <div className="col-general">{formatMoney(receipt.general_amount)}</div>
+                      <div className="col-memo">
+                        <span className="memo-text" title={memoSummary}>{memoSummary}</span>
+                      </div>
                     </div>
-                    <div className="col-items">
-                      {(() => {
-                        const summary = summarizeTreatments(receipt.treatments || []);
-                        const items = [
-                          summary.consultType,
-                          ...summary.coveredItems
-                        ].filter(Boolean);
-                        return items.join(' ') || '-';
-                      })()}
-                    </div>
-                    <div className="col-self">{formatMoney(receipt.insurance_self)}</div>
-                    <div className="col-general">{formatMoney(receipt.general_amount)}</div>
-                    <div className="col-method">
-                      {receipt.card > 0 && <i className="fa-solid fa-credit-card text-purple-600" title="카드"></i>}
-                      {receipt.cash > 0 && <i className="fa-solid fa-money-bill text-orange-600" title="현금"></i>}
-                      {receipt.transfer > 0 && <i className="fa-solid fa-building-columns text-teal-600" title="이체"></i>}
-                    </div>
-                    <div className="col-memo">
-                      <span className="memo-text">{receipt.memo || '-'}</span>
+
+                    {/* 둘째줄: 진료내역, 비급여항목 */}
+                    <div
+                      className="history-row-detail clickable"
+                      onClick={(e) => handleTreatmentClick(receipt, e)}
+                      title="클릭하여 세부내역 보기"
+                    >
+                      <div className="treatment-badges">
+                        {summary.consultType && (
+                          <span className={`badge ${summary.consultType === '초진' ? 'consult-first' : 'consult-return'}`}>{summary.consultType}</span>
+                        )}
+                        {summary.coveredItems.map((item, idx) => (
+                          <span key={idx} className="badge covered">{item}</span>
+                        ))}
+                        {summary.chunaItems.map((item, idx) => (
+                          <span key={`chuna-${idx}`} className="badge chuna">{item}</span>
+                        ))}
+                        {summary.coveredItems.length === 0 && summary.chunaItems.length === 0 && !summary.consultType && (
+                          <span className="badge empty">-</span>
+                        )}
+                      </div>
+                      <div className="uncovered-badges">
+                        {summary.uncoveredItems.length > 0 ? (
+                          summary.uncoveredItems.map((item, idx) => (
+                            <span key={idx} className="badge uncovered">
+                              {item.name.length > 8 ? item.name.slice(0, 8) : item.name} {item.amount.toLocaleString()}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="badge empty">-</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-
-                  {/* 확장된 상세 패널 */}
-                  {receipt.isExpanded && (
-                    <div className="history-detail-panel">
-                      {receipt.isLoading ? (
-                        <div className="detail-loading">
-                          <i className="fa-solid fa-spinner fa-spin"></i> 로딩 중...
-                        </div>
-                      ) : (
-                        <HistoryDetailPanel receipt={receipt} />
-                      )}
-                    </div>
-                  )}
-                </React.Fragment>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -454,213 +512,116 @@ export function PatientReceiptHistoryModal({
           </div>
         )}
       </div>
+
+      {/* 세부내역 모달 */}
+      {detailReceipt && (
+        <ReceiptDetailModal
+          receipt={detailReceipt}
+          onClose={() => setDetailReceipt(null)}
+        />
+      )}
     </div>
   );
 }
 
-// 상세 패널 컴포넌트
-function HistoryDetailPanel({ receipt }: { receipt: ExpandedHistoryItem }) {
-  const treatmentSummary = summarizeTreatments(receipt.treatments || []);
-  const hasPackages = receipt.treatmentPackages.length > 0 || receipt.herbalPackages.length > 0;
-  const hasMembership = !!receipt.activeMembership;
+// 세부내역 모달 컴포넌트
+function ReceiptDetailModal({
+  receipt,
+  onClose,
+}: {
+  receipt: ExpandedHistoryItem;
+  onClose: () => void;
+}) {
+  const coveredItems = receipt.treatments?.filter(t => t.is_covered) || [];
+  const uncoveredItems = receipt.treatments?.filter(t => !t.is_covered) || [];
 
   return (
-    <div className="history-detail-2col">
-      {/* 왼쪽: 진료상세 */}
-      <div className="treatment-detail-col">
-        {/* 진료항목 */}
-        <div className="treatment-items">
-          <div className="treatment-badges">
-            {treatmentSummary.consultType && (
-              <span className="treatment-badge consult">{treatmentSummary.consultType}</span>
-            )}
-            {treatmentSummary.coveredItems.map((item, idx) => (
-              <span key={idx} className="treatment-badge covered">{item}</span>
-            ))}
-          </div>
-          <div className="treatment-extras">
-            {treatmentSummary.yakchim.length > 0 && (
-              <span className="treatment-extra yakchim">
-                <i className="fa-solid fa-syringe"></i>
-                {treatmentSummary.yakchim.map((y, idx) => (
-                  <span key={idx}>
-                    {y.name} {y.amount.toLocaleString()}원
-                    {idx < treatmentSummary.yakchim.length - 1 && ', '}
-                  </span>
-                ))}
-              </span>
-            )}
-            {treatmentSummary.sangbiyak > 0 && (
-              <span className="treatment-extra sangbiyak">
-                <i className="fa-solid fa-pills"></i>
-                상비약 {treatmentSummary.sangbiyak.toLocaleString()}원
-              </span>
-            )}
-          </div>
+    <div className="receipt-detail-modal-overlay" onClick={onClose}>
+      <div className="receipt-detail-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="detail-modal-header">
+          <h4>
+            <i className="fa-solid fa-file-invoice"></i>
+            {receipt.receipt_date ? formatDateShort(receipt.receipt_date) : ''} 진료상세
+          </h4>
+          <button className="close-btn" onClick={onClose}>
+            <i className="fa-solid fa-xmark"></i>
+          </button>
         </div>
 
-        {/* 수납금액 */}
-        <div className="receipt-amount-section">
-          <div className="amount-row">
-            <span className="amount-label">본인부담</span>
-            <span className="amount-value insurance">{formatMoney(receipt.insurance_self)}</span>
+        <div className="detail-modal-body">
+          {/* 급여 항목 */}
+          <div className="detail-section">
+            <h5 className="section-title insurance">
+              <i className="fa-solid fa-shield-halved"></i> 급여 항목
+            </h5>
+            {coveredItems.length > 0 ? (
+              <>
+                <div className="detail-items-grid">
+                  {coveredItems.map((item, idx) => (
+                    <div key={idx} className="detail-item">
+                      <span className="item-name">{item.name}</span>
+                      <span className="item-amount">{(item.amount || 0).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="detail-subtotal insurance">
+                  <span>본인부담금</span>
+                  <span className="amount">{formatMoney(receipt.insurance_self)}원</span>
+                </div>
+              </>
+            ) : (
+              <div className="detail-empty">급여 항목 없음</div>
+            )}
           </div>
-          <div className="amount-row">
-            <span className="amount-label">비급여</span>
-            <span className="amount-value general">{formatMoney(receipt.general_amount)}</span>
+
+          {/* 비급여 항목 */}
+          <div className="detail-section">
+            <h5 className="section-title general">
+              <i className="fa-solid fa-receipt"></i> 비급여 항목
+            </h5>
+            {uncoveredItems.length > 0 ? (
+              <>
+                <div className="detail-items-list">
+                  {uncoveredItems.map((item, idx) => (
+                    <div key={idx} className="detail-item-row">
+                      <span className="item-name">{item.name}</span>
+                      <span className="item-amount">{(item.amount || 0).toLocaleString()}원</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="detail-subtotal general">
+                  <span>비급여 합계</span>
+                  <span className="amount">{formatMoney(receipt.general_amount)}원</span>
+                </div>
+              </>
+            ) : (
+              <div className="detail-empty">비급여 항목 없음</div>
+            )}
           </div>
-          <div className="amount-row total">
-            <span className="amount-label">총 수납</span>
-            <span className="amount-value">{formatMoney(receipt.total_amount)}</span>
+
+          {/* 총합계 */}
+          <div className="detail-grand-total">
+            <span>총 수납액</span>
+            <span className="amount">{formatMoney(receipt.total_amount)}원</span>
           </div>
-          <div className="payment-method-row">
+
+          {/* 결제 방식 */}
+          <div className="detail-payment-method">
             {receipt.card > 0 && (
               <span className="method card">
-                <i className="fa-solid fa-credit-card"></i> {receipt.card.toLocaleString()}
+                <i className="fa-solid fa-credit-card"></i> 카드 {receipt.card.toLocaleString()}원
               </span>
             )}
             {receipt.cash > 0 && (
               <span className="method cash">
-                <i className="fa-solid fa-money-bill"></i> {receipt.cash.toLocaleString()}
+                <i className="fa-solid fa-money-bill"></i> 현금 {receipt.cash.toLocaleString()}원
               </span>
             )}
             {receipt.transfer > 0 && (
               <span className="method transfer">
-                <i className="fa-solid fa-building-columns"></i> {receipt.transfer.toLocaleString()}
+                <i className="fa-solid fa-building-columns"></i> 이체 {receipt.transfer.toLocaleString()}원
               </span>
             )}
-          </div>
-        </div>
-      </div>
-
-      {/* 오른쪽: 수납메모 3x2 그리드 */}
-      <div className="detail-grid-3x2">
-        {/* 패키지 */}
-        <div className="grid-card">
-          <div className="grid-card-header">
-            <span className="grid-icon">📦</span>
-            <span className="grid-title">패키지</span>
-          </div>
-          <div className="grid-card-body">
-            {hasPackages ? (
-              <div className="grid-tags">
-                {receipt.treatmentPackages.map(pkg => (
-                  <div key={pkg.id} className="grid-tag pkg">
-                    <span className="tag-name">{pkg.package_name}</span>
-                    <span className="tag-count">{pkg.remaining_count}/{pkg.total_count}</span>
-                  </div>
-                ))}
-                {receipt.herbalPackages.map(pkg => (
-                  <div key={pkg.id} className="grid-tag herbal">
-                    <span className="tag-name">선결{pkg.package_type}</span>
-                    <span className="tag-count">{pkg.remaining_count}/{pkg.total_count}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <span className="grid-empty">-</span>
-            )}
-          </div>
-        </div>
-
-        {/* 멤버십 */}
-        <div className="grid-card">
-          <div className="grid-card-header">
-            <span className="grid-icon">🎫</span>
-            <span className="grid-title">멤버십</span>
-          </div>
-          <div className="grid-card-body">
-            {hasMembership ? (
-              <div className="grid-tags">
-                <div className="grid-tag membership">
-                  <span className="tag-name">{receipt.activeMembership!.membership_type}</span>
-                  <span className="tag-count">{receipt.activeMembership!.quantity}개</span>
-                </div>
-              </div>
-            ) : (
-              <span className="grid-empty">-</span>
-            )}
-          </div>
-        </div>
-
-        {/* 포인트 */}
-        <div className="grid-card">
-          <div className="grid-card-header">
-            <span className="grid-icon">💰</span>
-            <span className="grid-title">포인트</span>
-          </div>
-          <div className="grid-card-body">
-            <div className="grid-point-info">
-              {receipt.todayPointUsed > 0 && (
-                <span className="point-used">-{receipt.todayPointUsed.toLocaleString()}</span>
-              )}
-              {receipt.todayPointEarned > 0 && (
-                <span className="point-earned">+{receipt.todayPointEarned.toLocaleString()}</span>
-              )}
-              {receipt.todayPointUsed === 0 && receipt.todayPointEarned === 0 && (
-                <span className="grid-empty">-</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 출납 */}
-        <div className="grid-card">
-          <div className="grid-card-header">
-            <span className="grid-icon">📋</span>
-            <span className="grid-title">출납</span>
-          </div>
-          <div className="grid-card-body">
-            {(receipt.herbalDispensings.length > 0 || receipt.giftDispensings.length > 0) ? (
-              <div className="grid-tags">
-                {receipt.herbalDispensings.map(d => (
-                  <div key={d.id} className="grid-tag dispensing">
-                    <span className="tag-name">{d.herbal_name}</span>
-                    <span className="tag-qty">{d.quantity}</span>
-                  </div>
-                ))}
-                {receipt.giftDispensings.map(d => (
-                  <div key={d.id} className="grid-tag gift">
-                    <span className="tag-name">{d.item_name}</span>
-                    <span className="tag-qty">{d.quantity}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <span className="grid-empty">-</span>
-            )}
-          </div>
-        </div>
-
-        {/* 예약 */}
-        <div className="grid-card">
-          <div className="grid-card-header">
-            <span className="grid-icon">📅</span>
-            <span className="grid-title">예약</span>
-          </div>
-          <div className="grid-card-body">
-            {receipt.receiptMemo?.reservation_status && receipt.receiptMemo.reservation_status !== 'none' ? (
-              <span className={`reservation-status ${receipt.receiptMemo.reservation_status}`}>
-                {receipt.receiptMemo.reservation_status === 'confirmed'
-                  ? receipt.receiptMemo.reservation_date || '예약완료'
-                  : receipt.receiptMemo.reservation_status}
-              </span>
-            ) : (
-              <span className="grid-empty">-</span>
-            )}
-          </div>
-        </div>
-
-        {/* 메모 */}
-        <div className="grid-card">
-          <div className="grid-card-header">
-            <span className="grid-icon">📝</span>
-            <span className="grid-title">메모</span>
-          </div>
-          <div className="grid-card-body">
-            <span className="memo-text">
-              {receipt.receiptMemo?.memo || receipt.memo || '-'}
-            </span>
           </div>
         </div>
       </div>

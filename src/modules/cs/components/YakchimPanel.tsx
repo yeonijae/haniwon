@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { query, execute, escapeString, insert, getCurrentDate } from '@shared/lib/postgres';
+import { getMembershipTypes } from '../lib/api';
 
 interface YakchimPanelProps {
   patientId: number;
@@ -92,11 +93,28 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
 
   // 멤버십 인라인 폼 상태
   const [showMembershipForm, setShowMembershipForm] = useState(false);
+  const [membershipTypeOptions, setMembershipTypeOptions] = useState<string[]>(['녹용']);
   const [membershipForm, setMembershipForm] = useState({
-    membership_type: '경근멤버십',
+    membership_type: '',
     quantity: 1,
     expire_date: '',
   });
+
+  // 멤버십 종류 로드
+  useEffect(() => {
+    const loadTypes = async () => {
+      try {
+        const types = await getMembershipTypes();
+        setMembershipTypeOptions(types);
+        if (types.length > 0) {
+          setMembershipForm(prev => ({ ...prev, membership_type: types[0] }));
+        }
+      } catch (err) {
+        console.error('멤버십 종류 로드 실패:', err);
+      }
+    };
+    loadTypes();
+  }, []);
 
   // 패키지 인라인 폼 상태
   const [showPackageForm, setShowPackageForm] = useState(false);
@@ -379,7 +397,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
     defaultExpire.setFullYear(defaultExpire.getFullYear() + 1);
     const expireDateStr = `${defaultExpire.getFullYear()}-${String(defaultExpire.getMonth() + 1).padStart(2, '0')}-${String(defaultExpire.getDate()).padStart(2, '0')}`;
     setMembershipForm({
-      membership_type: '경근멤버십',
+      membership_type: membershipTypeOptions[0] || '',
       quantity: 1,
       expire_date: expireDateStr,
     });
@@ -612,9 +630,9 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
                   value={membershipForm.membership_type}
                   onChange={(e) => setMembershipForm({ ...membershipForm, membership_type: e.target.value })}
                 >
-                  <option value="경근멤버십">경근멤버십</option>
-                  <option value="녹용멤버십">녹용멤버십</option>
-                  <option value="VIP멤버십">VIP멤버십</option>
+                  {membershipTypeOptions.map((type) => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
                 </select>
                 <input
                   type="number"

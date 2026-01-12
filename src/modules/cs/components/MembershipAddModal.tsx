@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { getCurrentDate } from '@shared/lib/postgres';
-import { createMembership, updateMembership, deleteMembership } from '../lib/api';
+import { createMembership, updateMembership, deleteMembership, getPackageTypes, type PackageType } from '../lib/api';
 import type { Membership } from '../types';
 
 interface MembershipAddModalProps {
@@ -14,12 +14,6 @@ interface MembershipAddModalProps {
   chartNo: string;
   editData?: Membership; // 수정 모드일 때 기존 데이터
 }
-
-// 멤버십 프리셋
-const MEMBERSHIP_PRESETS = [
-  { value: '경근멤버십', label: '경근멤버십' },
-  { value: 'custom', label: '직접입력' },
-];
 
 export function MembershipAddModal({
   isOpen,
@@ -37,7 +31,8 @@ export function MembershipAddModal({
   const { modalRef, modalStyle, modalClassName, handleMouseDown } = useDraggableModal({ isOpen });
 
   // 폼 상태
-  const [membershipType, setMembershipType] = useState('경근멤버십');
+  const [membershipTypeOptions, setMembershipTypeOptions] = useState<PackageType[]>([]);
+  const [membershipType, setMembershipType] = useState('');
   const [customTypeName, setCustomTypeName] = useState('');
   const [quantity, setQuantity] = useState(1); // 등록 개수 (내원 시 무료 이용 개수)
   const [startDate, setStartDate] = useState(today);
@@ -48,11 +43,30 @@ export function MembershipAddModal({
   // ESC 키로 모달 닫기
   useEscapeKey(onClose, isOpen);
 
+  // 멤버십 종류 로드 (type이 'membership'인 것만)
+  useEffect(() => {
+    const loadTypes = async () => {
+      try {
+        const allTypes = await getPackageTypes();
+        const membershipTypes = allTypes.filter(t => t.type === 'membership');
+        setMembershipTypeOptions(membershipTypes);
+        if (!editData && membershipTypes.length > 0) {
+          setMembershipType(membershipTypes[0].name);
+        }
+      } catch (err) {
+        console.error('멤버십 종류 로드 실패:', err);
+      }
+    };
+    if (isOpen) {
+      loadTypes();
+    }
+  }, [isOpen, editData]);
+
   // 수정 모드일 때 데이터 로드
   useEffect(() => {
     if (editData) {
-      const preset = MEMBERSHIP_PRESETS.find(p => p.value === editData.membership_type);
-      if (preset && preset.value !== 'custom') {
+      const isPreset = membershipTypeOptions.some(t => t.name === editData.membership_type);
+      if (isPreset) {
         setMembershipType(editData.membership_type);
         setCustomTypeName('');
       } else {
@@ -64,7 +78,7 @@ export function MembershipAddModal({
       setExpireDate(editData.expire_date);
       setMemo(editData.memo || '');
     }
-  }, [editData]);
+  }, [editData, membershipTypeOptions]);
 
   if (!isOpen) return null;
 
@@ -143,7 +157,7 @@ export function MembershipAddModal({
 
   const handleClose = () => {
     // 폼 초기화
-    setMembershipType('경근멤버십');
+    setMembershipType(membershipTypeOptions.length > 0 ? membershipTypeOptions[0].name : '');
     setCustomTypeName('');
     setQuantity(1);
     setStartDate(today);
@@ -191,9 +205,10 @@ export function MembershipAddModal({
                 value={membershipType}
                 onChange={(e) => setMembershipType(e.target.value)}
               >
-                {MEMBERSHIP_PRESETS.map((p) => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
+                {membershipTypeOptions.map((type) => (
+                  <option key={type.id} value={type.name}>{type.name}</option>
                 ))}
+                <option value="custom">직접입력</option>
               </select>
               {membershipType === 'custom' && (
                 <input

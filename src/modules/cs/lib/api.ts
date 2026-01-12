@@ -336,6 +336,8 @@ export async function ensureReceiptTables(): Promise<void> {
   // 기존 테이블에 quantity 컬럼 추가 (remaining_count → quantity 마이그레이션)
   await execute(`ALTER TABLE cs_memberships ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1`).catch(() => {});
   await execute(`UPDATE cs_memberships SET quantity = remaining_count WHERE remaining_count IS NOT NULL AND quantity = 1`).catch(() => {});
+  // mssql_detail_id 컬럼 추가 (비급여 항목 연결용)
+  await execute(`ALTER TABLE cs_memberships ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {});
 
   // 약침 패키지 테이블 (통증마일리지)
   await execute(`
@@ -569,12 +571,12 @@ export async function createTreatmentPackage(pkg: Omit<TreatmentPackage, 'id' | 
   return insert(`
     INSERT INTO cs_treatment_packages (
       patient_id, chart_number, patient_name, package_name, total_count, used_count, remaining_count,
-      includes, start_date, expire_date, memo, status, created_at, updated_at
+      includes, start_date, expire_date, memo, mssql_detail_id, status, created_at, updated_at
     ) VALUES (
       ${pkg.patient_id}, ${toSqlValue(pkg.chart_number)}, ${toSqlValue(pkg.patient_name)},
       ${escapeString(pkg.package_name)}, ${pkg.total_count}, ${pkg.used_count}, ${pkg.remaining_count},
       ${toSqlValue(pkg.includes)}, ${escapeString(pkg.start_date)}, ${toSqlValue(pkg.expire_date)},
-      ${toSqlValue(pkg.memo)}, ${escapeString(pkg.status)}, ${escapeString(now)}, ${escapeString(now)}
+      ${toSqlValue(pkg.memo)}, ${pkg.mssql_detail_id || 'NULL'}, ${escapeString(pkg.status)}, ${escapeString(now)}, ${escapeString(now)}
     )
   `);
 }
@@ -906,12 +908,13 @@ export async function createMembership(membership: Omit<Membership, 'id' | 'crea
   return insert(`
     INSERT INTO cs_memberships (
       patient_id, chart_number, patient_name, membership_type, quantity,
-      start_date, expire_date, memo, status, created_at, updated_at
+      start_date, expire_date, memo, mssql_detail_id, status, created_at, updated_at
     ) VALUES (
       ${membership.patient_id}, ${toSqlValue(membership.chart_number)}, ${toSqlValue(membership.patient_name)},
       ${escapeString(membership.membership_type)}, ${membership.quantity},
       ${escapeString(membership.start_date)}, ${escapeString(membership.expire_date)},
-      ${toSqlValue(membership.memo)}, ${escapeString(membership.status)}, ${escapeString(now)}, ${escapeString(now)}
+      ${toSqlValue(membership.memo)}, ${membership.mssql_detail_id || 'NULL'},
+      ${escapeString(membership.status)}, ${escapeString(now)}, ${escapeString(now)}
     )
   `);
 }
@@ -1247,6 +1250,111 @@ export async function updateReservationStatus(
   });
 }
 
+/**
+ * 환자별 이전 메모 통합 조회 (일반메모 + 비급여메모)
+ * - cs_receipt_memos와 payment_memo_items를 통합
+ * - 날짜별로 그룹화하여 /로 구분
+ * - 기록된 순서대로 정렬 (created_at ASC)
+ */
+export interface PreviousMemoItem {
+  date: string;        // YY/MM/DD 형식
+  memos: string[];     // 해당 날짜의 메모들
+}
+
+export async function fetchPatientPreviousMemos(
+  patientId: number,
+  excludeDate?: string,
+  limit: number = 20
+): Promise<PreviousMemoItem[]> {
+  // 1. cs_receipt_memos에서 일반메모 조회
+  const receiptMemos = await query<{
+    receipt_date: string;
+    memo: string;
+    created_at: string;
+  }>(`
+    SELECT receipt_date, memo, created_at
+    FROM cs_receipt_memos
+    WHERE patient_id = ${patientId}
+      AND memo IS NOT NULL
+      AND memo != ''
+      AND memo != '/'
+      AND memo != 'x'
+      AND memo != 'X'
+      ${excludeDate ? `AND receipt_date != ${escapeString(excludeDate)}` : ''}
+    ORDER BY created_at ASC
+  `);
+
+  // 2. payment_memo_items에서 비급여메모 조회
+  const paymentMemos = await query<{
+    receipt_date: string;
+    memo_content: string;
+    created_at: string;
+  }>(`
+    SELECT receipt_date, memo_content, created_at
+    FROM payment_memo_items
+    WHERE patient_id = ${patientId}
+      AND memo_content IS NOT NULL
+      AND memo_content != ''
+      ${excludeDate ? `AND receipt_date != ${escapeString(excludeDate)}` : ''}
+    ORDER BY created_at ASC
+  `);
+
+  // 3. 통합 및 날짜별 그룹화
+  const memoMap = new Map<string, { memos: string[]; latestCreated: string }>();
+
+  // 일반메모 추가
+  for (const m of receiptMemos) {
+    if (!m.receipt_date || !m.memo) continue;
+    const existing = memoMap.get(m.receipt_date);
+    if (existing) {
+      existing.memos.push(m.memo);
+      if (m.created_at > existing.latestCreated) {
+        existing.latestCreated = m.created_at;
+      }
+    } else {
+      memoMap.set(m.receipt_date, {
+        memos: [m.memo],
+        latestCreated: m.created_at || ''
+      });
+    }
+  }
+
+  // 비급여메모 추가
+  for (const m of paymentMemos) {
+    if (!m.receipt_date || !m.memo_content) continue;
+    const existing = memoMap.get(m.receipt_date);
+    if (existing) {
+      existing.memos.push(m.memo_content);
+      if (m.created_at > existing.latestCreated) {
+        existing.latestCreated = m.created_at;
+      }
+    } else {
+      memoMap.set(m.receipt_date, {
+        memos: [m.memo_content],
+        latestCreated: m.created_at || ''
+      });
+    }
+  }
+
+  // 4. 날짜 내림차순 정렬 후 YY/MM/DD 형식으로 변환
+  const sortedDates = Array.from(memoMap.entries())
+    .sort((a, b) => b[0].localeCompare(a[0])) // 최신 날짜 먼저
+    .slice(0, limit);
+
+  return sortedDates.map(([date, data]) => {
+    // YYYY-MM-DD -> YY/MM/DD
+    const parts = date.split('-');
+    const formattedDate = parts.length === 3
+      ? `${parts[0].slice(2)}/${parts[1]}/${parts[2]}`
+      : date;
+
+    return {
+      date: formattedDate,
+      memos: data.memos
+    };
+  });
+}
+
 // ============================================
 // 환자별 메모 요약 데이터 조회
 // ============================================
@@ -1578,15 +1686,16 @@ export async function createYakchimUsageRecord(data: {
   receipt_id?: number;
   mssql_detail_id?: number;
   memo?: string;
+  quantity?: number;  // 약침 갯수 (일회성일 때 사용)
 }): Promise<number> {
   const now = getCurrentTimestamp();
   return insert(`
     INSERT INTO cs_yakchim_usage_records (
-      patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id, mssql_detail_id, memo, created_at
+      patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id, mssql_detail_id, memo, quantity, created_at
     ) VALUES (
       ${data.patient_id}, ${escapeString(data.source_type)}, ${data.source_id}, ${escapeString(data.source_name)},
       ${escapeString(data.usage_date)}, ${escapeString(data.item_name)}, ${data.remaining_after},
-      ${data.receipt_id || 'NULL'}, ${data.mssql_detail_id || 'NULL'}, ${toSqlValue(data.memo)}, ${escapeString(now)}
+      ${data.receipt_id || 'NULL'}, ${data.mssql_detail_id || 'NULL'}, ${toSqlValue(data.memo)}, ${data.quantity || 1}, ${escapeString(now)}
     )
   `);
 }
@@ -2259,4 +2368,180 @@ export async function getMedicinePurposes(): Promise<string[]> {
  */
 export async function setMedicinePurposes(purposes: string[]): Promise<void> {
   await setCsSetting('medicine_purposes', JSON.stringify(purposes), '상비약 사용목적 옵션');
+}
+
+/**
+ * 멤버십 종류 옵션 조회
+ */
+export async function getMembershipTypes(): Promise<string[]> {
+  // package_types 테이블에서 membership 타입 조회
+  try {
+    const types = await getPackageTypes();
+    const membershipTypes = types.filter(t => t.type === 'membership').map(t => t.name);
+    if (membershipTypes.length > 0) {
+      return membershipTypes;
+    }
+  } catch (err) {
+    console.error('멤버십 종류 조회 오류:', err);
+  }
+  return ['녹용'];  // 기본값
+}
+
+/**
+ * 멤버십 종류 옵션 저장
+ */
+export async function setMembershipTypes(types: string[]): Promise<void> {
+  await setCsSetting('membership_types', JSON.stringify(types), '멤버십 종류 옵션');
+}
+
+// ============================================
+// 패키지/멤버십 종류 관리
+// ============================================
+
+export interface PackageType {
+  id: number;
+  name: string;
+  type: 'deduction' | 'membership' | 'yakchim' | 'yobup';  // deduction: 차감형, membership: 멤버십, yakchim: 약침, yobup: 요법
+  description: string | null;
+  deduction_count: number;  // 패키지 차감 횟수 (약침/요법용, 기본값 1)
+  is_active: boolean;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * 패키지/멤버십 종류 목록 조회
+ */
+export async function getPackageTypes(includeInactive: boolean = false): Promise<PackageType[]> {
+  try {
+    const whereClause = includeInactive ? '' : 'WHERE is_active = true';
+    const rows = await query<PackageType>(`
+      SELECT * FROM package_types
+      ${whereClause}
+      ORDER BY display_order, name
+    `);
+    return rows;
+  } catch (error) {
+    console.error('패키지 종류 조회 오류:', error);
+    return [];
+  }
+}
+
+/**
+ * 패키지/멤버십/약침/요법 종류 추가
+ */
+export async function createPackageType(
+  name: string,
+  type: 'deduction' | 'membership' | 'yakchim' | 'yobup',
+  description?: string,
+  deductionCount: number = 1
+): Promise<PackageType | null> {
+  try {
+    const now = getCurrentTimestamp();
+    // 다음 display_order 조회
+    const maxOrder = await queryOne<{ max_order: number }>(`
+      SELECT COALESCE(MAX(display_order), 0) as max_order FROM package_types
+    `);
+    const nextOrder = (maxOrder?.max_order || 0) + 1;
+
+    const id = await insert(`
+      INSERT INTO package_types (name, type, description, deduction_count, display_order, created_at, updated_at)
+      VALUES (
+        ${escapeString(name)},
+        ${escapeString(type)},
+        ${description ? escapeString(description) : 'NULL'},
+        ${deductionCount},
+        ${nextOrder},
+        ${escapeString(now)},
+        ${escapeString(now)}
+      )
+    `);
+
+    return {
+      id,
+      name,
+      type,
+      description: description || null,
+      deduction_count: deductionCount,
+      is_active: true,
+      display_order: nextOrder,
+      created_at: now,
+      updated_at: now,
+    };
+  } catch (error) {
+    console.error('패키지 종류 추가 오류:', error);
+    return null;
+  }
+}
+
+/**
+ * 패키지/멤버십/약침/요법 종류 수정
+ */
+export async function updatePackageType(
+  id: number,
+  updates: { name?: string; type?: 'deduction' | 'membership' | 'yakchim' | 'yobup'; description?: string; is_active?: boolean; deduction_count?: number }
+): Promise<boolean> {
+  try {
+    const setClauses: string[] = [];
+    if (updates.name !== undefined) {
+      setClauses.push(`name = ${escapeString(updates.name)}`);
+    }
+    if (updates.type !== undefined) {
+      setClauses.push(`type = ${escapeString(updates.type)}`);
+    }
+    if (updates.description !== undefined) {
+      setClauses.push(`description = ${updates.description ? escapeString(updates.description) : 'NULL'}`);
+    }
+    if (updates.is_active !== undefined) {
+      setClauses.push(`is_active = ${updates.is_active}`);
+    }
+    if (updates.deduction_count !== undefined) {
+      setClauses.push(`deduction_count = ${updates.deduction_count}`);
+    }
+    setClauses.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
+
+    await execute(`
+      UPDATE package_types
+      SET ${setClauses.join(', ')}
+      WHERE id = ${id}
+    `);
+    return true;
+  } catch (error) {
+    console.error('패키지 종류 수정 오류:', error);
+    return false;
+  }
+}
+
+/**
+ * 패키지/멤버십 종류 삭제
+ */
+export async function deletePackageType(id: number): Promise<boolean> {
+  try {
+    await execute(`DELETE FROM package_types WHERE id = ${id}`);
+    return true;
+  } catch (error) {
+    console.error('패키지 종류 삭제 오류:', error);
+    return false;
+  }
+}
+
+/**
+ * 패키지/멤버십 종류 순서 변경
+ */
+export async function reorderPackageTypes(orderedIds: number[]): Promise<boolean> {
+  try {
+    const now = getCurrentTimestamp();
+    for (let i = 0; i < orderedIds.length; i++) {
+      await execute(`
+        UPDATE package_types
+        SET display_order = ${i + 1}, updated_at = ${escapeString(now)}
+        WHERE id = ${orderedIds[i]}
+      `);
+    }
+    return true;
+  } catch (error) {
+    console.error('패키지 종류 순서 변경 오류:', error);
+    return false;
+  }
 }

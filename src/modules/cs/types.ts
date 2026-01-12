@@ -108,6 +108,7 @@ export interface TreatmentPackage {
   start_date: string;        // 시작일
   expire_date?: string;      // 만료일
   memo?: string;
+  mssql_detail_id?: number;  // MSSQL Detail_PK (비급여 항목 연결)
   status: 'active' | 'completed' | 'expired';
   created_at?: string;
   updated_at?: string;
@@ -211,10 +212,11 @@ export interface Membership {
   chart_number: string;
   patient_name: string;
   membership_type: string;   // 경근멤버십 등
-  quantity: number;          // 등록 개수 (내원 시 무료 이용 개수)
+  quantity: number;          // 등록 개수 (내원 시 무료 이용 개수, 하루 사용 제한)
   start_date: string;
   expire_date: string;       // 만료일
   memo?: string;
+  mssql_detail_id?: number;  // MSSQL Detail_PK (비급여 항목 연결)
   status: 'active' | 'expired';
   created_at?: string;
   updated_at?: string;
@@ -643,6 +645,7 @@ export function generateMemoSummaryItems(data: {
   documentIssues?: DocumentIssue[];
   medicineUsages?: MedicineUsage[];
   yakchimUsageRecords?: YakchimUsageRecord[];
+  date?: string;  // 오늘 날짜 (YYYY-MM-DD) - 등록일 확인용
 }): MemoSummaryItem[] {
   const items: MemoSummaryItem[] = [];
 
@@ -689,9 +692,13 @@ export function generateMemoSummaryItems(data: {
 
     // 패키지 사용 태그
     packageUsage.forEach(pkg => {
+      // 통증마일리지는 "통마 사용" 형식으로 표시
+      const label = pkg.name.includes('통증마일리지') || pkg.name.includes('통마')
+        ? `통마 사용[${pkg.before}-${pkg.used}=${pkg.after}]`
+        : `${pkg.name}[${pkg.before}-${pkg.used}=${pkg.after}]`;
       items.push({
         type: 'yakchim-package',
-        label: `${pkg.name}[${pkg.before}-${pkg.used}=${pkg.after}]`,
+        label,
         data: pkg.record,
       });
     });
@@ -708,17 +715,35 @@ export function generateMemoSummaryItems(data: {
 
   // 시술패키지
   data.treatmentPackages?.forEach(pkg => {
+    // 통증마일리지는 "통마 추가" 형식으로 표시 (등록일에만)
+    const isTongma = pkg.package_name.includes('통증마일리지') || pkg.package_name.includes('통마');
+    // 등록일 확인: start_date가 오늘인 경우에만 "통마 추가" 표시
+    const isRegisteredToday = data.date && pkg.start_date === data.date;
+
     if (pkg.status === 'active') {
-      const includesText = pkg.includes ? `(${pkg.includes})` : '';
-      items.push({
-        type: 'treatment-package',
-        label: `${pkg.package_name}[${pkg.total_count}-${pkg.used_count}=${pkg.remaining_count}]${includesText}`,
-        data: pkg,
-      });
+      if (isTongma) {
+        // 통증마일리지: 등록일에만 "통마 추가" 표시
+        if (isRegisteredToday) {
+          items.push({
+            type: 'treatment-package',
+            label: `통마 추가[0+${pkg.total_count}=${pkg.total_count}]`,
+            data: pkg,
+          });
+        }
+        // 등록일이 아니면 표시하지 않음 (사용 기록은 yakchim_usage_records에서 표시)
+      } else {
+        // 다른 패키지는 기존 방식
+        const includesText = pkg.includes ? `(${pkg.includes})` : '';
+        items.push({
+          type: 'treatment-package',
+          label: `${pkg.package_name}[${pkg.total_count}-${pkg.used_count}=${pkg.remaining_count}]${includesText}`,
+          data: pkg,
+        });
+      }
     } else if (pkg.status === 'completed') {
       items.push({
         type: 'treatment-package',
-        label: `${pkg.package_name}[완료]`,
+        label: isTongma ? `통마[완료]` : `${pkg.package_name}[완료]`,
         data: pkg,
       });
     }
