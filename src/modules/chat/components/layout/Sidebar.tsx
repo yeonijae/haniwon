@@ -175,11 +175,18 @@ export default function Sidebar({
       const channel = channelMap.get(message.channel_id);
       const channelName = channel?.name || (channel?.type === 'direct' ? message.sender.display_name : '채널');
 
-      // Strip HTML tags from content
-      const plainContent = message.content.replace(/<[^>]*>/g, '').substring(0, 100);
+      // 멘션 여부 확인
+      const mentionRegex = user?.id ? new RegExp(`<@${user.id}:[^>]+>`, 'g') : null;
+      const isMentioned = mentionRegex ? mentionRegex.test(message.content) : false;
+
+      // Strip mention tags and HTML tags from content for display
+      const plainContent = message.content
+        .replace(/<@([^:>]+):([^>]+)>/g, '@$2') // 멘션 태그를 @이름 형식으로 변환
+        .replace(/<[^>]*>/g, '') // HTML 태그 제거
+        .substring(0, 100);
 
       notificationService.show({
-        title: channelName,
+        title: isMentioned ? `📢 ${channelName} (멘션됨)` : channelName,
         body: `${message.sender.display_name}: ${plainContent}`,
         onClick: () => {
           onSelectChannel(message.channel_id);

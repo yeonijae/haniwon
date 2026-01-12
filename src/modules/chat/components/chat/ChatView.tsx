@@ -5,7 +5,7 @@ import { useSocketEvent, useSocketEmit } from '../../hooks/useSocket';
 import { useAuthStore } from '../../stores/authStore';
 import { generateUUID } from '../../utils/uuid';
 import MessageItem from './MessageItem';
-import MessageInput, { MessageInputHandle } from './MessageInput';
+import MessageInput, { MessageInputHandle, MentionableMember, MentionData } from './MessageInput';
 
 interface Message {
   id: string;
@@ -52,6 +52,7 @@ export interface ChatViewHandle {
 
 const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(({ channelId, targetMessageId, onTargetMessageReached, shortcutNumber, dragHandleProps, isSelected = false }, ref) => {
   const [inputValue, setInputValue] = useState('');
+  const [mentions, setMentions] = useState<MentionData[]>([]); // 멘션 데이터 관리
   const messageInputRef = useRef<MessageInputHandle>(null);
 
   useImperativeHandle(ref, () => ({
@@ -82,6 +83,15 @@ const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(({ channelId, targetM
   const { data: channel } = useQuery<Channel>({
     queryKey: ['channel', channelId],
     queryFn: async () => { const response = await api.get(`/channels/${channelId}`); return response.data.data; },
+  });
+
+  // 채널 멤버 가져오기 (멘션용)
+  const { data: channelMembers = [] } = useQuery<MentionableMember[]>({
+    queryKey: ['channelMembers', channelId],
+    queryFn: async () => {
+      const response = await api.get(`/channels/${channelId}/members`);
+      return response.data.data;
+    },
   });
 
   const { data: messages = [], isLoading, refetch } = useQuery<Message[]>({
@@ -362,6 +372,17 @@ const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(({ channelId, targetM
     typingTimeoutRef.current = setTimeout(() => { emit('typing:stop', { channel_id: channelId }); }, 3000);
   };
 
+  // 멘션을 내부 형식으로 변환 (@이름 -> <@user_id:이름>)
+  const convertMentionsToInternalFormat = (text: string): string => {
+    let result = text;
+    for (const mention of mentions) {
+      const displayPattern = `@${mention.displayName}`;
+      const internalFormat = `<@${mention.userId}:${mention.displayName}>`;
+      result = result.replace(new RegExp(displayPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), internalFormat);
+    }
+    return result;
+  };
+
   const handleSend = async () => {
     if (!inputValue.trim() && !pastedImage) return;
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -387,17 +408,21 @@ const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(({ channelId, targetM
       setIsUploading(false);
     }
 
+    // 멘션을 내부 형식으로 변환
+    const processedContent = convertMentionsToInternalFormat(inputValue.trim());
+
     // Send message
     if (imageUrl) {
       // Send image message
-      const content = inputValue.trim() ? `${inputValue.trim()}\n![image](${imageUrl})` : `![image](${imageUrl})`;
+      const content = processedContent ? `${processedContent}\n![image](${imageUrl})` : `![image](${imageUrl})`;
       emit('message:send', { channel_id: channelId, content, type: 'image', temp_id: generateUUID(), metadata: { image_url: imageUrl } });
     } else {
       // Send text message
-      emit('message:send', { channel_id: channelId, content: inputValue.trim(), type: 'text', temp_id: generateUUID() });
+      emit('message:send', { channel_id: channelId, content: processedContent, type: 'text', temp_id: generateUUID() });
     }
 
     setInputValue('');
+    setMentions([]); // 멘션 데이터 초기화
     setPastedImage(null);
   };
 
@@ -483,6 +508,10 @@ const ChatView = forwardRef<ChatViewHandle, ChatViewProps>(({ channelId, targetM
         pastedImage={pastedImage}
         onRemoveImage={() => setPastedImage(null)}
         shortcutNumber={shortcutNumber}
+        members={channelMembers}
+        mentions={mentions}
+        onMentionsChange={setMentions}
+        currentUserId={user?.id}
       />
     </div>
   );

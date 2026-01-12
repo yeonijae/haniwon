@@ -56,6 +56,70 @@ function parseMessageContent(content: string): { text: string; images: string[] 
   return { text, images };
 }
 
+// HTML 이스케이프 디코딩
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+// 멘션 파싱 및 렌더링
+interface MentionPart {
+  type: 'text' | 'mention';
+  content: string;
+  userId?: string;
+  displayName?: string;
+}
+
+function parseMentions(text: string): MentionPart[] {
+  // HTML 이스케이프된 문자 디코딩
+  const decodedText = decodeHtmlEntities(text);
+  const mentionRegex = /<@([^:>]+):([^>]+)>/g;
+  const parts: MentionPart[] = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = mentionRegex.exec(decodedText)) !== null) {
+    // 멘션 앞의 텍스트
+    if (match.index > lastIndex) {
+      parts.push({
+        type: 'text',
+        content: decodedText.substring(lastIndex, match.index),
+      });
+    }
+
+    // 멘션 부분
+    parts.push({
+      type: 'mention',
+      content: `@${match[2]}`,
+      userId: match[1],
+      displayName: match[2],
+    });
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // 마지막 텍스트
+  if (lastIndex < decodedText.length) {
+    parts.push({
+      type: 'text',
+      content: decodedText.substring(lastIndex),
+    });
+  }
+
+  return parts.length > 0 ? parts : [{ type: 'text', content: decodedText }];
+}
+
+// 멘션이 현재 사용자를 포함하는지 확인
+function hasMentionForUser(content: string, userId: string): boolean {
+  const decodedContent = decodeHtmlEntities(content);
+  const mentionRegex = new RegExp(`<@${userId}:[^>]+>`, 'g');
+  return mentionRegex.test(decodedContent);
+}
+
 export default function MessageItem({ message, channelId, onReaction, showThreadControls = true }: MessageItemProps) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isThreadExpanded, setIsThreadExpanded] = useState(false);
@@ -72,7 +136,11 @@ export default function MessageItem({ message, channelId, onReaction, showThread
   const isOwnMessage = user?.id === message.sender?.id;
 
   const formattedTime = format(new Date(message.created_at), 'a h:mm', { locale: ko });
-  const { text: displayContent, images } = parseMessageContent(message.content.replace(/<[^>]*>/g, ''));
+  // 멘션 태그는 보존하면서 HTML 태그만 제거
+  const cleanContent = message.content.replace(/<(?!@)[^>]*>/g, '');
+  const { text: displayContent, images } = parseMessageContent(cleanContent);
+  const mentionParts = parseMentions(displayContent);
+  const isMentioned = user?.id ? hasMentionForUser(message.content, user.id) : false;
   const readCount = message.read_by?.length || 0;
 
   const handleSendReply = () => {
@@ -156,7 +224,7 @@ export default function MessageItem({ message, channelId, onReaction, showThread
 
   return (
     <div>
-      <div className="flex gap-3 hover:bg-gray-50 p-2 rounded-lg group relative">
+      <div className={`flex gap-3 hover:bg-gray-50 p-2 rounded-lg group relative ${isMentioned ? 'bg-yellow-50 border-l-4 border-yellow-400' : ''}`}>
         <div className="flex-shrink-0">
           {getAbsoluteUrl(message.sender?.avatar_url) ? (
             <img src={getAbsoluteUrl(message.sender?.avatar_url)!} alt={message.sender.display_name} className="w-10 h-10 rounded-full object-cover" />
@@ -204,7 +272,26 @@ export default function MessageItem({ message, channelId, onReaction, showThread
             </div>
           ) : (
             <>
-              {displayContent && <div className="text-gray-700 mt-0.5 whitespace-pre-wrap break-words">{displayContent}</div>}
+              {displayContent && (
+                <div className="text-gray-700 mt-0.5 whitespace-pre-wrap break-words">
+                  {mentionParts.map((part, index) => (
+                    part.type === 'mention' ? (
+                      <span
+                        key={index}
+                        className={`px-1 rounded font-medium ${
+                          part.userId === user?.id
+                            ? 'bg-yellow-200 text-yellow-800'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {part.content}
+                      </span>
+                    ) : (
+                      <span key={index}>{part.content}</span>
+                    )
+                  ))}
+                </div>
+              )}
             </>
           )}
           {images.length > 0 && !isEditing && (
