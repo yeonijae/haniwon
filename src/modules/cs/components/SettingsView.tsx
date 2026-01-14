@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import TreatmentProgramAdmin from './TreatmentProgramAdmin';
 import PackageTypeAdmin from './PackageTypeAdmin';
+import MedicinePurposeAdmin from './MedicinePurposeAdmin';
 
 interface SettingsViewProps {
   user?: any;
 }
 
-type SettingsTab = 'treatment' | 'package';
+type SettingsTab = 'treatment' | 'package' | 'medicine';
 
 function SettingsView({ user }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('package');
@@ -29,12 +30,20 @@ function SettingsView({ user }: SettingsViewProps) {
           <i className="fa-solid fa-kit-medical"></i>
           진료 프로그램
         </button>
+        <button
+          className={`settings-tab ${activeTab === 'medicine' ? 'active' : ''}`}
+          onClick={() => setActiveTab('medicine')}
+        >
+          <i className="fa-solid fa-pills"></i>
+          상비약 사용목적
+        </button>
       </div>
 
       {/* 탭 내용 */}
       <div className="settings-content">
         {activeTab === 'package' && <PackageTypeAdmin />}
         {activeTab === 'treatment' && <TreatmentProgramAdmin />}
+        {activeTab === 'medicine' && <MedicinePurposeAdmin />}
       </div>
 
       <style>{`

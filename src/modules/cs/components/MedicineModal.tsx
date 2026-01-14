@@ -5,9 +5,9 @@ import {
   useMedicineStock,
   updateMedicineUsage,
   deleteMedicineUsage,
+  getMedicinePurposes,
   type MedicineInventory,
   MEDICINE_PURPOSES,
-  type MedicinePurpose,
 } from '../lib/api';
 import type { MedicineUsage } from '../types';
 
@@ -42,7 +42,8 @@ export function MedicineModal({
   const [filteredList, setFilteredList] = useState<MedicineInventory[]>([]);
   const [selectedItem, setSelectedItem] = useState<MedicineInventory | null>(null);
   const [quantity, setQuantity] = useState(1);
-  const [purpose, setPurpose] = useState<MedicinePurpose>('상비약');
+  const [purpose, setPurpose] = useState<string>('상비약');
+  const [purposeOptions, setPurposeOptions] = useState<string[]>([...MEDICINE_PURPOSES]);
   const [memo, setMemo] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -79,19 +80,29 @@ export function MedicineModal({
     }
   }, [isOpen, isEditMode, editData, inventoryList]);
 
-  // 상비약 재고 목록 로드
+  // 상비약 재고 목록 + 사용목적 옵션 로드
   const loadInventory = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await getMedicineInventory(true);
+      const [data, purposes] = await Promise.all([
+        getMedicineInventory(true),
+        getMedicinePurposes(),
+      ]);
       setInventoryList(data);
       setFilteredList(data);
+      if (purposes.length > 0) {
+        setPurposeOptions(purposes);
+        // 기본값이 목록에 없으면 첫 번째 항목으로 설정
+        if (!isEditMode && !purposes.includes(purpose)) {
+          setPurpose(purposes[0]);
+        }
+      }
     } catch (err: any) {
       setError(err.message || '상비약 목록을 불러오는데 실패했습니다.');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isEditMode, purpose]);
 
   // 검색
   const handleSearch = useCallback(async (keyword: string) => {
@@ -545,7 +556,7 @@ export function MedicineModal({
                   </label>
                   <select
                     value={purpose}
-                    onChange={(e) => setPurpose(e.target.value as MedicinePurpose)}
+                    onChange={(e) => setPurpose(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '8px',
@@ -554,7 +565,7 @@ export function MedicineModal({
                       fontSize: '14px',
                     }}
                   >
-                    {MEDICINE_PURPOSES.map((p) => (
+                    {purposeOptions.map((p) => (
                       <option key={p} value={p}>
                         {p}
                       </option>

@@ -2018,7 +2018,7 @@ export async function useMedicineStock(
   chartNumber: string,
   patientName: string,
   quantity: number,
-  purpose: MedicinePurpose,
+  purpose: string,
   usageDate: string,
   memo?: string,
   receiptId?: number

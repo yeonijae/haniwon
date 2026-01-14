@@ -12786,6 +12786,20 @@
   text-overflow: ellipsis;
 }
 
+.history-row-main.clickable {
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.history-row-main.clickable:hover {
+  background-color: #f0f7ff;
+}
+
+.history-row-main.clickable .col-date {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
 /* 상세 행 (둘째줄) */
 .history-row-detail {
   display: flex;

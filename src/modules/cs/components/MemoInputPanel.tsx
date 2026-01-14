@@ -1715,7 +1715,7 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
               </div>
             )}
 
-            {/* 추가 모드: 선택 후 차감 버튼 */}
+            {/* 추가 모드: 선택 후 사용 버튼 */}
             {!isEditMode && selectedMedicine && (
               <div className="medicine-action">
                 <input
@@ -1732,7 +1732,7 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
                   onClick={handleMedicineDeduct}
                   disabled={isSaving}
                 >
-                  {isSaving ? '처리 중...' : '차감'}
+                  {isSaving ? '처리 중...' : '사용'}
                 </button>
               </div>
             )}

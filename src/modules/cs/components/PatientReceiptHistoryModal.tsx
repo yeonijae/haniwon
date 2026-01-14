@@ -24,6 +24,7 @@ interface PatientReceiptHistoryModalProps {
   patientId: number;
   patientName: string;
   chartNo: string;
+  onNavigateToDate?: (date: string, patientId: number) => void;
 }
 
 // 기간 필터 옵션
@@ -207,6 +208,7 @@ export function PatientReceiptHistoryModal({
   patientId,
   patientName,
   chartNo,
+  onNavigateToDate,
 }: PatientReceiptHistoryModalProps) {
   const [period, setPeriod] = useState<PeriodFilter>('all');
   const [page, setPage] = useState(1);
@@ -341,6 +343,14 @@ export function PatientReceiptHistoryModal({
     setDetailReceipt(receipt);
   };
 
+  // 날짜/행 클릭 시 해당 날짜로 이동
+  const handleNavigateClick = (receipt: ExpandedHistoryItem) => {
+    if (onNavigateToDate && receipt.receipt_date) {
+      onNavigateToDate(receipt.receipt_date, patientId);
+      onClose();
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -425,7 +435,11 @@ export function PatientReceiptHistoryModal({
                 return (
                   <div key={receipt.id} className="history-item-v2">
                     {/* 첫째줄: 날짜, 시간, 결제, 금액, 메모 */}
-                    <div className="history-row-main">
+                    <div
+                      className={`history-row-main ${onNavigateToDate ? 'clickable' : ''}`}
+                      onClick={() => handleNavigateClick(receipt)}
+                      title={onNavigateToDate ? '클릭하여 해당 날짜로 이동' : undefined}
+                    >
                       <div className="col-date">
                         {receipt.receipt_date ? formatDateShort(receipt.receipt_date) : '-'}
                       </div>

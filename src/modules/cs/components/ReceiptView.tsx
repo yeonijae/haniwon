@@ -330,6 +330,9 @@ function ReceiptView({ user }: ReceiptViewProps) {
     chartNo: string;
   } | null>(null);
 
+  // 날짜 이동 후 선택할 환자 ID (수납이력에서 클릭 시)
+  const pendingPatientSelectRef = useRef<number | null>(null);
+
   // 환자 검색 상태
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<PatientSearchResult[]>([]);
@@ -1043,6 +1046,18 @@ function ReceiptView({ user }: ReceiptViewProps) {
   useEffect(() => {
     loadReceipts();
   }, [loadReceipts]);
+
+  // 수납이력에서 날짜 클릭 시 해당 환자 자동 선택
+  useEffect(() => {
+    if (!isLoading && receipts.length > 0 && pendingPatientSelectRef.current !== null) {
+      const patientId = pendingPatientSelectRef.current;
+      const targetReceipt = receipts.find(r => r.patient_id === patientId);
+      if (targetReceipt) {
+        handleReceiptRowClick(targetReceipt);
+      }
+      pendingPatientSelectRef.current = null;
+    }
+  }, [isLoading, receipts]);
 
   // 메모 태그 클릭 핸들러 (타입별 인라인 패널 열기)
   const handleMemoTagClick = (item: MemoSummaryItem, receipt: ExpandedReceiptItem) => {
@@ -2129,6 +2144,12 @@ function ReceiptView({ user }: ReceiptViewProps) {
           patientId={historyPatient.patientId}
           patientName={historyPatient.patientName}
           chartNo={historyPatient.chartNo}
+          onNavigateToDate={(date, patientId) => {
+            setSelectedDate(date);
+            pendingPatientSelectRef.current = patientId;
+            setShowHistoryModal(false);
+            setHistoryPatient(null);
+          }}
         />
       )}
 
