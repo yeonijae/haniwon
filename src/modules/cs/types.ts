@@ -387,15 +387,16 @@ export interface YakchimMembership {
 export interface NokryongPackage {
   id?: number;
   patient_id: number;
-  chart_number: string;
-  patient_name: string;
-  package_name: string;          // "녹용 2개월권"
-  total_months: number;          // 총 개월수
-  remaining_months: number;      // 잔여 개월수
+  chart_number?: string;
+  patient_name?: string;
+  package_name: string;          // "녹용(원대) 30회분"
+  total_months: number;          // 총 회분수 (필드명 유지, 의미는 회분)
+  remaining_months: number;      // 잔여 회분수
   price?: number;                // 구매 금액
   start_date: string;            // 시작일
   expire_date?: string;          // 만료일
   memo?: string;
+  mssql_detail_id?: number;      // MSSQL Detail_PK (비급여 항목 연결)
   status: 'active' | 'completed' | 'expired';
   created_at?: string;
   updated_at?: string;
@@ -406,8 +407,8 @@ export interface HerbalPickup {
   id?: number;
   package_id: number;            // 연결된 HerbalPackage ID
   patient_id: number;
-  chart_number: string;
-  patient_name: string;
+  chart_number?: string;
+  patient_name?: string;
   round_id?: number;             // 연결된 HerbalPackageRound ID
   receipt_id?: number;           // 연결된 수납 ID
   pickup_date: string;           // 수령일
@@ -464,11 +465,14 @@ export interface ReceiptMemo {
   chart_number: string;
   patient_name: string;
   mssql_receipt_id?: number;
+  mssql_detail_id?: number;  // 연결된 비급여 항목 Detail_PK
   receipt_date: string;
   memo?: string;             // 특이사항 메모
   reservation_status: ReservationStatus;
   reservation_date?: string; // 예약 확정 시 날짜
   is_completed?: boolean;    // 기록 완료 여부
+  herbal_package_id?: number; // 연결된 한약 선결제 패키지 ID
+  herbal_pickup_id?: number;  // 연결된 한약 차감 기록 ID
   created_at?: string;
   updated_at?: string;
 }
@@ -564,12 +568,7 @@ export function generateMemoSummary(data: {
     }
   });
 
-  // 한약패키지 (선결)
-  data.herbalPackages?.forEach(pkg => {
-    if (pkg.status === 'active') {
-      parts.push(`선결(${pkg.total_count}-${pkg.used_count})`);
-    }
-  });
+  // 한약패키지 (선결) - 메모로 대체됨
 
   // 포인트
   if (data.pointUsed && data.pointUsed > 0) {
@@ -750,16 +749,8 @@ export function generateMemoSummaryItems(data: {
     }
   });
 
-  // 한약패키지 (선결)
-  data.herbalPackages?.forEach(pkg => {
-    if (pkg.status === 'active') {
-      items.push({
-        type: 'herbal-package',
-        label: `선결(${pkg.total_count}-${pkg.used_count})`,
-        data: pkg,
-      });
-    }
-  });
+  // 한약패키지 (선결) - 메모로 대체됨 (등록: "1개월 선결제", 차감: "선결(2-1)")
+  // 패키지 현황 태그는 별도로 표시하지 않음
 
   // 포인트 사용
   if (data.pointUsed && data.pointUsed > 0) {

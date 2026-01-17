@@ -224,13 +224,15 @@ function PackageTypeAdmin() {
                         ) : '-'}
                       </td>
                       <td>-</td>
-                      <td className="actions">
-                        <button className="btn-save" onClick={() => handleEditSave(item.id)} title="저장">
-                          <i className="fa-solid fa-check"></i>
-                        </button>
-                        <button className="btn-cancel" onClick={handleEditCancel} title="취소">
-                          <i className="fa-solid fa-xmark"></i>
-                        </button>
+                      <td>
+                        <div className="actions">
+                          <button className="btn-save" onClick={() => handleEditSave(item.id)} title="저장">
+                            <i className="fa-solid fa-check"></i>
+                          </button>
+                          <button className="btn-cancel" onClick={handleEditCancel} title="취소">
+                            <i className="fa-solid fa-xmark"></i>
+                          </button>
+                        </div>
                       </td>
                     </>
                   ) : (
@@ -255,13 +257,15 @@ function PackageTypeAdmin() {
                           {item.is_active ? '활성' : '비활성'}
                         </button>
                       </td>
-                      <td className="actions">
-                        <button className="btn-edit" onClick={() => handleEditStart(item)} title="수정">
-                          <i className="fa-solid fa-pen"></i>
-                        </button>
-                        <button className="btn-delete" onClick={() => handleDelete(item.id)} title="삭제">
-                          <i className="fa-solid fa-trash"></i>
-                        </button>
+                      <td>
+                        <div className="actions">
+                          <button className="btn-edit" onClick={() => handleEditStart(item)} title="수정">
+                            <i className="fa-solid fa-pen"></i>
+                          </button>
+                          <button className="btn-delete" onClick={() => handleDelete(item.id)} title="삭제">
+                            <i className="fa-solid fa-trash"></i>
+                          </button>
+                        </div>
                       </td>
                     </>
                   )}
@@ -275,7 +279,7 @@ function PackageTypeAdmin() {
       <style>{`
         .package-type-admin {
           padding: 20px;
-          max-width: 700px;
+          max-width: 800px;
         }
 
         .admin-header {

@@ -18,6 +18,8 @@ import type {
   ReservationStatus,
   MedicineUsage,
   YakchimUsageRecord,
+  NokryongPackage,
+  HerbalPickup,
 } from '../types';
 
 // MSSQL API 기본 URL
@@ -281,6 +283,10 @@ export async function ensureReceiptTables(): Promise<void> {
     )
   `);
 
+  // 한약패키지 테이블 마이그레이션 - 누락된 컬럼 추가
+  await execute(`ALTER TABLE cs_herbal_packages ADD COLUMN IF NOT EXISTS herbal_name TEXT`).catch(() => {});
+  await execute(`ALTER TABLE cs_herbal_packages ADD COLUMN IF NOT EXISTS purpose TEXT`).catch(() => {});
+
   // 한약패키지 회차별 관리 테이블
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_herbal_package_rounds (
@@ -297,6 +303,48 @@ export async function ensureReceiptTables(): Promise<void> {
       FOREIGN KEY (package_id) REFERENCES cs_herbal_packages(id) ON DELETE CASCADE
     )
   `);
+
+  // 녹용 패키지 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_nokryong_packages (
+      id SERIAL PRIMARY KEY,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT,
+      patient_name TEXT,
+      package_name TEXT,
+      total_months INTEGER DEFAULT 3,
+      remaining_months INTEGER DEFAULT 3,
+      start_date TEXT NOT NULL,
+      expire_date TEXT,
+      memo TEXT,
+      status TEXT DEFAULT 'active',
+      mssql_detail_id INTEGER,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `).catch(() => {});  // 이미 존재하면 무시
+
+  // 한약 수령 기록 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_herbal_pickups (
+      id SERIAL PRIMARY KEY,
+      package_id INTEGER NOT NULL,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT,
+      patient_name TEXT,
+      round_id INTEGER,
+      receipt_id INTEGER,
+      pickup_date TEXT NOT NULL,
+      round_number INTEGER NOT NULL,
+      delivery_method TEXT DEFAULT 'pickup',
+      with_nokryong BOOLEAN DEFAULT FALSE,
+      nokryong_package_id INTEGER,
+      memo TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW(),
+      FOREIGN KEY (package_id) REFERENCES cs_herbal_packages(id) ON DELETE CASCADE
+    )
+  `).catch(() => {});  // 이미 존재하면 무시
 
   // 포인트 거래 테이블
   await execute(`
@@ -445,6 +493,12 @@ export async function ensureReceiptTables(): Promise<void> {
 
   // is_completed 컬럼이 없으면 추가 (기존 테이블 마이그레이션)
   await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS is_completed INTEGER DEFAULT 0`).catch(() => {});
+  // herbal_package_id 컬럼 추가 (한약 선결제 패키지 연결)
+  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS herbal_package_id INTEGER`).catch(() => {});
+  // mssql_detail_id 컬럼 추가 (비급여 항목 연결)
+  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {});
+  // herbal_pickup_id 컬럼 추가 (한약 차감 기록 연결)
+  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS herbal_pickup_id INTEGER`).catch(() => {});
 
   // 상비약 사용내역 테이블
   await execute(`
@@ -630,17 +684,31 @@ export async function getActiveHerbalPackages(patientId: number): Promise<Herbal
 
 export async function createHerbalPackage(pkg: Omit<HerbalPackage, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
   const now = getCurrentTimestamp();
-  return insert(`
+  const id = await insert(`
     INSERT INTO cs_herbal_packages (
-      patient_id, chart_number, patient_name, package_type, total_count, used_count, remaining_count,
+      patient_id, chart_number, patient_name, herbal_name, package_type, total_count, used_count, remaining_count,
       start_date, next_delivery_date, memo, status, created_at, updated_at
     ) VALUES (
       ${pkg.patient_id}, ${toSqlValue(pkg.chart_number)}, ${toSqlValue(pkg.patient_name)},
-      ${escapeString(pkg.package_type)}, ${pkg.total_count}, ${pkg.used_count}, ${pkg.remaining_count},
+      ${toSqlValue(pkg.herbal_name)}, ${escapeString(pkg.package_type)}, ${pkg.total_count}, ${pkg.used_count}, ${pkg.remaining_count},
       ${escapeString(pkg.start_date)}, ${toSqlValue(pkg.next_delivery_date)},
       ${toSqlValue(pkg.memo)}, ${escapeString(pkg.status)}, ${escapeString(now)}, ${escapeString(now)}
     )
   `);
+
+  // insert 함수가 0을 반환하면 직접 조회
+  if (!id) {
+    const result = await query<{ id: number }>(`
+      SELECT id FROM cs_herbal_packages
+      WHERE patient_id = ${pkg.patient_id} AND created_at = ${escapeString(now)}
+      ORDER BY id DESC LIMIT 1
+    `);
+    if (result && result.length > 0) {
+      return result[0].id;
+    }
+    throw new Error('한약 패키지 생성 실패');
+  }
+  return id;
 }
 
 export async function useHerbalPackage(id: number, nextDeliveryDate?: string): Promise<void> {
@@ -654,6 +722,13 @@ export async function useHerbalPackage(id: number, nextDeliveryDate?: string): P
       updated_at = ${escapeString(now)}
     WHERE id = ${id}
   `);
+}
+
+export async function getHerbalPackageById(id: number): Promise<HerbalPackage | null> {
+  const results = await query<HerbalPackage>(
+    `SELECT * FROM cs_herbal_packages WHERE id = ${id}`
+  );
+  return results[0] || null;
 }
 
 export async function updateHerbalPackage(id: number, updates: Partial<HerbalPackage>): Promise<void> {
@@ -1149,18 +1224,21 @@ export async function addReceiptMemo(data: {
   chart_number?: string;
   patient_name?: string;
   mssql_receipt_id?: number;
+  mssql_detail_id?: number;
   receipt_date: string;
   memo: string;
+  herbal_package_id?: number;
+  herbal_pickup_id?: number;
 }): Promise<number> {
   const now = getCurrentTimestamp();
   return insert(`
     INSERT INTO cs_receipt_memos (
-      patient_id, chart_number, patient_name, mssql_receipt_id, receipt_date,
-      memo, reservation_status, is_completed, created_at, updated_at
+      patient_id, chart_number, patient_name, mssql_receipt_id, mssql_detail_id, receipt_date,
+      memo, reservation_status, is_completed, herbal_package_id, herbal_pickup_id, created_at, updated_at
     ) VALUES (
       ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
-      ${data.mssql_receipt_id || 'NULL'}, ${escapeString(data.receipt_date)},
-      ${toSqlValue(data.memo)}, 'none', 0,
+      ${data.mssql_receipt_id || 'NULL'}, ${data.mssql_detail_id || 'NULL'}, ${escapeString(data.receipt_date)},
+      ${toSqlValue(data.memo)}, 'none', 0, ${data.herbal_package_id || 'NULL'}, ${data.herbal_pickup_id || 'NULL'},
       ${escapeString(now)}, ${escapeString(now)}
     )
   `);
@@ -2395,6 +2473,218 @@ export async function setMedicinePurposes(purposes: string[]): Promise<void> {
 }
 
 /**
+ * 한약 치료목적 옵션 조회
+ */
+export async function getHerbalPurposes(): Promise<string[]> {
+  const value = await getCsSetting('herbal_purposes');
+  if (value) {
+    try {
+      const purposes = JSON.parse(value);
+      if (Array.isArray(purposes)) return purposes;
+    } catch {
+      // JSON 파싱 실패
+    }
+  }
+  return ['보약', '다이어트', '여성', '임신출산', '피부', '소화기', '머리'];
+}
+
+/**
+ * 한약 치료목적 옵션 저장
+ */
+export async function setHerbalPurposes(purposes: string[]): Promise<void> {
+  await setCsSetting('herbal_purposes', JSON.stringify(purposes), '한약 치료목적 옵션');
+}
+
+// ============================================================
+// 녹용 종류 옵션
+// ============================================================
+
+/**
+ * 녹용 종류 옵션 조회
+ */
+export async function getNokryongTypes(): Promise<string[]> {
+  const value = await getCsSetting('nokryong_types');
+  if (value) {
+    try {
+      const types = JSON.parse(value);
+      if (Array.isArray(types) && types.length > 0) {
+        return types;
+      }
+    } catch {
+      // ignore parse error
+    }
+  }
+  return ['원대', '분골', '상대', '특상대'];  // 기본값
+}
+
+/**
+ * 녹용 종류 옵션 저장
+ */
+export async function setNokryongTypes(types: string[]): Promise<void> {
+  await setCsSetting('nokryong_types', JSON.stringify(types), '녹용 종류 옵션');
+}
+
+// ============================================================
+// 한약 질환명 태그 (테이블 기반)
+// ============================================================
+
+export interface HerbalDiseaseTag {
+  id: number;
+  name: string;
+  created_at?: string;
+}
+
+// 테이블 생성
+let diseaseTagsTableReady = false;
+async function ensureHerbalDiseaseTagsTable(): Promise<void> {
+  if (diseaseTagsTableReady) return;
+
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_herbal_disease_tags (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(100) NOT NULL UNIQUE,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `).catch(() => {});
+
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_herbal_package_diseases (
+      id SERIAL PRIMARY KEY,
+      package_id INTEGER NOT NULL REFERENCES cs_herbal_packages(id) ON DELETE CASCADE,
+      disease_tag_id INTEGER NOT NULL REFERENCES cs_herbal_disease_tags(id) ON DELETE CASCADE,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(package_id, disease_tag_id)
+    )
+  `).catch(() => {});
+
+  diseaseTagsTableReady = true;
+}
+
+// 초기화 호출
+ensureHerbalDiseaseTagsTable();
+
+/**
+ * 모든 질환명 태그 조회
+ */
+export async function getHerbalDiseaseTags(): Promise<HerbalDiseaseTag[]> {
+  await ensureHerbalDiseaseTagsTable();
+
+  const result = await query<HerbalDiseaseTag>(`
+    SELECT id, name, created_at
+    FROM cs_herbal_disease_tags
+    ORDER BY name
+  `);
+  return result || [];
+}
+
+/**
+ * 질환명 태그 생성
+ */
+export async function createHerbalDiseaseTag(name: string): Promise<number> {
+  await ensureHerbalDiseaseTagsTable();
+
+  const id = await insert(`
+    INSERT INTO cs_herbal_disease_tags (name)
+    VALUES (${escapeString(name)})
+    ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+    RETURNING id
+  `);
+
+  if (!id) {
+    // RETURNING이 작동하지 않은 경우, SELECT로 ID 조회
+    const result = await query<{ id: number }>(`
+      SELECT id FROM cs_herbal_disease_tags WHERE name = ${escapeString(name)}
+    `);
+    if (result && result.length > 0) {
+      return result[0].id;
+    }
+    throw new Error('질환명 태그 생성 실패');
+  }
+  return id;
+}
+
+/**
+ * 질환명 태그 수정
+ */
+export async function updateHerbalDiseaseTag(id: number, name: string): Promise<void> {
+  await ensureHerbalDiseaseTagsTable();
+
+  await execute(`
+    UPDATE cs_herbal_disease_tags
+    SET name = ${escapeString(name)}
+    WHERE id = ${id}
+  `);
+}
+
+/**
+ * 질환명 태그 삭제
+ */
+export async function deleteHerbalDiseaseTag(id: number): Promise<void> {
+  await ensureHerbalDiseaseTagsTable();
+  await execute(`DELETE FROM cs_herbal_disease_tags WHERE id = ${id}`);
+}
+
+/**
+ * 한약 패키지에 연결된 질환명 태그 조회
+ */
+export async function getPackageDiseaseTags(packageId: number): Promise<HerbalDiseaseTag[]> {
+  await ensureHerbalDiseaseTagsTable();
+
+  const result = await query<HerbalDiseaseTag>(`
+    SELECT t.id, t.name, t.created_at
+    FROM cs_herbal_disease_tags t
+    JOIN cs_herbal_package_diseases pd ON pd.disease_tag_id = t.id
+    WHERE pd.package_id = ${packageId}
+    ORDER BY t.name
+  `);
+  return result || [];
+}
+
+/**
+ * 한약 패키지에 질환명 태그 연결
+ */
+export async function setPackageDiseaseTags(packageId: number, diseaseTagIds: number[]): Promise<void> {
+  await ensureHerbalDiseaseTagsTable();
+
+  // 기존 연결 삭제
+  await execute(`DELETE FROM cs_herbal_package_diseases WHERE package_id = ${packageId}`);
+
+  // 새 연결 추가
+  for (const tagId of diseaseTagIds) {
+    await execute(`
+      INSERT INTO cs_herbal_package_diseases (package_id, disease_tag_id)
+      VALUES (${packageId}, ${tagId})
+      ON CONFLICT DO NOTHING
+    `);
+  }
+}
+
+/**
+ * 이름으로 질환명 태그 찾기 또는 생성
+ */
+export async function findOrCreateDiseaseTag(name: string): Promise<number> {
+  await ensureHerbalDiseaseTagsTable();
+
+  const result = await query<{ id: number }>(`
+    SELECT id FROM cs_herbal_disease_tags WHERE name = ${escapeString(name)}
+  `);
+  if (result && result.length > 0) {
+    return result[0].id;
+  }
+  return createHerbalDiseaseTag(name);
+}
+
+// 하위 호환용 (기존 코드 지원)
+export async function getHerbalDiseases(): Promise<string[]> {
+  const tags = await getHerbalDiseaseTags();
+  return tags.map(t => t.name);
+}
+
+export async function addHerbalDisease(disease: string): Promise<number> {
+  return findOrCreateDiseaseTag(disease);
+}
+
+/**
  * 멤버십 종류 옵션 조회
  */
 export async function getMembershipTypes(): Promise<string[]> {
@@ -2568,4 +2858,205 @@ export async function reorderPackageTypes(orderedIds: number[]): Promise<boolean
     console.error('패키지 종류 순서 변경 오류:', error);
     return false;
   }
+}
+
+// ============================================
+// 녹용 패키지 API
+// ============================================
+
+export async function getNokryongPackages(patientId: number): Promise<NokryongPackage[]> {
+  return query<NokryongPackage>(
+    `SELECT * FROM cs_nokryong_packages WHERE patient_id = ${patientId} ORDER BY created_at DESC`
+  );
+}
+
+export async function getActiveNokryongPackages(patientId: number): Promise<NokryongPackage[]> {
+  return query<NokryongPackage>(
+    `SELECT * FROM cs_nokryong_packages WHERE patient_id = ${patientId} AND status = 'active' ORDER BY created_at DESC`
+  );
+}
+
+export async function createNokryongPackage(pkg: Omit<NokryongPackage, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
+  const now = getCurrentTimestamp();
+  return insert(`
+    INSERT INTO cs_nokryong_packages (
+      patient_id, chart_number, patient_name, package_name, total_months, remaining_months,
+      start_date, expire_date, memo, status, mssql_detail_id, created_at, updated_at
+    ) VALUES (
+      ${pkg.patient_id}, ${toSqlValue(pkg.chart_number)}, ${toSqlValue(pkg.patient_name)},
+      ${toSqlValue(pkg.package_name)}, ${pkg.total_months}, ${pkg.remaining_months},
+      ${escapeString(pkg.start_date)}, ${toSqlValue(pkg.expire_date)},
+      ${toSqlValue(pkg.memo)}, ${escapeString(pkg.status)}, ${toSqlValue(pkg.mssql_detail_id)},
+      ${escapeString(now)}, ${escapeString(now)}
+    )
+  `);
+}
+
+export async function useNokryongPackage(id: number): Promise<void> {
+  const now = getCurrentTimestamp();
+  await execute(`
+    UPDATE cs_nokryong_packages SET
+      remaining_months = remaining_months - 1,
+      status = CASE WHEN remaining_months - 1 <= 0 THEN 'completed' ELSE status END,
+      updated_at = ${escapeString(now)}
+    WHERE id = ${id}
+  `);
+}
+
+export async function updateNokryongPackage(id: number, updates: Partial<NokryongPackage>): Promise<void> {
+  const parts: string[] = [];
+  if (updates.package_name !== undefined) parts.push(`package_name = ${toSqlValue(updates.package_name)}`);
+  if (updates.total_months !== undefined) parts.push(`total_months = ${updates.total_months}`);
+  if (updates.remaining_months !== undefined) parts.push(`remaining_months = ${updates.remaining_months}`);
+  if (updates.expire_date !== undefined) parts.push(`expire_date = ${toSqlValue(updates.expire_date)}`);
+  if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
+  if (updates.status !== undefined) parts.push(`status = ${escapeString(updates.status)}`);
+  parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
+
+  await execute(`UPDATE cs_nokryong_packages SET ${parts.join(', ')} WHERE id = ${id}`);
+}
+
+export async function deleteNokryongPackage(id: number): Promise<void> {
+  await execute(`DELETE FROM cs_nokryong_packages WHERE id = ${id}`);
+}
+
+// ============================================
+// 한약 수령 기록 API
+// ============================================
+
+export async function getHerbalPickups(patientId: number, limit?: number): Promise<HerbalPickup[]> {
+  let sql = `SELECT * FROM cs_herbal_pickups WHERE patient_id = ${patientId} ORDER BY pickup_date DESC, created_at DESC`;
+  if (limit) {
+    sql += ` LIMIT ${limit}`;
+  }
+  return query<HerbalPickup>(sql);
+}
+
+export async function getHerbalPickupsByPackage(packageId: number): Promise<HerbalPickup[]> {
+  return query<HerbalPickup>(
+    `SELECT * FROM cs_herbal_pickups WHERE package_id = ${packageId} ORDER BY round_number ASC`
+  );
+}
+
+export async function getHerbalPickupById(id: number): Promise<HerbalPickup | null> {
+  const results = await query<HerbalPickup>(
+    `SELECT * FROM cs_herbal_pickups WHERE id = ${id}`
+  );
+  return results[0] || null;
+}
+
+export async function getHerbalPickupByReceiptId(receiptId: number): Promise<HerbalPickup | null> {
+  const results = await query<HerbalPickup>(
+    `SELECT * FROM cs_herbal_pickups WHERE receipt_id = ${receiptId} ORDER BY created_at DESC LIMIT 1`
+  );
+  return results[0] || null;
+}
+
+export async function createHerbalPickup(data: Omit<HerbalPickup, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
+  const now = getCurrentTimestamp();
+  const pickupId = await insert(`
+    INSERT INTO cs_herbal_pickups (
+      package_id, patient_id, chart_number, patient_name, round_id, receipt_id, pickup_date,
+      round_number, delivery_method, with_nokryong, nokryong_package_id, memo, created_at, updated_at
+    ) VALUES (
+      ${data.package_id}, ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
+      ${toSqlValue(data.round_id)}, ${toSqlValue(data.receipt_id)}, ${escapeString(data.pickup_date)},
+      ${data.round_number}, ${escapeString(data.delivery_method)}, ${data.with_nokryong},
+      ${toSqlValue(data.nokryong_package_id)}, ${toSqlValue(data.memo)},
+      ${escapeString(now)}, ${escapeString(now)}
+    )
+  `);
+
+  // 한약 패키지 차감
+  await useHerbalPackage(data.package_id);
+
+  // 녹용 추가인 경우 녹용 패키지도 차감
+  if (data.with_nokryong && data.nokryong_package_id) {
+    await useNokryongPackage(data.nokryong_package_id);
+  }
+
+  return pickupId;
+}
+
+export async function updateHerbalPickup(
+  id: number,
+  updates: {
+    delivery_method?: string;
+    with_nokryong?: boolean;
+    nokryong_package_id?: number | null;
+    memo?: string;
+  },
+  previousNokryongId?: number | null
+): Promise<void> {
+  const now = getCurrentTimestamp();
+  const parts: string[] = [];
+
+  if (updates.delivery_method !== undefined) parts.push(`delivery_method = ${escapeString(updates.delivery_method)}`);
+  if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
+
+  // 녹용 변경 처리
+  if (updates.with_nokryong !== undefined) {
+    parts.push(`with_nokryong = ${updates.with_nokryong}`);
+    parts.push(`nokryong_package_id = ${updates.nokryong_package_id || 'NULL'}`);
+
+    // 이전에 녹용이 있었는데 제거된 경우 → 녹용 패키지 복원
+    if (previousNokryongId && (!updates.with_nokryong || !updates.nokryong_package_id)) {
+      await execute(`
+        UPDATE cs_nokryong_packages SET
+          remaining_months = remaining_months + 1,
+          status = 'active',
+          updated_at = ${escapeString(now)}
+        WHERE id = ${previousNokryongId}
+      `);
+    }
+    // 새로 녹용이 추가된 경우 → 녹용 패키지 차감
+    else if (updates.with_nokryong && updates.nokryong_package_id && updates.nokryong_package_id !== previousNokryongId) {
+      // 이전 녹용 패키지 복원
+      if (previousNokryongId) {
+        await execute(`
+          UPDATE cs_nokryong_packages SET
+            remaining_months = remaining_months + 1,
+            status = 'active',
+            updated_at = ${escapeString(now)}
+          WHERE id = ${previousNokryongId}
+        `);
+      }
+      // 새 녹용 패키지 차감
+      await useNokryongPackage(updates.nokryong_package_id);
+    }
+  }
+
+  parts.push(`updated_at = ${escapeString(now)}`);
+
+  await execute(`UPDATE cs_herbal_pickups SET ${parts.join(', ')} WHERE id = ${id}`);
+}
+
+export async function deleteHerbalPickup(id: number): Promise<void> {
+  // 삭제 전에 패키지/녹용 복원을 위해 정보 조회
+  const pickup = await queryOne<HerbalPickup>(`SELECT * FROM cs_herbal_pickups WHERE id = ${id}`);
+  if (!pickup) return;
+
+  // 한약 패키지 복원
+  await execute(`
+    UPDATE cs_herbal_packages SET
+      used_count = used_count - 1,
+      remaining_count = remaining_count + 1,
+      status = 'active',
+      updated_at = ${escapeString(getCurrentTimestamp())}
+    WHERE id = ${pickup.package_id}
+  `);
+
+  // 녹용 패키지 복원
+  if (pickup.with_nokryong && pickup.nokryong_package_id) {
+    await execute(`
+      UPDATE cs_nokryong_packages SET
+        remaining_months = remaining_months + 1,
+        status = 'active',
+        updated_at = ${escapeString(getCurrentTimestamp())}
+      WHERE id = ${pickup.nokryong_package_id}
+    `);
+  }
+
+  // 수령 기록 삭제
+  await execute(`DELETE FROM cs_herbal_pickups WHERE id = ${id}`);
 }

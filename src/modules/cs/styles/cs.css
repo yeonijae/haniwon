@@ -10229,6 +10229,28 @@
   background: rgba(0, 0, 0, 0.1);
 }
 
+.memo-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.memo-input-action-btn {
+  background: none;
+  border: none;
+  color: #22c55e;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 16px;
+  transition: all 0.15s;
+}
+
+.memo-input-action-btn:hover {
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+}
+
 .memo-input-body {
   padding: 10px 12px;
 }
@@ -12370,6 +12392,16 @@
   color: #1f2937;
 }
 
+.side-panel-header .header-btn.herbal-btn {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.side-panel-header .header-btn.herbal-btn:hover {
+  background: #bbf7d0;
+  color: #15803d;
+}
+
 .side-panel-header .patient-name {
   font-size: 18px;
   font-weight: 700;
@@ -13112,3 +13144,974 @@
   font-size: 13px;
 }
 
+/* ============================================ */
+/* 한약 통합 UI 스타일                           */
+/* ============================================ */
+
+.herbal-unified-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 현황 박스 */
+.herbal-status-box {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.herbal-status-box .status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.herbal-status-box .status-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.herbal-status-box .btn-add-small {
+  font-size: 11px;
+  padding: 3px 8px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.herbal-status-box .btn-add-small:hover {
+  background: #059669;
+}
+
+.herbal-status-box .empty-msg-small {
+  font-size: 11px;
+  color: #9ca3af;
+  text-align: center;
+  padding: 8px 0;
+  margin: 0;
+}
+
+/* 선결제 패키지 리스트 */
+.herbal-package-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.herbal-package-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.herbal-package-item:hover {
+  border-color: #10b981;
+}
+
+.herbal-package-item.selected {
+  border-color: #10b981;
+  background: #ecfdf5;
+}
+
+.herbal-package-item .pkg-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.herbal-package-item .pkg-type {
+  font-size: 11px;
+  color: #6b7280;
+  padding: 2px 6px;
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+.herbal-package-item .pkg-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: #059669;
+}
+
+.herbal-package-item .pkg-count.low {
+  color: #dc2626;
+}
+
+.herbal-package-item .btn-deduct-small {
+  font-size: 11px;
+  padding: 4px 8px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.herbal-package-item .btn-deduct-small:hover {
+  background: #2563eb;
+}
+
+/* 녹용 패키지 리스트 */
+.nokryong-package-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nokryong-package-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.nokryong-package-item:hover {
+  border-color: #f59e0b;
+}
+
+.nokryong-package-item.selected {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.nokryong-package-item .nok-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.nokryong-package-item .nok-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: #d97706;
+}
+
+.nokryong-package-item .nok-count.low {
+  color: #dc2626;
+}
+
+/* 액션 패널 - 아코디언 */
+.herbal-action-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.action-panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  overflow: hidden;
+}
+
+.action-panel .panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #f9fafb;
+  cursor: pointer;
+  user-select: none;
+}
+
+.action-panel .panel-header:hover {
+  background: #f3f4f6;
+}
+
+.action-panel .panel-icon {
+  font-size: 10px;
+  color: #6b7280;
+}
+
+.action-panel .panel-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.action-panel.expanded .panel-header {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.action-panel .panel-content {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 폼 행 */
+.herbal-unified-section .form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.herbal-unified-section .form-row > label {
+  min-width: 50px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.herbal-unified-section .form-row select {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+}
+
+.herbal-unified-section .form-row select:focus {
+  outline: none;
+  border-color: #10b981;
+}
+
+.herbal-unified-section .round-info,
+.herbal-unified-section .count-info {
+  font-size: 13px;
+  font-weight: 600;
+  color: #059669;
+}
+
+/* 배송 버튼 */
+.delivery-buttons,
+.period-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.delivery-btn,
+.period-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid #d1d5db;
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.delivery-btn:hover,
+.period-btn:hover {
+  background: #f3f4f6;
+}
+
+.delivery-btn.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+.period-btn.active {
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
+}
+
+/* 녹용 종류 버튼 */
+.nokryong-type-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.nokryong-type-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: #92400e;
+}
+
+.nokryong-type-btn:hover {
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+
+.nokryong-type-btn.active {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: white;
+  font-weight: 500;
+}
+
+/* 녹용 회분 입력 (MemoInputPanel) */
+.doses-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dose-quick-btn {
+  width: 40px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+}
+
+.dose-quick-btn:hover {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.dose-quick-btn.active {
+  border-color: #f59e0b;
+  background: #f59e0b;
+  color: white;
+  font-weight: 500;
+}
+
+.doses-input {
+  width: 60px !important;
+  height: 28px;
+  padding: 0 2px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.doses-input:focus {
+  outline: none;
+  border-color: #f59e0b;
+}
+
+.doses-unit {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* 체크박스 행 */
+.checkbox-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.checkbox-row .nok-remaining {
+  font-size: 11px;
+  color: #d97706;
+  margin-left: 4px;
+}
+
+/* 텍스트 입력 */
+.herbal-unified-section .input-text {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+}
+
+.herbal-unified-section .input-text:focus {
+  outline: none;
+  border-color: #10b981;
+}
+
+/* 질환명 태그 입력 */
+.disease-tag-input {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.disease-tag-input .selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.disease-tag-input .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: #d1fae5;
+  color: #065f46;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 12px;
+}
+
+.disease-tag-input .tag-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  background: #065f46;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.disease-tag-input .tag-remove:hover {
+  opacity: 1;
+}
+
+.disease-tag-input .tag-input-wrapper {
+  position: relative;
+}
+
+.disease-tag-input .tag-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.disease-tag-input .suggestion-item {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #374151;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.disease-tag-input .suggestion-item:hover {
+  background: #f3f4f6;
+}
+
+.disease-tag-input .suggestion-item.new-tag {
+  color: #10b981;
+  font-weight: 500;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.disease-tag-input .suggestion-item.new-tag i {
+  font-size: 10px;
+}
+
+/* 메인 액션 버튼 */
+.btn-action-main {
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-action-main:hover:not(:disabled) {
+  background: #059669;
+}
+
+.btn-action-main:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* 최근 수령 이력 */
+.herbal-history {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.herbal-history .history-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.herbal-history .history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.herbal-history .history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: white;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.herbal-history .h-date {
+  color: #6b7280;
+  min-width: 45px;
+}
+
+.herbal-history .h-name {
+  flex: 1;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.herbal-history .h-round {
+  color: #059669;
+}
+
+.herbal-history .h-delivery {
+  color: #6b7280;
+  padding: 2px 6px;
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+.herbal-history .h-nokryong {
+  color: #d97706;
+  font-weight: 500;
+}
+
+
+/* ========================================
+   등록 모달 (RegisterModal)
+   ======================================== */
+.register-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.register-modal {
+  background: white;
+  border-radius: 12px;
+  width: 420px;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.register-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.register-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.register-modal-header .btn-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: #f3f4f6;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.register-modal-header .btn-close:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.register-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.register-modal-body .form-group {
+  margin-bottom: 16px;
+}
+
+.register-modal-body .form-group:last-child {
+  margin-bottom: 0;
+}
+
+.register-modal-body .form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.register-modal-body .form-group label .optional {
+  font-weight: 400;
+  color: #9ca3af;
+  font-size: 11px;
+}
+
+.register-modal-body .form-group select,
+.register-modal-body .form-group input[type="text"],
+.register-modal-body .form-group input[type="number"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.register-modal-body .form-group select:focus,
+.register-modal-body .form-group input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.register-modal-body .form-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 16px 0;
+}
+
+/* 기간 버튼 그룹 */
+.register-modal-body .period-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.register-modal-body .period-btn {
+  flex: 1;
+  padding: 10px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+  color: #6b7280;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.register-modal-body .period-btn:hover {
+  border-color: #9ca3af;
+  background: #f9fafb;
+}
+
+.register-modal-body .period-btn.active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.register-modal-body .period-btn .period-count {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* 녹용 종류 버튼 */
+.register-modal-body .nokryong-type-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.register-modal-body .nokryong-type-btn {
+  flex: 1;
+  min-width: 60px;
+  padding: 10px 12px;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  background: #fffbeb;
+  cursor: pointer;
+  font-size: 13px;
+  color: #92400e;
+  text-align: center;
+}
+
+.register-modal-body .nokryong-type-btn:hover {
+  border-color: #f59e0b;
+  background: #fef3c7;
+}
+
+/* 녹용 회분 입력 */
+.register-modal-body .doses-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.register-modal-body .dose-quick-btn {
+  width: 40px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+  color: #374151;
+}
+
+.register-modal-body .dose-quick-btn:hover {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.register-modal-body .dose-quick-btn.active {
+  border-color: #f59e0b;
+  background: #f59e0b;
+  color: white;
+  font-weight: 500;
+}
+
+.register-modal-body .form-group .doses-input,
+.register-modal-body .doses-input {
+  width: 60px !important;
+  height: 32px;
+  padding: 0 2px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.register-modal-body .doses-input:focus {
+  outline: none;
+  border-color: #f59e0b;
+}
+
+.register-modal-body .doses-unit {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.register-modal-body .nokryong-type-btn.active {
+  border-color: #f59e0b;
+  background: #f59e0b;
+  color: white;
+  font-weight: 500;
+}
+
+/* 한약 탭 */
+.register-modal-body .herbal-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.register-modal-body .herbal-tab {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.register-modal-body .herbal-tab:hover {
+  background: #f9fafb;
+}
+
+.register-modal-body .herbal-tab.active {
+  border-color: #22c55e;
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.register-modal-body .herbal-tab i {
+  font-size: 12px;
+}
+
+/* 질환명 태그 */
+.register-modal-body .disease-tags-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.register-modal-body .selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.register-modal-body .disease-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.register-modal-body .disease-tag button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #3b82f6;
+  font-size: 10px;
+}
+
+.register-modal-body .disease-tag button:hover {
+  color: #1d4ed8;
+}
+
+.register-modal-body .disease-input-wrapper {
+  position: relative;
+}
+
+.register-modal-body .disease-input-wrapper input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.register-modal-body .disease-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  margin-top: 4px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+.register-modal-body .suggestion-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+}
+
+.register-modal-body .suggestion-item:hover {
+  background: #f3f4f6;
+}
+
+.register-modal-body .suggestion-item:first-child {
+  border-radius: 6px 6px 0 0;
+}
+
+.register-modal-body .suggestion-item:last-child {
+  border-radius: 0 0 6px 6px;
+}
+
+/* 모달 푸터 */
+.register-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.register-modal-footer .btn-cancel {
+  padding: 10px 20px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.register-modal-footer .btn-cancel:hover {
+  background: #f3f4f6;
+}
+
+.register-modal-footer .btn-register {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  background: #3b82f6;
+  cursor: pointer;
+  font-size: 13px;
+  color: white;
+  font-weight: 500;
+}
+
+.register-modal-footer .btn-register:hover {
+  background: #2563eb;
+}
+
+.register-modal-footer .btn-register:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}

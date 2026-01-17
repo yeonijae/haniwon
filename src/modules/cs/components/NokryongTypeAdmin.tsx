@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getMedicinePurposes, setMedicinePurposes } from '../lib/api';
+import { getNokryongTypes, setNokryongTypes } from '../lib/api';
 
-function MedicinePurposeAdmin() {
-  const [purposes, setPurposes] = useState<string[]>([]);
+function NokryongTypeAdmin() {
+  const [types, setTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [newPurpose, setNewPurpose] = useState('');
+  const [newType, setNewType] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
@@ -14,11 +14,11 @@ function MedicinePurposeAdmin() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getMedicinePurposes();
-      setPurposes(data);
+      const data = await getNokryongTypes();
+      setTypes(data);
       setHasChanges(false);
     } catch (error) {
-      console.error('사용목적 로드 오류:', error);
+      console.error('녹용 종류 로드 오류:', error);
     } finally {
       setLoading(false);
     }
@@ -30,47 +30,47 @@ function MedicinePurposeAdmin() {
 
   // 추가
   const handleAdd = () => {
-    const trimmed = newPurpose.trim();
+    const trimmed = newType.trim();
     if (!trimmed) {
-      alert('사용목적을 입력해주세요.');
+      alert('녹용 종류를 입력해주세요.');
       return;
     }
-    if (purposes.includes(trimmed)) {
-      alert('이미 존재하는 사용목적입니다.');
+    if (types.includes(trimmed)) {
+      alert('이미 존재하는 녹용 종류입니다.');
       return;
     }
-    setPurposes([...purposes, trimmed]);
-    setNewPurpose('');
+    setTypes([...types, trimmed]);
+    setNewType('');
     setHasChanges(true);
   };
 
   // 삭제
   const handleDelete = (index: number) => {
-    if (purposes.length <= 1) {
-      alert('최소 1개 이상의 사용목적이 필요합니다.');
+    if (types.length <= 1) {
+      alert('최소 1개 이상의 녹용 종류가 필요합니다.');
       return;
     }
-    if (!confirm(`'${purposes[index]}'를 삭제하시겠습니까?`)) return;
-    setPurposes(purposes.filter((_, i) => i !== index));
+    if (!confirm(`'${types[index]}'를 삭제하시겠습니까?`)) return;
+    setTypes(types.filter((_, i) => i !== index));
     setHasChanges(true);
   };
 
   // 순서 이동
   const handleMove = (index: number, direction: 'up' | 'down') => {
     if (direction === 'up' && index === 0) return;
-    if (direction === 'down' && index === purposes.length - 1) return;
+    if (direction === 'down' && index === types.length - 1) return;
 
     const newIndex = direction === 'up' ? index - 1 : index + 1;
-    const newPurposes = [...purposes];
-    [newPurposes[index], newPurposes[newIndex]] = [newPurposes[newIndex], newPurposes[index]];
-    setPurposes(newPurposes);
+    const newTypes = [...types];
+    [newTypes[index], newTypes[newIndex]] = [newTypes[newIndex], newTypes[index]];
+    setTypes(newTypes);
     setHasChanges(true);
   };
 
   // 수정 시작
   const handleEditStart = (index: number) => {
     setEditingIndex(index);
-    setEditValue(purposes[index]);
+    setEditValue(types[index]);
   };
 
   // 수정 취소
@@ -84,17 +84,17 @@ function MedicinePurposeAdmin() {
     if (editingIndex === null) return;
     const trimmed = editValue.trim();
     if (!trimmed) {
-      alert('사용목적을 입력해주세요.');
+      alert('녹용 종류를 입력해주세요.');
       return;
     }
     // 다른 항목과 중복 체크
-    if (purposes.some((p, i) => i !== editingIndex && p === trimmed)) {
-      alert('이미 존재하는 사용목적입니다.');
+    if (types.some((t, i) => i !== editingIndex && t === trimmed)) {
+      alert('이미 존재하는 녹용 종류입니다.');
       return;
     }
-    const newPurposes = [...purposes];
-    newPurposes[editingIndex] = trimmed;
-    setPurposes(newPurposes);
+    const newTypes = [...types];
+    newTypes[editingIndex] = trimmed;
+    setTypes(newTypes);
     setEditingIndex(null);
     setEditValue('');
     setHasChanges(true);
@@ -102,14 +102,14 @@ function MedicinePurposeAdmin() {
 
   // 저장
   const handleSave = async () => {
-    if (purposes.length === 0) {
-      alert('최소 1개 이상의 사용목적이 필요합니다.');
+    if (types.length === 0) {
+      alert('최소 1개 이상의 녹용 종류가 필요합니다.');
       return;
     }
 
     try {
       setSaving(true);
-      await setMedicinePurposes(purposes);
+      await setNokryongTypes(types);
       setHasChanges(false);
       alert('저장되었습니다.');
     } catch (error) {
@@ -122,7 +122,7 @@ function MedicinePurposeAdmin() {
 
   if (loading) {
     return (
-      <div className="medicine-purpose-admin">
+      <div className="nokryong-type-admin">
         <div className="admin-loading">
           <i className="fa-solid fa-spinner fa-spin"></i> 로딩 중...
         </div>
@@ -131,24 +131,21 @@ function MedicinePurposeAdmin() {
   }
 
   return (
-    <div className="medicine-purpose-admin">
+    <div className="nokryong-type-admin">
       <div className="admin-header">
         <h3>
-          <i className="fa-solid fa-pills"></i>
-          상비약 사용목적 관리
+          <i className="fa-solid fa-deer"></i>
+          녹용 종류
         </h3>
-        <p className="admin-description">
-          상비약 기록 시 선택할 수 있는 사용목적 옵션을 관리합니다.
-        </p>
       </div>
 
       {/* 새 항목 추가 */}
       <div className="admin-add-form">
         <input
           type="text"
-          placeholder="새 사용목적 입력"
-          value={newPurpose}
-          onChange={(e) => setNewPurpose(e.target.value)}
+          placeholder="새 녹용 종류 입력 (예: 원대, 분골)"
+          value={newType}
+          onChange={(e) => setNewType(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
         />
         <button className="btn-add" onClick={handleAdd}>
@@ -158,22 +155,22 @@ function MedicinePurposeAdmin() {
 
       {/* 목록 */}
       <div className="admin-list">
-        {purposes.length === 0 ? (
+        {types.length === 0 ? (
           <div className="admin-empty">
-            등록된 사용목적이 없습니다.
+            등록된 녹용 종류가 없습니다.
           </div>
         ) : (
           <table className="admin-table">
             <thead>
               <tr>
                 <th style={{ width: '40px' }}>#</th>
-                <th>사용목적</th>
+                <th>녹용 종류</th>
                 <th style={{ width: '120px' }}>순서</th>
                 <th style={{ width: '100px' }}>관리</th>
               </tr>
             </thead>
             <tbody>
-              {purposes.map((purpose, index) => (
+              {types.map((type, index) => (
                 <tr key={index}>
                   <td className="index-cell">{index + 1}</td>
                   {editingIndex === index ? (
@@ -190,7 +187,7 @@ function MedicinePurposeAdmin() {
                       />
                     </td>
                   ) : (
-                    <td>{purpose}</td>
+                    <td>{type}</td>
                   )}
                   <td>
                     <div className="order-actions">
@@ -205,7 +202,7 @@ function MedicinePurposeAdmin() {
                       <button
                         className="btn-move"
                         onClick={() => handleMove(index, 'down')}
-                        disabled={index === purposes.length - 1}
+                        disabled={index === types.length - 1}
                         title="아래로"
                       >
                         <i className="fa-solid fa-chevron-down"></i>
@@ -263,27 +260,29 @@ function MedicinePurposeAdmin() {
       </div>
 
       <style>{`
-        .medicine-purpose-admin {
+        .nokryong-type-admin {
           padding: 20px;
           max-width: 800px;
         }
 
         .admin-header {
           margin-bottom: 20px;
+          display: flex;
+          flex-direction: column;
         }
 
         .admin-header h3 {
-          margin: 0 0 8px 0;
-          font-size: 16px;
+          margin: 0 0 4px 0;
+          font-size: 15px;
           font-weight: 600;
           color: #1f2937;
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
         }
 
         .admin-header h3 i {
-          color: #3b82f6;
+          color: #f59e0b;
         }
 
         .admin-description {
@@ -303,7 +302,7 @@ function MedicinePurposeAdmin() {
           gap: 8px;
           margin-bottom: 16px;
           padding: 12px;
-          background: #f9fafb;
+          background: #fffbeb;
           border-radius: 8px;
         }
 
@@ -317,12 +316,12 @@ function MedicinePurposeAdmin() {
 
         .admin-add-form input:focus {
           outline: none;
-          border-color: #3b82f6;
+          border-color: #f59e0b;
         }
 
         .admin-add-form .btn-add {
           padding: 8px 16px;
-          background: #3b82f6;
+          background: #f59e0b;
           color: white;
           border: none;
           border-radius: 6px;
@@ -334,7 +333,7 @@ function MedicinePurposeAdmin() {
         }
 
         .admin-add-form .btn-add:hover {
-          background: #2563eb;
+          background: #d97706;
         }
 
         .admin-empty {
@@ -354,10 +353,10 @@ function MedicinePurposeAdmin() {
         .admin-table th {
           padding: 10px 12px;
           text-align: left;
-          background: #f3f4f6;
+          background: #fef3c7;
           font-weight: 600;
-          color: #374151;
-          border-bottom: 1px solid #e5e7eb;
+          color: #92400e;
+          border-bottom: 1px solid #fcd34d;
         }
 
         .admin-table td {
@@ -366,13 +365,13 @@ function MedicinePurposeAdmin() {
         }
 
         .admin-table tr:hover {
-          background: #f9fafb;
+          background: #fffbeb;
         }
 
         .admin-table input {
           width: 100%;
           padding: 6px 10px;
-          border: 1px solid #3b82f6;
+          border: 1px solid #f59e0b;
           border-radius: 4px;
           font-size: 13px;
         }
@@ -448,12 +447,12 @@ function MedicinePurposeAdmin() {
         }
 
         .btn-save {
-          background: #dcfce7;
-          color: #166534;
+          background: #fef3c7;
+          color: #92400e;
         }
 
         .btn-save:hover {
-          background: #bbf7d0;
+          background: #fde68a;
         }
 
         .btn-cancel {
@@ -489,13 +488,13 @@ function MedicinePurposeAdmin() {
         }
 
         .btn-save-all.has-changes {
-          background: #3b82f6;
+          background: #f59e0b;
           color: white;
           cursor: pointer;
         }
 
         .btn-save-all.has-changes:hover {
-          background: #2563eb;
+          background: #d97706;
         }
 
         .unsaved-note {
@@ -507,4 +506,4 @@ function MedicinePurposeAdmin() {
   );
 }
 
-export default MedicinePurposeAdmin;
+export default NokryongTypeAdmin;

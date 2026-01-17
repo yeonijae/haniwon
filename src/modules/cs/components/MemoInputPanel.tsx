@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { query, execute, escapeString, insert, getCurrentDate } from '@shared/lib/postgres';
-import { addReceiptMemo, createYakchimUsageRecord, updateYakchimUsageRecord, updateMedicineUsage, deleteMedicineUsage, createTreatmentPackage, updateTreatmentPackage, deleteTreatmentPackage, createMembership, updateMembership, deleteMembership, getPackageTypes, getMembershipTypes, type PackageType } from '../lib/api';
-import type { MedicineUsage, YakchimUsageRecord, TreatmentPackage, Membership as MembershipType } from '../types';
+import { addReceiptMemo, updateReceiptMemoById, createYakchimUsageRecord, updateYakchimUsageRecord, updateMedicineUsage, deleteMedicineUsage, createTreatmentPackage, updateTreatmentPackage, deleteTreatmentPackage, createMembership, updateMembership, deleteMembership, getPackageTypes, getMembershipTypes, type PackageType, getActiveHerbalPackages, getActiveNokryongPackages, createHerbalPackage, createNokryongPackage, createHerbalPickup, updateHerbalPickup, deleteHerbalPickup, getHerbalPickups, getHerbalPurposes, getNokryongTypes, getHerbalDiseaseTags, findOrCreateDiseaseTag, setPackageDiseaseTags, useNokryongPackage, getHerbalPackageById, type HerbalDiseaseTag } from '../lib/api';
+import type { MedicineUsage, YakchimUsageRecord, TreatmentPackage, Membership as MembershipType, HerbalPackage as HerbalPackageType, NokryongPackage, HerbalPickup, DeliveryMethod } from '../types';
+import { PACKAGE_TYPE_LABELS, DELIVERY_METHOD_LABELS, HERBAL_PACKAGE_ROUNDS } from '../types';
+
+// 한약 패널 모드
+type HerbalPanelMode = 'deduct-herbal' | 'deduct-nokryong' | 'register' | 'register-nokryong';
 
 interface MemoInputPanelProps {
   patientId: number;
@@ -17,6 +21,8 @@ interface MemoInputPanelProps {
   yakchimEditData?: YakchimUsageRecord;  // 약침 수정 모드용
   packageEditData?: TreatmentPackage;    // 패키지 수정 모드용
   membershipEditData?: MembershipType;   // 멤버십 수정 모드용
+  herbalMode?: HerbalPanelMode;          // 한약 패널 모드
+  herbalPickupEditData?: HerbalPickup & { memoId?: number };  // 한약 차감 수정 모드용
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -50,16 +56,25 @@ interface MedicineStock {
   current_stock: number;
 }
 
-// 한약 패키지 타입
+// 한약 패키지 타입 (로컬 인터페이스)
 interface HerbalPackage {
   id: number;
-  package_type: string;
+  patient_id: number;
+  chart_number?: string;
+  patient_name?: string;
   herbal_name?: string;
+  package_type: '1month' | '2month' | '3month' | '6month';
   total_count: number;
   used_count: number;
   remaining_count: number;
-  status: string;
+  start_date: string;
+  next_delivery_date?: string;
+  memo?: string;
+  status: 'active' | 'completed';
 }
+
+// 한약 섹션 액션 모드
+type HerbalActionMode = 'deduct' | 'register' | 'register-nokryong';
 
 const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
   patientId,
@@ -75,6 +90,8 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
   yakchimEditData,
   packageEditData,
   membershipEditData,
+  herbalMode = 'deduct-herbal',
+  herbalPickupEditData,
   onClose,
   onSuccess,
 }) => {
@@ -82,6 +99,7 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
   const isYakchimEditMode = !!yakchimEditData;
   const isMembershipEditMode = !!membershipEditData;
   const isPackageEditMode = !!packageEditData;
+  const isHerbalPickupEditMode = !!herbalPickupEditData;
 
   // 포인트 패키지 여부 (비급여 항목명에 "포인트" 포함 시)
   const isPointPackage = itemType === 'package-register' && itemName.includes('포인트');
@@ -162,9 +180,38 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
 
   // 한약 상태
   const [herbalPackages, setHerbalPackages] = useState<HerbalPackage[]>([]);
-  const [herbalAction, setHerbalAction] = useState<'dispense' | 'pickup'>('dispense');
+  const [nokryongPackages, setNokryongPackages] = useState<NokryongPackage[]>([]);
+  const [herbalPickups, setHerbalPickups] = useState<HerbalPickup[]>([]);
+  // herbalMode에 따른 초기 액션 모드 결정
+  const getInitialHerbalActionMode = (): HerbalActionMode => {
+    if (herbalMode === 'register') return 'register';
+    if (herbalMode === 'register-nokryong') return 'register-nokryong';  // 녹용 등록 모드
+    if (herbalMode === 'deduct-nokryong') return 'deduct';  // 녹용 차감도 deduct 모드 사용
+    return 'deduct';  // deduct-herbal
+  };
+  const [herbalActionMode, setHerbalActionMode] = useState<HerbalActionMode>(getInitialHerbalActionMode());
   const [selectedHerbal, setSelectedHerbal] = useState<HerbalPackage | null>(null);
-  const [herbalQty, setHerbalQty] = useState(1);
+  const [selectedNokryong, setSelectedNokryong] = useState<NokryongPackage | null>(null);
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>(
+    herbalPickupEditData?.delivery_method || 'pickup'
+  );
+  const [withNokryong, setWithNokryong] = useState(herbalPickupEditData?.with_nokryong || false);
+  // 차감 수정 모드: 연결된 패키지 정보
+  const [editPickupPackage, setEditPickupPackage] = useState<HerbalPackage | null>(null);
+  // 선결제 등록 폼
+  const [herbalPurposes, setHerbalPurposes] = useState<string[]>([]);
+  const [selectedHerbalPurpose, setSelectedHerbalPurpose] = useState('');
+  const [newHerbalPackageType, setNewHerbalPackageType] = useState<'1month' | '2month' | '3month' | '6month'>('1month');
+  const [newHerbalMemo, setNewHerbalMemo] = useState('');
+  // 질환명 태그
+  const [availableDiseaseTags, setAvailableDiseaseTags] = useState<HerbalDiseaseTag[]>([]);
+  const [selectedDiseaseTags, setSelectedDiseaseTags] = useState<{ id?: number; name: string }[]>([]);
+  const [diseaseInput, setDiseaseInput] = useState('');
+  const [showDiseaseSuggestions, setShowDiseaseSuggestions] = useState(false);
+  // 녹용 등록 폼
+  const [nokryongTypeOptions, setNokryongTypeOptions] = useState<string[]>([]);
+  const [selectedNokryongType, setSelectedNokryongType] = useState('');
+  const [newNokryongDoses, setNewNokryongDoses] = useState(1); // 회분
 
   // 패키지 등록 상태
   const [packageCount, setPackageCount] = useState(10);  // 기본 10회
@@ -204,6 +251,56 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
       loadMembershipTypes();
     }
   }, [itemType]);
+
+  // 한약 치료목적 로드
+  useEffect(() => {
+    const loadHerbalPurposes = async () => {
+      try {
+        const purposes = await getHerbalPurposes();
+        setHerbalPurposes(purposes);
+        if (purposes.length > 0 && !selectedHerbalPurpose) {
+          setSelectedHerbalPurpose(purposes[0]);
+        }
+      } catch (err) {
+        console.error('한약 치료목적 로드 실패:', err);
+      }
+    };
+    const loadHerbalDiseases = async () => {
+      try {
+        const tags = await getHerbalDiseaseTags();
+        setAvailableDiseaseTags(tags);
+      } catch (err) {
+        console.error('한약 질환명 로드 실패:', err);
+      }
+    };
+    const loadNokryongTypes = async () => {
+      try {
+        const types = await getNokryongTypes();
+        setNokryongTypeOptions(types);
+        if (types.length > 0 && !selectedNokryongType) {
+          setSelectedNokryongType(types[0]);
+        }
+      } catch (err) {
+        console.error('녹용 종류 로드 실패:', err);
+      }
+    };
+    if (itemType === 'herbal') {
+      loadHerbalPurposes();
+      loadHerbalDiseases();
+      loadNokryongTypes();
+    }
+  }, [itemType]);
+
+  // 차감 수정 모드: 연결된 패키지 정보 로드
+  useEffect(() => {
+    const loadEditPickupPackage = async () => {
+      if (isHerbalPickupEditMode && herbalPickupEditData?.package_id) {
+        const pkg = await getHerbalPackageById(herbalPickupEditData.package_id);
+        setEditPickupPackage(pkg);
+      }
+    };
+    loadEditPickupPackage();
+  }, [isHerbalPickupEditMode, herbalPickupEditData?.package_id]);
 
   // 패키지 종류 로드 (차감형만)
   useEffect(() => {
@@ -353,14 +450,25 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
         setMedicineStocks(medicineData);
 
       } else if (itemType === 'herbal') {
-        // 한약 패키지 조회 (MSSQL patient_id 사용)
-        const herbalData = await query<HerbalPackage>(`
-          SELECT id, package_type, herbal_name, total_count, used_count, remaining_count, status
-          FROM cs_herbal_packages
-          WHERE patient_id = ${patientId} AND status = 'active' AND remaining_count > 0
-          ORDER BY created_at DESC
-        `);
-        setHerbalPackages(herbalData);
+        // 한약 패키지 조회
+        const herbalData = await getActiveHerbalPackages(patientId);
+        setHerbalPackages(herbalData as HerbalPackage[]);
+        // 첫 번째 활성 패키지 자동 선택
+        if (herbalData.length > 0) {
+          setSelectedHerbal(herbalData[0] as HerbalPackage);
+        }
+
+        // 녹용 패키지 조회
+        const nokryongData = await getActiveNokryongPackages(patientId);
+        setNokryongPackages(nokryongData);
+        // 첫 번째 활성 녹용 패키지 자동 선택
+        if (nokryongData.length > 0) {
+          setSelectedNokryong(nokryongData[0]);
+        }
+
+        // 최근 수령 이력 조회 (최근 5개)
+        const pickupData = await getHerbalPickups(patientId, 5);
+        setHerbalPickups(pickupData);
       }
     } catch (err) {
       console.error('데이터 로드 오류:', err);
@@ -899,56 +1007,275 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
   };
 
   // 한약 처리
-  const handleHerbalProcess = async () => {
+  // 한약 선결제 차감 (수령 기록)
+  const handleHerbalDeduct = async () => {
     if (!selectedHerbal) {
-      alert('한약 패키지를 선택해주세요.');
+      alert('차감할 선결제 패키지를 선택해주세요.');
       return;
     }
-    if (herbalQty <= 0 || herbalQty > selectedHerbal.remaining_count) {
-      alert('올바른 수량을 입력해주세요.');
+    if (selectedHerbal.remaining_count <= 0) {
+      alert('해당 패키지의 잔여 회차가 없습니다.');
+      return;
+    }
+    if (withNokryong && !selectedNokryong) {
+      alert('녹용 추가를 선택했지만 녹용 패키지가 없습니다.');
+      return;
+    }
+    if (withNokryong && selectedNokryong && selectedNokryong.remaining_months <= 0) {
+      alert('녹용 패키지의 잔여 회분이 없습니다.');
       return;
     }
 
     setIsSaving(true);
     try {
-      const newRemaining = selectedHerbal.remaining_count - herbalQty;
-      const newUsed = selectedHerbal.used_count + herbalQty;
-      const newStatus = newRemaining <= 0 ? 'completed' : 'active';
+      const nextRound = selectedHerbal.used_count + 1;
 
-      // 패키지 업데이트
-      await execute(`
-        UPDATE cs_herbal_packages
-        SET used_count = ${newUsed},
-            remaining_count = ${newRemaining},
-            status = ${escapeString(newStatus)},
-            updated_at = NOW()
-        WHERE id = ${selectedHerbal.id}
-      `);
+      // 수령 기록 생성 (API가 패키지/녹용 자동 차감)
+      const pickupId = await createHerbalPickup({
+        package_id: selectedHerbal.id,
+        patient_id: patientId,
+        chart_number: chartNumber,
+        patient_name: patientName,
+        pickup_date: receiptDate,
+        round_number: nextRound,
+        delivery_method: deliveryMethod,
+        with_nokryong: withNokryong,
+        nokryong_package_id: withNokryong ? selectedNokryong?.id : undefined,
+        receipt_id: receiptId,
+      });
 
-      // 처리 기록 추가 (MSSQL patient_id 사용 - 다른 메모 테이블과 일관성)
-      await insert(`
-        INSERT INTO cs_herbal_dispensings
-        (patient_id, chart_number, patient_name, package_id, package_name, packs, dispensing_type, dispensing_date, receipt_id, mssql_detail_id, created_at)
-        VALUES (
-          ${patientId},
-          ${escapeString(chartNumber)},
-          ${escapeString(patientName)},
-          ${selectedHerbal.id},
-          ${escapeString(selectedHerbal.package_type)},
-          ${herbalQty},
-          ${escapeString(herbalAction)},
-          ${escapeString(receiptDate)},
-          ${receiptId},
-          ${detailId || 'NULL'},
-          NOW()
-        )
-      `);
+      // 메모 생성: "선결(총회차-현재회차)" 예: "선결(6-1)"
+      let memoText = `선결(${selectedHerbal.total_count}-${nextRound})`;
+      if (withNokryong) {
+        memoText += '+녹용';
+      }
+      await addReceiptMemo({
+        patient_id: patientId,
+        chart_number: chartNumber,
+        patient_name: patientName,
+        mssql_receipt_id: receiptId,
+        mssql_detail_id: detailId,
+        receipt_date: receiptDate,
+        memo: memoText,
+        herbal_pickup_id: pickupId,
+      });
 
       onSuccess();
       onClose();
     } catch (err) {
-      console.error('한약 처리 오류:', err);
-      alert('처리에 실패했습니다.');
+      console.error('한약 차감 오류:', err);
+      alert('차감에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 한약 선결제 차감 수정
+  const handleHerbalPickupUpdate = async () => {
+    if (!herbalPickupEditData?.id) return;
+
+    setIsSaving(true);
+    try {
+      const previousNokryongId = herbalPickupEditData.with_nokryong ? herbalPickupEditData.nokryong_package_id : null;
+
+      await updateHerbalPickup(
+        herbalPickupEditData.id,
+        {
+          delivery_method: deliveryMethod,
+          with_nokryong: withNokryong,
+          nokryong_package_id: withNokryong ? selectedNokryong?.id : null,
+        },
+        previousNokryongId
+      );
+
+      // 메모 업데이트 (녹용 추가/제거 반영)
+      if (herbalPickupEditData.memoId) {
+        // 패키지 정보로 메모 텍스트 생성
+        const totalCount = editPickupPackage?.total_count || herbalPickupEditData.round_number;
+        let memoText = `선결(${totalCount}-${herbalPickupEditData.round_number})`;
+        if (withNokryong) {
+          memoText += '+녹용';
+        }
+        await updateReceiptMemoById(herbalPickupEditData.memoId, memoText);
+      }
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('차감 수정 오류:', err);
+      alert('수정에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 한약 선결제 차감 삭제
+  const handleHerbalPickupDelete = async () => {
+    if (!herbalPickupEditData?.id) return;
+
+    if (!confirm('이 차감 기록을 삭제하시겠습니까? 패키지 회차가 복원됩니다.')) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await deleteHerbalPickup(herbalPickupEditData.id);
+
+      // 연결된 메모도 삭제
+      if (herbalPickupEditData.memoId) {
+        await execute(`DELETE FROM cs_receipt_memos WHERE id = ${herbalPickupEditData.memoId}`);
+      }
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('차감 삭제 오류:', err);
+      alert('삭제에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 녹용 단독 차감
+  const handleNokryongDeduct = async () => {
+    if (!selectedNokryong) {
+      alert('차감할 녹용 패키지를 선택해주세요.');
+      return;
+    }
+    if (selectedNokryong.remaining_months <= 0) {
+      alert('해당 녹용 패키지의 잔여 회분이 없습니다.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // 녹용 차감
+      await useNokryongPackage(selectedNokryong.id);
+
+      // 메모 생성: "녹용차감(사용/총회분)" 예: "녹용차감(1/30회분)"
+      const usedDoses = selectedNokryong.total_months - selectedNokryong.remaining_months + 1;
+      const memoText = `녹용차감(${usedDoses}/${selectedNokryong.total_months}회분)`;
+      await addReceiptMemo({
+        patient_id: patientId,
+        chart_number: chartNumber,
+        patient_name: patientName,
+        mssql_receipt_id: receiptId,
+        mssql_detail_id: detailId,
+        receipt_date: receiptDate,
+        memo: memoText,
+      });
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('녹용 차감 오류:', err);
+      alert('녹용 차감에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 한약 선결제 등록
+  const handleHerbalRegister = async () => {
+    if (!selectedHerbalPurpose) {
+      alert('치료목적을 선택해주세요.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const totalCount = HERBAL_PACKAGE_ROUNDS[newHerbalPackageType] || 2;
+
+      // 패키지 생성
+      const packageId = await createHerbalPackage({
+        patient_id: patientId,
+        chart_number: chartNumber,
+        patient_name: patientName,
+        herbal_name: selectedHerbalPurpose,  // 치료목적을 herbal_name에 저장
+        package_type: newHerbalPackageType,
+        total_count: totalCount,
+        used_count: 0,
+        remaining_count: totalCount,
+        start_date: receiptDate,
+        memo: newHerbalMemo.trim() || undefined,
+        status: 'active',
+      });
+
+      // 질환명 태그 연결
+      if (selectedDiseaseTags.length > 0) {
+        const tagIds: number[] = [];
+        for (const tag of selectedDiseaseTags) {
+          // 기존 태그면 ID 사용, 새 태그면 생성
+          const tagId = tag.id ?? await findOrCreateDiseaseTag(tag.name);
+          tagIds.push(tagId);
+        }
+        await setPackageDiseaseTags(packageId, tagIds);
+      }
+
+      // 메모 생성: "1개월 선결제" 형식
+      const monthNum = newHerbalPackageType.replace('month', '');
+      await addReceiptMemo({
+        patient_id: patientId,
+        chart_number: chartNumber,
+        patient_name: patientName,
+        mssql_receipt_id: receiptId,
+        receipt_date: receiptDate,
+        memo: `${monthNum}개월 선결제`,
+      });
+
+      // 초기화
+      setSelectedDiseaseTags([]);
+      setDiseaseInput('');
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('선결제 등록 오류:', err);
+      alert('등록에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 녹용 패키지 등록
+  const handleNokryongRegister = async () => {
+    if (!selectedNokryongType) {
+      alert('녹용 종류를 선택해주세요.');
+      return;
+    }
+    if (!newNokryongDoses || newNokryongDoses <= 0) {
+      alert('회분을 입력해주세요.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await createNokryongPackage({
+        patient_id: patientId,
+        chart_number: chartNumber,
+        patient_name: patientName,
+        package_name: `녹용(${selectedNokryongType}) ${newNokryongDoses}회분`,
+        total_months: newNokryongDoses,  // 회분 수로 사용
+        remaining_months: newNokryongDoses,
+        start_date: receiptDate,
+        status: 'active',
+        mssql_detail_id: detailId,
+      });
+
+      // 메모 생성: "녹용(원대) 6회분" 형식
+      await addReceiptMemo({
+        patient_id: patientId,
+        chart_number: chartNumber,
+        patient_name: patientName,
+        mssql_receipt_id: receiptId,
+        receipt_date: receiptDate,
+        memo: `녹용(${selectedNokryongType}) ${newNokryongDoses}회분`,
+      });
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('녹용 등록 오류:', err);
+      alert('등록에 실패했습니다.');
     } finally {
       setIsSaving(false);
     }
@@ -1739,61 +2066,456 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
           </div>
         )}
 
-        {/* 한약 입력 */}
+        {/* 한약 입력 - 통합 UI */}
         {itemType === 'herbal' && (
-          <div className="herbal-section">
-            <div className="herbal-actions">
-              <button
-                className={`action-btn ${herbalAction === 'dispense' ? 'active' : ''}`}
-                onClick={() => setHerbalAction('dispense')}
-              >
-                발송
-              </button>
-              <button
-                className={`action-btn ${herbalAction === 'pickup' ? 'active' : ''}`}
-                onClick={() => setHerbalAction('pickup')}
-              >
-                수령
-              </button>
+          <div className="herbal-unified-section">
+            {/* 액션 패널 - herbalMode에 따라 조건부 렌더링 */}
+            <div className="herbal-action-panels">
+
+              {/* ========== 선결제 차감 수정 모드 ========== */}
+              {isHerbalPickupEditMode && herbalPickupEditData && (
+                <div className="action-panel expanded">
+                  <div className="panel-header static">
+                    <span className="panel-icon">▼</span>
+                    <span className="panel-title">차감 기록 수정</span>
+                  </div>
+                  <div className="panel-content">
+                    <div className="form-row">
+                      <label>패키지</label>
+                      <span className="package-info">
+                        {editPickupPackage ? (
+                          <>
+                            {editPickupPackage.herbal_name || '한약'} ({PACKAGE_TYPE_LABELS[editPickupPackage.package_type]})
+                          </>
+                        ) : (
+                          '로딩 중...'
+                        )}
+                      </span>
+                    </div>
+                    <div className="form-row">
+                      <label>회차</label>
+                      <span className="round-info highlight">
+                        {herbalPickupEditData.round_number}회차
+                        {editPickupPackage && (
+                          <span className="total-info"> / {editPickupPackage.total_count}회</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="form-row">
+                      <label>배송</label>
+                      <div className="delivery-buttons">
+                        {(['pickup', 'local', 'express'] as DeliveryMethod[]).map(method => (
+                          <button
+                            key={method}
+                            className={`delivery-btn ${deliveryMethod === method ? 'active' : ''}`}
+                            onClick={() => setDeliveryMethod(method)}
+                          >
+                            {DELIVERY_METHOD_LABELS[method]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="form-row checkbox-row">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={withNokryong}
+                          onChange={(e) => setWithNokryong(e.target.checked)}
+                          disabled={nokryongPackages.length === 0 && !herbalPickupEditData.with_nokryong}
+                        />
+                        녹용 추가
+                        {selectedNokryong && withNokryong && (
+                          <span className="nok-remaining">
+                            (잔여 {selectedNokryong.remaining_months}회분)
+                          </span>
+                        )}
+                      </label>
+                    </div>
+                    <div className="btn-group">
+                      <button
+                        className="btn-action-main"
+                        onClick={handleHerbalPickupUpdate}
+                        disabled={isSaving}
+                      >
+                        {isSaving ? '처리 중...' : '수정'}
+                      </button>
+                      <button
+                        className="btn-delete"
+                        onClick={handleHerbalPickupDelete}
+                        disabled={isSaving}
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========== 선결제 차감 (deduct-herbal 모드) ========== */}
+              {!isHerbalPickupEditMode && herbalMode === 'deduct-herbal' && (
+                <div className="action-panel expanded">
+                  <div className="panel-header static">
+                    <span className="panel-icon">▼</span>
+                    <span className="panel-title">선결제 차감</span>
+                  </div>
+                  <div className="panel-content">
+                    {herbalPackages.length === 0 ? (
+                      <p className="empty-msg-small">차감할 선결제가 없습니다.</p>
+                    ) : (
+                      <>
+                        <div className="form-row">
+                          <label>패키지</label>
+                          <select
+                            value={selectedHerbal?.id || ''}
+                            onChange={(e) => {
+                              const pkg = herbalPackages.find(p => p.id === Number(e.target.value));
+                              setSelectedHerbal(pkg || null);
+                            }}
+                          >
+                            {herbalPackages.map(pkg => (
+                              <option key={pkg.id} value={pkg.id}>
+                                {pkg.herbal_name || '한약'} ({PACKAGE_TYPE_LABELS[pkg.package_type]}) - {pkg.remaining_count}회 남음
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {selectedHerbal && (
+                          <>
+                            <div className="form-row">
+                              <label>남은 회차</label>
+                              <span className="round-info highlight">
+                                {selectedHerbal.remaining_count}회 남음
+                              </span>
+                            </div>
+                            <div className="form-row">
+                              <label>배송</label>
+                              <div className="delivery-buttons">
+                                {(['pickup', 'local', 'express'] as DeliveryMethod[]).map(method => (
+                                  <button
+                                    key={method}
+                                    className={`delivery-btn ${deliveryMethod === method ? 'active' : ''}`}
+                                    onClick={() => setDeliveryMethod(method)}
+                                  >
+                                    {DELIVERY_METHOD_LABELS[method]}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="form-row checkbox-row">
+                              <label>
+                                <input
+                                  type="checkbox"
+                                  checked={withNokryong}
+                                  onChange={(e) => setWithNokryong(e.target.checked)}
+                                  disabled={nokryongPackages.length === 0}
+                                />
+                                녹용 추가
+                                {selectedNokryong && withNokryong && (
+                                  <span className="nok-remaining">
+                                    (잔여 {selectedNokryong.remaining_months}회분)
+                                  </span>
+                                )}
+                              </label>
+                            </div>
+                            <button
+                              className="btn-action-main"
+                              onClick={handleHerbalDeduct}
+                              disabled={isSaving}
+                            >
+                              {isSaving ? '처리 중...' : '차감 기록'}
+                            </button>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ========== 녹용 차감 (deduct-nokryong 모드) ========== */}
+              {!isHerbalPickupEditMode && herbalMode === 'deduct-nokryong' && (
+                <div className="action-panel expanded">
+                  <div className="panel-header static">
+                    <span className="panel-icon">▼</span>
+                    <span className="panel-title">녹용 차감</span>
+                  </div>
+                  <div className="panel-content">
+                    {nokryongPackages.length === 0 ? (
+                      <p className="empty-msg-small">차감할 녹용 패키지가 없습니다.</p>
+                    ) : (
+                      <>
+                        <div className="form-row">
+                          <label>패키지</label>
+                          <select
+                            value={selectedNokryong?.id || ''}
+                            onChange={(e) => {
+                              const pkg = nokryongPackages.find(p => p.id === Number(e.target.value));
+                              setSelectedNokryong(pkg || null);
+                            }}
+                          >
+                            {nokryongPackages.map(pkg => (
+                              <option key={pkg.id} value={pkg.id}>
+                                {pkg.package_name} - 잔여 {pkg.remaining_months}/{pkg.total_months}회분
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {selectedNokryong && (
+                          <>
+                            <div className="form-row">
+                              <label>잔여</label>
+                              <span className="round-info">
+                                {selectedNokryong.remaining_months}/{selectedNokryong.total_months}회분
+                              </span>
+                            </div>
+                            <button
+                              className="btn-action-main"
+                              onClick={handleNokryongDeduct}
+                              disabled={isSaving || selectedNokryong.remaining_months <= 0}
+                            >
+                              {isSaving ? '처리 중...' : '녹용 차감'}
+                            </button>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ========== 등록 모드 (register) - 선결제 등록 + 녹용 등록 ========== */}
+              {!isHerbalPickupEditMode && herbalMode === 'register' && (
+                <>
+                  {/* 선결제 등록 */}
+                  <div className={`action-panel ${herbalActionMode === 'register' ? 'expanded' : ''}`}>
+                    <div
+                      className="panel-header"
+                      onClick={() => setHerbalActionMode(herbalActionMode === 'register' ? 'register-nokryong' : 'register')}
+                    >
+                      <span className="panel-icon">{herbalActionMode === 'register' ? '▼' : '▶'}</span>
+                      <span className="panel-title">선결제 등록</span>
+                    </div>
+                    {herbalActionMode === 'register' && (
+                      <div className="panel-content">
+                        <div className="form-row">
+                          <label>치료목적</label>
+                          <select
+                            value={selectedHerbalPurpose}
+                            onChange={(e) => setSelectedHerbalPurpose(e.target.value)}
+                            className="input-select"
+                          >
+                            {herbalPurposes.map(purpose => (
+                              <option key={purpose} value={purpose}>{purpose}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="form-row">
+                          <label>질환명</label>
+                          <div className="disease-tag-input">
+                            <div className="selected-tags">
+                              {selectedDiseaseTags.map((tag, index) => (
+                                <span key={tag.id ?? `new-${index}`} className="tag">
+                                  {tag.name}
+                                  <button
+                                    type="button"
+                                    className="tag-remove"
+                                    onClick={() => setSelectedDiseaseTags(selectedDiseaseTags.filter((_, i) => i !== index))}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                            <div className="tag-input-wrapper">
+                              <input
+                                type="text"
+                                value={diseaseInput}
+                                onChange={(e) => {
+                                  setDiseaseInput(e.target.value);
+                                  setShowDiseaseSuggestions(true);
+                                }}
+                                onFocus={() => setShowDiseaseSuggestions(true)}
+                                onBlur={() => setTimeout(() => setShowDiseaseSuggestions(false), 200)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && diseaseInput.trim()) {
+                                    e.preventDefault();
+                                    const newName = diseaseInput.trim();
+                                    if (!selectedDiseaseTags.some(t => t.name === newName)) {
+                                      const existingTag = availableDiseaseTags.find(t => t.name === newName);
+                                      if (existingTag) {
+                                        setSelectedDiseaseTags([...selectedDiseaseTags, { id: existingTag.id, name: existingTag.name }]);
+                                      } else {
+                                        setSelectedDiseaseTags([...selectedDiseaseTags, { name: newName }]);
+                                      }
+                                    }
+                                    setDiseaseInput('');
+                                    setShowDiseaseSuggestions(false);
+                                  }
+                                }}
+                                placeholder="질환명 입력 후 Enter"
+                                className="input-text"
+                              />
+                              {showDiseaseSuggestions && diseaseInput && (
+                                <div className="tag-suggestions">
+                                  {availableDiseaseTags
+                                    .filter(tag =>
+                                      tag.name.toLowerCase().includes(diseaseInput.toLowerCase()) &&
+                                      !selectedDiseaseTags.some(t => t.name === tag.name)
+                                    )
+                                    .slice(0, 5)
+                                    .map(tag => (
+                                      <div
+                                        key={tag.id}
+                                        className="suggestion-item"
+                                        onMouseDown={() => {
+                                          setSelectedDiseaseTags([...selectedDiseaseTags, { id: tag.id, name: tag.name }]);
+                                          setDiseaseInput('');
+                                          setShowDiseaseSuggestions(false);
+                                        }}
+                                      >
+                                        {tag.name}
+                                      </div>
+                                    ))}
+                                  {diseaseInput.trim() && !availableDiseaseTags.some(t => t.name === diseaseInput.trim()) && (
+                                    <div
+                                      className="suggestion-item new-tag"
+                                      onMouseDown={() => {
+                                        const newName = diseaseInput.trim();
+                                        if (!selectedDiseaseTags.some(t => t.name === newName)) {
+                                          setSelectedDiseaseTags([...selectedDiseaseTags, { name: newName }]);
+                                        }
+                                        setDiseaseInput('');
+                                        setShowDiseaseSuggestions(false);
+                                      }}
+                                    >
+                                      <i className="fa-solid fa-plus"></i> "{diseaseInput.trim()}" 새로 추가
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="form-row">
+                          <label>기간</label>
+                          <div className="period-buttons">
+                            {(['1month', '2month', '3month', '6month'] as const).map(type => (
+                              <button
+                                key={type}
+                                className={`period-btn ${newHerbalPackageType === type ? 'active' : ''}`}
+                                onClick={() => setNewHerbalPackageType(type)}
+                              >
+                                {PACKAGE_TYPE_LABELS[type]}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="form-row">
+                          <label>총 회차</label>
+                          <span className="count-info">{HERBAL_PACKAGE_ROUNDS[newHerbalPackageType]}회</span>
+                        </div>
+                        <div className="form-row">
+                          <label>메모</label>
+                          <input
+                            type="text"
+                            value={newHerbalMemo}
+                            onChange={(e) => setNewHerbalMemo(e.target.value)}
+                            placeholder="선택 사항"
+                            className="input-text"
+                          />
+                        </div>
+                        <button
+                          className="btn-action-main"
+                          onClick={handleHerbalRegister}
+                          disabled={isSaving || !selectedHerbalPurpose}
+                        >
+                          {isSaving ? '등록 중...' : '선결제 등록'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 녹용 등록 */}
+                  <div className={`action-panel ${herbalActionMode === 'register-nokryong' ? 'expanded' : ''}`}>
+                    <div
+                      className="panel-header"
+                      onClick={() => setHerbalActionMode(herbalActionMode === 'register-nokryong' ? 'register' : 'register-nokryong')}
+                    >
+                      <span className="panel-icon">{herbalActionMode === 'register-nokryong' ? '▼' : '▶'}</span>
+                      <span className="panel-title">녹용 등록</span>
+                    </div>
+                    {herbalActionMode === 'register-nokryong' && (
+                      <div className="panel-content">
+                        <div className="form-row">
+                          <label>종류</label>
+                          <div className="nokryong-type-buttons">
+                            {nokryongTypeOptions.map(ntype => (
+                              <button
+                                key={ntype}
+                                className={`nokryong-type-btn ${selectedNokryongType === ntype ? 'active' : ''}`}
+                                onClick={() => setSelectedNokryongType(ntype)}
+                              >
+                                {ntype}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="form-row">
+                          <label>회분</label>
+                          <div className="doses-row">
+                            {[1, 2, 3, 4, 5, 6].map(dose => (
+                              <button
+                                key={dose}
+                                type="button"
+                                className={`dose-quick-btn ${newNokryongDoses === dose ? 'active' : ''}`}
+                                onClick={() => setNewNokryongDoses(dose)}
+                              >
+                                {dose}
+                              </button>
+                            ))}
+                            <input
+                              type="number"
+                              min="7"
+                              value={newNokryongDoses}
+                              onChange={(e) => setNewNokryongDoses(parseInt(e.target.value) || 7)}
+                              className="doses-input"
+                            />
+                            <span className="doses-unit">회분</span>
+                          </div>
+                        </div>
+                        <button
+                          className="btn-action-main"
+                          onClick={handleNokryongRegister}
+                          disabled={isSaving || !selectedNokryongType || !newNokryongDoses}
+                        >
+                          {isSaving ? '등록 중...' : '녹용 등록'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
-            {herbalPackages.length === 0 ? (
-              <p className="empty-msg">등록된 한약 패키지가 없습니다.</p>
-            ) : (
-              <>
-                <div className="herbal-list">
-                  {herbalPackages.map(pkg => (
-                    <div
-                      key={pkg.id}
-                      className={`herbal-item ${selectedHerbal?.id === pkg.id ? 'selected' : ''}`}
-                      onClick={() => setSelectedHerbal(pkg)}
-                    >
-                      <span className="herbal-name">{pkg.herbal_name || pkg.package_type}</span>
-                      <span className="herbal-count">{pkg.remaining_count}/{pkg.total_count}첩</span>
-                    </div>
-                  ))}
+            {/* 최근 수령 이력 */}
+            {herbalPickups.length > 0 && (
+              <div className="herbal-history">
+                <div className="history-title">최근 수령 이력</div>
+                <div className="history-list">
+                  {herbalPickups.map(pickup => {
+                    const pkg = herbalPackages.find(p => p.id === pickup.package_id);
+                    return (
+                      <div key={pickup.id} className="history-item">
+                        <span className="h-date">{pickup.pickup_date.slice(5)}</span>
+                        <span className="h-name">{pkg?.herbal_name || '한약'}</span>
+                        <span className="h-round">{pickup.round_number}회차</span>
+                        <span className="h-delivery">{DELIVERY_METHOD_LABELS[pickup.delivery_method]}</span>
+                        {pickup.with_nokryong && <span className="h-nokryong">+녹용</span>}
+                      </div>
+                    );
+                  })}
                 </div>
-                {selectedHerbal && (
-                  <div className="herbal-action">
-                    <input
-                      type="number"
-                      value={herbalQty}
-                      onChange={(e) => setHerbalQty(Number(e.target.value))}
-                      min={1}
-                      max={selectedHerbal.remaining_count}
-                      className="input-qty"
-                    />
-                    <span className="qty-unit">첩</span>
-                    <button
-                      className="btn-process"
-                      onClick={handleHerbalProcess}
-                      disabled={isSaving}
-                    >
-                      {isSaving ? '처리 중...' : herbalAction === 'dispense' ? '발송' : '수령'}
-                    </button>
-                  </div>
-                )}
-              </>
+              </div>
             )}
           </div>
         )}

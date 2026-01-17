@@ -2,12 +2,13 @@ import { useState } from 'react';
 import TreatmentProgramAdmin from './TreatmentProgramAdmin';
 import PackageTypeAdmin from './PackageTypeAdmin';
 import MedicinePurposeAdmin from './MedicinePurposeAdmin';
+import HerbalSettingsAdmin from './HerbalSettingsAdmin';
 
 interface SettingsViewProps {
   user?: any;
 }
 
-type SettingsTab = 'treatment' | 'package' | 'medicine';
+type SettingsTab = 'treatment' | 'package' | 'medicine' | 'herbal';
 
 function SettingsView({ user }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('package');
@@ -37,6 +38,13 @@ function SettingsView({ user }: SettingsViewProps) {
           <i className="fa-solid fa-pills"></i>
           상비약 사용목적
         </button>
+        <button
+          className={`settings-tab ${activeTab === 'herbal' ? 'active' : ''}`}
+          onClick={() => setActiveTab('herbal')}
+        >
+          <i className="fa-solid fa-seedling"></i>
+          한약 관리
+        </button>
       </div>
 
       {/* 탭 내용 */}
@@ -44,6 +52,7 @@ function SettingsView({ user }: SettingsViewProps) {
         {activeTab === 'package' && <PackageTypeAdmin />}
         {activeTab === 'treatment' && <TreatmentProgramAdmin />}
         {activeTab === 'medicine' && <MedicinePurposeAdmin />}
+        {activeTab === 'herbal' && <HerbalSettingsAdmin />}
       </div>
 
       <style>{`
@@ -56,25 +65,27 @@ function SettingsView({ user }: SettingsViewProps) {
 
         .settings-tabs {
           display: flex;
-          gap: 4px;
+          flex-wrap: wrap;
+          gap: 6px;
           padding: 12px 16px;
           background: #f9fafb;
           border-bottom: 1px solid #e5e7eb;
         }
 
         .settings-tab {
-          padding: 10px 20px;
+          padding: 8px 14px;
           border: none;
-          border-radius: 8px;
+          border-radius: 6px;
           background: transparent;
           color: #6b7280;
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 500;
           cursor: pointer;
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
           transition: all 0.15s;
+          white-space: nowrap;
         }
 
         .settings-tab:hover {
@@ -88,12 +99,19 @@ function SettingsView({ user }: SettingsViewProps) {
         }
 
         .settings-tab i {
-          font-size: 14px;
+          font-size: 12px;
         }
 
         .settings-content {
           flex: 1;
           overflow-y: auto;
+          padding: 0;
+        }
+
+        /* 각 Admin 컴포넌트 너비 오버라이드 */
+        .settings-content > div {
+          max-width: 100% !important;
+          width: 100% !important;
         }
       `}</style>
     </div>

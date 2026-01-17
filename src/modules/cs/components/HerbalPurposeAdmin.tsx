@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getMedicinePurposes, setMedicinePurposes } from '../lib/api';
+import { getHerbalPurposes, setHerbalPurposes } from '../lib/api';
 
-function MedicinePurposeAdmin() {
+function HerbalPurposeAdmin() {
   const [purposes, setPurposes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -14,11 +14,11 @@ function MedicinePurposeAdmin() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getMedicinePurposes();
+      const data = await getHerbalPurposes();
       setPurposes(data);
       setHasChanges(false);
     } catch (error) {
-      console.error('사용목적 로드 오류:', error);
+      console.error('치료목적 로드 오류:', error);
     } finally {
       setLoading(false);
     }
@@ -32,11 +32,11 @@ function MedicinePurposeAdmin() {
   const handleAdd = () => {
     const trimmed = newPurpose.trim();
     if (!trimmed) {
-      alert('사용목적을 입력해주세요.');
+      alert('치료목적을 입력해주세요.');
       return;
     }
     if (purposes.includes(trimmed)) {
-      alert('이미 존재하는 사용목적입니다.');
+      alert('이미 존재하는 치료목적입니다.');
       return;
     }
     setPurposes([...purposes, trimmed]);
@@ -47,7 +47,7 @@ function MedicinePurposeAdmin() {
   // 삭제
   const handleDelete = (index: number) => {
     if (purposes.length <= 1) {
-      alert('최소 1개 이상의 사용목적이 필요합니다.');
+      alert('최소 1개 이상의 치료목적이 필요합니다.');
       return;
     }
     if (!confirm(`'${purposes[index]}'를 삭제하시겠습니까?`)) return;
@@ -84,12 +84,12 @@ function MedicinePurposeAdmin() {
     if (editingIndex === null) return;
     const trimmed = editValue.trim();
     if (!trimmed) {
-      alert('사용목적을 입력해주세요.');
+      alert('치료목적을 입력해주세요.');
       return;
     }
     // 다른 항목과 중복 체크
     if (purposes.some((p, i) => i !== editingIndex && p === trimmed)) {
-      alert('이미 존재하는 사용목적입니다.');
+      alert('이미 존재하는 치료목적입니다.');
       return;
     }
     const newPurposes = [...purposes];
@@ -103,13 +103,13 @@ function MedicinePurposeAdmin() {
   // 저장
   const handleSave = async () => {
     if (purposes.length === 0) {
-      alert('최소 1개 이상의 사용목적이 필요합니다.');
+      alert('최소 1개 이상의 치료목적이 필요합니다.');
       return;
     }
 
     try {
       setSaving(true);
-      await setMedicinePurposes(purposes);
+      await setHerbalPurposes(purposes);
       setHasChanges(false);
       alert('저장되었습니다.');
     } catch (error) {
@@ -122,7 +122,7 @@ function MedicinePurposeAdmin() {
 
   if (loading) {
     return (
-      <div className="medicine-purpose-admin">
+      <div className="herbal-purpose-admin">
         <div className="admin-loading">
           <i className="fa-solid fa-spinner fa-spin"></i> 로딩 중...
         </div>
@@ -131,22 +131,19 @@ function MedicinePurposeAdmin() {
   }
 
   return (
-    <div className="medicine-purpose-admin">
+    <div className="herbal-purpose-admin">
       <div className="admin-header">
         <h3>
-          <i className="fa-solid fa-pills"></i>
-          상비약 사용목적 관리
+          <i className="fa-solid fa-leaf"></i>
+          치료목적
         </h3>
-        <p className="admin-description">
-          상비약 기록 시 선택할 수 있는 사용목적 옵션을 관리합니다.
-        </p>
       </div>
 
       {/* 새 항목 추가 */}
       <div className="admin-add-form">
         <input
           type="text"
-          placeholder="새 사용목적 입력"
+          placeholder="새 치료목적 입력"
           value={newPurpose}
           onChange={(e) => setNewPurpose(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
@@ -160,14 +157,14 @@ function MedicinePurposeAdmin() {
       <div className="admin-list">
         {purposes.length === 0 ? (
           <div className="admin-empty">
-            등록된 사용목적이 없습니다.
+            등록된 치료목적이 없습니다.
           </div>
         ) : (
           <table className="admin-table">
             <thead>
               <tr>
                 <th style={{ width: '40px' }}>#</th>
-                <th>사용목적</th>
+                <th>치료목적</th>
                 <th style={{ width: '120px' }}>순서</th>
                 <th style={{ width: '100px' }}>관리</th>
               </tr>
@@ -263,27 +260,29 @@ function MedicinePurposeAdmin() {
       </div>
 
       <style>{`
-        .medicine-purpose-admin {
+        .herbal-purpose-admin {
           padding: 20px;
           max-width: 800px;
         }
 
         .admin-header {
           margin-bottom: 20px;
+          display: flex;
+          flex-direction: column;
         }
 
         .admin-header h3 {
-          margin: 0 0 8px 0;
-          font-size: 16px;
+          margin: 0 0 4px 0;
+          font-size: 15px;
           font-weight: 600;
           color: #1f2937;
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
         }
 
         .admin-header h3 i {
-          color: #3b82f6;
+          color: #22c55e;
         }
 
         .admin-description {
@@ -317,12 +316,12 @@ function MedicinePurposeAdmin() {
 
         .admin-add-form input:focus {
           outline: none;
-          border-color: #3b82f6;
+          border-color: #22c55e;
         }
 
         .admin-add-form .btn-add {
           padding: 8px 16px;
-          background: #3b82f6;
+          background: #22c55e;
           color: white;
           border: none;
           border-radius: 6px;
@@ -334,7 +333,7 @@ function MedicinePurposeAdmin() {
         }
 
         .admin-add-form .btn-add:hover {
-          background: #2563eb;
+          background: #16a34a;
         }
 
         .admin-empty {
@@ -372,7 +371,7 @@ function MedicinePurposeAdmin() {
         .admin-table input {
           width: 100%;
           padding: 6px 10px;
-          border: 1px solid #3b82f6;
+          border: 1px solid #22c55e;
           border-radius: 4px;
           font-size: 13px;
         }
@@ -489,13 +488,13 @@ function MedicinePurposeAdmin() {
         }
 
         .btn-save-all.has-changes {
-          background: #3b82f6;
+          background: #22c55e;
           color: white;
           cursor: pointer;
         }
 
         .btn-save-all.has-changes:hover {
-          background: #2563eb;
+          background: #16a34a;
         }
 
         .unsaved-note {
@@ -507,4 +506,4 @@ function MedicinePurposeAdmin() {
   );
 }
 
-export default MedicinePurposeAdmin;
+export default HerbalPurposeAdmin;
