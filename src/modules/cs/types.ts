@@ -423,6 +423,7 @@ export interface HerbalPickup {
 
 // 한약 패키지 타입별 회차 매핑
 export const HERBAL_PACKAGE_ROUNDS: Record<string, number> = {
+  '0.5month': 1, // 0.5개월 = 1회 (15일분)
   '1month': 2,   // 1개월 = 2회 (15일분 x 2)
   '2month': 4,   // 2개월 = 4회
   '3month': 6,   // 3개월 = 6회
@@ -473,6 +474,7 @@ export interface ReceiptMemo {
   is_completed?: boolean;    // 기록 완료 여부
   herbal_package_id?: number; // 연결된 한약 선결제 패키지 ID
   herbal_pickup_id?: number;  // 연결된 한약 차감 기록 ID
+  nokryong_package_id?: number; // 연결된 녹용 패키지 ID
   created_at?: string;
   updated_at?: string;
 }
@@ -618,7 +620,8 @@ export type MemoTagType =
   | 'yakchim-package'       // 약침 패키지 사용
   | 'yakchim-onetime'       // 약침 일회성 사용
   | 'treatment-package'     // 시술패키지
-  | 'herbal-package'        // 한약패키지 (선결)
+  | 'herbal-package'        // 한약패키지 (선결제)
+  | 'nokryong-package'      // 녹용패키지 (선결제)
   | 'point-used'            // 포인트 사용
   | 'point-earned'          // 포인트 적립
   | 'membership'            // 멤버십 등록정보
@@ -637,6 +640,9 @@ export interface MemoSummaryItem {
 export function generateMemoSummaryItems(data: {
   treatmentPackages?: TreatmentPackage[];
   herbalPackages?: HerbalPackage[];
+  nokryongPackages?: NokryongPackage[];
+  packageUsages?: PackageUsage[];
+  herbalPickups?: HerbalPickup[];
   pointUsed?: number;
   pointEarned?: number;
   membership?: Membership;
@@ -749,8 +755,79 @@ export function generateMemoSummaryItems(data: {
     }
   });
 
-  // 한약패키지 (선결) - 메모로 대체됨 (등록: "1개월 선결제", 차감: "선결(2-1)")
-  // 패키지 현황 태그는 별도로 표시하지 않음
+  // 한약패키지 (선결제) - 등록일에만 표시
+  data.herbalPackages?.forEach(pkg => {
+    const isRegisteredToday = data.date && pkg.start_date === data.date;
+    if (pkg.status === 'active' && isRegisteredToday) {
+      items.push({
+        type: 'herbal-package',
+        label: `한약 선결제[0+${pkg.total_count}=${pkg.total_count}회]`,
+        data: pkg,
+      });
+    }
+  });
+
+  // 녹용패키지 (선결제) - 등록일에만 표시
+  data.nokryongPackages?.forEach(pkg => {
+    const isRegisteredToday = data.date && pkg.start_date === data.date;
+    if (pkg.status === 'active' && isRegisteredToday) {
+      items.push({
+        type: 'nokryong-package',
+        label: `녹용 선결제[0+${pkg.total_months}=${pkg.total_months}회]`,
+        data: pkg,
+      });
+    }
+  });
+
+  // 한약 패키지 차감 기록 (herbalPickups 사용)
+  if (data.herbalPickups && data.herbalPickups.length > 0) {
+    data.herbalPickups.forEach(pickup => {
+      // 해당 패키지 찾기
+      const pkg = data.herbalPackages?.find(p => p.id === pickup.package_id);
+      if (pkg) {
+        // 현재 사용횟수에서 이 pickup의 회차로 계산
+        const before = pickup.round_number;
+        const after = (pkg.total_count || 0) - pickup.round_number;
+        items.push({
+          type: 'herbal-package',
+          label: `한약 선결(${before}-1=${after}회)`,
+          data: pickup,
+        });
+
+        // 녹용 추가 차감 표시
+        if (pickup.with_nokryong && pickup.nokryong_package_id) {
+          const nokryongPkg = data.nokryongPackages?.find(p => p.id === pickup.nokryong_package_id);
+          if (nokryongPkg) {
+            const nokryongRemaining = nokryongPkg.remaining_months || 0;
+            const nokryongBefore = nokryongRemaining + 1;
+            items.push({
+              type: 'nokryong-package',
+              label: `녹용 선결(${nokryongBefore}-1=${nokryongRemaining}회)`,
+              data: pickup,
+            });
+          }
+        }
+      }
+    });
+  }
+
+  // 녹용 단독 차감 (packageUsages에서)
+  if (data.packageUsages && data.packageUsages.length > 0) {
+    const nokryongDeductions = data.packageUsages.filter(u => u.package_type === 'nokryong' && u.usage_type === 'deduct');
+    nokryongDeductions.forEach(usage => {
+      // 해당 패키지 찾기
+      const pkg = data.nokryongPackages?.find(p => p.id === usage.package_id);
+      if (pkg) {
+        const currentRemaining = pkg.remaining_months || 0;
+        const before = currentRemaining + Math.abs(usage.count);
+        items.push({
+          type: 'nokryong-package',
+          label: `녹용 선결(${before}-${Math.abs(usage.count)}=${currentRemaining}회)`,
+          data: usage,
+        });
+      }
+    });
+  }
 
   // 포인트 사용
   if (data.pointUsed && data.pointUsed > 0) {
@@ -820,4 +897,126 @@ export function generateMemoSummaryItems(data: {
   });
 
   return items;
+}
+
+// ============================================
+// 패키지 사용기록 통합 타입
+// ============================================
+
+// 패키지 타입
+export type PackageType = 'herbal' | 'nokryong' | 'treatment' | 'membership';
+
+// 사용 타입
+export type PackageUsageType = 'add' | 'deduct' | 'apply';
+
+// 패키지 사용기록
+export interface PackageUsage {
+  id?: number;
+  package_type: PackageType;        // 패키지 종류
+  package_id: number;               // 해당 패키지 테이블의 ID
+  patient_id: number;
+  chart_number?: string;
+  patient_name?: string;
+  usage_date: string;               // 사용일 (YYYY-MM-DD)
+  usage_type: PackageUsageType;     // 추가/차감/적용
+  count: number;                    // 횟수 (추가: 양수, 차감: 음수)
+  mssql_detail_id?: number;         // 연결된 비급여 항목
+  mssql_receipt_id?: number;        // 연결된 수납
+  memo?: string;
+  created_at?: string;
+}
+
+// 패키지 카테고리별 라벨
+export const PACKAGE_CATEGORY_LABELS: Record<PackageType, string> = {
+  herbal: '한약',
+  nokryong: '녹용',
+  treatment: '통증마일리지',
+  membership: '멤버십',
+};
+
+// 사용 타입별 라벨
+export const USAGE_TYPE_LABELS: Record<PackageUsageType, string> = {
+  add: '추가',
+  deduct: '차감',
+  apply: '적용',
+};
+
+// ============================================
+// 비급여 타임라인 타입
+// ============================================
+
+// 타임라인 이벤트 유형
+export type TimelineEventType =
+  | 'herbal_package_add'      // 한약 선결제 등록
+  | 'herbal_pickup'           // 한약 수령 (차감)
+  | 'nokryong_package_add'    // 녹용 선결제 등록
+  | 'nokryong_usage'          // 녹용 사용 (차감)
+  | 'treatment_package_add'   // 통마 추가
+  | 'treatment_usage'         // 통마 사용
+  | 'membership_add'          // 멤버십 등록
+  | 'membership_usage'        // 멤버십 사용
+  | 'custom_memo';            // 커스텀 메모
+
+// 타임라인 이벤트 타입별 아이콘
+export const TIMELINE_EVENT_ICONS: Record<TimelineEventType, string> = {
+  herbal_package_add: '💊',
+  herbal_pickup: '💊',
+  nokryong_package_add: '🦌',
+  nokryong_usage: '🦌',
+  treatment_package_add: '💉',
+  treatment_usage: '💉',
+  membership_add: '🎫',
+  membership_usage: '🎫',
+  custom_memo: '💬',
+};
+
+// 타임라인 이벤트 타입별 라벨
+export const TIMELINE_EVENT_LABELS: Record<TimelineEventType, string> = {
+  herbal_package_add: '한약 선결제',
+  herbal_pickup: '한약 수령',
+  nokryong_package_add: '녹용 선결제',
+  nokryong_usage: '녹용 사용',
+  treatment_package_add: '통마 추가',
+  treatment_usage: '통마 사용',
+  membership_add: '멤버십 등록',
+  membership_usage: '멤버십 사용',
+  custom_memo: '메모',
+};
+
+// 타임라인 이벤트
+export interface TimelineEvent {
+  id: string;                 // 고유 ID (type_sourceId)
+  type: TimelineEventType;
+  date: string;               // YYYY-MM-DD
+  timestamp: string;          // 정렬용 ISO timestamp
+  icon: string;
+  label: string;              // "한약 선결제 +4회"
+  subLabel?: string;          // "잔여 3회" 등 추가 정보
+  sourceTable: string;        // 원본 테이블명
+  sourceId: number;           // 원본 레코드 ID
+  isEditable: boolean;        // 오늘만 true
+  isCompleted: boolean;       // 완료 상태
+  originalData?: unknown;     // 원본 데이터
+}
+
+// 타임라인 수정 이력
+export interface TimelineAuditLog {
+  id: number;
+  source_table: string;
+  source_id: number;
+  patient_id: number;
+  field_name: string;
+  old_value: string | null;
+  new_value: string | null;
+  modified_at: string;
+  modified_by: string;
+  modification_reason: string;
+  created_at: string;
+}
+
+// 타임라인 조회 결과
+export interface TimelineResult {
+  events: TimelineEvent[];
+  totalCount: number;
+  hasMore: boolean;
 }
