@@ -5,20 +5,25 @@ import {
   createHerbalPackage,
   createNokryongPackage,
   updateHerbalPackage,
+  updateNokryongPackage,
+  deleteNokryongPackage,
   getPackageTypes,
   getMembershipTypes,
   getHerbalPurposes,
   getNokryongTypes,
   getHerbalDiseaseTags,
   getPackageDiseaseTags,
+  getActiveHerbalPackages,
+  getActiveNokryongPackages,
   findOrCreateDiseaseTag,
   setPackageDiseaseTags,
   addReceiptMemo,
   updateReceiptMemoById,
+  deleteReceiptMemoById,
   type PackageType,
   type HerbalDiseaseTag,
 } from '../lib/api';
-import { HERBAL_PACKAGE_ROUNDS, type HerbalPackage } from '../types';
+import { HERBAL_PACKAGE_ROUNDS, type HerbalPackage, type NokryongPackage } from '../types';
 
 interface UncoveredItem {
   detailId: number;
@@ -34,7 +39,8 @@ interface RegisterModalProps {
   receiptId: number;
   receiptDate: string;
   uncoveredItems: UncoveredItem[];
-  editHerbalPackage?: HerbalPackage;  // 수정 모드: 기존 패키지 데이터
+  editHerbalPackage?: HerbalPackage;  // 수정 모드: 기존 한약 패키지 데이터
+  editNokryongPackage?: NokryongPackage;  // 수정 모드: 기존 녹용 패키지 데이터
   editMemoId?: number;                 // 수정 모드: 연결된 메모 ID
   defaultTab?: 'herbal' | 'nokryong'; // 한약 모달 기본 탭
   onClose: () => void;
@@ -50,15 +56,18 @@ function RegisterModal({
   receiptDate,
   uncoveredItems,
   editHerbalPackage,
+  editNokryongPackage,
   editMemoId,
   defaultTab,
   onClose,
   onSuccess,
 }: RegisterModalProps) {
-  const isEditMode = !!editHerbalPackage;
+  const isHerbalEditMode = !!editHerbalPackage;
+  const isNokryongEditMode = !!editNokryongPackage;
+  const isEditMode = isHerbalEditMode || isNokryongEditMode;
   const [isSaving, setIsSaving] = useState(false);
   const [selectedDetailId, setSelectedDetailId] = useState<number | null>(
-    editHerbalPackage?.mssql_detail_id || null
+    editHerbalPackage?.mssql_detail_id || editNokryongPackage?.mssql_detail_id || null
   );
 
   // 패키지 등록 상태
@@ -95,10 +104,24 @@ function RegisterModal({
   const [showDiseaseSuggestions, setShowDiseaseSuggestions] = useState(false);
   // 녹용 등록 상태
   const [nokryongTypeOptions, setNokryongTypeOptions] = useState<string[]>([]);
-  const [selectedNokryongType, setSelectedNokryongType] = useState('');
-  const [newNokryongDoses, setNewNokryongDoses] = useState(1); // 회분
+  // 수정 모드: package_name에서 녹용 종류 추출 ("녹용(원대) 6회분" → "원대")
+  const parseNokryongType = (packageName?: string) => {
+    if (!packageName) return '';
+    const match = packageName.match(/녹용\(([^)]+)\)/);
+    return match ? match[1] : '';
+  };
+  const [selectedNokryongType, setSelectedNokryongType] = useState(
+    parseNokryongType(editNokryongPackage?.package_name) || ''
+  );
+  const [newNokryongDoses, setNewNokryongDoses] = useState(
+    editNokryongPackage?.total_months || 1
+  ); // 회분
   // 한약 탭: 'herbal' | 'nokryong'
   const [herbalTab, setHerbalTab] = useState<'herbal' | 'nokryong'>(defaultTab || 'herbal');
+
+  // 패키지 현황 상태
+  const [activeHerbalPackages, setActiveHerbalPackages] = useState<(HerbalPackage & { diseaseTags?: string[] })[]>([]);
+  const [activeNokryongPackages, setActiveNokryongPackages] = useState<NokryongPackage[]>([]);
 
   // 초기 데이터 로드
   useEffect(() => {
@@ -116,14 +139,30 @@ function RegisterModal({
           setMembershipType(types[0]);
         }
       } else if (type === 'herbal') {
-        const [purposes, tags, nokryongTypes] = await Promise.all([
+        const [purposes, tags, nokryongTypes, herbalPkgs, nokryongPkgs] = await Promise.all([
           getHerbalPurposes(),
           getHerbalDiseaseTags(),
           getNokryongTypes(),
+          getActiveHerbalPackages(patientId),
+          getActiveNokryongPackages(patientId),
         ]);
         setHerbalPurposes(purposes);
         setAvailableDiseaseTags(tags);
         setNokryongTypeOptions(nokryongTypes);
+        setActiveNokryongPackages(nokryongPkgs);
+
+        // 한약 패키지에 질환명 태그 추가
+        const herbalPkgsWithTags = await Promise.all(
+          herbalPkgs.map(async (pkg) => {
+            if (pkg.id) {
+              const diseaseTags = await getPackageDiseaseTags(pkg.id);
+              return { ...pkg, diseaseTags: diseaseTags.map(t => t.name) };
+            }
+            return { ...pkg, diseaseTags: [] };
+          })
+        );
+        setActiveHerbalPackages(herbalPkgsWithTags);
+
         // 수정 모드가 아닐 때만 첫 번째 목적 선택
         if (!isEditMode && purposes.length > 0) {
           setSelectedHerbalPurpose(purposes[0]);
@@ -150,7 +189,10 @@ function RegisterModal({
 
   // 제목
   const getTitle = () => {
-    if (isEditMode) {
+    if (isNokryongEditMode) {
+      return '녹용 패키지 수정';
+    }
+    if (isHerbalEditMode) {
       return '한약 선결제 수정';
     }
     switch (type) {
@@ -317,7 +359,7 @@ function RegisterModal({
     }
   };
 
-  // 녹용 등록
+  // 녹용 등록/수정
   const handleNokryongRegister = async () => {
     if (!selectedNokryongType) {
       alert('녹용 종류를 선택해주세요.');
@@ -329,33 +371,80 @@ function RegisterModal({
     }
     setIsSaving(true);
     try {
-      await createNokryongPackage({
-        patient_id: patientId,
-        chart_number: chartNumber,
-        patient_name: patientName,
-        package_name: `녹용(${selectedNokryongType}) ${newNokryongDoses}회분`,
-        total_months: newNokryongDoses,  // 회분 수로 사용
-        remaining_months: newNokryongDoses,
-        start_date: receiptDate,
-        status: 'active',
-        mssql_detail_id: selectedDetailId || undefined,
-      });
+      const memoText = `녹용(${selectedNokryongType}) ${newNokryongDoses}회분`;
 
-      // 메모 생성: "녹용(원대) 6회분" 형식
-      await addReceiptMemo({
-        patient_id: patientId,
-        chart_number: chartNumber,
-        patient_name: patientName,
-        mssql_receipt_id: receiptId,
-        receipt_date: receiptDate,
-        memo: `녹용(${selectedNokryongType}) ${newNokryongDoses}회분`,
-      });
+      if (isNokryongEditMode && editNokryongPackage?.id) {
+        // 수정 모드: 패키지 업데이트
+        const usedMonths = editNokryongPackage.total_months - editNokryongPackage.remaining_months;
+        await updateNokryongPackage(editNokryongPackage.id, {
+          package_name: memoText,
+          total_months: newNokryongDoses,
+          remaining_months: Math.max(0, newNokryongDoses - usedMonths),
+          mssql_detail_id: selectedDetailId || undefined,
+        });
+
+        // 메모 수정
+        if (editMemoId) {
+          await updateReceiptMemoById(editMemoId, memoText);
+        }
+      } else {
+        // 신규 등록 모드
+        const packageId = await createNokryongPackage({
+          patient_id: patientId,
+          chart_number: chartNumber,
+          patient_name: patientName,
+          package_name: memoText,
+          total_months: newNokryongDoses,
+          remaining_months: newNokryongDoses,
+          start_date: receiptDate,
+          status: 'active',
+          mssql_detail_id: selectedDetailId || undefined,
+        });
+
+        // 메모 생성 (nokryong_package_id + mssql_detail_id 연결)
+        await addReceiptMemo({
+          patient_id: patientId,
+          chart_number: chartNumber,
+          patient_name: patientName,
+          mssql_receipt_id: receiptId,
+          mssql_detail_id: selectedDetailId || undefined,
+          receipt_date: receiptDate,
+          memo: memoText,
+          nokryong_package_id: packageId,
+        });
+      }
 
       onSuccess();
       onClose();
     } catch (err) {
-      console.error('녹용 등록 오류:', err);
-      alert('등록에 실패했습니다.');
+      console.error('녹용 등록/수정 오류:', err);
+      alert(isNokryongEditMode ? '수정에 실패했습니다.' : '등록에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 녹용 삭제
+  const handleNokryongDelete = async () => {
+    if (!isNokryongEditMode || !editNokryongPackage?.id) return;
+
+    if (!confirm('이 녹용 패키지를 삭제하시겠습니까?')) return;
+
+    setIsSaving(true);
+    try {
+      // 패키지 삭제
+      await deleteNokryongPackage(editNokryongPackage.id);
+
+      // 연결된 메모도 삭제
+      if (editMemoId) {
+        await deleteReceiptMemoById(editMemoId);
+      }
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('녹용 삭제 오류:', err);
+      alert('삭제에 실패했습니다.');
     } finally {
       setIsSaving(false);
     }
@@ -512,18 +601,64 @@ function RegisterModal({
           {/* 한약 선결제 등록 폼 */}
           {type === 'herbal' && (
             <>
+              {/* 패키지 현황 (수정 모드가 아닐 때만 표시) */}
+              {!isEditMode && (activeHerbalPackages.length > 0 || activeNokryongPackages.length > 0) && (
+                <div className="package-status-section">
+                  {/* 한약 패키지: 같은 종류(herbal_name + 첫번째 질환태그) 합산 */}
+                  {(() => {
+                    const herbalGrouped = activeHerbalPackages.reduce((acc, pkg) => {
+                      const diseaseLabel = pkg.diseaseTags?.length ? pkg.diseaseTags[0] : '';
+                      const key = diseaseLabel ? `${pkg.herbal_name}-${diseaseLabel}` : pkg.herbal_name;
+                      if (!acc[key]) {
+                        acc[key] = { label: key, remaining: 0 };
+                      }
+                      acc[key].remaining += pkg.remaining_count || 0;
+                      return acc;
+                    }, {} as Record<string, { label: string; remaining: number }>);
+
+                    return Object.values(herbalGrouped).map((group, idx) => (
+                      <div key={`herbal-${idx}`} className="package-status-item package-status-item--herbal">
+                        <span className="package-status-type">한약선결제</span>
+                        <span className="package-status-name">{group.label}</span>
+                        <span className="package-status-remaining">{group.remaining}회 남음</span>
+                      </div>
+                    ));
+                  })()}
+                  {/* 녹용 패키지: 같은 종류(녹용 타입) 합산 */}
+                  {(() => {
+                    const nokryongGrouped = activeNokryongPackages.reduce((acc, pkg) => {
+                      const match = pkg.package_name.match(/녹용\(([^)]+)\)/);
+                      const typeName = match ? match[1] : pkg.package_name;
+                      if (!acc[typeName]) {
+                        acc[typeName] = { label: typeName, remaining: 0 };
+                      }
+                      acc[typeName].remaining += pkg.remaining_months || 0;
+                      return acc;
+                    }, {} as Record<string, { label: string; remaining: number }>);
+
+                    return Object.values(nokryongGrouped).map((group, idx) => (
+                      <div key={`nokryong-${idx}`} className="package-status-item package-status-item--nokryong">
+                        <span className="package-status-type">녹용선결제</span>
+                        <span className="package-status-name">{group.label}</span>
+                        <span className="package-status-remaining">{group.remaining}회 남음</span>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              )}
+
               <div className="herbal-tabs">
                 <button
                   className={`herbal-tab ${herbalTab === 'herbal' ? 'active' : ''}`}
                   onClick={() => setHerbalTab('herbal')}
                 >
-                  <i className="fa-solid fa-leaf"></i> 선결제 등록
+                  <i className="fa-solid fa-leaf"></i> 한약선결제 추가
                 </button>
                 <button
                   className={`herbal-tab ${herbalTab === 'nokryong' ? 'active' : ''}`}
                   onClick={() => setHerbalTab('nokryong')}
                 >
-                  <i className="fa-solid fa-deer"></i> 녹용 등록
+                  <i className="fa-solid fa-deer"></i> 녹용선결제 추가
                 </button>
               </div>
 
@@ -652,6 +787,16 @@ function RegisterModal({
         </div>
 
         <div className="register-modal-footer">
+          {isNokryongEditMode && (
+            <button
+              className="btn-delete"
+              onClick={handleNokryongDelete}
+              disabled={isSaving}
+              style={{ marginRight: 'auto', background: '#ef4444', color: 'white' }}
+            >
+              삭제
+            </button>
+          )}
           <button className="btn-cancel" onClick={onClose}>
             취소
           </button>

@@ -121,13 +121,14 @@ export interface HerbalPackage {
   chart_number: string;
   patient_name: string;
   herbal_name: string;        // 약명 (시함마농, 궁귀교애탕 등)
-  package_type: '1month' | '2month' | '3month' | '6month';  // 선결 기간
+  package_type: '0.5month' | '1month' | '2month' | '3month' | '6month';  // 선결 기간
   total_count: number;       // 총 회차
   used_count: number;        // 사용 회차
   remaining_count: number;   // 잔여 회차
   start_date: string;
   next_delivery_date?: string;  // 다음 배송일
   memo?: string;
+  mssql_detail_id?: number;  // MSSQL Detail_PK (비급여 항목 연결)
   status: 'active' | 'completed';
   created_at?: string;
   updated_at?: string;
@@ -213,7 +214,9 @@ export interface Membership {
   patient_name: string;
   membership_type: string;   // 경근멤버십 등
   quantity: number;          // 등록 개수 (내원 시 무료 이용 개수, 하루 사용 제한)
+  period_months?: number;    // 기간 (개월)
   start_date: string;
+  end_date?: string;         // 종료일
   expire_date: string;       // 만료일
   memo?: string;
   mssql_detail_id?: number;  // MSSQL Detail_PK (비급여 항목 연결)
@@ -232,6 +235,8 @@ export interface YakchimUsageRecord {
   usage_date: string;
   item_name: string;                       // 사용된 항목명 (녹용약침 등)
   remaining_after: number;                 // 사용 후 잔여 (패키지만 의미 있음)
+  remaining_count?: number;                // 잔여 횟수 (패키지 잔여 표시용)
+  total_count?: number;                    // 총 횟수 (패키지 총 횟수 표시용)
   receipt_id?: number;
   mssql_detail_id?: number;                // MSSQL Detail_PK (비급여 항목 연결)
   memo?: string;
@@ -390,6 +395,9 @@ export interface NokryongPackage {
   chart_number?: string;
   patient_name?: string;
   package_name: string;          // "녹용(원대) 30회분"
+  nokryong_type?: string;        // 녹용 종류 (베이직, 원대, 프리미엄 등)
+  total_doses?: number;          // 총 회분수 (doses)
+  used_doses?: number;           // 사용 회분수 (doses)
   total_months: number;          // 총 회분수 (필드명 유지, 의미는 회분)
   remaining_months: number;      // 잔여 회분수
   price?: number;                // 구매 금액
@@ -411,6 +419,7 @@ export interface HerbalPickup {
   patient_name?: string;
   round_id?: number;             // 연결된 HerbalPackageRound ID
   receipt_id?: number;           // 연결된 수납 ID
+  mssql_detail_id?: number;      // 연결된 비급여항목 ID
   pickup_date: string;           // 수령일
   round_number: number;          // 회차 번호
   delivery_method: DeliveryMethod;  // 배송방법
@@ -440,6 +449,7 @@ export interface MedicineUsage {
   usage_date: string;        // 사용일 (YYYY-MM-DD)
   medicine_name: string;     // 약 이름 (소화제, 진통제, 파스 등)
   quantity: number;          // 수량
+  amount?: number;           // 금액
   inventory_id?: number;     // 재고 관리 ID
   purpose?: string;          // 목적 (상비약, 치료약, 감기약, 증정, 보완)
   memo?: string;             // 비고
@@ -942,7 +952,7 @@ export const USAGE_TYPE_LABELS: Record<PackageUsageType, string> = {
 };
 
 // ============================================
-// 비급여 타임라인 타입
+// CS 타임라인 타입
 // ============================================
 
 // 타임라인 이벤트 유형

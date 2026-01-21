@@ -24,12 +24,17 @@ const mockPosts: BlogPostSummary[] = [
     slug: 'neck-disc-early-symptoms',
     excerpt: '목디스크는 초기에 발견하면 비수술 치료로 충분히 호전될 수 있습니다. 이 글에서는 목디스크의 초기 증상 5가지와 자가진단 방법을 알려드립니다.',
     category: 'health_info',
+    status: 'published',
     tags: ['목디스크', '경추', '자가진단', '초기증상'],
     thumbnailUrl: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=400',
     authorName: '김원장',
     viewCount: 15420,
+    likeCount: 342,
+    commentCount: 28,
     readingTime: 5,
+    createdAt: '2024-01-19T09:00:00Z',
     publishedAt: '2024-01-20T09:00:00Z',
+    updatedAt: '2024-01-20T09:00:00Z',
   },
   {
     id: '2',
@@ -37,12 +42,17 @@ const mockPosts: BlogPostSummary[] = [
     slug: 'lumbar-disc-stretching',
     excerpt: '집에서 쉽게 따라할 수 있는 허리디스크 예방 및 완화 스트레칭을 소개합니다. 하루 10분 투자로 허리 건강을 지키세요.',
     category: 'lifestyle',
+    status: 'published',
     tags: ['허리디스크', '스트레칭', '홈트레이닝', '허리건강'],
     thumbnailUrl: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400',
     authorName: '이원장',
     viewCount: 28930,
+    likeCount: 512,
+    commentCount: 45,
     readingTime: 7,
+    createdAt: '2024-01-17T10:00:00Z',
     publishedAt: '2024-01-18T10:00:00Z',
+    updatedAt: '2024-01-18T10:00:00Z',
   },
   {
     id: '3',
@@ -50,12 +60,17 @@ const mockPosts: BlogPostSummary[] = [
     slug: 'chuna-therapy-guide',
     excerpt: '추나요법의 원리부터 치료 과정, 보험 적용 여부까지 추나요법에 대한 모든 것을 알려드립니다.',
     category: 'treatment_guide',
+    status: 'published',
     tags: ['추나요법', '한방치료', '보험적용', '치료안내'],
     thumbnailUrl: 'https://images.unsplash.com/photo-1519824145371-296894a0daa9?w=400',
     authorName: '김원장',
     viewCount: 12850,
+    likeCount: 198,
+    commentCount: 15,
     readingTime: 8,
+    createdAt: '2024-01-14T11:00:00Z',
     publishedAt: '2024-01-15T11:00:00Z',
+    updatedAt: '2024-01-15T11:00:00Z',
   },
   {
     id: '4',
@@ -63,12 +78,17 @@ const mockPosts: BlogPostSummary[] = [
     slug: 'lumbar-disc-treatment-review',
     excerpt: '사무직 특성상 오래 앉아있어 허리디스크가 심해졌던 40대 환자분의 3개월 치료 후기입니다.',
     category: 'case_study',
+    status: 'published',
     tags: ['치료후기', '허리디스크', '직장인', '비수술치료'],
     thumbnailUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400',
     authorName: '연이재한의원',
     viewCount: 8920,
+    likeCount: 156,
+    commentCount: 22,
     readingTime: 6,
+    createdAt: '2024-01-11T14:00:00Z',
     publishedAt: '2024-01-12T14:00:00Z',
+    updatedAt: '2024-01-12T14:00:00Z',
   },
   {
     id: '5',
@@ -76,12 +96,17 @@ const mockPosts: BlogPostSummary[] = [
     slug: 'acupuncture-faq',
     excerpt: '침 맞으면 아픈가요? 얼마나 자주 맞아야 하나요? 침 치료에 대한 궁금증을 모두 해결해드립니다.',
     category: 'faq',
+    status: 'published',
     tags: ['침치료', 'FAQ', '한방치료', '질문답변'],
     thumbnailUrl: 'https://images.unsplash.com/photo-1512290923902-8a9f81dc236c?w=400',
     authorName: '이원장',
     viewCount: 21340,
+    likeCount: 287,
+    commentCount: 56,
     readingTime: 4,
+    createdAt: '2024-01-09T09:00:00Z',
     publishedAt: '2024-01-10T09:00:00Z',
+    updatedAt: '2024-01-10T09:00:00Z',
   },
   {
     id: '6',
@@ -89,12 +114,17 @@ const mockPosts: BlogPostSummary[] = [
     slug: 'new-year-2024-notice',
     excerpt: '2024년 새해 복 많이 받으세요! 설 연휴 진료 일정과 새해 이벤트를 안내드립니다.',
     category: 'clinic_news',
+    status: 'published',
     tags: ['공지사항', '진료안내', '설연휴', '이벤트'],
     thumbnailUrl: 'https://images.unsplash.com/photo-1467810563316-b5476525c0f9?w=400',
     authorName: '연이재한의원',
     viewCount: 3240,
+    likeCount: 45,
+    commentCount: 8,
     readingTime: 2,
+    createdAt: '2024-01-04T10:00:00Z',
     publishedAt: '2024-01-05T10:00:00Z',
+    updatedAt: '2024-01-05T10:00:00Z',
   },
 ];
 
@@ -329,7 +359,7 @@ const BlogListPage: React.FC = () => {
 
                   {/* 메타 정보 */}
                   <div className="flex items-center justify-between text-xs text-gray-400">
-                    <span>{formatDate(post.publishedAt)}</span>
+                    <span>{formatDate(post.publishedAt || post.createdAt)}</span>
                     <div className="flex items-center gap-3">
                       <span className="flex items-center gap-1">
                         <i className="fa-solid fa-eye"></i>
@@ -337,7 +367,7 @@ const BlogListPage: React.FC = () => {
                       </span>
                       <span className="flex items-center gap-1">
                         <i className="fa-solid fa-clock"></i>
-                        {post.readingTime}분
+                        {post.readingTime ?? 5}분
                       </span>
                     </div>
                   </div>

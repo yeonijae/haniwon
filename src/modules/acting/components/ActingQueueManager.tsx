@@ -44,7 +44,7 @@ const ActingCard: React.FC<ActingCardProps> = ({ acting, isDragging, onContextMe
   const [elapsedMinutes, setElapsedMinutes] = useState<number | undefined>(undefined);
 
   useEffect(() => {
-    if (acting.status !== 'in_progress' || !acting.startedAt) {
+    if (acting.status !== 'acting' || !acting.startedAt) {
       setElapsedMinutes(undefined);
       return;
     }
@@ -74,7 +74,7 @@ const ActingCard: React.FC<ActingCardProps> = ({ acting, isDragging, onContextMe
           {elapsedMinutes}분
         </div>
       )}
-      {acting.status === 'in_progress' && (
+      {acting.status === 'acting' && (
         <div className="absolute top-1 left-2">
           <span className="inline-flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
         </div>
@@ -279,7 +279,7 @@ const DoctorColumn: React.FC<DoctorColumnProps> = ({
               진료 시작
             </button>
           )}
-          {contextMenu.acting.status === 'in_progress' && (
+          {contextMenu.acting.status === 'acting' && (
             <button
               onClick={() => {
                 onCompleteActing(contextMenu.acting.id, group.doctor.id, group.doctor.name);

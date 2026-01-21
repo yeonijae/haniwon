@@ -289,7 +289,7 @@ const MedicalStaffManagement: React.FC<{
         }
     }, [editingStaff]);
 
-    const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         
         if (name === 'fireDate') {

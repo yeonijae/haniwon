@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { EditDraft } from './ReservationEditStep1Modal';
-import type { UpdateReservationRequest } from '../types';
+import type { UpdateReservationRequest, ReservationType } from '../types';
 
 interface ReservationEditConfirmModalProps {
   isOpen: boolean;
@@ -51,7 +51,7 @@ export const ReservationEditConfirmModal: React.FC<ReservationEditConfirmModalPr
         time: selectedTime,
         doctor: draft.doctor,
         item: draft.selectedItems.join(','),
-        type: draft.type,
+        type: draft.type as ReservationType,
         memo: draft.memo,
       });
       onClose();

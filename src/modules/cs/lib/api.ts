@@ -32,6 +32,9 @@ import {
   TIMELINE_EVENT_ICONS,
 } from '../types';
 
+// Re-export types for external modules
+export type { MedicineUsage } from '../types';
+
 // MSSQL API 기본 URL
 const MSSQL_API_BASE_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
@@ -344,6 +347,7 @@ export async function ensureReceiptTables(): Promise<void> {
       patient_name TEXT,
       round_id INTEGER,
       receipt_id INTEGER,
+      mssql_detail_id INTEGER,
       pickup_date TEXT NOT NULL,
       round_number INTEGER NOT NULL,
       delivery_method TEXT DEFAULT 'pickup',
@@ -355,6 +359,9 @@ export async function ensureReceiptTables(): Promise<void> {
       FOREIGN KEY (package_id) REFERENCES cs_herbal_packages(id) ON DELETE CASCADE
     )
   `).catch(() => {});  // 이미 존재하면 무시
+
+  // 기존 테이블에 mssql_detail_id 컬럼 추가
+  await execute(`ALTER TABLE cs_herbal_pickups ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {});
 
   // 포인트 거래 테이블
   await execute(`
@@ -1892,6 +1899,13 @@ export async function updateYakchimUsageRecord(id: number, updates: {
 }
 
 /**
+ * 약침 사용내역 삭제
+ */
+export async function deleteYakchimUsageRecord(id: number): Promise<void> {
+  await execute(`DELETE FROM cs_yakchim_usage_records WHERE id = ${id}`);
+}
+
+/**
  * 상비약 사용내역 추가
  */
 export async function createMedicineUsage(data: Omit<MedicineUsage, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
@@ -2127,13 +2141,13 @@ export async function createMedicineInventory(
     INSERT INTO cs_medicine_inventory (
       prescription_id, name, alias, category, total_stock, current_stock,
       doses_per_batch, packs_per_batch, unit, is_active, sort_order, memo,
-      created_at, updated_at
+      last_decoction_date, created_at, updated_at
     ) VALUES (
       ${data.prescription_id ?? 'NULL'}, ${escapeString(data.name)}, ${toSqlValue(data.alias)},
       ${escapeString(data.category)}, ${data.total_stock}, ${data.current_stock},
       ${data.doses_per_batch}, ${data.packs_per_batch}, ${escapeString(data.unit)},
       ${data.is_active}, ${data.sort_order}, ${toSqlValue(data.memo)},
-      ${escapeString(now)}, ${escapeString(now)}
+      ${toSqlValue(data.last_decoction_date)}, ${escapeString(now)}, ${escapeString(now)}
     )
   `);
 }
@@ -2360,6 +2374,7 @@ export async function importPrescriptionsToInventory(
         is_active: true,
         sort_order: 0,
         memo: null,
+        last_decoction_date: null,
       });
 
       result.success++;
@@ -3058,11 +3073,11 @@ export async function createHerbalPickup(data: Omit<HerbalPickup, 'id' | 'create
   const now = getCurrentTimestamp();
   const pickupId = await insert(`
     INSERT INTO cs_herbal_pickups (
-      package_id, patient_id, chart_number, patient_name, round_id, receipt_id, pickup_date,
+      package_id, patient_id, chart_number, patient_name, round_id, receipt_id, mssql_detail_id, pickup_date,
       round_number, delivery_method, with_nokryong, nokryong_package_id, memo, created_at, updated_at
     ) VALUES (
       ${data.package_id}, ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
-      ${toSqlValue(data.round_id)}, ${toSqlValue(data.receipt_id)}, ${escapeString(data.pickup_date)},
+      ${toSqlValue(data.round_id)}, ${toSqlValue(data.receipt_id)}, ${toSqlValue(data.mssql_detail_id)}, ${escapeString(data.pickup_date)},
       ${data.round_number}, ${escapeString(data.delivery_method)}, ${data.with_nokryong},
       ${toSqlValue(data.nokryong_package_id)}, ${toSqlValue(data.memo)},
       ${escapeString(now)}, ${escapeString(now)}
@@ -3371,7 +3386,7 @@ export async function getAllActivePackages(patientId: number): Promise<{
 }
 
 // ============================================
-// 비급여 타임라인 API
+// CS 타임라인 API
 // ============================================
 
 /**
@@ -3395,6 +3410,7 @@ export async function getPatientTimeline(
     memberships,
     yakchimRecords,
     receiptMemos,
+    herbalPackageDiseaseTags,
   ] = await Promise.all([
     query<HerbalPackage>(`SELECT * FROM cs_herbal_packages WHERE patient_id = ${patientId} ORDER BY created_at DESC`),
     query<HerbalPickup>(`SELECT * FROM cs_herbal_pickups WHERE patient_id = ${patientId} ORDER BY created_at DESC`),
@@ -3403,20 +3419,50 @@ export async function getPatientTimeline(
     query<Membership>(`SELECT * FROM cs_memberships WHERE patient_id = ${patientId} ORDER BY created_at DESC`),
     query<YakchimUsageRecord>(`SELECT * FROM cs_yakchim_usage_records WHERE patient_id = ${patientId} ORDER BY created_at DESC`),
     query<ReceiptMemo>(`SELECT * FROM cs_receipt_memos WHERE patient_id = ${patientId} AND memo IS NOT NULL AND memo != '' ORDER BY created_at DESC`),
+    // 한약 패키지 질환명 태그 조회
+    query<{ package_id: number; tag_name: string }>(`
+      SELECT pd.package_id, t.name as tag_name
+      FROM cs_herbal_package_diseases pd
+      JOIN cs_herbal_disease_tags t ON t.id = pd.disease_tag_id
+      JOIN cs_herbal_packages p ON p.id = pd.package_id
+      WHERE p.patient_id = ${patientId}
+    `),
   ]);
+
+  // 패키지별 질환명 태그 맵 생성
+  const packageDiseaseMap = new Map<number, string[]>();
+  (herbalPackageDiseaseTags || []).forEach(row => {
+    if (!packageDiseaseMap.has(row.package_id)) {
+      packageDiseaseMap.set(row.package_id, []);
+    }
+    packageDiseaseMap.get(row.package_id)!.push(row.tag_name);
+  });
 
   const events: TimelineEvent[] = [];
 
   // 한약 선결제 등록 이벤트
   herbalPackages.forEach(pkg => {
+    // subLabel 구성: 치료목적, 종류, 질환명, 추가메모
+    const subLabelParts: string[] = [];
+    if (pkg.herbal_name) subLabelParts.push(pkg.herbal_name);
+    if (pkg.package_type) {
+      const typeLabel = pkg.package_type.replace('month', 'M');
+      subLabelParts.push(typeLabel);
+    }
+    const diseaseTags = packageDiseaseMap.get(pkg.id!) || [];
+    if (diseaseTags.length > 0) {
+      subLabelParts.push(diseaseTags.join(', '));
+    }
+    if (pkg.memo) subLabelParts.push(pkg.memo);
+
     events.push({
       id: `herbal_package_add_${pkg.id}`,
       type: 'herbal_package_add',
       date: pkg.start_date,
       timestamp: pkg.created_at || pkg.start_date,
       icon: TIMELINE_EVENT_ICONS.herbal_package_add,
-      label: `한약 선결제 +${pkg.total_count}회`,
-      subLabel: pkg.herbal_name || undefined,
+      label: '한약 선결제',
+      subLabel: subLabelParts.length > 0 ? subLabelParts.join(' | ') : undefined,
       sourceTable: 'cs_herbal_packages',
       sourceId: pkg.id!,
       isEditable: pkg.start_date === today,
@@ -3428,13 +3474,34 @@ export async function getPatientTimeline(
   // 한약 수령 이벤트
   herbalPickups.forEach(pickup => {
     const pkg = herbalPackages.find(p => p.id === pickup.package_id);
+
+    // 라벨 구성: 한약{총회차}-{사용회차}
+    let label = pkg
+      ? `한약${pkg.total_count}-${pickup.round_number}`
+      : `한약 ${pickup.round_number}회차`;
+
+    // 녹용 사용 시 라벨에 추가
+    if (pickup.with_nokryong && pickup.nokryong_package_id) {
+      const nokPkg = nokryongPackages.find(n => n.id === pickup.nokryong_package_id);
+      if (nokPkg) {
+        // 이 녹용 패키지의 몇 번째 사용인지 계산
+        const nokryongUsagesBefore = herbalPickups.filter(p =>
+          p.nokryong_package_id === pickup.nokryong_package_id &&
+          (p.created_at || p.pickup_date) <= (pickup.created_at || pickup.pickup_date)
+        ).length;
+        label += ` + 녹용${nokPkg.total_months}-${nokryongUsagesBefore}`;
+      } else {
+        label += ' + 녹용';
+      }
+    }
+
     events.push({
       id: `herbal_pickup_${pickup.id}`,
       type: 'herbal_pickup',
       date: pickup.pickup_date,
       timestamp: pickup.created_at || pickup.pickup_date,
       icon: TIMELINE_EVENT_ICONS.herbal_pickup,
-      label: `한약 수령 -1회 (${pickup.round_number}회차)`,
+      label,
       subLabel: pkg ? `잔여 ${pkg.total_count - pickup.round_number}회` : undefined,
       sourceTable: 'cs_herbal_pickups',
       sourceId: pickup.id!,
@@ -3522,9 +3589,9 @@ export async function getPatientTimeline(
     });
   });
 
-  // 커스텀 메모 이벤트
+  // 커스텀 메모 이벤트 (herbal_pickup_id가 있는 메모는 제외 - 한약 차감 이벤트에서 이미 표시됨)
   receiptMemos.forEach(memo => {
-    if (memo.memo && memo.memo.trim()) {
+    if (memo.memo && memo.memo.trim() && !memo.herbal_pickup_id) {
       events.push({
         id: `custom_memo_${memo.id}`,
         type: 'custom_memo',
@@ -3542,11 +3609,15 @@ export async function getPatientTimeline(
     }
   });
 
-  // 최신순 정렬 (timestamp 기준)
+  // 최신순 정렬 (기록된 날짜 기준, 같은 날짜면 timestamp로 추가 정렬)
   events.sort((a, b) => {
-    const dateA = new Date(a.timestamp);
-    const dateB = new Date(b.timestamp);
-    return dateB.getTime() - dateA.getTime();
+    // 먼저 날짜(date) 기준 정렬
+    const dateCompare = b.date.localeCompare(a.date);
+    if (dateCompare !== 0) return dateCompare;
+    // 같은 날짜면 timestamp로 정렬
+    const timeA = new Date(a.timestamp).getTime();
+    const timeB = new Date(b.timestamp).getTime();
+    return timeB - timeA;
   });
 
   const totalCount = events.length;

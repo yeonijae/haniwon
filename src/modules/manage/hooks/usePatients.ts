@@ -97,7 +97,7 @@ export const usePatients = (currentUser: any) => {
               details: q.details,
               memo: q.memo,
               doctor: q.doctor,
-            };
+            } as Patient;
           })
           .filter((p): p is Patient => p !== null);
 
@@ -113,7 +113,7 @@ export const usePatients = (currentUser: any) => {
               details: q.details,
               memo: q.memo,
               doctor: q.doctor,
-            };
+            } as Patient;
           })
           .filter((p): p is Patient => p !== null);
 
@@ -219,7 +219,7 @@ export const usePatients = (currentUser: any) => {
               details: q.details,
               memo: q.memo,
               doctor: q.doctor,
-            };
+            } as Patient;
           })
           .filter((p): p is Patient => p !== null);
 
@@ -236,7 +236,7 @@ export const usePatients = (currentUser: any) => {
               details: q.details,
               memo: q.memo,
               doctor: q.doctor,
-            };
+            } as Patient;
           })
           .filter((p): p is Patient => p !== null);
 

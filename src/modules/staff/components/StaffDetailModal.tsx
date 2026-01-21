@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import type { StaffMember, EmployeeType, WorkPattern, SalaryInterview, LeaveRecord, DoctorPermissions, Gender, ConsultationRoom } from '../types';
+import type { StaffMember, EmployeeType, WorkPattern, SalaryInterview, LeaveRecord, DoctorPermissions, Gender, ConsultationRoom, WorkPart } from '../types';
 import {
   EMPLOYEE_TYPE_LABELS,
   SALARY_EVENT_LABELS,
@@ -73,7 +73,7 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
   const [phone, setPhone] = useState(staff?.phone || '');
   const [email, setEmail] = useState(staff?.email || '');
   const [position, setPosition] = useState(staff?.position || '');
-  const [workPart, setWorkPart] = useState(staff?.work_part || '');
+  const [workPart, setWorkPart] = useState<WorkPart | ''>(staff?.work_part || '');
   const [hireDate, setHireDate] = useState(staff?.hire_date || '');
   const [resignDate, setResignDate] = useState(staff?.resign_date || '');
   const [profileColor, setProfileColor] = useState(staff?.profile_color || PROFILE_COLORS[0]);
@@ -579,8 +579,8 @@ const BasicInfoForm: React.FC<{
   setEmail: (v: string) => void;
   position: string;
   setPosition: (v: string) => void;
-  workPart: string;
-  setWorkPart: (v: string) => void;
+  workPart: WorkPart | '';
+  setWorkPart: (v: WorkPart | '') => void;
   dob: string;
   setDob: (v: string) => void;
   hireDate: string;
@@ -640,7 +640,7 @@ const BasicInfoForm: React.FC<{
           <label className="block text-sm font-medium text-gray-700 mb-1">근무 파트</label>
           <select
             value={workPart}
-            onChange={(e) => setWorkPart(e.target.value)}
+            onChange={(e) => setWorkPart(e.target.value as WorkPart | '')}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           >
             <option value="">선택하세요</option>

@@ -828,7 +828,7 @@ function BulkImportTab({
       const workbook = XLSX.read(data, { type: 'array' });
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { header: 1 });
+      const jsonData = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
 
       if (jsonData.length < 2) {
         alert('데이터가 없습니다.');

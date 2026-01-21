@@ -292,12 +292,13 @@ function StatisticsApp({ user }: StatisticsAppProps) {
 
   // Legend 클릭 핸들러 (토글)
   const createLegendClickHandler = useCallback((setHidden: React.Dispatch<React.SetStateAction<Set<string>>>) => {
-    return (e: { dataKey?: string }) => {
-      if (!e.dataKey) return;
+    return (data: { dataKey?: string | number | ((obj: unknown) => unknown) }) => {
+      const key = typeof data.dataKey === 'string' ? data.dataKey : undefined;
+      if (!key) return;
       setHidden(prev => {
         const next = new Set(prev);
-        if (next.has(e.dataKey!)) next.delete(e.dataKey!);
-        else next.add(e.dataKey!);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
         return next;
       });
     };
@@ -763,7 +764,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
               </button>
             </div>
             <button
-              onClick={fetchAllStats}
+              onClick={() => fetchAllStats()}
               disabled={loading}
               className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >

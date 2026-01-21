@@ -511,7 +511,8 @@ export interface TreatmentTimeLog {
 }
 
 // 액팅 상태
-export type ActingStatus = 'pending' | 'in_progress' | 'completed';
+// DB에서는 'acting', 'complete'를 사용함
+export type ActingStatus = 'waiting' | 'acting' | 'complete' | 'cancelled';
 
 // 액팅 시간 기록
 export interface ActingTimeLog {

@@ -3,10 +3,8 @@ import type { TimelineEvent, TimelineEventType, TimelineAuditLog } from '../type
 import { TIMELINE_EVENT_ICONS } from '../types';
 import {
   getPatientTimeline,
-  createTimelineAuditLog,
   getTimelineAuditLogs,
 } from '../lib/api';
-import { getCurrentTimestamp } from '@shared/lib/postgres';
 
 // 타입별 CSS 클래스 매핑
 const EVENT_TYPE_CLASSES: Record<TimelineEventType, string> = {
@@ -23,9 +21,16 @@ const EVENT_TYPE_CLASSES: Record<TimelineEventType, string> = {
 
 interface PackageTimelineProps {
   patientId: number;
-  onEventClick?: (event: TimelineEvent) => void;
+  patientName: string;
+  chartNumber: string;
   onRefresh?: () => void;
+  onEventClick?: (event: TimelineEvent) => void;
+  renderEditPanel?: (event: TimelineEvent, onClose: () => void, onReload: () => void) => React.ReactNode;
   currentUser?: string;
+  refreshTrigger?: number;
+  // 외부 패널을 특정 날짜 아래에 렌더링
+  externalPanel?: React.ReactNode;
+  externalPanelDate?: string;
 }
 
 interface DateGroup {
@@ -37,9 +42,15 @@ interface DateGroup {
 
 export const PackageTimeline: React.FC<PackageTimelineProps> = ({
   patientId,
-  onEventClick,
+  patientName,
+  chartNumber,
   onRefresh,
+  onEventClick,
+  renderEditPanel,
   currentUser = '직원',
+  refreshTrigger,
+  externalPanel,
+  externalPanelDate,
 }) => {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -48,10 +59,8 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
   const [offset, setOffset] = useState(0);
   const LIMIT = 10;
 
-  // 수정 사유 모달 상태
-  const [editingEvent, setEditingEvent] = useState<TimelineEvent | null>(null);
-  const [modificationReason, setModificationReason] = useState('');
-  const [showReasonModal, setShowReasonModal] = useState(false);
+  // 인라인 편집 상태
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
 
   // 수정 이력 모달 상태
   const [auditLogs, setAuditLogs] = useState<TimelineAuditLog[]>([]);
@@ -92,6 +101,18 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
     loadTimeline(true);
   }, [patientId]);
 
+  // 외부에서 트리거된 새로고침
+  useEffect(() => {
+    if (refreshTrigger !== undefined && refreshTrigger > 0) {
+      loadTimeline(true);
+    }
+  }, [refreshTrigger]);
+
+  // 타임라인 리로드 함수 (renderEditPanel에 전달)
+  const reloadTimeline = useCallback(() => {
+    loadTimeline(true);
+  }, [loadTimeline]);
+
   // 날짜별 그룹화
   const groupEventsByDate = useCallback((): DateGroup[] => {
     const today = new Date().toISOString().split('T')[0];
@@ -107,7 +128,6 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
 
     return Array.from(groups.entries()).map(([date, dateEvents]) => {
       const isToday = date === today;
-      const dateObj = new Date(date);
       const displayDate = isToday
         ? `${date.slice(2, 4)}/${date.slice(5, 7)}/${date.slice(8, 10)} 오늘`
         : `${date.slice(2, 4)}/${date.slice(5, 7)}/${date.slice(8, 10)}`;
@@ -123,49 +143,18 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
 
   // 이벤트 클릭 핸들러
   const handleEventClick = (event: TimelineEvent) => {
-    if (!event.isEditable) {
-      // 과거 날짜는 읽기 전용
-      return;
-    }
-
-    if (event.isCompleted) {
-      // 완료된 항목은 수정 사유 입력 필요
-      setEditingEvent(event);
-      setModificationReason('');
-      setShowReasonModal(true);
+    // 같은 이벤트 클릭하면 닫기, 다른 이벤트면 열기
+    if (expandedEventId === event.id) {
+      setExpandedEventId(null);
     } else {
-      // 미완료 항목은 바로 수정
+      setExpandedEventId(event.id);
       onEventClick?.(event);
     }
   };
 
-  // 수정 사유 확인
-  const handleConfirmModification = async () => {
-    if (!editingEvent || !modificationReason.trim()) {
-      alert('수정 사유를 입력해주세요.');
-      return;
-    }
-
-    try {
-      // 수정 이력 기록
-      await createTimelineAuditLog({
-        source_table: editingEvent.sourceTable,
-        source_id: editingEvent.sourceId,
-        patient_id: patientId,
-        field_name: 'general_modification',
-        old_value: JSON.stringify(editingEvent.originalData),
-        new_value: null, // 실제 수정 후 업데이트
-        modified_at: getCurrentTimestamp(),
-        modified_by: currentUser,
-        modification_reason: modificationReason,
-      });
-
-      setShowReasonModal(false);
-      onEventClick?.(editingEvent);
-    } catch (error) {
-      console.error('수정 이력 기록 오류:', error);
-      alert('수정 이력 기록에 실패했습니다.');
-    }
+  // 패널 닫기
+  const handleClosePanel = () => {
+    setExpandedEventId(null);
   };
 
   // 수정 이력 조회
@@ -187,6 +176,7 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
 
   // 새로고침
   const handleRefresh = () => {
+    setExpandedEventId(null);
     loadTimeline(true);
     onRefresh?.();
   };
@@ -196,7 +186,7 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
   return (
     <div className="package-timeline">
       <div className="timeline-header">
-        <h4 className="timeline-title">비급여 타임라인</h4>
+        <h4 className="timeline-title">CS 타임라인</h4>
         <span className="timeline-count">{totalCount}건</span>
         <button
           className="timeline-refresh-btn"
@@ -215,57 +205,90 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
         ) : (
           <>
             {dateGroups.map(group => (
-              <div
-                key={group.date}
-                className={`timeline-date-group ${group.isToday ? 'timeline-date-group--today' : ''}`}
-              >
-                <div className="timeline-date-header">
-                  <span className="timeline-date">{group.displayDate}</span>
-                </div>
+              <React.Fragment key={group.date}>
+                <div
+                  className={`timeline-date-group ${group.isToday ? 'timeline-date-group--today' : ''}`}
+                >
+                  <div className="timeline-date-header">
+                    <span className="timeline-date">{group.displayDate}</span>
+                  </div>
 
-                <div className="timeline-events">
-                  {group.events.map(event => (
-                    <div
-                      key={event.id}
-                      className={`timeline-event ${EVENT_TYPE_CLASSES[event.type] || ''} ${
-                        event.isEditable ? 'timeline-event--editable' : ''
-                      } ${event.isCompleted ? 'timeline-event--completed' : ''}`}
-                      onClick={() => handleEventClick(event)}
-                    >
-                      <span className="timeline-event-icon">{event.icon}</span>
-                      <div className="timeline-event-content">
-                        <span className="timeline-event-label">{event.label}</span>
-                        {event.subLabel && (
-                          <span className="timeline-event-sublabel">{event.subLabel}</span>
-                        )}
+                  <div className="timeline-events">
+                    {/* 외부 패널 (해당 날짜 최상단에 표시) */}
+                    {externalPanel && externalPanelDate === group.date && (
+                      <div className="timeline-inline-panel timeline-external-panel">
+                        {externalPanel}
                       </div>
-                      {event.isEditable && (
-                        <button
-                          className="timeline-event-edit-btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEventClick(event);
-                          }}
-                          title="수정"
+                    )}
+
+                    {group.events.map(event => (
+                      <React.Fragment key={event.id}>
+                        <div
+                          className={`timeline-event ${EVENT_TYPE_CLASSES[event.type] || ''} ${
+                            event.isEditable ? 'timeline-event--editable' : ''
+                          } ${event.isCompleted ? 'timeline-event--completed' : ''} ${
+                            expandedEventId === event.id ? 'timeline-event--expanded' : ''
+                          }`}
+                          onClick={() => handleEventClick(event)}
                         >
-                          ✏️
-                        </button>
-                      )}
-                      <button
-                        className="timeline-event-history-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleViewAuditLogs(event);
-                        }}
-                        title="수정 이력"
-                      >
-                        📋
-                      </button>
-                    </div>
-                  ))}
+                          <div className="timeline-event-content">
+                            <span className="timeline-event-label">{event.label}</span>
+                            {event.subLabel && (
+                              <span className="timeline-event-sublabel">{event.subLabel}</span>
+                            )}
+                          </div>
+                          {event.isEditable && (
+                            <button
+                              className="timeline-event-edit-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEventClick(event);
+                              }}
+                              title="수정"
+                            >
+                              ✏️
+                            </button>
+                          )}
+                          <button
+                            className="timeline-event-history-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewAuditLogs(event);
+                            }}
+                            title="수정 이력"
+                          >
+                            📋
+                          </button>
+                        </div>
+
+                        {/* 인라인 편집 패널 */}
+                        {expandedEventId === event.id && renderEditPanel && (
+                          <div className="timeline-inline-panel">
+                            {renderEditPanel(event, handleClosePanel, reloadTimeline)}
+                          </div>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              </React.Fragment>
+            ))}
+
+            {/* 해당 날짜가 타임라인에 없는 경우 상단에 외부 패널 표시 */}
+            {externalPanel && externalPanelDate && !dateGroups.some(g => g.date === externalPanelDate) && (
+              <div className="timeline-date-group timeline-date-group--today">
+                <div className="timeline-date-header">
+                  <span className="timeline-date">
+                    {externalPanelDate.slice(2, 4)}/{externalPanelDate.slice(5, 7)}/{externalPanelDate.slice(8, 10)} 오늘
+                  </span>
+                </div>
+                <div className="timeline-events">
+                  <div className="timeline-inline-panel timeline-external-panel">
+                    {externalPanel}
+                  </div>
                 </div>
               </div>
-            ))}
+            )}
 
             {hasMore && (
               <div className="timeline-load-more">
@@ -281,55 +304,6 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
           </>
         )}
       </div>
-
-      {/* 수정 사유 입력 모달 */}
-      {showReasonModal && (
-        <div className="timeline-modal-overlay" onClick={() => setShowReasonModal(false)}>
-          <div className="timeline-modal timeline-edit-modal" onClick={e => e.stopPropagation()}>
-            <div className="timeline-modal-header">
-              <h5>수정 사유 입력</h5>
-              <button
-                className="timeline-modal-close"
-                onClick={() => setShowReasonModal(false)}
-              >
-                ×
-              </button>
-            </div>
-            <div className="timeline-modal-body">
-              <p className="timeline-modal-info">
-                완료된 항목을 수정하려면 수정 사유를 입력해주세요.
-              </p>
-              <div className="timeline-modal-event">
-                <span className="timeline-event-icon">{editingEvent?.icon}</span>
-                <span>{editingEvent?.label}</span>
-              </div>
-              <textarea
-                className="timeline-reason-input"
-                placeholder="수정 사유를 입력하세요..."
-                value={modificationReason}
-                onChange={e => setModificationReason(e.target.value)}
-                rows={3}
-                autoFocus
-              />
-            </div>
-            <div className="timeline-modal-footer">
-              <button
-                className="timeline-modal-btn timeline-modal-btn--cancel"
-                onClick={() => setShowReasonModal(false)}
-              >
-                취소
-              </button>
-              <button
-                className="timeline-modal-btn timeline-modal-btn--confirm"
-                onClick={handleConfirmModification}
-                disabled={!modificationReason.trim()}
-              >
-                확인 후 수정
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 수정 이력 조회 모달 */}
       {showAuditModal && (

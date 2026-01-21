@@ -315,7 +315,7 @@ function WikiEditor({ page, isEditing, onSave, onCancel, onImageUpload }: WikiEd
 
       {/* Bubble Menu (Edit mode only) */}
       {isEditing && editor && (
-        <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }}>
+        <BubbleMenu editor={editor}>
           <div className="bubble-menu bg-gray-800 rounded-lg shadow-lg p-1 flex items-center gap-1">
             <button
               onClick={() => editor.chain().focus().toggleBold().run()}

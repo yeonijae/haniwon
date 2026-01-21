@@ -229,7 +229,7 @@ const TreatmentTimeline: React.FC<TreatmentTimelineProps> = ({
           {events.map((event, index) => {
             const nextEvent = events[index + 1];
             const duration = nextEvent
-              ? calculateDuration(event.event_time, nextEvent.event_time)
+              ? calculateDuration(event.timestamp, nextEvent.timestamp)
               : null;
 
             const isWaiting = event.event_type.startsWith('waiting_');
@@ -248,7 +248,7 @@ const TreatmentTimeline: React.FC<TreatmentTimelineProps> = ({
                       {EVENT_TYPE_LABELS[event.event_type]}
                     </span>
                     <span className="text-xs text-gray-400">
-                      {formatTime(event.event_time)}
+                      {formatTime(event.timestamp)}
                     </span>
                   </div>
 

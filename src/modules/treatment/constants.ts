@@ -5,6 +5,7 @@ import { ActingType, DefaultTreatment } from './types';
 export const DOCTORS = ['김원장', '강원장', '임원장', '전원장'];
 
 export const ACTING_TYPE_DETAILS: { [key in ActingType]: { icon: string; color: string; } } = {
+  '자침': { icon: 'fa-solid fa-hand-point-up', color: 'bg-emerald-100 border-emerald-500' },
   '침': { icon: 'fa-solid fa-syringe', color: 'bg-teal-100 border-teal-500' },
   '추나': { icon: 'fa-solid fa-person-cane', color: 'bg-sky-100 border-sky-500' },
   '초진': { icon: 'fa-solid fa-user-plus', color: 'bg-indigo-100 border-indigo-500' },

@@ -290,6 +290,7 @@ function mapTreatmentRecord(data: any): TreatmentRecord {
     id: data.id,
     patient_id: data.patient_id,
     treatment_date: data.record_date,
+    visit_date: data.record_date,  // treatment_date 별칭
     doctor_name: data.doctor_name,
     treatment_room: undefined,
     visit_type: data.record_type,
@@ -299,10 +300,14 @@ function mapTreatmentRecord(data: any): TreatmentRecord {
     payment_id: undefined,
     status: 'in_progress',
     memo: data.content,
+    check_in_time: data.check_in_time,
+    check_out_time: data.check_out_time,
+    total_wait_time: data.total_wait_time,
     created_at: data.created_at,
     updated_at: data.updated_at,
     patient_name: data.patient_name,
     chart_number: data.chart_number,
+    patient_chart_number: data.chart_number,  // chart_number 별칭
   };
 }
 

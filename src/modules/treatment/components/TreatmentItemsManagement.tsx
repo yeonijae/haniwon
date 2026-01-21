@@ -34,7 +34,8 @@ const TreatmentItemsManagement: React.FC<TreatmentItemsManagementProps> = ({
         }
         addTreatmentItem({
             name: formData.name,
-            defaultDuration: formData.defaultDuration
+            defaultDuration: formData.defaultDuration,
+            displayOrder: treatmentItems.length
         });
         setFormData({ name: '', defaultDuration: 30 });
         setShowAddModal(false);

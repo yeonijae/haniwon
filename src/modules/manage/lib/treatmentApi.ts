@@ -638,14 +638,14 @@ export async function updateActingStatus(
 ): Promise<void> {
   const now = timestamp || new Date().toISOString();
 
-  if (status === 'in_progress') {
+  if (status === 'acting') {
     await execute(`
       UPDATE acting_time_logs SET
         status = ${escapeString(status)},
         started_at = ${escapeString(now)}
       WHERE id = ${logId}
     `);
-  } else if (status === 'completed') {
+  } else if (status === 'complete') {
     // 종료 시 duration 계산
     const log = await queryOne<any>(`SELECT started_at FROM acting_time_logs WHERE id = ${logId}`);
     let durationSeconds = null;

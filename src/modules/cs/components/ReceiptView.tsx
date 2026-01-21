@@ -22,6 +22,11 @@ import {
   getHerbalPickupByReceiptId,
   getNokryongPackageById,
   getNokryongPackages,
+  getActiveNokryongPackages,
+  getActiveHerbalPackages,
+  updateHerbalPickup,
+  deleteHerbalPickup,
+  createHerbalPickup,
   getAllActivePackages,
   getPackageDiseaseTags,
   getPackageUsagesByDate,
@@ -33,6 +38,12 @@ import {
   deleteTreatmentPackage,
   updateMembership,
   deleteMembership,
+  getHerbalPurposes,
+  getHerbalDiseaseTags,
+  getNokryongTypes,
+  getMembershipTypes,
+  setPackageDiseaseTags,
+  findOrCreateDiseaseTag,
   type ReceiptDetailItem,
   type PreviousMemoItem,
 } from '../lib/api';
@@ -52,7 +63,9 @@ import {
   type ReceiptRecordFilter,
   type MemoSummaryItem,
   type PackageUsage,
+  type DeliveryMethod,
   RESERVATION_STATUS_LABELS,
+  HERBAL_PACKAGE_ROUNDS,
   generateMemoSummaryItems,
 } from '../types';
 import { MemoTagList } from './MemoTag';
@@ -76,54 +89,35 @@ import { CsSettingsModal } from './CsSettingsModal';
 import { useAuthStore } from '../../chat/stores/authStore';
 import { PackageTimeline } from './PackageTimeline';
 import type { TimelineEvent } from '../types';
+// 분리된 컴포넌트 및 헬퍼 import
+import {
+  InlineMemoEdit,
+  InlineHerbalPackageEdit,
+  InlineTreatmentPackageEdit,
+  InlineNokryongPackageEdit,
+  InlineMembershipEdit,
+  InlineHerbalPickupEdit,
+  InlineHerbalDeductPanel,
+} from './InlineEditComponents';
+import {
+  type PatientSearchResult,
+  type OnsiteReservationStats,
+  type ExpandedReceiptItem,
+  type TreatmentSummary,
+  searchPatients,
+  fetchOnsiteReservationRate,
+  formatMoney,
+  formatTime,
+  formatDateWithDay,
+  getPaymentMethodIcons,
+  getDoctorShortName,
+  formatInsuranceType,
+  getInsuranceTypeClass,
+  TREATMENT_NAME_MAP,
+  summarizeTreatments,
+} from './receiptHelpers';
 
 const MSSQL_API_BASE = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
-
-// 환자 검색 결과 타입
-interface PatientSearchResult {
-  id: number;
-  chart_no: string;
-  name: string;
-  birth: string | null;
-  sex: 'M' | 'F';
-  phone: string | null;
-  last_visit: string | null;
-}
-
-// 환자 검색 API
-const searchPatients = async (query: string): Promise<PatientSearchResult[]> => {
-  try {
-    const res = await fetch(`${MSSQL_API_BASE}/api/patients/search?q=${encodeURIComponent(query)}&limit=10`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (data.error) return [];
-    return data;
-  } catch {
-    return [];
-  }
-};
-
-// 현장예약율 타입
-interface OnsiteReservationStats {
-  total_chim_patients: number;  // 총 침환자
-  reserved_count: number;       // 예약 환자
-  reservation_rate: number;     // 사전예약율
-  onsite_count: number;         // 현장예약
-  onsite_rate: number;          // 현장예약율
-}
-
-// 현장예약율 조회
-const fetchOnsiteReservationRate = async (date: string): Promise<OnsiteReservationStats | null> => {
-  try {
-    const res = await fetch(`${MSSQL_API_BASE}/api/stats/all?period=daily&date=${date}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.error || !data.total_stats?.reservations) return null;
-    return data.total_stats.reservations;
-  } catch {
-    return null;
-  }
-};
 
 interface ReceiptViewProps {
   user: PortalUser;
@@ -153,167 +147,6 @@ const isActiveDoctor = (doc: Doctor): boolean => {
   }
 
   return true;
-};
-
-// 확장된 수납 아이템 (MSSQL + PostgreSQL 데이터)
-interface ExpandedReceiptItem extends ReceiptHistoryItem {
-  // PostgreSQL 데이터
-  treatmentPackages: TreatmentPackage[];
-  herbalPackages: HerbalPackage[];
-  pointBalance: number;
-  todayPointUsed: number;
-  todayPointEarned: number;
-  activeMembership: Membership | null;
-  herbalDispensings: HerbalDispensing[];
-  giftDispensings: GiftDispensing[];
-  documentIssues: DocumentIssue[];
-  medicineUsages: MedicineUsage[];
-  yakchimUsageRecords: YakchimUsageRecord[];
-  receiptMemos: ReceiptMemo[];
-  // 다음 예약 정보
-  nextReservation: Reservation | null;
-  // UI 상태
-  isExpanded: boolean;
-  isLoading: boolean;
-  memoItems: MemoSummaryItem[];  // 클릭 가능한 메모 태그 배열
-  // 기록 완료 여부
-  isCompleted: boolean;
-  // 빠른 메모 버튼 상태
-  hasYakchimMemo: boolean;
-  hasHerbalMemo: boolean;
-  hasMedicineMemo: boolean;
-  hasGongjindanMemo: boolean;
-  hasGyeongokgoMemo: boolean;
-  hasDietMemo: boolean;
-  // 빠른 메모 요약 (버튼에 표시)
-  yakchimMemoSummary?: string;
-  herbalMemoSummary?: string;
-  medicineMemoSummary?: string;
-  gongjindanMemoSummary?: string;
-  gyeongokgoMemoSummary?: string;
-  dietMemoSummary?: string;
-}
-
-// 금액 포맷
-const formatMoney = (amount?: number | null): string => {
-  if (amount === undefined || amount === null || amount === 0) return '-';
-  return Math.floor(amount).toLocaleString();
-};
-
-// 시간 포맷 (HH:MM)
-const formatTime = (receiptTime?: string | null): string => {
-  if (!receiptTime) return '-';
-  // "2024-12-24 10:30:00" 또는 "2024-12-24T10:30:00" 형식에서 HH:MM 추출
-  const match = receiptTime.match(/(\d{2}):(\d{2})/);
-  return match ? `${match[1]}:${match[2]}` : '-';
-};
-
-// 날짜 포맷 (MM/DD(요일))
-const formatDateWithDay = (dateStr: string): string => {
-  const d = new Date(dateStr);
-  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-  return `${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]})`;
-};
-
-// 수납 방식 아이콘
-const getPaymentMethodIcons = (receipt: ReceiptHistoryItem) => {
-  const methods: { icon: string; color: string; label: string }[] = [];
-  if (receipt.card > 0) methods.push({ icon: 'fa-credit-card', color: 'text-gray-400', label: '카드' });
-  if (receipt.cash > 0) methods.push({ icon: 'fa-money-bill', color: 'text-green-600', label: '현금' });
-  if (receipt.transfer > 0) methods.push({ icon: 'fa-building-columns', color: 'text-blue-600', label: '이체' });
-  return methods;
-};
-
-// 담당의 축약 (김원장 -> 김, 이승호 -> 이)
-const getDoctorShortName = (receipt: ReceiptHistoryItem): string => {
-  // treatments에서 첫 번째 의사 이름 가져오기
-  const doctorName = receipt.treatments?.[0]?.doctor;
-  if (!doctorName || doctorName === 'DOCTOR') return '-';
-  // "원장" 제거 후 첫 글자 반환
-  const cleaned = doctorName.replace(/원장$/g, '');
-  return cleaned.charAt(0) || '-';
-};
-
-// 종별 간소화 (건보(직장), 건보(지역) -> 건보, 산정특례 -> 산특)
-const formatInsuranceType = (type: string): string => {
-  if (type.startsWith('건보')) return '건보';
-  if (type === '산정특례') return '산특';
-  return type;
-};
-
-// 종별 색상 클래스
-const getInsuranceTypeClass = (type: string): string => {
-  if (type.startsWith('건보')) return 'type-gunbo';
-  if (type.startsWith('자보') || type.includes('자보')) return 'type-jabo';
-  return '';
-};
-
-// 진료명 간소화 매핑
-const TREATMENT_NAME_MAP: Record<string, string> = {
-  '진찰료(초진)': '초진',
-  '진찰료(재진)': '재진',
-  '경혈이체': '이체',
-  '투자침술': '투자',
-  '척추침술': '척추',
-  '복강침술': '복강',
-  '관절침술': '관절',
-  '침전기자극술': '전침',
-  '기기구술': '기기구',
-  '유관법': '유관',
-  '자락관법': '습부',
-  '자락관법이체': '습부이체',
-  '경피적외선조사': '적외선',
-};
-
-// 진료 항목 분류
-interface TreatmentSummary {
-  consultType: string | null;  // 초진/재진
-  coveredItems: string[];      // 급여 항목들
-  yakchim: { name: string; amount: number }[];  // 약침
-  sangbiyak: number;           // 상비약 금액
-}
-
-const summarizeTreatments = (treatments: { name: string; amount: number; is_covered: boolean }[]): TreatmentSummary => {
-  const result: TreatmentSummary = {
-    consultType: null,
-    coveredItems: [],
-    yakchim: [],
-    sangbiyak: 0,
-  };
-
-  for (const t of treatments) {
-    const name = t.name;
-
-    // 진찰료 (초진/재진)
-    if (name.includes('진찰료')) {
-      if (name.includes('초진')) result.consultType = '초진';
-      else if (name.includes('재진')) result.consultType = '재진';
-      continue;
-    }
-
-    // 약침 (비급여)
-    if (name.includes('약침')) {
-      const yakchimName = name.replace('약침', '').trim() || name;
-      result.yakchim.push({ name: yakchimName, amount: t.amount });
-      continue;
-    }
-
-    // 상비약
-    if (name.includes('상비약') || name.includes('상비')) {
-      result.sangbiyak += t.amount;
-      continue;
-    }
-
-    // 급여 항목 간소화
-    if (t.is_covered) {
-      const shortName = TREATMENT_NAME_MAP[name];
-      if (shortName && !result.coveredItems.includes(shortName)) {
-        result.coveredItems.push(shortName);
-      }
-    }
-  }
-
-  return result;
 };
 
 function ReceiptView({ user }: ReceiptViewProps) {
@@ -394,6 +227,14 @@ function ReceiptView({ user }: ReceiptViewProps) {
     herbalMode?: 'deduct-herbal' | 'deduct-nokryong' | 'register';  // 한약 패널 모드
     herbalPickupEditData?: HerbalPickup & { memoId?: number };  // 한약 차감 수정 모드용
   } | null>(null);
+
+  // 타임라인 영역에 표시할 인라인 차감 패널 상태
+  const [showInlineDeductPanel, setShowInlineDeductPanel] = useState<{
+    detailId?: number;
+  } | null>(null);
+
+  // 타임라인 새로고침 트리거
+  const [timelineRefreshTrigger, setTimelineRefreshTrigger] = useState(0);
 
   // 등록 모달 상태 (레거시 - 개별 등록용)
   const [registerModal, setRegisterModal] = useState<{
@@ -599,6 +440,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
               ...r,
               treatmentPackages: data.treatmentPackages || [],
               herbalPackages: data.herbalPackages || [],
+              herbalPickups: data.herbalPickups || [],
+              nokryongPackages: data.nokryongPackages || [],
               pointBalance: data.pointBalance || 0,
               todayPointUsed: data.todayPointUsed || 0,
               todayPointEarned: data.todayPointEarned || 0,
@@ -628,6 +471,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
             ...r,
             treatmentPackages: [],
             herbalPackages: [],
+            herbalPickups: [],
+            nokryongPackages: [],
             pointBalance: 0,
             todayPointUsed: 0,
             todayPointEarned: 0,
@@ -706,7 +551,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
       const herbalWithTags = await Promise.all(
         packages.herbal.map(async (pkg) => {
           const tags = await getPackageDiseaseTags(pkg.id!).catch(() => []);
-          return { ...pkg, diseaseTags: tags };
+          return { ...pkg, diseaseTags: tags.map(t => t.name) };
         })
       );
       setActivePackages({
@@ -772,6 +617,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
             ...r,
             treatmentPackages: data.treatmentPackages || [],
             herbalPackages: data.herbalPackages || [],
+            herbalPickups: data.herbalPickups || [],
+            nokryongPackages: data.nokryongPackages || [],
             pointBalance: data.pointBalance || 0,
             todayPointUsed: data.todayPointUsed || 0,
             todayPointEarned: data.todayPointEarned || 0,
@@ -801,6 +648,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
           ...r,
           treatmentPackages: [],
           herbalPackages: [],
+          herbalPickups: [],
+          nokryongPackages: [],
           pointBalance: 0,
           todayPointUsed: 0,
           todayPointEarned: 0,
@@ -848,7 +697,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
       const herbalWithTags = await Promise.all(
         packages.herbal.map(async (pkg) => {
           const tags = await getPackageDiseaseTags(pkg.id!).catch(() => []);
-          return { ...pkg, diseaseTags: tags };
+          return { ...pkg, diseaseTags: tags.map(t => t.name) };
         })
       );
       setActivePackages({
@@ -856,6 +705,9 @@ function ReceiptView({ user }: ReceiptViewProps) {
         herbal: herbalWithTags,
       });
       setTodayUsages(usages);
+
+      // 타임라인 새로고침 트리거
+      setTimelineRefreshTrigger(prev => prev + 1);
     } catch (err) {
       console.error('메모 데이터 새로고침 실패:', err);
     }
@@ -933,10 +785,13 @@ function ReceiptView({ user }: ReceiptViewProps) {
         ...r,
         treatmentPackages: [],
         herbalPackages: [],
+        herbalPickups: [],
+        nokryongPackages: [],
         pointBalance: 0,
         todayPointUsed: 0,
         todayPointEarned: 0,
         activeMembership: null,
+        memberships: [],
         herbalDispensings: [],
         giftDispensings: [],
         documentIssues: [],
@@ -1208,7 +1063,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
       case 'herbal-dispensing':
         // 한약 → 선결제 차감 모드로 열기
         setMemoInputMode({
-          itemName: item.name,
+          itemName: item.label,
           itemType: 'herbal',
           herbalMode: 'deduct-herbal',
         });
@@ -1267,13 +1122,17 @@ function ReceiptView({ user }: ReceiptViewProps) {
     setYakchimPendingItems([]);
   };
 
-  // 메모 입력 제외 항목
+  // 메모 입력 제외 항목 (미입력 뱃지도 표시 안함)
   const isExcludedFromMemo = (itemName: string) => itemName.includes('부항술혈명');
+
+  // 클릭 시 패널 열지 않는 항목 (미입력 뱃지는 표시)
+  const isClickDisabled = (itemName: string) =>
+    itemName.includes('부항술혈명') || itemName.includes('녹용');
 
   // 비급여 항목 클릭 시 사이드패널 메모 입력 모드 활성화
   const handleUncoveredItemClick = (itemName: string, amount: number, detailId?: number) => {
-    // 메모 입력 제외 항목
-    if (isExcludedFromMemo(itemName)) {
+    // 클릭 비활성화 항목
+    if (isClickDisabled(itemName)) {
       return;
     }
 
@@ -1300,9 +1159,9 @@ function ReceiptView({ user }: ReceiptViewProps) {
       return;
     }
 
-    // 한약 → 한약 선결제 차감
+    // 한약 → 타임라인에 인라인 차감 패널 표시
     if (itemName.includes('한약')) {
-      setMemoInputMode({ itemName, itemType: 'herbal', amount, detailId, herbalMode: 'deduct-herbal' });
+      setShowInlineDeductPanel({ detailId });
       return;
     }
 
@@ -1343,6 +1202,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
       selectedReceipt.treatmentPackages?.some(p => p.mssql_detail_id === detailId) ||
       selectedReceipt.memberships?.some(m => m.mssql_detail_id === detailId) ||
       selectedReceipt.receiptMemos?.some(m => m.mssql_detail_id === detailId) ||
+      selectedReceipt.herbalPickups?.some(p => p.mssql_detail_id === detailId) ||
+      selectedReceipt.nokryongPackages?.some(p => p.mssql_detail_id === detailId) ||
       false
     );
   };
@@ -1378,15 +1239,15 @@ function ReceiptView({ user }: ReceiptViewProps) {
       if (pickup) {
         // 해당 비급여 항목 찾기 (한약 관련)
         const herbalItem = selectedReceipt.uncoveredItems?.find(item =>
-          item.itemName.includes('한약')
+          item.name.includes('한약')
         );
         setMemoInputMode({
           patientId: selectedReceipt.patient_id,
           patientName: selectedReceipt.patient_name,
-          chartNumber: selectedReceipt.chart_number,
-          itemName: herbalItem?.itemName || '한약',
+          chartNumber: selectedReceipt.chart_no,
+          itemName: herbalItem?.name || '한약',
           itemType: 'herbal',
-          detailId: herbalItem?.detailId,
+          detailId: herbalItem?.id,
           herbalMode: 'deduct-herbal',
           herbalPickupEditData: { ...pickup, memoId: memo.id },
         });
@@ -1444,6 +1305,173 @@ function ReceiptView({ user }: ReceiptViewProps) {
   // 메모 인라인 편집 취소
   const handleCancelEditMemo = () => {
     setEditingMemo(null);
+  };
+
+  // 타임라인 이벤트 클릭 핸들러 (인라인 패널용 - 현재는 사용 안함)
+  const handleTimelineEventClick = async (event: TimelineEvent) => {
+    // renderTimelineEditPanel에서 처리하므로 여기서는 아무것도 하지 않음
+  };
+
+  // 타임라인 인라인 편집 패널 렌더링
+  const renderTimelineEditPanel = (event: TimelineEvent, onClose: () => void, onReload: () => void) => {
+    if (!selectedReceipt) return null;
+
+    const handleOpenHerbalModal = () => {
+      const pkg = event.originalData as HerbalPackage;
+      if (pkg) {
+        setRegisterModal({
+          type: 'herbal',
+          editHerbalPackage: pkg,
+        });
+        onClose();
+      }
+    };
+
+    const handleOpenNokryongModal = () => {
+      const pkg = event.originalData as NokryongPackage;
+      if (pkg) {
+        setRegisterModal({
+          type: 'herbal',
+          editNokryongPackage: pkg,
+          defaultTab: 'nokryong',
+        });
+        onClose();
+      }
+    };
+
+    const handleSaveMemo = async (memoId: number, newText: string) => {
+      try {
+        if (newText.trim()) {
+          await updateReceiptMemoById(memoId, newText);
+        } else {
+          await deleteReceiptMemoById(memoId);
+        }
+        await refreshSelectedPatientHistory();
+        onReload();
+        onClose();
+      } catch (err) {
+        console.error('메모 저장 실패:', err);
+        alert('메모 저장에 실패했습니다.');
+      }
+    };
+
+    const handleDeleteMemo = async (memoId: number) => {
+      if (!confirm('이 메모를 삭제하시겠습니까?')) return;
+      try {
+        await deleteReceiptMemoById(memoId);
+        await refreshSelectedPatientHistory();
+        onReload();
+        onClose();
+      } catch (err) {
+        console.error('메모 삭제 실패:', err);
+      }
+    };
+
+    switch (event.type) {
+      case 'herbal_package_add': {
+        const pkg = event.originalData as HerbalPackage;
+        if (!pkg) return null;
+        return (
+          <InlineHerbalPackageEdit
+            pkg={pkg}
+            onSuccess={() => {
+              refreshSelectedPatientHistory();
+              onReload();
+            }}
+            onClose={onClose}
+          />
+        );
+      }
+
+      case 'nokryong_package_add': {
+        const pkg = event.originalData as NokryongPackage;
+        if (!pkg) return null;
+        return (
+          <InlineNokryongPackageEdit
+            pkg={pkg}
+            onSuccess={() => {
+              refreshSelectedPatientHistory();
+              onReload();
+            }}
+            onClose={onClose}
+          />
+        );
+      }
+
+      case 'custom_memo': {
+        const memo = event.originalData as ReceiptMemo;
+        return (
+          <InlineMemoEdit
+            memo={memo}
+            onSave={handleSaveMemo}
+            onDelete={handleDeleteMemo}
+            onClose={onClose}
+          />
+        );
+      }
+
+      case 'herbal_pickup': {
+        const pickup = event.originalData as HerbalPickup;
+        if (!pickup) return null;
+        return (
+          <InlineHerbalPickupEdit
+            pickup={pickup}
+            onSuccess={() => {
+              refreshSelectedPatientHistory();
+              onReload();
+            }}
+            onClose={onClose}
+          />
+        );
+      }
+
+      case 'treatment_package_add': {
+        const pkg = event.originalData as TreatmentPackage;
+        if (!pkg) return null;
+        return (
+          <InlineTreatmentPackageEdit
+            pkg={pkg}
+            onSuccess={() => {
+              refreshSelectedPatientHistory();
+              onReload();
+            }}
+            onClose={onClose}
+          />
+        );
+      }
+
+      case 'membership_add': {
+        const mem = event.originalData as Membership;
+        if (!mem) return null;
+        return (
+          <InlineMembershipEdit
+            membership={mem}
+            onSuccess={() => {
+              refreshSelectedPatientHistory();
+              onReload();
+            }}
+            onClose={onClose}
+          />
+        );
+      }
+
+      case 'treatment_usage':
+      case 'membership_usage':
+      case 'nokryong_usage':
+      default:
+        return (
+          <div className="timeline-edit-inline">
+            <div className="timeline-edit-info">
+              <p className="edit-info-message">이 항목은 현재 인라인 수정을 지원하지 않습니다.</p>
+            </div>
+            <div className="timeline-edit-actions">
+              <button className="btn-close-inline" onClick={onClose}>
+                닫기
+              </button>
+            </div>
+          </div>
+        );
+    }
   };
 
   // 인라인 메모 추가 저장
@@ -1972,6 +2000,20 @@ function ReceiptView({ user }: ReceiptViewProps) {
                 <div className="patient-info">
                   <span className="patient-name">{selectedReceipt.patient_name}</span>
                   <span className="chart-no">({selectedReceipt.chart_no.replace(/^0+/, '')})</span>
+                  <button
+                    className="timeline-btn"
+                    onClick={() => {
+                      setHistoryPatient({
+                        patientId: selectedReceipt.patient_id,
+                        patientName: selectedReceipt.patient_name,
+                        chartNo: selectedReceipt.chart_no,
+                      });
+                      setShowHistoryModal(true);
+                    }}
+                    title="전체 수납이력"
+                  >
+                    <i className="fa-solid fa-clock-rotate-left"></i>
+                  </button>
                 </div>
                 <div className="header-status">
                   <div className="status-badge reservation">
@@ -2105,7 +2147,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
                 {/* 패키지 추가 버튼 */}
                 <div className="header-pkg-add-btns">
                   <button className="pkg-add-btn herbal" onClick={() => setQuickAddType('herbal')} title="한약 추가">약</button>
-                  <button className="pkg-add-btn nokryong" onClick={() => setQuickAddType('nokryong')} title="녹용 추가">녹</button>
+                  <button className="pkg-add-btn nokryong" onClick={() => setQuickAddType('nokryong')} title="녹용 사용">녹</button>
                   <button className="pkg-add-btn treatment" onClick={() => setQuickAddType('treatment')} title="통마 추가">통</button>
                   <button className="pkg-add-btn membership" onClick={() => setQuickAddType('membership')} title="멤버십 추가">멤</button>
                 </div>
@@ -2162,9 +2204,9 @@ function ReceiptView({ user }: ReceiptViewProps) {
                               {selectedReceipt.treatments.filter(t => !t.is_covered).map((item, idx) => (
                                 <tr
                                   key={idx}
-                                  className={`${isExcludedFromMemo(item.name) ? '' : 'clickable-row'} ${memoInputMode?.itemName === item.name ? 'active' : ''}`}
+                                  className={`${isClickDisabled(item.name) ? '' : 'clickable-row'} ${memoInputMode?.itemName === item.name ? 'active' : ''}`}
                                   onClick={() => handleUncoveredItemClick(item.name, item.amount || 0, item.id)}
-                                  title={isExcludedFromMemo(item.name) ? undefined : '클릭하여 메모 추가'}
+                                  title={isClickDisabled(item.name) ? undefined : '클릭하여 메모 추가'}
                                 >
                                   <td className="col-name">
                                     {item.name}
@@ -2200,79 +2242,37 @@ function ReceiptView({ user }: ReceiptViewProps) {
 
                 {/* 오른쪽 단: 메모 + 상태 */}
                 <div className="info-column">
-                  {/* 1. 비급여 타임라인 섹션 */}
+                  {/* 1. CS 타임라인 섹션 */}
                   <PackageTimeline
                     patientId={selectedReceipt.patient_id}
+                    patientName={selectedReceipt.patient_name}
+                    chartNumber={selectedReceipt.chart_no}
                     currentUser={user?.name || '직원'}
-                    onEventClick={(event: TimelineEvent) => {
-                      // 타임라인 이벤트 클릭 시 수정 모달 연동
-                      if (event.type === 'custom_memo' && event.originalData) {
-                        const memo = event.originalData as ReceiptMemo;
-                        handleStartEditMemo(memo);
-                      } else if (event.type === 'herbal_package_add' && event.originalData) {
-                        setMemoInputMode({
-                          itemName: '한약 선결제',
-                          itemType: 'herbal' as const,
-                          editData: event.originalData as HerbalPackage,
-                          herbalMode: 'package',
-                        });
-                      } else if (event.type === 'herbal_pickup' && event.originalData) {
-                        const pickup = event.originalData as HerbalPickup;
-                        setMemoInputMode({
-                          itemName: '한약 수령',
-                          itemType: 'herbal' as const,
-                          herbalMode: 'pickup',
-                          herbalPickupEditData: pickup,
-                        });
-                      } else if (event.type === 'nokryong_package_add' && event.originalData) {
-                        setMemoInputMode({
-                          itemName: '녹용 선결제',
-                          itemType: 'nokryong' as const,
-                          editData: event.originalData as NokryongPackage,
-                        });
-                      } else if (event.type === 'treatment_package_add' && event.originalData) {
-                        setMemoInputMode({
-                          itemName: '패키지',
-                          itemType: 'package' as const,
-                          packageEditData: event.originalData as TreatmentPackage,
-                        });
-                      } else if (event.type === 'membership_add' && event.originalData) {
-                        setMemoInputMode({
-                          itemName: '멤버십',
-                          itemType: 'membership' as const,
-                          membershipEditData: event.originalData as Membership,
-                        });
-                      } else if ((event.type === 'treatment_usage' || event.type === 'membership_usage') && event.originalData) {
-                        const record = event.originalData as YakchimUsageRecord;
-                        setMemoInputMode({
-                          itemName: record.item_name || '약침',
-                          itemType: 'yakchim' as const,
-                          yakchimEditData: record,
-                        });
-                      }
-                    }}
                     onRefresh={refreshSelectedPatientHistory}
+                    renderEditPanel={renderTimelineEditPanel}
+                    refreshTrigger={timelineRefreshTrigger}
+                    externalPanel={showInlineDeductPanel ? (
+                      <InlineHerbalDeductPanel
+                        patientId={selectedReceipt.patient_id}
+                        chartNumber={selectedReceipt.chart_no}
+                        patientName={selectedReceipt.patient_name}
+                        receiptId={selectedReceipt.id}
+                        receiptDate={selectedDate}
+                        detailId={showInlineDeductPanel.detailId}
+                        onSuccess={async () => {
+                          setShowInlineDeductPanel(null);
+                          setTimelineRefreshTrigger(prev => prev + 1);
+                          await refreshSelectedPatientHistory();
+                        }}
+                        onClose={() => setShowInlineDeductPanel(null)}
+                      />
+                    ) : undefined}
+                    externalPanelDate={showInlineDeductPanel ? selectedDate : undefined}
                   />
 
-                  {/* 오늘 메모 간편 추가 버튼 */}
-                  <div className="today-memo-add-section">
-                    {isAddingMemo ? (
-                      <div className="custom-memo adding">
-                        <input
-                          type="text"
-                          className="memo-edit-input"
-                          value={newMemoText}
-                          onChange={(e) => setNewMemoText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveNewMemo();
-                            if (e.key === 'Escape') handleCancelNewMemo();
-                          }}
-                          onBlur={handleSaveNewMemo}
-                          placeholder="메모 입력..."
-                          autoFocus
-                        />
-                      </div>
-                    ) : editingMemo ? (
+                  {/* 메모 편집 영역 */}
+                  {editingMemo && (
+                    <div className="today-memo-add-section">
                       <div className="custom-memo editing">
                         <input
                           type="text"
@@ -2303,16 +2303,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
                           <i className="fa-solid fa-trash"></i>
                         </button>
                       </div>
-                    ) : (
-                      <button
-                        className="add-memo-btn-inline"
-                        onClick={() => setIsAddingMemo(true)}
-                        title="메모 추가"
-                      >
-                        <i className="fa-solid fa-plus"></i> 메모 추가
-                      </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
                   {/* 2. 메모 입력 패널 (비급여 항목 클릭 시) */}
                   {memoInputMode && (
@@ -2343,24 +2335,6 @@ function ReceiptView({ user }: ReceiptViewProps) {
                     </div>
                   )}
 
-                  {/* 3. 이전메모 섹션 */}
-                  <div className="history-memo-section">
-                    <h4 className="section-title">
-                      <i className="fa-solid fa-clock-rotate-left"></i> 이전메모
-                    </h4>
-                    <div className="history-memo-list">
-                      {previousMemos.length > 0 ? (
-                        previousMemos.map((item, idx) => (
-                          <div key={idx} className="history-memo-item">
-                            <span className="history-date">{item.date}</span>
-                            <span className="history-memo-text">{item.memos.join(' / ')}</span>
-                          </div>
-                        ))
-                      ) : (
-                        <span className="no-memo">이전 메모 없음</span>
-                      )}
-                    </div>
-                  </div>
                 </div>
               </div>
             </>

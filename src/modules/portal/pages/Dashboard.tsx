@@ -18,7 +18,7 @@ function Dashboard({ user, onLogout }: DashboardProps) {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   // localStorage 키 (사용자별로 저장)
-  const storageKey = `portal_app_order_${user.login_id}`;
+  const storageKey = `portal_app_order_${user.username}`;
 
   // 초기 로드: localStorage에서 순서 불러오기
   useEffect(() => {

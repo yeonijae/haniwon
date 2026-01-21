@@ -123,8 +123,8 @@ const PatientSearch: React.FC<PatientSearchProps> = ({
       setIsLoadingHistory(true);
       try {
         if (patient.chartNumber) {
-          const history = await api.fetchPatientReceiptHistory(patient.chartNumber);
-          setReceiptHistory(history);
+          const response = await api.fetchPatientReceiptHistory({ chartNo: patient.chartNumber });
+          setReceiptHistory(response.receipts);
         } else {
           setReceiptHistory([]);
         }

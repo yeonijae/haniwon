@@ -78,9 +78,9 @@ export function usePatientCare() {
           return;
 
         case 'acupuncture':
-        case 'moxibustion':
+        case 'moxa':
         case 'cupping':
-        case 'physical_therapy':
+        case 'chuna':
           // 치료 서비스 완료 후 follow-up (10회차 체크는 별도 로직)
           // 트리거 생성 안함 (규칙 기반으로 처리)
           break;

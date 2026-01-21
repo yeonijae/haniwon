@@ -37,7 +37,7 @@ export interface ActingInfo {
   doctor_id: number;
   doctor_name: string;
   acting_type: string;
-  status: 'pending' | 'in_progress' | 'completed';
+  status: 'waiting' | 'acting' | 'complete' | 'cancelled';
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
@@ -103,8 +103,8 @@ function CSSidebar({ onPatientRightClick, onPatientClick }: CSSidebarProps) {
           && a.status !== 'cancelled'
         );
 
-        // waiting/pending 상태이거나 액팅 없는 환자만 상담대기에 표시
-        if (!acting || acting.status === 'pending' || acting.status === 'waiting') {
+        // waiting 상태이거나 액팅 없는 환자만 상담대기에 표시
+        if (!acting || acting.status === 'waiting') {
           waitingList.push({
             id: p.id,
             patient_id: p.patient_id,
@@ -120,9 +120,9 @@ function CSSidebar({ onPatientRightClick, onPatientClick }: CSSidebarProps) {
         }
       }
 
-      // 4. 상담완료 목록 (in_progress, completed)
+      // 4. 상담완료 목록 (acting, complete)
       const completedList: ConsultationPatient[] = actingList
-        .filter(a => a.status === 'in_progress' || a.status === 'completed')
+        .filter(a => a.status === 'acting' || a.status === 'complete')
         .map(a => ({
           id: a.id,
           patient_id: a.patient_id,
@@ -130,7 +130,7 @@ function CSSidebar({ onPatientRightClick, onPatientClick }: CSSidebarProps) {
           chart_no: a.chart_no,
           acting: a,
           hasActing: true,
-          consultationStatus: a.status as 'in_progress' | 'completed',
+          consultationStatus: a.status === 'acting' ? 'in_progress' : 'completed',
         }));
 
       setWaitingPatients(waitingList);

@@ -535,7 +535,7 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
 
       setStatus(doctorStatus);
 
-      const inProgress = doctorQueue.find(q => q.status === 'in_progress');
+      const inProgress = doctorQueue.find(q => q.status === 'acting');
       const waiting = doctorQueue.filter(q => q.status === 'waiting');
 
       setCurrentActing(inProgress || null);
@@ -655,8 +655,8 @@ const DoctorView: React.FC<DoctorViewProps> = ({ doctor, onBack }) => {
       if (acting.chartNo) {
         try {
           const { fetchPatientReceiptHistory } = await import('@modules/manage/lib/api');
-          const receipts = await fetchPatientReceiptHistory(acting.chartNo, 3);
-          setPatientReceipts(receipts);
+          const response = await fetchPatientReceiptHistory({ chartNo: acting.chartNo, limit: 3 });
+          setPatientReceipts(response.receipts);
         } catch (e) {
           console.error('수납내역 조회 오류:', e);
         }

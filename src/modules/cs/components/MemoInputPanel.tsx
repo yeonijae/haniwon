@@ -56,22 +56,8 @@ interface MedicineStock {
   current_stock: number;
 }
 
-// 한약 패키지 타입 (로컬 인터페이스)
-interface HerbalPackage {
-  id: number;
-  patient_id: number;
-  chart_number?: string;
-  patient_name?: string;
-  herbal_name?: string;
-  package_type: '1month' | '2month' | '3month' | '6month';
-  total_count: number;
-  used_count: number;
-  remaining_count: number;
-  start_date: string;
-  next_delivery_date?: string;
-  memo?: string;
-  status: 'active' | 'completed';
-}
+// 한약 패키지 타입 (HerbalPackageType에서 가져와서 HerbalPackage로 별칭)
+type HerbalPackage = HerbalPackageType;
 
 // 한약 섹션 액션 모드
 type HerbalActionMode = 'deduct' | 'register' | 'register-nokryong';

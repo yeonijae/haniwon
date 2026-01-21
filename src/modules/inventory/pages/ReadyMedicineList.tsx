@@ -37,7 +37,7 @@ function ReadyMedicineList() {
   const [usages, setUsages] = useState<MedicineUsage[]>([]);
   const [usageStats, setUsageStats] = useState<MedicineUsageStats[]>([]);
   const [usageLoading, setUsageLoading] = useState(false);
-  const [medicinNameFilter, setMedicineNameFilter] = useState('');
+  const [medicineNameFilter, setMedicineNameFilter] = useState('');
   const [patientNameFilter, setPatientNameFilter] = useState('');
   const [usageViewMode, setUsageViewMode] = useState<'list' | 'stats'>('list');
 
@@ -100,7 +100,7 @@ function ReadyMedicineList() {
         getMedicineUsagesByDateRange(
           usageStartDate,
           usageEndDate,
-          medicinNameFilter || undefined,
+          medicineNameFilter || undefined,
           patientNameFilter || undefined
         ),
         getMedicineUsageStatsByDateRange(usageStartDate, usageEndDate),
@@ -112,7 +112,7 @@ function ReadyMedicineList() {
     } finally {
       setUsageLoading(false);
     }
-  }, [usageStartDate, usageEndDate, medicinNameFilter, patientNameFilter]);
+  }, [usageStartDate, usageEndDate, medicineNameFilter, patientNameFilter]);
 
   useEffect(() => {
     loadInventory();
@@ -706,7 +706,7 @@ function ReadyMedicineList() {
               <input
                 type="text"
                 placeholder="처방명 검색..."
-                value={medicinNameFilter}
+                value={medicineNameFilter}
                 onChange={(e) => setMedicineNameFilter(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />

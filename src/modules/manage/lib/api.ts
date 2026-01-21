@@ -408,6 +408,7 @@ export async function fetchPendingPayments(): Promise<Payment[]> {
     patientChartNumber: p.patient_chart_number || '',
     details: '진료비',
     isPaid: false,
+    status: 'pending' as const,
     reservationId: p.reservation_id || undefined,
   }));
 }
@@ -1618,7 +1619,7 @@ export interface ReceiptHistoryItem {
     acupuncture: boolean;
     choona: boolean;
     yakchim: boolean;
-    uncovered: { name: string; amount: number }[];
+    uncovered: { id: number; name: string; amount: number }[];
   };
   // 진료 내역
   treatments: ReceiptTreatment[];

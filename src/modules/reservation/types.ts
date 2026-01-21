@@ -31,6 +31,8 @@ export interface Reservation {
 // 예약 생성 요청
 export interface CreateReservationRequest {
   patientId: number;
+  patientName?: string;
+  chartNo?: string;
   date: string;
   time: string;
   doctor: string;

@@ -141,7 +141,7 @@ export default function MediaLibraryModal({
             original_name: file.name,
             file_url: urlData.publicUrl,
             file_size: file.metadata?.size || 0,
-            category: 'uncategorized' as MediaCategory,
+            category: 'uncategorized' as MediaCategorySlug,
             created_at: file.created_at || '',
           };
         });

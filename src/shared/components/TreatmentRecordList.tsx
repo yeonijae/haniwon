@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import * as treatmentRecordApi from '@shared/api/treatmentRecordApi';
-import type { TreatmentRecord, RecordStatus } from '@shared/types/treatmentRecord';
+import type { TreatmentRecord, TreatmentRecordStatus } from '@shared/types/treatmentRecord';
 import { RECORD_STATUS_LABELS, SERVICE_TYPE_LABELS } from '@shared/types/treatmentRecord';
 import TreatmentTimeline from './TreatmentTimeline';
 
@@ -35,10 +35,7 @@ const TreatmentRecordList: React.FC<TreatmentRecordListProps> = ({
 
       if (patientId) {
         // 환자별 진료내역
-        data = await treatmentRecordApi.fetchPatientTreatmentRecords(patientId, {
-          startDate: dateRange?.start,
-          endDate: dateRange?.end,
-        });
+        data = await treatmentRecordApi.fetchTreatmentRecordsByPatient(patientId);
       } else {
         // 오늘의 진료내역
         data = await treatmentRecordApi.fetchTodayTreatmentRecords();
@@ -68,7 +65,7 @@ const TreatmentRecordList: React.FC<TreatmentRecordListProps> = ({
     }
   });
 
-  const getStatusColor = (status: RecordStatus) => {
+  const getStatusColor = (status: TreatmentRecordStatus) => {
     switch (status) {
       case 'in_progress':
         return 'bg-green-100 text-green-700 border-green-200';

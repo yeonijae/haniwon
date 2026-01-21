@@ -51,7 +51,7 @@ export async function fetchPatientsNeedFollowup(): Promise<any[]> {
     FROM patient_treatment_status pts
     LEFT JOIN patients p ON pts.patient_id = p.id
     WHERE pts.last_visit_date <= ${escapeString(dateStr)}
-    AND pts.treatment_phase NOT IN ('completed', 'cancelled')
+    AND pts.status NOT IN ('completed', 'lost')
     ORDER BY days_since_last_visit DESC
   `);
 
@@ -192,9 +192,9 @@ export async function upsertPatientTreatmentStatus(
 
   if (existing) {
     const updateParts: string[] = [];
-    if (updates.treatment_phase !== undefined) updateParts.push(`treatment_phase = ${escapeString(updates.treatment_phase || '')}`);
+    if (updates.status !== undefined) updateParts.push(`status = ${escapeString(updates.status || '')}`);
     if (updates.last_visit_date !== undefined) updateParts.push(`last_visit_date = ${escapeString(updates.last_visit_date || '')}`);
-    if (updates.next_visit_date !== undefined) updateParts.push(`next_visit_date = ${escapeString(updates.next_visit_date || '')}`);
+    if (updates.next_scheduled_date !== undefined) updateParts.push(`next_scheduled_date = ${escapeString(updates.next_scheduled_date || '')}`);
     if (updates.total_visits !== undefined) updateParts.push(`total_visits = ${updates.total_visits}`);
     if (updates.notes !== undefined) updateParts.push(`notes = ${escapeString(updates.notes || '')}`);
     updateParts.push(`updated_at = ${escapeString(now)}`);
@@ -202,9 +202,9 @@ export async function upsertPatientTreatmentStatus(
     await execute(`UPDATE patient_treatment_status SET ${updateParts.join(', ')} WHERE patient_id = ${patientId}`);
   } else {
     await execute(`
-      INSERT INTO patient_treatment_status (patient_id, treatment_phase, last_visit_date, next_visit_date, total_visits, notes, created_at, updated_at)
-      VALUES (${patientId}, ${escapeString(updates.treatment_phase || '')}, ${escapeString(updates.last_visit_date || '')},
-              ${escapeString(updates.next_visit_date || '')}, ${updates.total_visits || 0}, ${escapeString(updates.notes || '')},
+      INSERT INTO patient_treatment_status (patient_id, status, last_visit_date, next_scheduled_date, total_visits, notes, created_at, updated_at)
+      VALUES (${patientId}, ${escapeString(updates.status || '')}, ${escapeString(updates.last_visit_date || '')},
+              ${escapeString(updates.next_scheduled_date || '')}, ${updates.total_visits || 0}, ${escapeString(updates.notes || '')},
               ${escapeString(now)}, ${escapeString(now)})
     `);
   }
@@ -223,11 +223,11 @@ export async function recordPatientVisit(patientId: number): Promise<void> {
     await upsertPatientTreatmentStatus(patientId, {
       total_visits: existing.total_visits + 1,
       last_visit_date: today,
-      treatment_phase: 'ongoing',
+      status: 'active',
     });
   } else {
     await upsertPatientTreatmentStatus(patientId, {
-      treatment_phase: 'ongoing',
+      status: 'active',
       last_visit_date: today,
       total_visits: 1,
     });
@@ -247,7 +247,8 @@ export async function closeTreatment(
 
   await execute(`
     UPDATE patient_treatment_status SET
-      treatment_phase = 'completed',
+      status = 'completed',
+      closure_type = ${escapeString(closureType)},
       notes = ${escapeString(reason || '')},
       updated_at = ${escapeString(now)}
     WHERE patient_id = ${patientId}
@@ -262,7 +263,7 @@ export async function resumeTreatment(patientId: number): Promise<void> {
 
   await execute(`
     UPDATE patient_treatment_status SET
-      treatment_phase = 'ongoing',
+      status = 'active',
       updated_at = ${escapeString(now)}
     WHERE patient_id = ${patientId}
   `);
@@ -321,7 +322,7 @@ export async function createDeliveryHappyCall(
   return createPatientCareItem({
     patient_id: patientId,
     treatment_record_id: treatmentRecordId,
-    care_type: 'after_call',
+    care_type: 'happy_call_delivery',
     title: `${patientName} 한약 배송 해피콜`,
     description: '한약이 잘 도착했는지, 복용법을 이해하셨는지 확인해주세요.',
     scheduled_date: `${scheduledDate.getFullYear()}-${String(scheduledDate.getMonth() + 1).padStart(2, '0')}-${String(scheduledDate.getDate()).padStart(2, '0')}`,
@@ -345,7 +346,7 @@ export async function createMedicationHappyCall(
   return createPatientCareItem({
     patient_id: patientId,
     treatment_record_id: treatmentRecordId,
-    care_type: 'medication',
+    care_type: 'happy_call_medication',
     title: `${patientName} 복약 7일차 해피콜`,
     description: '복약 중 불편한 점이 없는지 확인해주세요.',
     scheduled_date: `${scheduledDate.getFullYear()}-${String(scheduledDate.getMonth() + 1).padStart(2, '0')}-${String(scheduledDate.getDate()).padStart(2, '0')}`,

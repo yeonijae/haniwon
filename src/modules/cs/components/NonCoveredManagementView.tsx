@@ -146,7 +146,7 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
       {/* 헤더 */}
       <div className="noncovered-header">
         <div className="noncovered-header-left">
-          <h2>비급여 타임라인</h2>
+          <h2>CS 타임라인</h2>
           <span className="noncovered-count">총 {events.length}건</span>
         </div>
         <div className="noncovered-header-right">

@@ -397,7 +397,7 @@ export const useReservations = (currentUser: any, allPatients: Patient[]) => {
       };
 
       const newActings: Acting[] = reservation.treatments
-        .map((treatment, index) => {
+        .map((treatment, index): Acting | null => {
           const actingInfo = treatmentToActingMap[treatment.name];
           if (actingInfo) {
             return {

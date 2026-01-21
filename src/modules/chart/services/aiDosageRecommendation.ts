@@ -55,7 +55,7 @@ function preFilterTemplates(
     const searchText = `${template.disease_name || ''} ${template.condition_detail || ''} ${template.category || ''} ${template.subcategory || ''}`.toLowerCase();
     const keywordsText = Array.isArray(template.keywords)
       ? template.keywords.join(' ').toLowerCase()
-      : (template.keywords || '').toLowerCase();
+      : '';
     const fullSearchText = searchText + ' ' + keywordsText;
 
     // 1. 나이 기반 카테고리 매칭

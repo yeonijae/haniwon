@@ -56,6 +56,7 @@ export interface TreatmentRecord {
   id: number;
   patient_id: number;
   treatment_date: string;  // YYYY-MM-DD
+  visit_date: string;      // treatment_date 별칭
 
   // 진료 정보
   doctor_name?: string;
@@ -76,6 +77,11 @@ export interface TreatmentRecord {
   status: TreatmentRecordStatus;
   memo?: string;
 
+  // 체크인/체크아웃 시간 (타임라인 이벤트에서 도출)
+  check_in_time?: string;
+  check_out_time?: string;
+  total_wait_time?: number;
+
   // 타임스탬프
   created_at: string;
   updated_at: string;
@@ -84,6 +90,7 @@ export interface TreatmentRecord {
   timeline_events?: TimelineEvent[];
   patient_name?: string;
   chart_number?: string;
+  patient_chart_number?: string;  // chart_number 별칭
 }
 
 // 진료 통계 (뷰에서 조회)

@@ -13,6 +13,7 @@ const TAG_TYPE_CLASSES: Record<MemoTagType, string> = {
   'yakchim-onetime': 'memo-tag--yakchim-onetime',
   'treatment-package': 'memo-tag--treatment',
   'herbal-package': 'memo-tag--herbal',
+  'nokryong-package': 'memo-tag--nokryong',
   'point-used': 'memo-tag--point-used',
   'point-earned': 'memo-tag--point-earned',
   'membership': 'memo-tag--membership',

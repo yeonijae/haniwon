@@ -7,6 +7,7 @@ import {
   deleteMedicineUsage,
   getMedicinePurposes,
   type MedicineInventory,
+  type MedicinePurpose,
   MEDICINE_PURPOSES,
 } from '../lib/api';
 import type { MedicineUsage } from '../types';

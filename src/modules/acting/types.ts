@@ -14,7 +14,8 @@ export interface ActingType {
 }
 
 // 액팅 상태
-export type ActingStatus = 'waiting' | 'in_progress' | 'completed' | 'cancelled';
+// DB에서는 'acting', 'complete'를 사용함 (in_progress, completed 아님)
+export type ActingStatus = 'waiting' | 'acting' | 'complete' | 'cancelled';
 
 // 액팅 대기열 아이템
 export interface ActingQueueItem {
@@ -38,7 +39,8 @@ export interface ActingQueueItem {
 }
 
 // 원장 상태
-export type DoctorStatusType = 'in_progress' | 'waiting' | 'office' | 'away';
+// DB에서는 'acting'을 사용함 (in_progress 아님)
+export type DoctorStatusType = 'acting' | 'waiting' | 'office' | 'away';
 
 export interface DoctorStatus {
   doctorId: number;
@@ -97,7 +99,7 @@ export interface AddActingRequest {
   actingType: string;
   orderNum?: number; // 미지정시 맨 뒤
   memo?: string;
-  source?: 'reservation' | 'manual' | 'treatment_queue';
+  source?: 'reservation' | 'manual' | 'treatment_queue' | 'cs_consultation';
   sourceId?: number;
 }
 

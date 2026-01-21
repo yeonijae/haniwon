@@ -283,6 +283,7 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
   ) => {
     const result = await patients.addBulkPatients(newPatientsData, onProgress);
     setBulkAddResult(result);
+    return result;
   }, [patients.addBulkPatients]);
 
   const movePatient = (patientToMove: Patient) => {
@@ -412,11 +413,12 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
       }
     } else {
       // 예약관리 시스템을 새 창으로 열고 환자 정보 + 진료내역 전달
+      const patient = patients.allPatients.find(p => p.id === payment.patientId);
       const params = new URLSearchParams({
         patientId: payment.patientId.toString(),
         chartNo: payment.patientChartNumber || '',
         patientName: payment.patientName,
-        phone: payment.patientPhone || '',
+        phone: patient?.phone || '',
         details: payment.details || '',
       });
       window.open(`/reservation?${params.toString()}`, '_blank');
@@ -650,7 +652,7 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
   };
 
   // Render Modal Content
-  const renderModalContent = () => {
+  const renderModalContent = (): React.ReactNode => {
     switch (modalType) {
       case 'reservation':
         return <ReservationModal

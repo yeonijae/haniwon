@@ -106,9 +106,9 @@ export const INITIAL_TREATMENT_ROOMS: TreatmentRoom[] = [
 ];
 
 export const PAYMENTS_WAITING: Payment[] = [
-    { id: 1, patientId: 11, patientName: '조은서', patientChartNumber: 'C011', details: '침치료, 약침', isPaid: false },
-    { id: 2, patientId: 12, patientName: '임도윤', patientChartNumber: 'C012', details: '물리치료, 부항', isPaid: false },
-    { id: 3, patientId: 13, patientName: '신유준', patientChartNumber: 'C013', details: '추나, 공진단(1환)', isPaid: false },
+    { id: 1, patientId: 11, patientName: '조은서', patientChartNumber: 'C011', details: '침치료, 약침', isPaid: false, status: 'pending' },
+    { id: 2, patientId: 12, patientName: '임도윤', patientChartNumber: 'C012', details: '물리치료, 부항', isPaid: false, status: 'pending' },
+    { id: 3, patientId: 13, patientName: '신유준', patientChartNumber: 'C013', details: '추나, 공진단(1환)', isPaid: false, status: 'pending' },
 ];
 
 export const MEDICAL_STAFF_LIST: MedicalStaff[] = [
@@ -121,7 +121,7 @@ export const MEDICAL_STAFF_LIST: MedicalStaff[] = [
     status: 'working',
     permissions: { prescription: true, chart: true, payment: true, statistics: true },
     workPatterns: [
-      { id: 'wp1-1', days: [true, true, true, true, true, false, false], startDate: '2010-03-01', endDate: '2024-12-31' }
+      { id: 'wp1-1', days: [true, true, true, true, true, false, false], dayWorkHours: [{ startTime: '09:00', endTime: '18:00' }, { startTime: '09:00', endTime: '18:00' }, { startTime: '09:00', endTime: '18:00' }, { startTime: '09:00', endTime: '18:00' }, { startTime: '09:00', endTime: '18:00' }, null, null], startDate: '2010-03-01', endDate: '2024-12-31' }
     ],
     consultationRoom: '1진료실'
   },
@@ -134,8 +134,8 @@ export const MEDICAL_STAFF_LIST: MedicalStaff[] = [
     status: 'working',
     permissions: { prescription: true, chart: true, payment: false, statistics: false },
     workPatterns: [
-        { id: 'wp2-1', days: [false, true, false, true, false, true, false], startDate: '2015-09-01', endDate: '2023-12-31' },
-        { id: 'wp2-2', days: [true, true, true, true, true, false, false], startDate: '2024-01-01', endDate: '2025-12-31' }
+        { id: 'wp2-1', days: [false, true, false, true, false, true, false], dayWorkHours: [null, { startTime: '09:00', endTime: '18:00' }, null, { startTime: '09:00', endTime: '18:00' }, null, { startTime: '09:00', endTime: '13:00' }, null], startDate: '2015-09-01', endDate: '2023-12-31' },
+        { id: 'wp2-2', days: [true, true, true, true, true, false, false], dayWorkHours: [{ startTime: '09:00', endTime: '18:00' }, { startTime: '09:00', endTime: '18:00' }, { startTime: '09:00', endTime: '18:00' }, { startTime: '09:00', endTime: '18:00' }, { startTime: '09:00', endTime: '18:00' }, null, null], startDate: '2024-01-01', endDate: '2025-12-31' }
     ],
     consultationRoom: '2진료실'
   },
@@ -149,7 +149,7 @@ export const MEDICAL_STAFF_LIST: MedicalStaff[] = [
     status: 'retired',
     permissions: { prescription: true, chart: true, payment: false, statistics: false },
     workPatterns: [
-        { id: 'wp3-1', days: [true, true, true, true, true, true, false], startDate: '2020-01-15', endDate: '2023-12-31' }
+        { id: 'wp3-1', days: [true, true, true, true, true, true, false], dayWorkHours: [{ startTime: '09:00', endTime: '18:00' }, { startTime: '09:00', endTime: '18:00' }, { startTime: '09:00', endTime: '18:00' }, { startTime: '09:00', endTime: '18:00' }, { startTime: '09:00', endTime: '18:00' }, { startTime: '09:00', endTime: '13:00' }, null], startDate: '2020-01-15', endDate: '2023-12-31' }
     ],
     consultationRoom: '3진료실'
   },

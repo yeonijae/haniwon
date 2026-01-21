@@ -80,6 +80,7 @@ const mockPost: BlogPost = {
   `,
   contentFormat: 'markdown',
   category: 'health_info',
+  status: 'published',
   tags: ['목디스크', '경추', '자가진단', '초기증상', '비수술치료'],
   authorName: '김원장',
   authorProfile: '연이재한의원 대표원장. 경희대학교 한의과대학 졸업. 척추질환 전문.',
@@ -90,6 +91,7 @@ const mockPost: BlogPost = {
   likeCount: 342,
   commentCount: 28,
   readingTime: 5,
+  createdAt: '2024-01-19T09:00:00Z',
   publishedAt: '2024-01-20T09:00:00Z',
   relatedPosts: [
     {
@@ -98,12 +100,17 @@ const mockPost: BlogPost = {
       slug: 'lumbar-disc-stretching',
       excerpt: '집에서 쉽게 따라할 수 있는 허리디스크 예방 및 완화 스트레칭',
       category: 'lifestyle',
+      status: 'published',
       tags: ['허리디스크', '스트레칭'],
       thumbnailUrl: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400',
       authorName: '이원장',
       viewCount: 28930,
+      likeCount: 512,
+      commentCount: 45,
       readingTime: 7,
+      createdAt: '2024-01-17T10:00:00Z',
       publishedAt: '2024-01-18T10:00:00Z',
+      updatedAt: '2024-01-18T10:00:00Z',
     },
     {
       id: '3',
@@ -111,12 +118,17 @@ const mockPost: BlogPost = {
       slug: 'chuna-therapy-guide',
       excerpt: '추나요법의 원리부터 치료 과정, 보험 적용 여부까지',
       category: 'treatment_guide',
+      status: 'published',
       tags: ['추나요법', '한방치료'],
       thumbnailUrl: 'https://images.unsplash.com/photo-1519824145371-296894a0daa9?w=400',
       authorName: '김원장',
       viewCount: 12850,
+      likeCount: 198,
+      commentCount: 15,
       readingTime: 8,
+      createdAt: '2024-01-14T11:00:00Z',
       publishedAt: '2024-01-15T11:00:00Z',
+      updatedAt: '2024-01-15T11:00:00Z',
     },
   ],
 };
@@ -281,7 +293,7 @@ const BlogPostPage: React.FC = () => {
           </span>
           <span className="flex items-center gap-1">
             <i className="fa-solid fa-calendar"></i>
-            {formatDate(post.publishedAt)}
+            {formatDate(post.publishedAt || post.createdAt)}
           </span>
           <span className="flex items-center gap-1">
             <i className="fa-solid fa-eye"></i>

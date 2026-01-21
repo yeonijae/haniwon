@@ -17,27 +17,10 @@ import {
 import {
   BlogCategory,
   BlogPostStatus,
+  BlogPostSummary,
   BLOG_CATEGORY_LABELS,
   BLOG_CATEGORY_COLORS,
 } from '../types';
-
-interface PostSummary {
-  id: string;
-  title: string;
-  slug: string;
-  excerpt: string;
-  category: BlogCategory;
-  status: BlogPostStatus;
-  thumbnailUrl?: string;
-  authorName: string;
-  publishedAt?: string;
-  createdAt: string;
-  updatedAt: string;
-  viewCount: number;
-  likeCount: number;
-  commentCount: number;
-  tags: string[];
-}
 
 interface DashboardStats {
   totalPosts: number;
@@ -56,7 +39,7 @@ interface BlogManagePageProps {
 export default function BlogManagePage({ embedded = false }: BlogManagePageProps) {
   // 경로 접두사 - embedded면 /content, 아니면 /blog/manage
   const basePath = embedded ? '/content/blog' : '/blog/manage';
-  const [posts, setPosts] = useState<PostSummary[]>([]);
+  const [posts, setPosts] = useState<BlogPostSummary[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | BlogPostStatus>('all');
@@ -74,7 +57,7 @@ export default function BlogManagePage({ embedded = false }: BlogManagePageProps
         getAllPosts(),
         getDashboardStats(),
       ]);
-      setPosts(postsData as PostSummary[]);
+      setPosts(postsData);
       setStats(statsData);
     } catch (error) {
       console.error('Failed to load data:', error);

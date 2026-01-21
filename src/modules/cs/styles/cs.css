@@ -6142,16 +6142,16 @@
 
 .patient-timeline-item {
   display: flex;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 14px;
+  padding: 14px 16px;
   background: #f9fafb;
   border-radius: 10px;
   border-left: 4px solid var(--event-color, #64748b);
 }
 
 .timeline-item-dot {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   background: white;
   border: 2px solid var(--event-color, #64748b);
   border-radius: 50%;
@@ -6162,7 +6162,7 @@
 }
 
 .timeline-item-dot span {
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .timeline-item-content {
@@ -6174,51 +6174,51 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   flex-wrap: wrap;
 }
 
 .timeline-item-date {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   color: #374151;
 }
 
 .timeline-item-time {
-  font-size: 12px;
+  font-size: 14px;
   color: #9ca3af;
 }
 
 .timeline-item-type {
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: white;
 }
 
 .timeline-item-program {
-  font-size: 12px;
+  font-size: 14px;
   color: #10b981;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
 }
 
 .timeline-item-body {
-  font-size: 13px;
+  font-size: 15px;
   color: #4b5563;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .timeline-item-result {
-  font-size: 12px;
+  font-size: 14px;
   color: #0369a1;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .timeline-item-by {
-  font-size: 11px;
+  font-size: 13px;
   color: #9ca3af;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 /* 프로그램/이벤트 등록 폼 */
@@ -12584,8 +12584,31 @@
 
 .side-panel-header .patient-info {
   display: flex;
-  align-items: baseline;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 전체이력 버튼 */
+.side-panel-header .patient-info .timeline-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin-left: 4px;
+  background: #e0e7ff;
+  border: none;
+  border-radius: 4px;
+  color: #4f46e5;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.side-panel-header .patient-info .timeline-btn:hover {
+  background: #c7d2fe;
+  color: #4338ca;
 }
 
 .side-panel-header .header-status {
@@ -13904,6 +13927,30 @@
   font-weight: 500;
 }
 
+/* 기간 빠른 설정 버튼 */
+.period-quick-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.period-quick-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+  transition: all 0.15s;
+}
+
+.period-quick-btn:hover {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  color: #3b82f6;
+}
+
 .doses-input {
   width: 60px !important;
   height: 28px;
@@ -14578,14 +14625,14 @@
 }
 
 /* ============================================
-   비급여 타임라인 스타일
+   CS 타임라인 스타일
    ============================================ */
 
 .package-timeline {
-  background: #fefce8;
+  background: #f8fafc;
   border-radius: 8px;
   padding: 12px;
-  border: 1px solid #fef08a;
+  border: 1px solid #e2e8f0;
 }
 
 .package-timeline .timeline-header {
@@ -14596,17 +14643,17 @@
 }
 
 .package-timeline .timeline-title {
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 600;
-  color: #854d0e;
+  color: #334155;
   margin: 0;
 }
 
 .package-timeline .timeline-count {
-  font-size: 11px;
-  color: #a16207;
-  background: #fef3c7;
-  padding: 2px 6px;
+  font-size: 15px;
+  color: #475569;
+  background: #e2e8f0;
+  padding: 2px 8px;
   border-radius: 10px;
 }
 
@@ -14615,18 +14662,18 @@
   width: 22px;
   height: 22px;
   border: none;
-  background: #fef3c7;
+  background: #e2e8f0;
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
-  color: #a16207;
+  color: #64748b;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .package-timeline .timeline-refresh-btn:hover {
-  background: #fde68a;
+  background: #cbd5e1;
 }
 
 .package-timeline .timeline-content {
@@ -14639,8 +14686,8 @@
 .package-timeline .timeline-empty {
   text-align: center;
   padding: 20px;
-  color: #a16207;
-  font-size: 12px;
+  color: #64748b;
+  font-size: 16px;
 }
 
 /* 날짜 그룹 */
@@ -14663,7 +14710,7 @@
 }
 
 .package-timeline .timeline-date {
-  font-size: 11px;
+  font-size: 15px;
   font-weight: 600;
   color: #6b7280;
 }
@@ -14677,19 +14724,34 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  border-left: none;
+  padding-left: 0;
+  margin-left: 0;
 }
 
 /* 이벤트 아이템 */
 .package-timeline .timeline-event {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 8px;
+  padding: 8px 10px;
   border-radius: 4px;
-  font-size: 12px;
-  background: #f9fafb;
+  font-size: 16px;
+  background: #f1f5f9;
   cursor: default;
   transition: background 0.15s;
+  border-left: none;
+  margin-left: 0;
+  box-shadow: none;
+}
+
+.package-timeline .timeline-event::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--event-dot-color, #9ca3af);
+  flex-shrink: 0;
 }
 
 .package-timeline .timeline-event--editable {
@@ -14705,7 +14767,7 @@
 }
 
 .package-timeline .timeline-event-icon {
-  font-size: 14px;
+  font-size: 18px;
   flex-shrink: 0;
 }
 
@@ -14725,66 +14787,41 @@
 }
 
 .package-timeline .timeline-event-sublabel {
-  font-size: 10px;
+  font-size: 14px;
   color: #9ca3af;
 }
 
-/* 이벤트 타입별 색상 */
+/* 이벤트 타입별 동그라미 색상 */
 .package-timeline .timeline-event--herbal {
-  background: #dcfce7;
-  border-left: 3px solid #22c55e;
-}
-
-.package-timeline .timeline-event--herbal:hover {
-  background: #bbf7d0;
+  --event-dot-color: #22c55e;
 }
 
 .package-timeline .timeline-event--nokryong {
-  background: #fef3c7;
-  border-left: 3px solid #f59e0b;
-}
-
-.package-timeline .timeline-event--nokryong:hover {
-  background: #fde68a;
+  --event-dot-color: #f59e0b;
 }
 
 .package-timeline .timeline-event--treatment {
-  background: #ede9fe;
-  border-left: 3px solid #8b5cf6;
-}
-
-.package-timeline .timeline-event--treatment:hover {
-  background: #ddd6fe;
+  --event-dot-color: #8b5cf6;
 }
 
 .package-timeline .timeline-event--membership {
-  background: #fce7f3;
-  border-left: 3px solid #ec4899;
-}
-
-.package-timeline .timeline-event--membership:hover {
-  background: #fbcfe8;
+  --event-dot-color: #ec4899;
 }
 
 .package-timeline .timeline-event--memo {
-  background: #e0f2fe;
-  border-left: 3px solid #0ea5e9;
-}
-
-.package-timeline .timeline-event--memo:hover {
-  background: #bae6fd;
+  --event-dot-color: #0ea5e9;
 }
 
 /* 수정/이력 버튼 */
 .package-timeline .timeline-event-edit-btn,
 .package-timeline .timeline-event-history-btn {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border: none;
   background: transparent;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 15px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -14805,12 +14842,12 @@
 }
 
 .package-timeline .timeline-load-more-btn {
-  padding: 6px 12px;
+  padding: 8px 14px;
   border: 1px solid #d1d5db;
   border-radius: 4px;
   background: white;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 15px;
   color: #6b7280;
 }
 
@@ -15078,4 +15115,831 @@
 
 .today-memo-add-section .memo-delete-btn:hover {
   background: #fecaca;
+}
+
+/* ===== 타임라인 인라인 편집 패널 ===== */
+.package-timeline .timeline-inline-panel {
+  margin: 4px 0 8px 0;
+  padding: 12px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.package-timeline .timeline-event--expanded {
+  background: #e0f2fe !important;
+  border-color: #7dd3fc;
+}
+
+.timeline-edit-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.timeline-edit-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.timeline-edit-info .edit-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.timeline-edit-info .edit-label {
+  color: #64748b;
+  min-width: 70px;
+}
+
+.timeline-edit-info .edit-value {
+  color: #1e293b;
+  font-weight: 500;
+}
+
+.timeline-edit-info .edit-info-message {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  text-align: center;
+  padding: 8px 0;
+}
+
+.timeline-edit-memo {
+  width: 100%;
+}
+
+.timeline-edit-memo .memo-edit-input-inline {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.timeline-edit-memo .memo-edit-input-inline:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.timeline-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.timeline-edit-actions button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.timeline-edit-actions .btn-edit-inline {
+  background: #3b82f6;
+  border: none;
+  color: white;
+}
+
+.timeline-edit-actions .btn-edit-inline:hover {
+  background: #2563eb;
+}
+
+.timeline-edit-actions .btn-save-inline {
+  background: #10b981;
+  border: none;
+  color: white;
+}
+
+.timeline-edit-actions .btn-save-inline:hover {
+  background: #059669;
+}
+
+.timeline-edit-actions .btn-delete-inline {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+}
+
+.timeline-edit-actions .btn-delete-inline:hover {
+  background: #fee2e2;
+}
+
+.timeline-edit-actions .btn-close-inline {
+  background: white;
+  border: 1px solid #d1d5db;
+  color: #6b7280;
+}
+
+.timeline-edit-actions .btn-close-inline:hover {
+  background: #f3f4f6;
+}
+
+/* 한약 선결제 인라인 수정 */
+.timeline-edit-inline.herbal-edit {
+  gap: 10px;
+}
+
+.herbal-edit-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.herbal-edit-info .info-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.herbal-edit-info .info-item i {
+  color: #94a3b8;
+}
+
+.herbal-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.herbal-edit-row > label {
+  min-width: 60px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+}
+
+.herbal-edit-row > select,
+.herbal-edit-row > input[type="text"] {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 13px;
+}
+
+.herbal-edit-row > select:focus,
+.herbal-edit-row > input[type="text"]:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+/* 패키지 종류 버튼 */
+.package-type-buttons {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.package-type-buttons .type-btn {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  background: white;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.package-type-buttons .type-btn:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.package-type-buttons .type-btn.active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.package-type-buttons .type-btn .count {
+  font-size: 10px;
+  font-weight: 400;
+  color: #94a3b8;
+}
+
+.package-type-buttons .type-btn.active .count {
+  color: #60a5fa;
+}
+
+/* 질환명 태그 */
+.disease-tags-inline {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.disease-tags-inline .tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.disease-tags-inline .disease-tag-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: #e0f2fe;
+  border-radius: 12px;
+  font-size: 12px;
+  color: #0369a1;
+}
+
+.disease-tags-inline .disease-tag-item button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #0369a1;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.disease-tags-inline .disease-tag-item button:hover {
+  color: #dc2626;
+}
+
+.disease-tags-inline .tag-input-wrapper {
+  position: relative;
+}
+
+.disease-tags-inline .tag-input-wrapper input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 13px;
+}
+
+.disease-tags-inline .tag-input-wrapper input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.disease-tags-inline .tag-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.disease-tags-inline .suggestion-item {
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.disease-tags-inline .suggestion-item:hover {
+  background: #f1f5f9;
+}
+
+/* 통증마일리지 인라인 수정 */
+.timeline-edit-inline.treatment-edit {
+  gap: 10px;
+}
+
+/* 녹용선결제 인라인 수정 */
+.timeline-edit-inline.nokryong-edit {
+  gap: 10px;
+}
+
+/* 멤버십 인라인 수정 */
+.timeline-edit-inline.membership-edit {
+  gap: 10px;
+}
+
+.timeline-edit-inline.membership-edit select {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 13px;
+  background: white;
+}
+
+.timeline-edit-inline.membership-edit select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.timeline-edit-inline.membership-edit input[type="date"] {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 13px;
+}
+
+.timeline-edit-inline.membership-edit input[type="date"]:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+/* 상태 토글 버튼 */
+.status-toggle-buttons {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.status-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  background: white;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.status-btn:hover {
+  background: #f1f5f9;
+}
+
+.status-btn.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+.status-btn.expired.active {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: white;
+}
+
+/* 횟수 조절 입력 그룹 */
+.count-input-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.count-input-group input[type="number"] {
+  width: 60px;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.count-input-group input[type="number"]:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.count-input-group .count-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  background: white;
+  font-size: 16px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.count-input-group .count-btn:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.count-input-group .count-btn:active {
+  background: #e2e8f0;
+}
+
+/* 한약 선결제 사용(차감) 인라인 수정 */
+.timeline-edit-inline.pickup-edit {
+  gap: 10px;
+}
+
+.pickup-edit-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: #fef3c7;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #92400e;
+}
+
+.pickup-edit-info .info-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pickup-edit-info .info-item i {
+  color: #d97706;
+}
+
+.pickup-edit-info .info-item.highlight {
+  font-weight: 600;
+  color: #b45309;
+}
+
+.pickup-edit-info .info-item .total-info {
+  font-weight: 400;
+  color: #92400e;
+}
+
+.pickup-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pickup-edit-row > label {
+  min-width: 70px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+}
+
+/* 수령방법 버튼 */
+.delivery-method-buttons {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.delivery-method-buttons .method-btn {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  background: white;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.delivery-method-buttons .method-btn:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.delivery-method-buttons .method-btn.active {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  color: #b45309;
+}
+
+/* 녹용 사용 옵션 */
+.nokryong-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.nokryong-option .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+}
+
+.nokryong-option .checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.nokryong-option select {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 13px;
+  min-width: 150px;
+}
+
+.nokryong-option select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.nokryong-option .nok-info {
+  font-size: 12px;
+  color: #059669;
+  font-weight: 500;
+}
+
+/* 한약 선결제 차감 인라인 패널 */
+.timeline-external-panel {
+  margin-top: 4px;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.timeline-edit-inline.deduct-panel {
+  gap: 8px;
+  background: white;
+  border: none;
+  padding: 6px;
+  border-radius: 6px;
+  margin: 0;
+}
+
+.deduct-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 4px;
+}
+
+.deduct-panel-header .panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e40af;
+}
+
+.deduct-panel-empty {
+  padding: 12px;
+  text-align: center;
+  color: #64748b;
+}
+
+.deduct-panel-empty p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.pickup-edit-row select {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.pickup-edit-row select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+/* 차감 패널 내부 스타일 조정 */
+.deduct-panel .pickup-edit-info {
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.deduct-panel .pickup-edit-row {
+  gap: 8px;
+}
+
+.deduct-panel .pickup-edit-row > label {
+  min-width: 60px;
+  font-size: 12px;
+}
+
+.deduct-panel .delivery-method-buttons .method-btn {
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.deduct-panel .nokryong-option {
+  gap: 8px;
+}
+
+.deduct-panel .nokryong-option .checkbox-label {
+  font-size: 12px;
+}
+
+.deduct-panel .nokryong-option select {
+  font-size: 12px;
+  min-width: 120px;
+}
+
+.deduct-panel .timeline-edit-actions {
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+  margin-top: 4px;
+}
+
+/* ===== 타임라인 이벤트 수정 모달 ===== */
+.timeline-edit-modal {
+  width: 420px;
+  max-width: 95vw;
+}
+
+.timeline-edit-header {
+  cursor: move;
+}
+
+.timeline-edit-header .header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timeline-edit-header .header-info h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.timeline-edit-header .patient-info {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.timeline-edit-body .event-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #f1f5f9;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.timeline-edit-body .event-date {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.timeline-edit-body .event-label {
+  font-size: 14px;
+  color: #334155;
+}
+
+/* 수정 폼 */
+.timeline-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.timeline-edit-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.timeline-edit-form .form-group label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.timeline-edit-form .form-group input,
+.timeline-edit-form .form-group select,
+.timeline-edit-form .form-group textarea {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  background: white;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.timeline-edit-form .form-group input:focus,
+.timeline-edit-form .form-group select:focus,
+.timeline-edit-form .form-group textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.timeline-edit-form .form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.timeline-edit-form .form-group input[type="number"] {
+  width: 100px;
+}
+
+.timeline-edit-form .form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.timeline-edit-form .form-row .form-group {
+  flex: 1;
+}
+
+/* 푸터 버튼 */
+.timeline-edit-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.timeline-edit-footer .footer-right {
+  display: flex;
+  gap: 8px;
+}
+
+.timeline-edit-footer .btn-delete {
+  padding: 8px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.timeline-edit-footer .btn-delete:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+.timeline-edit-footer .btn-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.timeline-edit-footer .btn-cancel {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  color: #6b7280;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.timeline-edit-footer .btn-cancel:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.timeline-edit-footer .btn-save {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  background: #3b82f6;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.timeline-edit-footer .btn-save:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.timeline-edit-footer .btn-save:disabled {
+  background: #93c5fd;
+  cursor: not-allowed;
 }

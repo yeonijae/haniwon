@@ -25,14 +25,16 @@ export interface BlogPost {
   slug: string;
   excerpt: string;
   content: string;
-  contentFormat: 'markdown' | 'html';
+  contentFormat?: 'markdown' | 'html';
 
   // 카테고리 & 태그
   category: BlogCategory;
+  status: BlogPostStatus;
   tags: string[];
 
   // 작성자
   authorName: string;
+  authorTitle?: string;
   authorProfile?: string;
 
   // 미디어
@@ -63,10 +65,11 @@ export interface BlogPost {
   viewCount: number;
   likeCount: number;
   commentCount: number;
-  readingTime: number;        // 분 단위
+  readingTime?: number;        // 분 단위
 
   // 날짜
-  publishedAt: string;
+  createdAt: string;
+  publishedAt?: string;
   updatedAt?: string;
 }
 
@@ -77,12 +80,17 @@ export interface BlogPostSummary {
   slug: string;
   excerpt: string;
   category: BlogCategory;
+  status: BlogPostStatus;
   tags: string[];
   thumbnailUrl?: string;
   authorName: string;
   viewCount: number;
-  readingTime: number;
-  publishedAt: string;
+  likeCount: number;
+  commentCount: number;
+  readingTime?: number;
+  createdAt: string;
+  publishedAt?: string;
+  updatedAt: string;
 }
 
 // 블로그 시리즈

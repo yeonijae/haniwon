@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Reservation, Doctor, UpdateReservationRequest } from '../types';
+import type { Reservation, Doctor, UpdateReservationRequest, ReservationType } from '../types';
 
 interface ReservationEditModalProps {
   isOpen: boolean;
@@ -20,7 +20,7 @@ const TREATMENT_ITEMS = [
 ];
 
 // 예약 구분 옵션
-const RESERVATION_TYPES = ['재진', '초진', '상담예약', '재초진', '약재진', '약초진'];
+const RESERVATION_TYPES: ReservationType[] = ['재진', '초진', '상담예약', '기타'];
 
 export const ReservationEditModal: React.FC<ReservationEditModalProps> = ({
   isOpen,
@@ -33,7 +33,7 @@ export const ReservationEditModal: React.FC<ReservationEditModalProps> = ({
   const [time, setTime] = useState('');
   const [doctor, setDoctor] = useState('');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [type, setType] = useState('재진');
+  const [type, setType] = useState<ReservationType>('재진');
   const [memo, setMemo] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +44,7 @@ export const ReservationEditModal: React.FC<ReservationEditModalProps> = ({
       setDate(reservation.date);
       setTime(reservation.time);
       setDoctor(reservation.doctor);
-      setType(reservation.type || '재진');
+      setType(reservation.type ?? '재진');
       setMemo(reservation.memo || '');
 
       // 진료 항목 파싱
@@ -232,7 +232,7 @@ export const ReservationEditModal: React.FC<ReservationEditModalProps> = ({
             </label>
             <select
               value={type}
-              onChange={(e) => setType(e.target.value)}
+              onChange={(e) => setType(e.target.value as ReservationType)}
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clinic-primary focus:border-transparent"
             >
               {RESERVATION_TYPES.map(t => (
