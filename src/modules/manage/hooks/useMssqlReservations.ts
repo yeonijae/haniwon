@@ -72,21 +72,29 @@ export const useMssqlReservations = () => {
   // 시간 포맷 (HH:MM)
   const formatTime = useCallback((time: string | null): string => {
     if (!time) return '-';
-    // MSSQL에서 오는 시간 형식에 따라 조정
-    // 예: "0930" -> "09:30", "09:30" -> "09:30"
-    if (time.length === 4 && !time.includes(':')) {
+
+    // 이미 포맷된 경우 (예: "09:30")
+    if (time.includes(':')) return time;
+
+    // 4자리 숫자인 경우 (예: "0930" -> "09:30")
+    if (time.length === 4) {
       return `${time.slice(0, 2)}:${time.slice(2)}`;
     }
+
     return time;
   }, []);
 
-  // 통계
-  const summary = {
-    total: reservations.length,
-    visited: reservations.filter(r => r.visited).length,
-    pending: reservations.filter(r => !r.visited).length,
-    firstVisit: reservations.filter(r => r.type === '초진').length,
-  };
+  // 통계 계산
+  const calculateSummary = useCallback(() => {
+    return {
+      total: reservations.length,
+      visited: reservations.filter(r => r.visited).length,
+      pending: reservations.filter(r => !r.visited).length,
+      firstVisit: reservations.filter(r => r.type === '초진').length,
+    };
+  }, [reservations]);
+
+  const summary = calculateSummary();
 
   return {
     reservations,

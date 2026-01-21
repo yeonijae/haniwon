@@ -4,41 +4,82 @@ import { getCurrentDate } from '@shared/lib/postgres';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [todayActions, setTodayActions] = useState<any[]>([]);
-  const [prescriptions, setPrescriptions] = useState<any>({
-    submitted: [],
-    pending: []
-  });
-  const [happyCallStats, setHappyCallStats] = useState<any>({
+  // 타입 정의
+  interface ActionItem {
+    title: string;
+    time: string;
+    description: string;
+  }
+
+  interface PrescriptionItem {
+    patientName: string;
+    content: string;
+  }
+
+  interface CallStats {
+    total: number;
+    completed: number;
+    pending: number;
+  }
+
+  interface ClinicSummary {
+    pendingPrescriptions: Array<{ patientName: string; date: string }>;
+    consultations: {
+      initial: number;
+      followUp: number;
+    };
+    monthlyAcupunctureAvg: number;
+    monthlyInitialAcupuncture: {
+      newPatient: number;
+      reInitial: number;
+      insurance: number;
+    };
+  }
+
+  // 초기 상태 생성 함수
+  const getInitialCallStats = (): CallStats => ({
     total: 0,
     completed: 0,
-    pending: 0
-  });
-  const [afterCallStats, setAfterCallStats] = useState<any>({
-    total: 0,
-    completed: 0,
-    pending: 0
+    pending: 0,
   });
 
-  // 진료 요약 데이터
-  const [clinicSummary, setClinicSummary] = useState<any>({
+  const getInitialClinicSummary = (): ClinicSummary => ({
     pendingPrescriptions: [],
     consultations: {
       initial: 0,
-      followUp: 0
+      followUp: 0,
     },
     monthlyAcupunctureAvg: 0,
     monthlyInitialAcupuncture: {
       newPatient: 0,
       reInitial: 0,
-      insurance: 0
-    }
+      insurance: 0,
+    },
   });
+
+  // 상태 정의
+  const [loading, setLoading] = useState(true);
+  const [todayActions, setTodayActions] = useState<ActionItem[]>([]);
+  const [prescriptions, setPrescriptions] = useState<{
+    submitted: PrescriptionItem[];
+    pending: PrescriptionItem[];
+  }>({
+    submitted: [],
+    pending: [],
+  });
+  const [happyCallStats, setHappyCallStats] = useState<CallStats>(getInitialCallStats());
+  const [afterCallStats, setAfterCallStats] = useState<CallStats>(getInitialCallStats());
+  const [clinicSummary, setClinicSummary] = useState<ClinicSummary>(getInitialClinicSummary());
 
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  // 침초진 합계 계산
+  const calculateInitialAcupunctureTotal = (): number => {
+    const { newPatient, reInitial, insurance } = clinicSummary.monthlyInitialAcupuncture;
+    return newPatient + reInitial + insurance;
+  };
 
   const loadDashboardData = async () => {
     try {
@@ -156,9 +197,7 @@ const Dashboard: React.FC = () => {
                 <div className="flex items-center justify-between p-2 bg-teal-50 rounded border border-teal-200 mt-2">
                   <span className="text-xs font-semibold text-teal-700">합계</span>
                   <span className="text-sm font-bold text-teal-700">
-                    {clinicSummary.monthlyInitialAcupuncture.newPatient +
-                     clinicSummary.monthlyInitialAcupuncture.reInitial +
-                     clinicSummary.monthlyInitialAcupuncture.insurance}명
+                    {calculateInitialAcupunctureTotal()}명
                   </span>
                 </div>
               </div>

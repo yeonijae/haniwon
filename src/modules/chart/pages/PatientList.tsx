@@ -33,90 +33,124 @@ const PatientList: React.FC = () => {
     }
   }, [searchTerm]);
 
+  // MSSQL에서 여러 환자 정보 가져오기
+  const fetchPatientsFromMssql = async (patientIds: number[]): Promise<Patient[]> => {
+    const patients: Patient[] = [];
+
+    for (const patientId of patientIds) {
+      try {
+        const response = await fetch(`${MSSQL_API_URL}/api/patients/${patientId}`);
+        if (response.ok) {
+          const mssqlData = await response.json();
+          patients.push(convertMssqlPatient(mssqlData));
+        }
+      } catch (err) {
+        console.error(`환자 ${patientId} 정보 조회 실패:`, err);
+      }
+    }
+
+    return patients;
+  };
+
+  // 오늘 약상담 환자 ID 수집
+  const getConsultationPatientIds = async (todayStr: string): Promise<Set<number>> => {
+    const consultationPatientIds = new Set<number>();
+
+    // 1. daily_acting_records에서 조회
+    const actingData = await query<{ patient_id: number }>(`
+      SELECT patient_id FROM daily_acting_records
+      WHERE acting_type = '약상담' AND work_date = '${todayStr}'
+    `);
+    actingData?.forEach(item => {
+      if (item.patient_id) consultationPatientIds.add(item.patient_id);
+    });
+
+    // 2. reservations에서 조회
+    const reservationsData = await query<{ patient_id: number }>(`
+      SELECT r.patient_id FROM reservations r
+      INNER JOIN reservation_treatments rt ON r.id = rt.reservation_id
+      WHERE r.reservation_date = '${todayStr}'
+      AND r.status = 'arrived'
+      AND rt.treatment_name = '약상담'
+    `);
+    reservationsData?.forEach(res => {
+      if (res.patient_id) consultationPatientIds.add(res.patient_id);
+    });
+
+    return consultationPatientIds;
+  };
+
+  // 차팅이 필요한 환자 ID 필터링
+  const filterUnchartedPatients = async (patientIds: number[]): Promise<number[]> => {
+    if (patientIds.length === 0) return [];
+
+    const chartedPatients = await query<{ patient_id: number }>(`
+      SELECT DISTINCT patient_id FROM initial_charts
+      WHERE patient_id IN (${patientIds.join(',')})
+    `);
+
+    const chartedPatientIds = new Set(chartedPatients?.map(c => c.patient_id) || []);
+    return patientIds.filter(id => !chartedPatientIds.has(id));
+  };
+
   // 차팅이 필요한 약상담 환자 로드 (PostgreSQL + MSSQL)
   const loadPatientsNeedingCharting = async () => {
     try {
       const todayStr = getCurrentDate();
 
-      // 1. 오늘 약상담 환자 조회 (daily_acting_records) - PostgreSQL
-      const actingData = await query<{ patient_id: number; created_at: string }>(`
-        SELECT patient_id, created_at FROM daily_acting_records
-        WHERE acting_type = '약상담'
-        AND work_date = '${todayStr}'
-        ORDER BY created_at DESC
-      `);
-
-      // 2. 오늘 약상담 예약 환자 조회 - PostgreSQL
-      const reservationsData = await query<{ patient_id: number; id: number }>(`
-        SELECT r.patient_id, r.id FROM reservations r
-        INNER JOIN reservation_treatments rt ON r.id = rt.reservation_id
-        WHERE r.reservation_date = '${todayStr}'
-        AND r.status = 'arrived'
-        AND rt.treatment_name = '약상담'
-      `);
-
-      // 전체 약상담 환자 ID 수집
-      const consultationPatientIds = new Set<number>();
-      actingData?.forEach(item => {
-        if (item.patient_id) consultationPatientIds.add(item.patient_id);
-      });
-      reservationsData?.forEach(res => {
-        if (res.patient_id) consultationPatientIds.add(res.patient_id);
-      });
-
+      // 1. 오늘 약상담 환자 ID 수집
+      const consultationPatientIds = await getConsultationPatientIds(todayStr);
       if (consultationPatientIds.size === 0) {
         setNeedsChartingPatients([]);
         return;
       }
 
-      // 3. 해당 환자들의 차팅 여부 확인 - PostgreSQL
+      // 2. 차팅 미완료 환자 ID 필터링
       const patientIdsArray = Array.from(consultationPatientIds);
-      const chartedPatients = await query<{ patient_id: number }>(`
-        SELECT DISTINCT patient_id FROM initial_charts
-        WHERE patient_id IN (${patientIdsArray.join(',')})
-      `);
-
-      // 차팅이 완료된 환자 ID 세트
-      const chartedPatientIds = new Set(
-        chartedPatients?.map(c => c.patient_id) || []
-      );
-
-      // 차팅이 필요한 환자 ID (약상담 환자 중 차팅 미완료)
-      const needsChartingIds = patientIdsArray.filter(
-        id => !chartedPatientIds.has(id)
-      );
-
+      const needsChartingIds = await filterUnchartedPatients(patientIdsArray);
       if (needsChartingIds.length === 0) {
         setNeedsChartingPatients([]);
         return;
       }
 
-      // 4. 차팅 필요 환자 정보 가져오기 - MSSQL
-      // 각 환자 ID로 MSSQL에서 정보 조회
-      const patients: Patient[] = [];
-      for (const patientId of needsChartingIds) {
-        try {
-          const response = await fetch(`${MSSQL_API_URL}/api/patients/${patientId}`);
-          if (response.ok) {
-            const p = await response.json();
-            patients.push({
-              id: p.id,
-              name: p.name,
-              chart_number: p.chart_no || '',
-              phone: p.phone || undefined,
-              dob: p.birth || undefined,
-              gender: p.sex === 'M' ? 'male' : p.sex === 'F' ? 'female' : undefined,
-            });
-          }
-        } catch (err) {
-          console.error(`환자 ${patientId} 정보 조회 실패:`, err);
-        }
-      }
-
+      // 3. MSSQL에서 환자 정보 가져오기
+      const patients = await fetchPatientsFromMssql(needsChartingIds);
       setNeedsChartingPatients(patients);
     } catch (error) {
       console.error('차팅 필요 환자 로드 실패:', error);
     }
+  };
+
+  // 환자별 최근 진료 날짜 추출
+  const getPatientLastVisitDates = async (): Promise<Map<number, string>> => {
+    const patientDateMap = new Map<number, string>();
+
+    // 초진차트에서 조회
+    const initialCharts = await query<{ patient_id: number; chart_date: string; updated_at: string }>(`
+      SELECT patient_id, chart_date, updated_at FROM initial_charts
+      ORDER BY updated_at DESC LIMIT 100
+    `);
+
+    // 경과기록에서 조회
+    const progressNotes = await query<{ patient_id: number; note_date: string; updated_at: string }>(`
+      SELECT patient_id, note_date, updated_at FROM progress_notes
+      ORDER BY updated_at DESC LIMIT 100
+    `);
+
+    // 데이터 병합 (더 최근 날짜로 업데이트)
+    const updatePatientDate = (record: { patient_id: number; updated_at: string; chart_date?: string; note_date?: string }) => {
+      const existingDate = patientDateMap.get(record.patient_id);
+      const recordDate = record.updated_at || record.chart_date || record.note_date;
+
+      if (recordDate && (!existingDate || new Date(existingDate) < new Date(recordDate))) {
+        patientDateMap.set(record.patient_id, recordDate);
+      }
+    };
+
+    initialCharts?.forEach(updatePatientDate);
+    progressNotes?.forEach(updatePatientDate);
+
+    return patientDateMap;
   };
 
   // 최근 진료 환자 로드 (PostgreSQL + MSSQL)
@@ -124,51 +158,16 @@ const PatientList: React.FC = () => {
     try {
       setLoading(true);
 
-      // 1. 초진차트에서 최근 진료 기록 가져오기 - PostgreSQL
-      const initialCharts = await query<{ patient_id: number; chart_date: string; updated_at: string }>(`
-        SELECT patient_id, chart_date, updated_at FROM initial_charts
-        ORDER BY updated_at DESC
-        LIMIT 100
-      `);
+      // 1. 환자별 최근 진료 날짜 추출
+      const patientDateMap = await getPatientLastVisitDates();
 
-      // 2. 경과기록에서 최근 진료 기록 가져오기 - PostgreSQL
-      const progressNotes = await query<{ patient_id: number; note_date: string; updated_at: string }>(`
-        SELECT patient_id, note_date, updated_at FROM progress_notes
-        ORDER BY updated_at DESC
-        LIMIT 100
-      `);
-
-      // 환자별로 가장 최근 진료 날짜 추출
-      const patientDateMap = new Map<number, string>();
-
-      // 초진차트 데이터 처리
-      initialCharts?.forEach((record) => {
-        const existingDate = patientDateMap.get(record.patient_id);
-        const recordDate = record.updated_at || record.chart_date;
-
-        if (!existingDate || new Date(existingDate) < new Date(recordDate)) {
-          patientDateMap.set(record.patient_id, recordDate);
-        }
-      });
-
-      // 경과기록 데이터 처리 (더 최근이면 업데이트)
-      progressNotes?.forEach((record) => {
-        const existingDate = patientDateMap.get(record.patient_id);
-        const recordDate = record.updated_at || record.note_date;
-
-        if (!existingDate || new Date(existingDate) < new Date(recordDate)) {
-          patientDateMap.set(record.patient_id, recordDate);
-        }
-      });
-
-      // 최근 진료일 기준 정렬 후 상위 50명
+      // 2. 최근 진료일 기준 정렬 후 상위 50명
       const sortedPatientIds = Array.from(patientDateMap.entries())
         .sort((a, b) => new Date(b[1]).getTime() - new Date(a[1]).getTime())
         .slice(0, 50);
 
       if (sortedPatientIds.length === 0) {
         setRecentPatients([]);
-        setLoading(false);
         return;
       }
 
@@ -178,18 +177,9 @@ const PatientList: React.FC = () => {
         try {
           const response = await fetch(`${MSSQL_API_URL}/api/patients/${patientId}`);
           if (response.ok) {
-            const p = await response.json();
-            patients.push({
-              id: p.id,
-              name: p.name,
-              chart_number: p.chart_no || '',
-              dob: p.birth || undefined,
-              gender: p.sex === 'M' ? 'male' : p.sex === 'F' ? 'female' : undefined,
-              phone: p.phone || undefined,
-              address: p.address || undefined,
-              registration_date: p.reg_date || undefined,
-              last_visit_date: lastVisitDate,
-            });
+            const mssqlData = await response.json();
+            const patient = convertMssqlPatient(mssqlData);
+            patients.push({ ...patient, last_visit_date: lastVisitDate });
           }
         } catch (err) {
           console.error(`환자 ${patientId} 정보 조회 실패:`, err);
@@ -217,16 +207,7 @@ const PatientList: React.FC = () => {
       const data = await response.json();
 
       // MSSQL 응답을 Patient 타입으로 변환
-      const patients: Patient[] = (data || []).map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        chart_number: p.chart_no || '',
-        dob: p.birth || undefined,
-        gender: p.sex === 'M' ? 'male' : p.sex === 'F' ? 'female' : undefined,
-        phone: p.phone || undefined,
-        address: p.address || undefined,
-        registration_date: p.reg_date || undefined,
-      }));
+      const patients: Patient[] = (data || []).map(convertMssqlPatient);
 
       setSearchResults(patients);
     } catch (error) {
@@ -240,16 +221,42 @@ const PatientList: React.FC = () => {
   const displayPatients = searchTerm.length >= 2 ? searchResults : recentPatients;
   const totalCount = searchTerm.length >= 2 ? searchResults.length : recentPatients.length;
 
-  const calculateAge = (dob?: string) => {
+  // 유틸리티 함수들
+  const calculateAge = (dob?: string): string => {
     if (!dob) return '-';
+
     const today = new Date();
     const birthDate = new Date(dob);
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
+
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
     }
+
     return `${age}세`;
+  };
+
+  const convertMssqlPatient = (mssqlData: any): Patient => ({
+    id: mssqlData.id,
+    name: mssqlData.name,
+    chart_number: mssqlData.chart_no || '',
+    dob: mssqlData.birth || undefined,
+    gender: mssqlData.sex === 'M' ? 'male' : mssqlData.sex === 'F' ? 'female' : undefined,
+    phone: mssqlData.phone || undefined,
+    address: mssqlData.address || undefined,
+    registration_date: mssqlData.reg_date || undefined,
+  });
+
+  const formatGender = (gender?: 'male' | 'female'): string => {
+    if (gender === 'male') return '남성';
+    if (gender === 'female') return '여성';
+    return '-';
+  };
+
+  const formatDate = (dateStr?: string): string => {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString('ko-KR');
   };
 
   if (loading) {
@@ -363,21 +370,17 @@ const PatientList: React.FC = () => {
                       ) : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-clinic-text-secondary">
-                      {patient.gender === 'male' ? '남성' : patient.gender === 'female' ? '여성' : '-'}
+                      {formatGender(patient.gender)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-clinic-text-secondary">{patient.phone || '-'}</td>
                     {searchTerm.length < 2 && (
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-clinic-text-secondary">
-                        {(patient as RecentPatient).last_visit_date
-                          ? new Date((patient as RecentPatient).last_visit_date!).toLocaleDateString('ko-KR')
-                          : '-'}
+                        {formatDate((patient as RecentPatient).last_visit_date)}
                       </td>
                     )}
                     {searchTerm.length >= 2 && (
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-clinic-text-secondary">
-                        {patient.registration_date
-                          ? new Date(patient.registration_date).toLocaleDateString('ko-KR')
-                          : '-'}
+                        {formatDate(patient.registration_date)}
                       </td>
                     )}
                   </tr>

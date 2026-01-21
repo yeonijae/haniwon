@@ -36,41 +36,36 @@ function HerbList() {
     }
   };
 
+  // 정렬 값 추출 함수
+  const getSortValue = (herb: Herb, field: SortField): string | number => {
+    switch (field) {
+      case 'name':
+        return herb.name.toLowerCase();
+      case 'origin':
+        return (herb.origin || '').toLowerCase();
+      case 'current_stock':
+        return herb.current_stock;
+      case 'unit_cost':
+        return herb.unit_cost;
+      default:
+        return '';
+    }
+  };
+
+  // 정렬 비교 함수
+  const compareHerbs = (a: Herb, b: Herb): number => {
+    const aValue = getSortValue(a, sortField);
+    const bValue = getSortValue(b, sortField);
+
+    if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
+  };
+
   // 정렬된 데이터
   const sortedHerbs = useMemo(() => {
     if (!herbs) return [];
-
-    const sorted = [...herbs].sort((a, b) => {
-      let aValue: any;
-      let bValue: any;
-
-      switch (sortField) {
-        case 'name':
-          aValue = a.name.toLowerCase();
-          bValue = b.name.toLowerCase();
-          break;
-        case 'origin':
-          aValue = (a.origin || '').toLowerCase();
-          bValue = (b.origin || '').toLowerCase();
-          break;
-        case 'current_stock':
-          aValue = a.current_stock;
-          bValue = b.current_stock;
-          break;
-        case 'unit_cost':
-          aValue = a.unit_cost;
-          bValue = b.unit_cost;
-          break;
-        default:
-          return 0;
-      }
-
-      if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
-      if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    return sorted;
+    return [...herbs].sort(compareHerbs);
   }, [herbs, sortField, sortOrder]);
 
   const handleStockIn = (herb: Herb) => {
@@ -88,11 +83,18 @@ function HerbList() {
     setShowEditModal(true);
   };
 
+  // 모달 닫기 및 상태 초기화
   const handleCloseModal = () => {
     setShowStockInModal(false);
     setShowStockOutModal(false);
     setShowEditModal(false);
     setSelectedHerb(null);
+  };
+
+  // 한봉당 용량 추출
+  const extractPackageSize = (description?: string): string => {
+    const match = description?.match(/한봉당 용량: (\d+)g/);
+    return match ? match[1] : '-';
   };
 
   const tabs = [
@@ -215,9 +217,7 @@ function HerbList() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {sortedHerbs.map((herb: Herb) => {
-                  // description에서 한봉당 용량 추출
-                  const packageSizeMatch = herb.description?.match(/한봉당 용량: (\d+)g/)
-                  const packageSize = packageSizeMatch ? packageSizeMatch[1] : '-'
+                  const packageSize = extractPackageSize(herb.description);
 
                   return (
                     <tr key={herb.id} className="hover:bg-gray-50">

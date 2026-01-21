@@ -26,6 +26,33 @@ interface ApiResponse {
 }
 
 /**
+ * 응답을 객체 배열로 변환
+ */
+function convertRowsToObjects<T>(data: ApiResponse): T[] {
+  if (!data.rows || data.rows.length === 0) {
+    return [];
+  }
+
+  const firstRow = data.rows[0];
+
+  // 이미 객체 배열인 경우
+  if (typeof firstRow === 'object' && !Array.isArray(firstRow)) {
+    return data.rows as T[];
+  }
+
+  // 구버전 호환: columns + rows(배열) → object array 변환
+  if (data.columns && Array.isArray(firstRow)) {
+    return (data.rows as any[][]).map((row: any[]) =>
+      Object.fromEntries(
+        data.columns!.map((col: string, i: number) => [col, row[i]])
+      )
+    ) as T[];
+  }
+
+  return data.rows as T[];
+}
+
+/**
  * SQL 쿼리 실행 (SELECT용)
  * 결과를 object array로 반환
  */
@@ -43,26 +70,7 @@ export async function query<T = Record<string, any>>(sql: string): Promise<T[]> 
       throw new Error(data.error);
     }
 
-    if (!data.rows || data.rows.length === 0) {
-      return [];
-    }
-
-    // PostgreSQL API는 rows를 객체 배열로 반환
-    // 이미 객체 배열이면 그대로 반환, 아니면 변환
-    if (typeof data.rows[0] === 'object' && !Array.isArray(data.rows[0])) {
-      return data.rows as T[];
-    }
-
-    // 구버전 호환: columns + rows(배열) → object array 변환
-    if (data.columns && Array.isArray(data.rows[0])) {
-      return (data.rows as any[][]).map((row: any[]) =>
-        Object.fromEntries(
-          data.columns!.map((col: string, i: number) => [col, row[i]])
-        )
-      ) as T[];
-    }
-
-    return data.rows as T[];
+    return convertRowsToObjects<T>(data);
   } catch (error) {
     console.error('Database query error:', error);
     throw error;
@@ -112,16 +120,23 @@ export async function execute(sql: string): Promise<{
 }
 
 /**
+ * SQL에 RETURNING id 추가 (없는 경우)
+ */
+function ensureReturningClause(sql: string): string {
+  const trimmedSql = sql.trim();
+  if (trimmedSql.toUpperCase().includes('RETURNING')) {
+    return trimmedSql;
+  }
+  return trimmedSql.replace(/;?\s*$/, ' RETURNING id');
+}
+
+/**
  * INSERT 후 마지막 삽입 ID 반환
  * PostgreSQL에서는 RETURNING id 사용
  */
 export async function insert(sql: string): Promise<number> {
   try {
-    // RETURNING id가 없으면 추가
-    let insertSql = sql.trim();
-    if (!insertSql.toUpperCase().includes('RETURNING')) {
-      insertSql = insertSql.replace(/;?\s*$/, ' RETURNING id');
-    }
+    const insertSql = ensureReturningClause(sql);
 
     const res = await fetch(`${API_URL}/api/execute`, {
       method: 'POST',

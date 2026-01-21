@@ -28,6 +28,19 @@ const PatientDetail: React.FC = () => {
     }
   }, [id]);
 
+  // MSSQL 환자 데이터를 Patient 타입으로 변환
+  const convertMssqlPatient = (mssqlData: any): Patient => ({
+    id: mssqlData.id,
+    name: mssqlData.name,
+    chart_number: mssqlData.chart_no || '',
+    dob: mssqlData.birth || undefined,
+    gender: mssqlData.sex === 'M' ? 'male' : mssqlData.sex === 'F' ? 'female' : undefined,
+    phone: mssqlData.phone || undefined,
+    address: mssqlData.address || undefined,
+    registration_date: mssqlData.reg_date || undefined,
+    referral_path: mssqlData.referral_source || undefined,
+  });
+
   // 환자 정보 로드 (MSSQL에서 조회)
   const loadPatient = async () => {
     try {
@@ -38,20 +51,8 @@ const PatientDetail: React.FC = () => {
         throw new Error(`환자 정보 조회 실패: ${response.status}`);
       }
 
-      const p = await response.json();
-
-      // MSSQL 응답을 Patient 타입으로 변환
-      const patientData: Patient = {
-        id: p.id,
-        name: p.name,
-        chart_number: p.chart_no || '',
-        dob: p.birth || undefined,
-        gender: p.sex === 'M' ? 'male' : p.sex === 'F' ? 'female' : undefined,
-        phone: p.phone || undefined,
-        address: p.address || undefined,
-        registration_date: p.reg_date || undefined,
-        referral_path: p.referral_source || undefined,
-      };
+      const mssqlData = await response.json();
+      const patientData = convertMssqlPatient(mssqlData);
 
       setPatient(patientData);
     } catch (error) {
@@ -63,16 +64,33 @@ const PatientDetail: React.FC = () => {
     }
   };
 
-  const calculateAge = (dob?: string) => {
+  // 나이 계산 함수
+  const calculateAge = (dob?: string): number | null => {
     if (!dob) return null;
+
     const today = new Date();
     const birthDate = new Date(dob);
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
+
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
     }
+
     return age;
+  };
+
+  // 성별 표시 함수
+  const formatGender = (gender?: 'male' | 'female'): string => {
+    if (gender === 'male') return '남성';
+    if (gender === 'female') return '여성';
+    return '-';
+  };
+
+  // 날짜 포맷 함수
+  const formatDate = (dateStr?: string): string => {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString('ko-KR');
   };
 
   if (loading) {
@@ -119,7 +137,7 @@ const PatientDetail: React.FC = () => {
                 <span className="mx-3">|</span>
                 <span className="font-semibold">생년월일:</span> {patient.dob ? `${patient.dob} (${calculateAge(patient.dob)}세)` : '-'}
                 <span className="mx-3">|</span>
-                <span className="font-semibold">성별:</span> {patient.gender === 'male' ? '남성' : patient.gender === 'female' ? '여성' : '-'}
+                <span className="font-semibold">성별:</span> {formatGender(patient.gender)}
               </p>
               <p>
                 <span className="font-semibold">전화번호:</span> {patient.phone || '-'}
@@ -128,7 +146,7 @@ const PatientDetail: React.FC = () => {
                 {patient.registration_date && (
                   <>
                     <span className="mx-3">|</span>
-                    <span className="font-semibold">등록일:</span> {new Date(patient.registration_date).toLocaleDateString('ko-KR')}
+                    <span className="font-semibold">등록일:</span> {formatDate(patient.registration_date)}
                   </>
                 )}
                 {patient.referral_path && (

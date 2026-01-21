@@ -35,30 +35,44 @@ function InquiryView({ user }: InquiryViewProps) {
     staff_name: user.name,
   });
 
+  // 폼 초기 상태 생성
+  const getInitialFormData = (): CreateInquiryRequest => ({
+    channel: 'phone',
+    inquiry_type: 'new_patient',
+    content: '',
+    patient_name: '',
+    contact: '',
+    response: '',
+    staff_name: user.name,
+  });
+
   const resetForm = () => {
-    setFormData({
-      channel: 'phone',
-      inquiry_type: 'new_patient',
-      content: '',
-      patient_name: '',
-      contact: '',
-      response: '',
-      staff_name: user.name,
-    });
+    setFormData(getInitialFormData());
     setEditingInquiry(null);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    resetForm();
+  };
+
+  // 폼 검증
+  const validateForm = (): boolean => {
+    if (!formData.content.trim()) {
+      alert('문의 내용을 입력해주세요.');
+      return false;
+    }
+    return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.content.trim()) {
-      alert('문의 내용을 입력해주세요.');
-      return;
-    }
+
+    if (!validateForm()) return;
 
     try {
       await createInquiry(formData);
-      setShowForm(false);
-      resetForm();
+      closeForm();
     } catch (err) {
       alert('문의 등록에 실패했습니다.');
     }
@@ -74,6 +88,7 @@ function InquiryView({ user }: InquiryViewProps) {
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('이 문의를 삭제하시겠습니까?')) return;
+
     try {
       await deleteInquiry(id);
     } catch (err) {
@@ -81,7 +96,7 @@ function InquiryView({ user }: InquiryViewProps) {
     }
   };
 
-  const formatDate = (dateStr: string) => {
+  const formatDate = (dateStr: string): string => {
     const date = new Date(dateStr);
     return date.toLocaleString('ko-KR', {
       month: 'short',
@@ -131,7 +146,7 @@ function InquiryView({ user }: InquiryViewProps) {
           <div className="inquiry-form-modal">
             <div className="form-header">
               <h3>문의 등록</h3>
-              <button onClick={() => { setShowForm(false); resetForm(); }}>✕</button>
+              <button onClick={closeForm}>✕</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="form-row">
@@ -205,7 +220,7 @@ function InquiryView({ user }: InquiryViewProps) {
               </div>
 
               <div className="form-actions">
-                <button type="button" onClick={() => { setShowForm(false); resetForm(); }}>
+                <button type="button" onClick={closeForm}>
                   취소
                 </button>
                 <button type="submit" className="submit-btn">
