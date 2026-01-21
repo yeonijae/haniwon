@@ -1,0 +1,385 @@
+/* 빠른 패키지 등록 모달 */
+.quick-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.quick-modal {
+  background: white;
+  border-radius: 12px;
+  width: 420px;
+  max-width: 95vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  transition: box-shadow 0.2s;
+}
+
+.quick-modal.dragging {
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.4);
+  user-select: none;
+}
+
+/* 헤더 */
+.quick-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e5e7eb;
+  cursor: move;
+  user-select: none;
+  border-radius: 12px 12px 0 0;
+}
+
+.quick-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.quick-modal-header .btn-close {
+  background: transparent;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 16px;
+  border-radius: 6px;
+}
+
+.quick-modal-header .btn-close:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* 타입별 헤더 색상 */
+.quick-modal.herbal .quick-modal-header {
+  background: #f0fdf4;
+  border-bottom-color: #bbf7d0;
+}
+.quick-modal.herbal .quick-modal-header h3 {
+  color: #166534;
+}
+
+.quick-modal.nokryong .quick-modal-header {
+  background: #fffbeb;
+  border-bottom-color: #fde68a;
+}
+.quick-modal.nokryong .quick-modal-header h3 {
+  color: #92400e;
+}
+
+.quick-modal.treatment .quick-modal-header {
+  background: #eef2ff;
+  border-bottom-color: #c7d2fe;
+}
+.quick-modal.treatment .quick-modal-header h3 {
+  color: #3730a3;
+}
+
+.quick-modal.membership .quick-modal-header {
+  background: #fef2f2;
+  border-bottom-color: #fecaca;
+}
+.quick-modal.membership .quick-modal-header h3 {
+  color: #991b1b;
+}
+
+/* 바디 */
+.quick-modal-body {
+  padding: 18px;
+  overflow-y: auto;
+}
+
+/* 폼 그룹 */
+.quick-modal .form-group {
+  margin-bottom: 14px;
+}
+
+.quick-modal .form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.quick-modal .form-group select,
+.quick-modal .form-group input[type="text"],
+.quick-modal .form-group input[type="number"] {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.quick-modal .form-group select:focus,
+.quick-modal .form-group input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* 기간 버튼 */
+.quick-modal .period-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.quick-modal .period-btn {
+  flex: 1;
+  padding: 8px 4px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #4b5563;
+  text-align: center;
+}
+
+.quick-modal .period-btn:hover {
+  background: #f9fafb;
+}
+
+.quick-modal .period-btn.active {
+  background: #ecfdf5;
+  border-color: #22c55e;
+  color: #16a34a;
+}
+
+.quick-modal .period-btn .period-count {
+  display: block;
+  font-size: 10px;
+  color: #9ca3af;
+  margin-top: 2px;
+}
+
+.quick-modal .period-btn.active .period-count {
+  color: #16a34a;
+}
+
+/* 멤버십 기간 버튼 */
+.quick-modal .period-buttons.membership .period-btn.active {
+  background: #fef2f2;
+  border-color: #ef4444;
+  color: #dc2626;
+}
+
+/* 타입 버튼 (녹용 종류) */
+.quick-modal .type-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.quick-modal .type-btn {
+  padding: 8px 14px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.quick-modal .type-btn:hover {
+  background: #f9fafb;
+}
+
+.quick-modal .type-btn.active {
+  background: #fffbeb;
+  border-color: #f59e0b;
+  color: #b45309;
+}
+
+/* 회분 입력 */
+.quick-modal .doses-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-modal .dose-btn {
+  width: 36px;
+  height: 36px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.quick-modal .dose-btn:hover {
+  background: #f9fafb;
+}
+
+.quick-modal .dose-btn.active {
+  background: #fffbeb;
+  border-color: #f59e0b;
+  color: #b45309;
+}
+
+.quick-modal .doses-input {
+  width: 55px !important;
+  text-align: center;
+}
+
+.quick-modal .doses-unit {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+/* 총 횟수 입력 (통마) */
+.quick-modal .count-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-modal .count-btn {
+  padding: 8px 12px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.quick-modal .count-btn:hover {
+  background: #f9fafb;
+}
+
+.quick-modal .count-btn.active {
+  background: #eef2ff;
+  border-color: #6366f1;
+  color: #4f46e5;
+}
+
+.quick-modal .count-input {
+  width: 60px !important;
+  text-align: center;
+}
+
+/* 질환명 태그 */
+.quick-modal .disease-tags-input {
+  position: relative;
+}
+
+.quick-modal .disease-tags-input .selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.quick-modal .disease-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.quick-modal .disease-tag button {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: #1d4ed8;
+  font-size: 10px;
+}
+
+.quick-modal .disease-tag button:hover {
+  color: #dc2626;
+}
+
+.quick-modal .disease-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.quick-modal .suggestion-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.quick-modal .suggestion-item:hover {
+  background: #f3f4f6;
+}
+
+/* 등록 버튼 */
+.quick-modal .btn-submit {
+  width: 100%;
+  padding: 12px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.quick-modal .btn-submit:hover {
+  background: #2563eb;
+}
+
+.quick-modal .btn-submit:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* 타입별 버튼 색상 */
+.quick-modal.herbal .btn-submit {
+  background: #22c55e;
+}
+.quick-modal.herbal .btn-submit:hover {
+  background: #16a34a;
+}
+
+.quick-modal.nokryong .btn-submit {
+  background: #f59e0b;
+}
+.quick-modal.nokryong .btn-submit:hover {
+  background: #d97706;
+}
+
+.quick-modal.treatment .btn-submit {
+  background: #6366f1;
+}
+.quick-modal.treatment .btn-submit:hover {
+  background: #4f46e5;
+}
+
+.quick-modal.membership .btn-submit {
+  background: #ef4444;
+}
+.quick-modal.membership .btn-submit:hover {
+  background: #dc2626;
+}
