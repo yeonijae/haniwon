@@ -113,7 +113,7 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
     loadTimeline(true);
   }, [loadTimeline]);
 
-  // 날짜별 그룹화
+  // 날짜별 그룹화 (외부 패널 날짜도 포함하여 정렬)
   const groupEventsByDate = useCallback((): DateGroup[] => {
     const today = new Date().toISOString().split('T')[0];
     const groups: Map<string, TimelineEvent[]> = new Map();
@@ -126,20 +126,30 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
       groups.get(date)!.push(event);
     });
 
-    return Array.from(groups.entries()).map(([date, dateEvents]) => {
-      const isToday = date === today;
-      const displayDate = isToday
-        ? `${date.slice(2, 4)}/${date.slice(5, 7)}/${date.slice(8, 10)} 오늘`
-        : `${date.slice(2, 4)}/${date.slice(5, 7)}/${date.slice(8, 10)}`;
+    // 외부 패널 날짜가 있고 groups에 없으면 추가 (빈 이벤트 배열로)
+    if (externalPanelDate && !groups.has(externalPanelDate)) {
+      groups.set(externalPanelDate, []);
+    }
 
-      return {
-        date,
-        displayDate,
-        isToday,
-        events: dateEvents,
-      };
-    });
-  }, [events]);
+    return Array.from(groups.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))  // 최신순 정렬 (내림차순)
+      .map(([date, dateEvents]) => {
+        const isToday = date === today;
+        const isSelectedDate = date === externalPanelDate && date !== today;
+        const displayDate = isToday
+          ? `${date.slice(2, 4)}/${date.slice(5, 7)}/${date.slice(8, 10)} 오늘`
+          : isSelectedDate
+          ? `${date.slice(2, 4)}/${date.slice(5, 7)}/${date.slice(8, 10)} 선택`
+          : `${date.slice(2, 4)}/${date.slice(5, 7)}/${date.slice(8, 10)}`;
+
+        return {
+          date,
+          displayDate,
+          isToday,
+          events: dateEvents,
+        };
+      });
+  }, [events, externalPanelDate]);
 
   // 이벤트 클릭 핸들러
   const handleEventClick = (event: TimelineEvent) => {
@@ -198,9 +208,9 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
       </div>
 
       <div className="timeline-content">
-        {loading && events.length === 0 ? (
+        {loading && events.length === 0 && !externalPanel ? (
           <div className="timeline-loading">로딩 중...</div>
-        ) : events.length === 0 ? (
+        ) : events.length === 0 && !externalPanel ? (
           <div className="timeline-empty">기록이 없습니다</div>
         ) : (
           <>
@@ -273,22 +283,6 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
                 </div>
               </React.Fragment>
             ))}
-
-            {/* 해당 날짜가 타임라인에 없는 경우 상단에 외부 패널 표시 */}
-            {externalPanel && externalPanelDate && !dateGroups.some(g => g.date === externalPanelDate) && (
-              <div className="timeline-date-group timeline-date-group--today">
-                <div className="timeline-date-header">
-                  <span className="timeline-date">
-                    {externalPanelDate.slice(2, 4)}/{externalPanelDate.slice(5, 7)}/{externalPanelDate.slice(8, 10)} 오늘
-                  </span>
-                </div>
-                <div className="timeline-events">
-                  <div className="timeline-inline-panel timeline-external-panel">
-                    {externalPanel}
-                  </div>
-                </div>
-              </div>
-            )}
 
             {hasMore && (
               <div className="timeline-load-more">

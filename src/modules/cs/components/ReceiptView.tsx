@@ -228,9 +228,12 @@ function ReceiptView({ user }: ReceiptViewProps) {
     herbalPickupEditData?: HerbalPickup & { memoId?: number };  // 한약 차감 수정 모드용
   } | null>(null);
 
-  // 타임라인 영역에 표시할 인라인 차감 패널 상태
-  const [showInlineDeductPanel, setShowInlineDeductPanel] = useState<{
+  // 타임라인 영역에 표시할 인라인 패널 상태 (한약/약침)
+  const [showInlinePanel, setShowInlinePanel] = useState<{
+    type: 'herbal' | 'yakchim';
     detailId?: number;
+    itemName?: string;
+    amount?: number;
   } | null>(null);
 
   // 타임라인 새로고침 트리거
@@ -383,6 +386,7 @@ function ReceiptView({ user }: ReceiptViewProps) {
 
     setSelectedReceipt(receipt);
     setMemoInputMode(null); // 다른 환자 선택 시 메모 입력 패널 닫기
+    setShowInlinePanel(null); // 다른 환자 선택 시 인라인 패널 닫기
     setIsLoadingHistory(true);
     setIsLoadingDetails(true);
     setDetailItems([]);
@@ -1126,8 +1130,9 @@ function ReceiptView({ user }: ReceiptViewProps) {
   const isExcludedFromMemo = (itemName: string) => itemName.includes('부항술혈명');
 
   // 클릭 시 패널 열지 않는 항목 (미입력 뱃지는 표시)
+  // 녹용은 약침이 포함되지 않은 경우에만 비활성화 (녹용약침은 약침 패널 열림)
   const isClickDisabled = (itemName: string) =>
-    itemName.includes('부항술혈명') || itemName.includes('녹용');
+    itemName.includes('부항술혈명') || (itemName.includes('녹용') && !itemName.includes('약침'));
 
   // 비급여 항목 클릭 시 사이드패널 메모 입력 모드 활성화
   const handleUncoveredItemClick = (itemName: string, amount: number, detailId?: number) => {
@@ -1153,15 +1158,15 @@ function ReceiptView({ user }: ReceiptViewProps) {
       return;
     }
 
-    // 약침/요법 → 약침 입력 (일회성/패키지/멤버십)
+    // 약침/요법 → 타임라인에 인라인 약침 패널 표시
     if (itemName.includes('약침') || itemName.includes('요법')) {
-      setMemoInputMode({ itemName, itemType: 'yakchim', amount, detailId });
+      setShowInlinePanel({ type: 'yakchim', detailId, itemName, amount });
       return;
     }
 
     // 한약 → 타임라인에 인라인 차감 패널 표시
     if (itemName.includes('한약')) {
-      setShowInlineDeductPanel({ detailId });
+      setShowInlinePanel({ type: 'herbal', detailId });
       return;
     }
 
@@ -2251,23 +2256,43 @@ function ReceiptView({ user }: ReceiptViewProps) {
                     onRefresh={refreshSelectedPatientHistory}
                     renderEditPanel={renderTimelineEditPanel}
                     refreshTrigger={timelineRefreshTrigger}
-                    externalPanel={showInlineDeductPanel ? (
-                      <InlineHerbalDeductPanel
-                        patientId={selectedReceipt.patient_id}
-                        chartNumber={selectedReceipt.chart_no}
-                        patientName={selectedReceipt.patient_name}
-                        receiptId={selectedReceipt.id}
-                        receiptDate={selectedDate}
-                        detailId={showInlineDeductPanel.detailId}
-                        onSuccess={async () => {
-                          setShowInlineDeductPanel(null);
-                          setTimelineRefreshTrigger(prev => prev + 1);
-                          await refreshSelectedPatientHistory();
-                        }}
-                        onClose={() => setShowInlineDeductPanel(null)}
-                      />
+                    externalPanel={showInlinePanel ? (
+                      showInlinePanel.type === 'herbal' ? (
+                        <InlineHerbalDeductPanel
+                          patientId={selectedReceipt.patient_id}
+                          chartNumber={selectedReceipt.chart_no}
+                          patientName={selectedReceipt.patient_name}
+                          receiptId={selectedReceipt.id}
+                          receiptDate={selectedDate}
+                          detailId={showInlinePanel.detailId}
+                          onSuccess={async () => {
+                            setShowInlinePanel(null);
+                            setTimelineRefreshTrigger(prev => prev + 1);
+                            await refreshSelectedPatientHistory();
+                          }}
+                          onClose={() => setShowInlinePanel(null)}
+                        />
+                      ) : (
+                        <MemoInputPanel
+                          patientId={selectedReceipt.patient_id}
+                          patientName={selectedReceipt.patient_name}
+                          chartNumber={selectedReceipt.chart_no}
+                          receiptId={selectedReceipt.id}
+                          receiptDate={selectedDate}
+                          itemName={showInlinePanel.itemName || ''}
+                          itemType="yakchim"
+                          amount={showInlinePanel.amount}
+                          detailId={showInlinePanel.detailId}
+                          onClose={() => setShowInlinePanel(null)}
+                          onSuccess={async () => {
+                            setShowInlinePanel(null);
+                            setTimelineRefreshTrigger(prev => prev + 1);
+                            await refreshSelectedPatientHistory();
+                          }}
+                        />
+                      )
                     ) : undefined}
-                    externalPanelDate={showInlineDeductPanel ? selectedDate : undefined}
+                    externalPanelDate={showInlinePanel ? (selectedReceipt?.receipt_date || selectedDate) : undefined}
                   />
 
                   {/* 메모 편집 영역 */}
