@@ -7,6 +7,7 @@ import {
   type HerbalPickup,
   type DeliveryMethod,
   type ReceiptMemo,
+  type YakchimUsageRecord,
   HERBAL_PACKAGE_ROUNDS,
 } from '../types';
 import { type HerbalDiseaseTag } from '../lib/api';
@@ -32,6 +33,8 @@ import {
   deleteHerbalPickup,
   getActiveHerbalPackages,
   createHerbalPickup,
+  updateYakchimUsageRecord,
+  deleteYakchimUsageRecord,
 } from '../lib/api';
 
 // 인라인 메모 편집 컴포넌트
@@ -1262,3 +1265,146 @@ export const InlineHerbalDeductPanel: React.FC<{
 });
 
 InlineHerbalDeductPanel.displayName = 'InlineHerbalDeductPanel';
+
+// 약침 사용 기록 인라인 편집 컴포넌트
+export const InlineYakchimEdit: React.FC<{
+  record: YakchimUsageRecord;
+  onSuccess: () => void;
+  onClose: () => void;
+}> = React.memo(({ record, onSuccess, onClose }) => {
+  const [quantity, setQuantity] = useState(record.quantity || 1);
+  const [memo, setMemo] = useState(record.memo || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await updateYakchimUsageRecord(record.id, {
+        quantity,
+        memo: memo.trim() || undefined,
+      });
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('약침 사용 기록 수정 실패:', err);
+      alert('수정에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('이 약침 사용 기록을 삭제하시겠습니까?')) return;
+    setIsDeleting(true);
+    try {
+      await deleteYakchimUsageRecord(record.id);
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('약침 사용 기록 삭제 실패:', err);
+      alert('삭제에 실패했습니다.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // 소스 타입 라벨
+  const sourceTypeLabel = {
+    'membership': '멤버십',
+    'package': '패키지',
+    'one-time': '일회성',
+  }[record.source_type] || record.source_type;
+
+  return (
+    <div className="timeline-edit-inline yakchim-edit">
+      {/* 상단 정보 */}
+      <div className="herbal-edit-info">
+        <span className="info-item">
+          <i className="fa-solid fa-calendar"></i>
+          {record.usage_date}
+        </span>
+        <span className="info-item">
+          {sourceTypeLabel}
+          {record.source_name && ` · ${record.source_name}`}
+        </span>
+        {record.source_type !== 'one-time' && (
+          <span className="info-item">
+            잔여 {record.remaining_after}회
+          </span>
+        )}
+      </div>
+
+      {/* 항목명 */}
+      <div className="herbal-edit-row">
+        <label>항목</label>
+        <span className="yakchim-item-name">{record.item_name}</span>
+      </div>
+
+      {/* 수량 */}
+      <div className="herbal-edit-row">
+        <label>수량</label>
+        <div className="count-input-group">
+          <button
+            type="button"
+            className="count-btn"
+            onClick={() => setQuantity(Math.max(1, quantity - 1))}
+            disabled={isSaving || isDeleting || quantity <= 1}
+          >
+            -
+          </button>
+          <input
+            type="number"
+            value={quantity}
+            onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+            min={1}
+            disabled={isSaving || isDeleting}
+          />
+          <button
+            type="button"
+            className="count-btn"
+            onClick={() => setQuantity(quantity + 1)}
+            disabled={isSaving || isDeleting}
+          >
+            +
+          </button>
+        </div>
+      </div>
+
+      {/* 메모 */}
+      <div className="herbal-edit-row">
+        <label>메모</label>
+        <input
+          type="text"
+          value={memo}
+          onChange={(e) => setMemo(e.target.value)}
+          placeholder="메모 (선택)"
+          disabled={isSaving || isDeleting}
+        />
+      </div>
+
+      {/* 버튼 */}
+      <div className="timeline-edit-actions">
+        <button
+          className="btn-delete-inline"
+          onClick={handleDelete}
+          disabled={isSaving || isDeleting}
+        >
+          {isDeleting ? '삭제중...' : '삭제'}
+        </button>
+        <button className="btn-close-inline" onClick={onClose} disabled={isSaving || isDeleting}>
+          닫기
+        </button>
+        <button
+          className="btn-save-inline"
+          onClick={handleSave}
+          disabled={isSaving || isDeleting}
+        >
+          {isSaving ? '저장중...' : '저장'}
+        </button>
+      </div>
+    </div>
+  );
+});
+
+InlineYakchimEdit.displayName = 'InlineYakchimEdit';

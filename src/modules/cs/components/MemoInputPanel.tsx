@@ -1394,18 +1394,25 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
 
             <div className="yakchim-edit-actions">
               <button
-                className="btn-update"
-                onClick={handleYakchimUpdate}
-                disabled={isSaving || isDeleting}
-              >
-                {isSaving ? '저장 중...' : '수정 저장'}
-              </button>
-              <button
                 className="btn-delete"
                 onClick={handleYakchimDelete}
                 disabled={isSaving || isDeleting}
               >
-                {isDeleting ? '삭제 중...' : '사용 취소'}
+                {isDeleting ? '삭제 중...' : '삭제'}
+              </button>
+              <button
+                className="btn-cancel"
+                onClick={onClose}
+                disabled={isSaving || isDeleting}
+              >
+                취소
+              </button>
+              <button
+                className="btn-update"
+                onClick={handleYakchimUpdate}
+                disabled={isSaving || isDeleting}
+              >
+                {isSaving ? '저장 중...' : '저장'}
               </button>
             </div>
           </div>

@@ -10831,173 +10831,6 @@
   cursor: not-allowed;
 }
 
-/* 약침 수정 모드 */
-.yakchim-edit-section {
-  padding: 8px 0;
-}
-
-.yakchim-edit-info {
-  background: #f0fdf4;
-  border: 1px solid #86efac;
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
-}
-
-.yakchim-edit-info .info-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
-  font-size: 13px;
-}
-
-.yakchim-edit-info .info-row .label {
-  color: #166534;
-  font-weight: 500;
-  min-width: 60px;
-}
-
-.yakchim-edit-info .info-row .value {
-  color: #15803d;
-  font-weight: 600;
-}
-
-.yakchim-edit-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.yakchim-edit-actions .btn-delete {
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 500;
-  background: #fee2e2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.yakchim-edit-actions .btn-delete:hover {
-  background: #dc2626;
-  color: white;
-  border-color: #dc2626;
-}
-
-.yakchim-edit-actions .btn-delete:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.yakchim-edit-actions .btn-update {
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 500;
-  background: #3b82f6;
-  color: white;
-  border: 1px solid #3b82f6;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.yakchim-edit-actions .btn-update:hover {
-  background: #2563eb;
-  border-color: #2563eb;
-}
-
-.yakchim-edit-actions .btn-update:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* 약침 수정 폼 */
-.yakchim-edit-form {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 12px;
-}
-
-.yakchim-edit-form .form-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.yakchim-edit-form .form-row:last-child {
-  margin-bottom: 0;
-}
-
-.yakchim-edit-form .form-row label {
-  font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-  min-width: 50px;
-}
-
-.yakchim-edit-form .form-row input[type="text"] {
-  flex: 1;
-  padding: 8px 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 13px;
-}
-
-.yakchim-edit-form .form-row input[type="text"]:focus {
-  outline: none;
-  border-color: #3b82f6;
-}
-
-.yakchim-edit-form .qty-input-wrap {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.yakchim-edit-form .qty-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f3f4f6;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  color: #374151;
-}
-
-.yakchim-edit-form .qty-btn:hover {
-  background: #e5e7eb;
-}
-
-.yakchim-edit-form .qty-input {
-  width: 50px;
-  padding: 6px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  font-size: 13px;
-  text-align: center;
-}
-
-.yakchim-edit-form .qty-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-}
-
-.yakchim-edit-form .qty-unit {
-  font-size: 13px;
-  color: #6b7280;
-}
-
 /* 패키지(통증마일리지) 등록 */
 .package-register-section {
   padding: 8px 0;
@@ -15941,5 +15774,202 @@
 
 .timeline-edit-footer .btn-save:disabled {
   background: #93c5fd;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   약침 수정 패널 스타일 (MemoInputPanel용)
+   ============================================ */
+
+.yakchim-edit .yakchim-item-name {
+  font-weight: 500;
+  color: #1e293b;
+}
+
+/* MemoInputPanel 약침 수정 모드 */
+.yakchim-edit-section {
+  padding: 8px 0;
+}
+
+.yakchim-edit-info {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.yakchim-edit-info .info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.yakchim-edit-info .info-row .label {
+  color: #166534;
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.yakchim-edit-info .info-row .value {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.yakchim-edit-form {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.yakchim-edit-form .form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.yakchim-edit-form .form-row:last-child {
+  margin-bottom: 0;
+}
+
+.yakchim-edit-form .form-row label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  min-width: 50px;
+}
+
+.yakchim-edit-form .form-row input[type="text"] {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.yakchim-edit-form .form-row input[type="text"]:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.yakchim-edit-form .qty-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.yakchim-edit-form .qty-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.yakchim-edit-form .qty-btn:hover {
+  background: #e5e7eb;
+}
+
+.yakchim-edit-form .qty-input {
+  width: 50px;
+  padding: 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.yakchim-edit-form .qty-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.yakchim-edit-form .qty-unit {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.yakchim-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.yakchim-edit-actions .btn-update {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  background: #3b82f6;
+  color: white;
+  border: 1px solid #3b82f6;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.yakchim-edit-actions .btn-update:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.yakchim-edit-actions .btn-update:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.yakchim-edit-actions .btn-delete {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.yakchim-edit-actions .btn-delete:hover {
+  background: #dc2626;
+  color: white;
+  border-color: #dc2626;
+}
+
+.yakchim-edit-actions .btn-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.yakchim-edit-actions .btn-cancel {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  background: white;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.yakchim-edit-actions .btn-cancel:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.yakchim-edit-actions .btn-cancel:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }

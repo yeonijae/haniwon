@@ -16,6 +16,9 @@ const EVENT_TYPE_CLASSES: Record<TimelineEventType, string> = {
   treatment_usage: 'timeline-event--treatment',
   membership_add: 'timeline-event--membership',
   membership_usage: 'timeline-event--membership',
+  'yakchim-membership': 'timeline-event--yakchim',
+  'yakchim-package': 'timeline-event--yakchim',
+  'yakchim-onetime': 'timeline-event--yakchim',
   custom_memo: 'timeline-event--memo',
 };
 

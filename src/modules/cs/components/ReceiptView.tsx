@@ -1460,6 +1460,30 @@ function ReceiptView({ user }: ReceiptViewProps) {
         );
       }
 
+      case 'yakchim-membership':
+      case 'yakchim-package':
+      case 'yakchim-onetime': {
+        const record = event.originalData as YakchimUsageRecord;
+        if (!record || !selectedReceipt) return null;
+        return (
+          <MemoInputPanel
+            patientId={selectedReceipt.patient_id}
+            patientName={selectedReceipt.patient_name}
+            chartNumber={selectedReceipt.chart_no}
+            receiptId={selectedReceipt.id}
+            receiptDate={event.date}
+            itemName={record.item_name || '약침'}
+            itemType="yakchim"
+            yakchimEditData={record}
+            onSuccess={() => {
+              refreshSelectedPatientHistory();
+              onReload();
+            }}
+            onClose={onClose}
+          />
+        );
+      }
+
       case 'treatment_usage':
       case 'membership_usage':
       case 'nokryong_usage':

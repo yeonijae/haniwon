@@ -965,6 +965,9 @@ export type TimelineEventType =
   | 'treatment_usage'         // 통마 사용
   | 'membership_add'          // 멤버십 등록
   | 'membership_usage'        // 멤버십 사용
+  | 'yakchim-membership'      // 약침 멤버십 사용
+  | 'yakchim-package'         // 약침 패키지 사용
+  | 'yakchim-onetime'         // 약침 일회성 사용
   | 'custom_memo';            // 커스텀 메모
 
 // 타임라인 이벤트 타입별 아이콘
@@ -977,6 +980,9 @@ export const TIMELINE_EVENT_ICONS: Record<TimelineEventType, string> = {
   treatment_usage: '💉',
   membership_add: '🎫',
   membership_usage: '🎫',
+  'yakchim-membership': '💉',
+  'yakchim-package': '💉',
+  'yakchim-onetime': '💉',
   custom_memo: '💬',
 };
 
@@ -990,6 +996,9 @@ export const TIMELINE_EVENT_LABELS: Record<TimelineEventType, string> = {
   treatment_usage: '통마 사용',
   membership_add: '멤버십 등록',
   membership_usage: '멤버십 사용',
+  'yakchim-membership': '약침 멤버십',
+  'yakchim-package': '약침 패키지',
+  'yakchim-onetime': '약침 일회성',
   custom_memo: '메모',
 };
 

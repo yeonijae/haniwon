@@ -1875,22 +1875,68 @@ export async function createYakchimUsageRecord(data: {
 }
 
 /**
+ * 약침 사용내역 단건 조회
+ */
+export async function getYakchimUsageRecordById(id: number): Promise<YakchimUsageRecord | null> {
+  const results = await query<YakchimUsageRecord>(
+    `SELECT * FROM cs_yakchim_usage_records WHERE id = ${id}`
+  );
+  return results.length > 0 ? results[0] : null;
+}
+
+/**
  * 약침 사용내역 수정
+ * - 수량(quantity) 변경 시 패키지 remaining_count 조정
  */
 export async function updateYakchimUsageRecord(id: number, updates: {
   item_name?: string;
   quantity?: number;
   memo?: string;
 }): Promise<boolean> {
-  const parts: string[] = [];
-  if (updates.item_name !== undefined) parts.push(`item_name = ${escapeString(updates.item_name)}`);
-  if (updates.quantity !== undefined) parts.push(`quantity = ${updates.quantity}`);
-  if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
-
-  if (parts.length === 0) return true;
-
   try {
-    await execute(`UPDATE cs_yakchim_usage_records SET ${parts.join(', ')} WHERE id = ${id}`);
+    // 기존 레코드 조회
+    const record = await getYakchimUsageRecordById(id);
+    if (!record) {
+      console.error('약침 사용 기록을 찾을 수 없습니다:', id);
+      return false;
+    }
+
+    const oldQuantity = record.quantity || 1;
+    const newQuantity = updates.quantity ?? oldQuantity;
+    const quantityDiff = newQuantity - oldQuantity;
+
+    // 패키지인 경우 수량 변경 시 remaining_count 조정
+    if (record.source_type === 'package' && quantityDiff !== 0) {
+      await execute(`
+        UPDATE cs_treatment_packages
+        SET remaining_count = remaining_count - ${quantityDiff},
+            used_count = used_count + ${quantityDiff},
+            status = CASE WHEN remaining_count - ${quantityDiff} <= 0 THEN 'completed' ELSE 'active' END,
+            updated_at = ${escapeString(getCurrentTimestamp())}
+        WHERE id = ${record.source_id}
+      `);
+
+      // remaining_after도 업데이트
+      const pkgResult = await query<{ remaining_count: number }>(
+        `SELECT remaining_count FROM cs_treatment_packages WHERE id = ${record.source_id}`
+      );
+      if (pkgResult.length > 0) {
+        updates = { ...updates } as any;
+        (updates as any).remaining_after = pkgResult[0].remaining_count;
+      }
+    }
+
+    // 레코드 업데이트
+    const parts: string[] = [];
+    if (updates.item_name !== undefined) parts.push(`item_name = ${escapeString(updates.item_name)}`);
+    if (updates.quantity !== undefined) parts.push(`quantity = ${updates.quantity}`);
+    if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
+    if ((updates as any).remaining_after !== undefined) parts.push(`remaining_after = ${(updates as any).remaining_after}`);
+
+    if (parts.length > 0) {
+      await execute(`UPDATE cs_yakchim_usage_records SET ${parts.join(', ')} WHERE id = ${id}`);
+    }
+
     return true;
   } catch (err) {
     console.error('약침 사용내역 수정 오류:', err);
@@ -1900,8 +1946,26 @@ export async function updateYakchimUsageRecord(id: number, updates: {
 
 /**
  * 약침 사용내역 삭제
+ * - 패키지인 경우 remaining_count 복원
  */
 export async function deleteYakchimUsageRecord(id: number): Promise<void> {
+  // 삭제 전 레코드 조회
+  const record = await getYakchimUsageRecordById(id);
+
+  if (record && record.source_type === 'package') {
+    const quantity = record.quantity || 1;
+    // 패키지 remaining_count 복원
+    await execute(`
+      UPDATE cs_treatment_packages
+      SET remaining_count = remaining_count + ${quantity},
+          used_count = used_count - ${quantity},
+          status = 'active',
+          updated_at = ${escapeString(getCurrentTimestamp())}
+      WHERE id = ${record.source_id}
+    `);
+  }
+
+  // 레코드 삭제
   await execute(`DELETE FROM cs_yakchim_usage_records WHERE id = ${id}`);
 }
 
@@ -3566,24 +3630,52 @@ export async function getPatientTimeline(
     });
   });
 
-  // 약침/통마 사용 이벤트
+  // 약침 사용 이벤트
   yakchimRecords.forEach(record => {
+    // source_type에 따라 타임라인 이벤트 타입 결정
+    const eventType: TimelineEventType = record.source_type === 'membership'
+      ? 'yakchim-membership'
+      : record.source_type === 'package'
+      ? 'yakchim-package'
+      : 'yakchim-onetime';
+
     const isMembership = record.source_type === 'membership';
+    const isOnetime = record.source_type === 'one-time';
     const isTongma = record.source_name?.includes('통증마일리지') || record.source_name?.includes('통마');
 
+    // 라벨 생성
+    let label: string;
+    if (isMembership) {
+      label = `${record.source_name?.replace('멤버십', '멤')} 사용`;
+    } else if (isOnetime) {
+      label = `${record.item_name} (일회성)`;
+    } else if (isTongma) {
+      label = '통마 사용 -1회';
+    } else {
+      label = `${record.source_name || record.item_name || ''} -1회`;
+    }
+
+    // subLabel 생성
+    let subLabel: string | undefined;
+    if (isMembership) {
+      subLabel = record.item_name;
+    } else if (isOnetime) {
+      subLabel = undefined;
+    } else {
+      subLabel = `잔여 ${record.remaining_after}회`;
+    }
+
     events.push({
-      id: `${isMembership ? 'membership_usage' : 'treatment_usage'}_${record.id}`,
-      type: isMembership ? 'membership_usage' : 'treatment_usage',
+      id: `${eventType}_${record.id}`,
+      type: eventType,
       date: record.usage_date,
       timestamp: record.created_at || record.usage_date,
-      icon: isMembership ? TIMELINE_EVENT_ICONS.membership_usage : TIMELINE_EVENT_ICONS.treatment_usage,
-      label: isMembership
-        ? `${record.source_name?.replace('멤버십', '멤')} 사용`
-        : (isTongma ? '통마 사용 -1회' : `${record.source_name || ''} -1회`),
-      subLabel: !isMembership ? `잔여 ${record.remaining_after}회` : record.item_name,
+      icon: TIMELINE_EVENT_ICONS[eventType],
+      label,
+      subLabel,
       sourceTable: 'cs_yakchim_usage_records',
       sourceId: record.id!,
-      isEditable: record.usage_date === today,
+      isEditable: true,  // 약침 사용 기록은 항상 수정 가능
       isCompleted: false,
       originalData: record,
     });
