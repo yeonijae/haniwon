@@ -3,12 +3,13 @@ import TreatmentProgramAdmin from './TreatmentProgramAdmin';
 import PackageTypeAdmin from './PackageTypeAdmin';
 import MedicinePurposeAdmin from './MedicinePurposeAdmin';
 import HerbalSettingsAdmin from './HerbalSettingsAdmin';
+import MemoTypeAdmin from './MemoTypeAdmin';
 
 interface SettingsViewProps {
   user?: any;
 }
 
-type SettingsTab = 'treatment' | 'package' | 'medicine' | 'herbal';
+type SettingsTab = 'treatment' | 'package' | 'medicine' | 'herbal' | 'memo';
 
 function SettingsView({ user }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('package');
@@ -45,6 +46,13 @@ function SettingsView({ user }: SettingsViewProps) {
           <i className="fa-solid fa-seedling"></i>
           한약 관리
         </button>
+        <button
+          className={`settings-tab ${activeTab === 'memo' ? 'active' : ''}`}
+          onClick={() => setActiveTab('memo')}
+        >
+          <i className="fa-solid fa-comment-dots"></i>
+          메모 종류
+        </button>
       </div>
 
       {/* 탭 내용 */}
@@ -53,6 +61,7 @@ function SettingsView({ user }: SettingsViewProps) {
         {activeTab === 'treatment' && <TreatmentProgramAdmin />}
         {activeTab === 'medicine' && <MedicinePurposeAdmin />}
         {activeTab === 'herbal' && <HerbalSettingsAdmin />}
+        {activeTab === 'memo' && <MemoTypeAdmin />}
       </div>
 
       <style>{`

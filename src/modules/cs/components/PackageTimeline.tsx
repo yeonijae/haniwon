@@ -34,6 +34,8 @@ interface PackageTimelineProps {
   // 외부 패널을 특정 날짜 아래에 렌더링
   externalPanel?: React.ReactNode;
   externalPanelDate?: string;
+  // 날짜별 메모 추가 콜백
+  onAddMemo?: (date: string) => void;
 }
 
 interface DateGroup {
@@ -54,6 +56,7 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
   refreshTrigger,
   externalPanel,
   externalPanelDate,
+  onAddMemo,
 }) => {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -224,6 +227,18 @@ export const PackageTimeline: React.FC<PackageTimelineProps> = ({
                 >
                   <div className="timeline-date-header">
                     <span className="timeline-date">{group.displayDate}</span>
+                    {onAddMemo && (
+                      <button
+                        className="timeline-add-memo-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAddMemo(group.date);
+                        }}
+                        title="메모 추가"
+                      >
+                        <i className="fa-solid fa-plus"></i>
+                      </button>
+                    )}
                   </div>
 
                   <div className="timeline-events">

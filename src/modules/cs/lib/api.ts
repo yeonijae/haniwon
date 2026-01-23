@@ -518,6 +518,11 @@ export async function ensureReceiptTables(): Promise<void> {
   await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS herbal_pickup_id INTEGER`).catch(() => {});
   // nokryong_package_id 컬럼 추가 (녹용 패키지 연결)
   await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS nokryong_package_id INTEGER`).catch(() => {});
+  // 커스텀 메모용 컬럼 추가
+  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS item_name TEXT`).catch(() => {});
+  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS item_type TEXT`).catch(() => {});
+  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS created_by TEXT`).catch(() => {});
+  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS memo_type_id INTEGER`).catch(() => {});
 
   // 상비약 사용내역 테이블
   await execute(`
@@ -544,6 +549,24 @@ export async function ensureReceiptTables(): Promise<void> {
   await execute(`ALTER TABLE cs_yakchim_usage_records ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {});
   await execute(`ALTER TABLE cs_medicine_usage ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {});
   await execute(`ALTER TABLE cs_herbal_dispensings ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {});
+
+  // 약침 사용 기록에 실제 차감 포인트 컬럼 추가 (약침 종류별 차감 포인트 합계)
+  await execute(`ALTER TABLE cs_yakchim_usage_records ADD COLUMN IF NOT EXISTS deduction_points INTEGER`).catch(() => {});
+  // 기존 데이터 마이그레이션: 단일 약침인 경우 실제 차감 포인트 계산
+  // (item_name에 쉼표가 없는 경우 = 단일 약침)
+  await execute(`
+    UPDATE cs_yakchim_usage_records y
+    SET deduction_points = COALESCE(
+      (SELECT pt.deduction_count * y.quantity
+       FROM cs_package_types pt
+       WHERE pt.name = y.item_name AND pt.type = 'yakchim'),
+      y.quantity
+    )
+    WHERE y.deduction_points IS NULL
+      AND y.item_name NOT LIKE '%,%'
+  `).catch(() => {});
+  // 여러 약침인 경우: quantity로 설정 (정확하지 않지만 fallback)
+  await execute(`UPDATE cs_yakchim_usage_records SET deduction_points = quantity WHERE deduction_points IS NULL`).catch(() => {});
 
   // 상비약 재고관리 테이블 - last_decoction_date 컬럼 추가
   await execute(`ALTER TABLE cs_medicine_inventory ADD COLUMN IF NOT EXISTS last_decoction_date TEXT`).catch(() => {});
@@ -622,6 +645,75 @@ export async function ensureReceiptTables(): Promise<void> {
     )
   `);
   await execute(`CREATE INDEX IF NOT EXISTS idx_timeline_audit_source ON cs_timeline_audit_logs(source_table, source_id)`).catch(() => {});
+
+  // 환자 메모 노트 테이블 (CRM)
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_patient_notes (
+      id SERIAL PRIMARY KEY,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT NOT NULL,
+      patient_name TEXT,
+
+      note_type TEXT NOT NULL,
+      channel TEXT,
+
+      content TEXT NOT NULL,
+      response TEXT,
+      status TEXT DEFAULT 'active',
+
+      mssql_receipt_id INTEGER,
+      mssql_detail_id INTEGER,
+      related_date TEXT,
+
+      staff_name TEXT NOT NULL,
+      staff_role TEXT NOT NULL,
+
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await execute(`CREATE INDEX IF NOT EXISTS idx_patient_notes_patient_id ON cs_patient_notes(patient_id)`).catch(() => {});
+  await execute(`CREATE INDEX IF NOT EXISTS idx_patient_notes_chart_number ON cs_patient_notes(chart_number)`).catch(() => {});
+  await execute(`CREATE INDEX IF NOT EXISTS idx_patient_notes_note_type ON cs_patient_notes(note_type)`).catch(() => {});
+
+  // 메모 종류 테이블
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_memo_types (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      color TEXT DEFAULT '#6b7280',
+      icon TEXT DEFAULT 'comment',
+      sort_order INTEGER DEFAULT 0,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // 기본 메모 종류 추가 (없는 경우에만)
+  await execute(`
+    INSERT INTO cs_memo_types (name, color, icon, sort_order)
+    SELECT '일반', '#6b7280', 'comment', 0
+    WHERE NOT EXISTS (SELECT 1 FROM cs_memo_types WHERE name = '일반')
+  `).catch(() => {});
+  await execute(`
+    INSERT INTO cs_memo_types (name, color, icon, sort_order)
+    SELECT '컴플레인', '#ef4444', 'exclamation-circle', 1
+    WHERE NOT EXISTS (SELECT 1 FROM cs_memo_types WHERE name = '컴플레인')
+  `).catch(() => {});
+  await execute(`
+    INSERT INTO cs_memo_types (name, color, icon, sort_order)
+    SELECT '요청사항', '#f59e0b', 'hand-paper', 2
+    WHERE NOT EXISTS (SELECT 1 FROM cs_memo_types WHERE name = '요청사항')
+  `).catch(() => {});
+  await execute(`
+    INSERT INTO cs_memo_types (name, color, icon, sort_order)
+    SELECT '특이사항', '#8b5cf6', 'info-circle', 3
+    WHERE NOT EXISTS (SELECT 1 FROM cs_memo_types WHERE name = '특이사항')
+  `).catch(() => {});
+
+  // cs_receipt_memos 테이블에 memo_type_id 컬럼 추가
+  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS memo_type_id INTEGER`).catch(() => {});
 
   // 초기화 완료 표시
   markTableInitialized('cs_receipt_tables');
@@ -1284,8 +1376,13 @@ export async function addReceiptMemo(data: {
   patient_name?: string;
   mssql_receipt_id?: number;
   mssql_detail_id?: number;
+  receipt_id?: number;
   receipt_date: string;
   memo: string;
+  item_name?: string;
+  item_type?: string;
+  created_by?: string;
+  memo_type_id?: number;
   herbal_package_id?: number;
   herbal_pickup_id?: number;
   nokryong_package_id?: number;
@@ -1294,11 +1391,12 @@ export async function addReceiptMemo(data: {
   return insert(`
     INSERT INTO cs_receipt_memos (
       patient_id, chart_number, patient_name, mssql_receipt_id, mssql_detail_id, receipt_date,
-      memo, reservation_status, is_completed, herbal_package_id, herbal_pickup_id, nokryong_package_id, created_at, updated_at
+      memo, item_name, item_type, created_by, memo_type_id, reservation_status, is_completed, herbal_package_id, herbal_pickup_id, nokryong_package_id, created_at, updated_at
     ) VALUES (
       ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
       ${data.mssql_receipt_id || 'NULL'}, ${data.mssql_detail_id || 'NULL'}, ${escapeString(data.receipt_date)},
-      ${toSqlValue(data.memo)}, 'none', 0, ${data.herbal_package_id || 'NULL'}, ${data.herbal_pickup_id || 'NULL'}, ${data.nokryong_package_id || 'NULL'},
+      ${toSqlValue(data.memo)}, ${toSqlValue(data.item_name)}, ${toSqlValue(data.item_type)}, ${toSqlValue(data.created_by)}, ${data.memo_type_id || 'NULL'},
+      'none', 0, ${data.herbal_package_id || 'NULL'}, ${data.herbal_pickup_id || 'NULL'}, ${data.nokryong_package_id || 'NULL'},
       ${escapeString(now)}, ${escapeString(now)}
     )
   `);
@@ -1860,16 +1958,19 @@ export async function createYakchimUsageRecord(data: {
   receipt_id?: number;
   mssql_detail_id?: number;
   memo?: string;
-  quantity?: number;  // 약침 갯수 (일회성일 때 사용)
+  quantity?: number;  // 약침 갯수
+  deduction_points?: number;  // 실제 차감 포인트 (약침 종류별 차감 포인트 합계)
 }): Promise<number> {
   const now = getCurrentTimestamp();
+  // deduction_points가 없으면 quantity로 설정
+  const deductionPoints = data.deduction_points ?? data.quantity ?? 1;
   return insert(`
     INSERT INTO cs_yakchim_usage_records (
-      patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id, mssql_detail_id, memo, quantity, created_at
+      patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id, mssql_detail_id, memo, quantity, deduction_points, created_at
     ) VALUES (
       ${data.patient_id}, ${escapeString(data.source_type)}, ${data.source_id}, ${escapeString(data.source_name)},
       ${escapeString(data.usage_date)}, ${escapeString(data.item_name)}, ${data.remaining_after},
-      ${data.receipt_id || 'NULL'}, ${data.mssql_detail_id || 'NULL'}, ${toSqlValue(data.memo)}, ${data.quantity || 1}, ${escapeString(now)}
+      ${data.receipt_id || 'NULL'}, ${data.mssql_detail_id || 'NULL'}, ${toSqlValue(data.memo)}, ${data.quantity || 1}, ${deductionPoints}, ${escapeString(now)}
     )
   `);
 }
@@ -1887,11 +1988,16 @@ export async function getYakchimUsageRecordById(id: number): Promise<YakchimUsag
 /**
  * 약침 사용내역 수정
  * - 수량(quantity) 변경 시 패키지 remaining_count 조정
+ * - 사용방식(source_type) 변경 시 이전 소스 재고 복구 및 새 소스 차감
  */
 export async function updateYakchimUsageRecord(id: number, updates: {
   item_name?: string;
   quantity?: number;
   memo?: string;
+  source_type?: 'membership' | 'package' | 'one-time';
+  source_id?: number;
+  source_name?: string;
+  deduction_points?: number;  // 패키지 차감 포인트 (각 약침의 차감 포인트 합계)
 }): Promise<boolean> {
   try {
     // 기존 레코드 조회
@@ -1903,15 +2009,66 @@ export async function updateYakchimUsageRecord(id: number, updates: {
 
     const oldQuantity = record.quantity || 1;
     const newQuantity = updates.quantity ?? oldQuantity;
-    const quantityDiff = newQuantity - oldQuantity;
+    // 실제 차감 포인트 (DB에 저장된 값 사용, 없으면 quantity로 폴백)
+    const oldDeductionPoints = record.deduction_points ?? oldQuantity;
+    const newDeductionPoints = updates.deduction_points ?? oldDeductionPoints;  // 변경 없으면 기존 값 유지
+    const deductionDiff = newDeductionPoints - oldDeductionPoints;
 
-    // 패키지인 경우 수량 변경 시 remaining_count 조정
-    if (record.source_type === 'package' && quantityDiff !== 0) {
+    // 사용방식 변경 여부 확인
+    const isSourceTypeChanging = updates.source_type !== undefined && updates.source_type !== record.source_type;
+    const isSourceIdChanging = updates.source_id !== undefined && updates.source_id !== record.source_id;
+    const isSourceChanging = isSourceTypeChanging || isSourceIdChanging;
+
+    let newRemainingAfter = record.remaining_after;
+
+    // 1. 사용방식 변경 시: 이전 소스 재고 복구
+    if (isSourceChanging) {
+      if (record.source_type === 'package') {
+        // 이전 패키지 재고 복구 (이전 차감 포인트만큼 복구)
+        await execute(`
+          UPDATE cs_treatment_packages
+          SET remaining_count = remaining_count + ${oldDeductionPoints},
+              used_count = used_count - ${oldDeductionPoints},
+              status = 'active',
+              updated_at = ${escapeString(getCurrentTimestamp())}
+          WHERE id = ${record.source_id}
+        `);
+      }
+      // 멤버십과 일회성은 재고 복구 불필요
+
+      // 2. 새 소스에서 차감
+      const newSourceType = updates.source_type ?? record.source_type;
+      const newSourceId = updates.source_id ?? record.source_id;
+
+      if (newSourceType === 'package' && newSourceId) {
+        // 새 패키지에서 차감 (새 차감 포인트 사용)
+        await execute(`
+          UPDATE cs_treatment_packages
+          SET remaining_count = remaining_count - ${newDeductionPoints},
+              used_count = used_count + ${newDeductionPoints},
+              status = CASE WHEN remaining_count - ${newDeductionPoints} <= 0 THEN 'completed' ELSE 'active' END,
+              updated_at = ${escapeString(getCurrentTimestamp())}
+          WHERE id = ${newSourceId}
+        `);
+
+        // 새 remaining_after 조회
+        const pkgResult = await query<{ remaining_count: number }>(
+          `SELECT remaining_count FROM cs_treatment_packages WHERE id = ${newSourceId}`
+        );
+        if (pkgResult.length > 0) {
+          newRemainingAfter = pkgResult[0].remaining_count;
+        }
+      } else {
+        // 멤버십이나 일회성은 remaining_after = 0
+        newRemainingAfter = 0;
+      }
+    } else if (!isSourceChanging && record.source_type === 'package' && deductionDiff !== 0) {
+      // 사용방식 변경 없이 차감 포인트만 변경한 경우
       await execute(`
         UPDATE cs_treatment_packages
-        SET remaining_count = remaining_count - ${quantityDiff},
-            used_count = used_count + ${quantityDiff},
-            status = CASE WHEN remaining_count - ${quantityDiff} <= 0 THEN 'completed' ELSE 'active' END,
+        SET remaining_count = remaining_count - ${deductionDiff},
+            used_count = used_count + ${deductionDiff},
+            status = CASE WHEN remaining_count - ${deductionDiff} <= 0 THEN 'completed' ELSE 'active' END,
             updated_at = ${escapeString(getCurrentTimestamp())}
         WHERE id = ${record.source_id}
       `);
@@ -1921,8 +2078,7 @@ export async function updateYakchimUsageRecord(id: number, updates: {
         `SELECT remaining_count FROM cs_treatment_packages WHERE id = ${record.source_id}`
       );
       if (pkgResult.length > 0) {
-        updates = { ...updates } as any;
-        (updates as any).remaining_after = pkgResult[0].remaining_count;
+        newRemainingAfter = pkgResult[0].remaining_count;
       }
     }
 
@@ -1930,8 +2086,18 @@ export async function updateYakchimUsageRecord(id: number, updates: {
     const parts: string[] = [];
     if (updates.item_name !== undefined) parts.push(`item_name = ${escapeString(updates.item_name)}`);
     if (updates.quantity !== undefined) parts.push(`quantity = ${updates.quantity}`);
-    if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
-    if ((updates as any).remaining_after !== undefined) parts.push(`remaining_after = ${(updates as any).remaining_after}`);
+    if (updates.memo !== undefined) {
+      // 빈 문자열이면 NULL로 저장
+      parts.push(`memo = ${updates.memo ? escapeString(updates.memo) : 'NULL'}`);
+    }
+    if (updates.source_type !== undefined) parts.push(`source_type = ${escapeString(updates.source_type)}`);
+    if (updates.source_id !== undefined) parts.push(`source_id = ${updates.source_id}`);
+    if (updates.source_name !== undefined) parts.push(`source_name = ${escapeString(updates.source_name)}`);
+    if (newRemainingAfter !== record.remaining_after) parts.push(`remaining_after = ${newRemainingAfter}`);
+    // 실제 차감 포인트 저장 (변경이 있을 때만)
+    if (updates.deduction_points !== undefined && updates.deduction_points !== oldDeductionPoints) {
+      parts.push(`deduction_points = ${updates.deduction_points}`);
+    }
 
     if (parts.length > 0) {
       await execute(`UPDATE cs_yakchim_usage_records SET ${parts.join(', ')} WHERE id = ${id}`);
@@ -3641,28 +3807,50 @@ export async function getPatientTimeline(
 
     const isMembership = record.source_type === 'membership';
     const isOnetime = record.source_type === 'one-time';
-    const isTongma = record.source_name?.includes('통증마일리지') || record.source_name?.includes('통마');
+    const isPackage = record.source_type === 'package';
+    const quantity = record.quantity || 1;
 
-    // 라벨 생성
+    // 라벨 생성: 약침종류 갯수개 · 사용방식
     let label: string;
+    const itemName = record.item_name || '약침';
+    const quantityText = quantity > 1 ? ` ${quantity}개` : '';
+
     if (isMembership) {
-      label = `${record.source_name?.replace('멤버십', '멤')} 사용`;
+      // 예: "녹용약침 2개 · 멤버십"
+      label = `${itemName}${quantityText} · 멤버십`;
     } else if (isOnetime) {
-      label = `${record.item_name} (일회성)`;
-    } else if (isTongma) {
-      label = '통마 사용 -1회';
+      // 예: "경근약침 1개 · 일회성"
+      label = `${itemName}${quantityText} · 일회성`;
+    } else if (isPackage) {
+      // 예: "녹용약침 2개 · 통마"
+      const shortPackageName = (record.source_name?.includes('통증마일리지') || record.source_name?.includes('통마'))
+        ? '통마'
+        : record.source_name || '패키지';
+      label = `${itemName}${quantityText} · ${shortPackageName}`;
     } else {
-      label = `${record.source_name || record.item_name || ''} -1회`;
+      label = `${itemName}${quantityText}`;
     }
 
-    // subLabel 생성
+    // subLabel 생성: 패키지는 이전잔여-사용=현재잔여, 그 외는 메모만
     let subLabel: string | undefined;
-    if (isMembership) {
-      subLabel = record.item_name;
-    } else if (isOnetime) {
-      subLabel = undefined;
+
+    if (isPackage) {
+      // 차감 포인트 (약침 종류별 차감 포인트 합계, 없으면 수량 사용)
+      const deductedPoints = record.deduction_points ?? quantity;
+      // 이전 잔여 = 현재 잔여 + 차감 포인트
+      const previousRemaining = (record.remaining_after ?? 0) + deductedPoints;
+      const countText = `${previousRemaining}-${deductedPoints}=${record.remaining_after}`;
+      
+      if (record.memo && record.memo.trim()) {
+        subLabel = `${countText} / ${record.memo.trim()}`;
+      } else {
+        subLabel = countText;
+      }
     } else {
-      subLabel = `잔여 ${record.remaining_after}회`;
+      // 멤버십/일회성은 메모만 표시
+      if (record.memo && record.memo.trim()) {
+        subLabel = record.memo.trim();
+      }
     }
 
     events.push({
@@ -3779,4 +3967,291 @@ export async function getPatientAuditLogs(
     ORDER BY modified_at DESC
     LIMIT ${limit}
   `);
+}
+
+// ============================================
+// 패키지 히스토리 조회
+// ============================================
+
+export interface PackageHistoryItem {
+  id: string;
+  type: 'add' | 'usage';  // 등록 또는 사용
+  date: string;
+  label: string;
+  subLabel?: string;
+  deductionPoints?: number;  // 차감 포인트 (사용시)
+  remainingAfter?: number;   // 차감 후 잔여
+}
+
+/**
+ * 특정 패키지의 히스토리 조회
+ * @param packageId 패키지 ID
+ * @returns 패키지 등록 및 사용 히스토리
+ */
+export async function getPackageHistory(packageId: number): Promise<PackageHistoryItem[]> {
+  const items: PackageHistoryItem[] = [];
+
+  // 1. 패키지 등록 정보 조회
+  const pkg = await queryOne<TreatmentPackage>(`
+    SELECT * FROM cs_treatment_packages WHERE id = ${packageId}
+  `);
+
+  if (pkg) {
+    items.push({
+      id: `add_${pkg.id}`,
+      type: 'add',
+      date: pkg.start_date,
+      label: `${pkg.package_name} 등록`,
+      subLabel: `총 ${pkg.total_count}회${pkg.includes ? `, ${pkg.includes}` : ''}`,
+    });
+  }
+
+  // 2. 약침 사용 기록 조회 (해당 패키지에서 차감된 것)
+  const usageRecords = await query<YakchimUsageRecord>(`
+    SELECT * FROM cs_yakchim_usage_records
+    WHERE source_type = 'package' AND source_id = ${packageId}
+    ORDER BY usage_date DESC, created_at DESC
+  `);
+
+  usageRecords.forEach(record => {
+    const deductionPoints = record.deduction_points ?? record.quantity ?? 1;
+    items.push({
+      id: `usage_${record.id}`,
+      type: 'usage',
+      date: record.usage_date,
+      label: record.item_name || '약침 사용',
+      subLabel: record.memo || undefined,
+      deductionPoints,
+      remainingAfter: record.remaining_after,
+    });
+  });
+
+  // 날짜순 정렬 (최신순)
+  items.sort((a, b) => b.date.localeCompare(a.date));
+
+  return items;
+}
+
+/**
+ * 한약 패키지의 히스토리 조회
+ * @param packageId 한약 패키지 ID
+ * @returns 패키지 등록 및 수령 히스토리
+ */
+export async function getHerbalPackageHistory(packageId: number): Promise<PackageHistoryItem[]> {
+  const items: PackageHistoryItem[] = [];
+
+  // 1. 한약 패키지 등록 정보 조회
+  const pkg = await queryOne<HerbalPackage>(`
+    SELECT * FROM cs_herbal_packages WHERE id = ${packageId}
+  `);
+
+  if (pkg) {
+    items.push({
+      id: `add_herbal_${pkg.id}`,
+      type: 'add',
+      date: pkg.start_date,
+      label: `${pkg.purpose || '한약'} 선결제 등록`,
+      subLabel: `${pkg.total_rounds}회${pkg.disease_name ? ` (${pkg.disease_name})` : ''}`,
+    });
+  }
+
+  // 2. 한약 수령 기록 조회
+  const pickups = await query<HerbalPickup>(`
+    SELECT * FROM cs_herbal_pickups
+    WHERE package_id = ${packageId}
+    ORDER BY pickup_date DESC, round_number DESC
+  `);
+
+  pickups.forEach(pickup => {
+    const deliveryText = pickup.delivery_method === 'pickup' ? '수령' :
+                        pickup.delivery_method === 'delivery' ? '택배' : '퀵';
+    items.push({
+      id: `usage_herbal_${pickup.id}`,
+      type: 'usage',
+      date: pickup.pickup_date,
+      label: `${pickup.round_number}차 ${deliveryText}`,
+      subLabel: pickup.with_nokryong ? '녹용 포함' : undefined,
+      remainingAfter: pkg ? pkg.total_rounds - pickup.round_number : undefined,
+    });
+  });
+
+  // 날짜순 정렬 (최신순)
+  items.sort((a, b) => b.date.localeCompare(a.date));
+
+  return items;
+}
+
+/**
+ * 녹용 패키지의 히스토리 조회
+ * @param packageId 녹용 패키지 ID
+ * @returns 패키지 등록 및 사용 히스토리
+ */
+export async function getNokryongPackageHistory(packageId: number): Promise<PackageHistoryItem[]> {
+  const items: PackageHistoryItem[] = [];
+
+  // 1. 녹용 패키지 등록 정보 조회
+  const pkg = await queryOne<NokryongPackage>(`
+    SELECT * FROM cs_nokryong_packages WHERE id = ${packageId}
+  `);
+
+  if (pkg) {
+    items.push({
+      id: `add_nokryong_${pkg.id}`,
+      type: 'add',
+      date: pkg.start_date,
+      label: `${pkg.package_name || '녹용'} 선결제 등록`,
+      subLabel: `${pkg.total_months}회`,
+    });
+  }
+
+  // 2. 녹용은 한약 수령과 함께 사용됨 - 한약 수령 기록에서 녹용 사용 내역 조회
+  const pickups = await query<HerbalPickup>(`
+    SELECT * FROM cs_herbal_pickups
+    WHERE nokryong_package_id = ${packageId} AND with_nokryong = true
+    ORDER BY pickup_date DESC, created_at DESC
+  `);
+
+  pickups.forEach(pickup => {
+    items.push({
+      id: `usage_nokryong_${pickup.id}`,
+      type: 'usage',
+      date: pickup.pickup_date,
+      label: `한약 ${pickup.round_number}차와 함께 사용`,
+      subLabel: pickup.memo || undefined,
+    });
+  });
+
+  // 날짜순 정렬 (최신순)
+  items.sort((a, b) => b.date.localeCompare(a.date));
+
+  return items;
+}
+
+/**
+ * 멤버십의 히스토리 조회
+ * @param membershipId 멤버십 ID
+ * @returns 멤버십 등록 및 사용 히스토리
+ */
+export async function getMembershipHistory(membershipId: number): Promise<PackageHistoryItem[]> {
+  const items: PackageHistoryItem[] = [];
+
+  // 1. 멤버십 등록 정보 조회
+  const membership = await queryOne<Membership>(`
+    SELECT * FROM cs_memberships WHERE id = ${membershipId}
+  `);
+
+  if (membership) {
+    items.push({
+      id: `add_membership_${membership.id}`,
+      type: 'add',
+      date: membership.start_date,
+      label: `${membership.membership_type} 등록`,
+      subLabel: `${membership.quantity}개, ~${membership.expire_date}`,
+    });
+  }
+
+  // 2. 약침 사용 기록 조회 (해당 멤버십에서 차감된 것)
+  const usageRecords = await query<YakchimUsageRecord>(`
+    SELECT * FROM cs_yakchim_usage_records
+    WHERE source_type = 'membership' AND source_id = ${membershipId}
+    ORDER BY usage_date DESC, created_at DESC
+  `);
+
+  usageRecords.forEach(record => {
+    const deductionPoints = record.deduction_points ?? record.quantity ?? 1;
+    items.push({
+      id: `usage_membership_${record.id}`,
+      type: 'usage',
+      date: record.usage_date,
+      label: record.item_name || '약침 사용',
+      subLabel: record.memo || undefined,
+      deductionPoints,
+      remainingAfter: record.remaining_after,
+    });
+  });
+
+  // 날짜순 정렬 (최신순)
+  items.sort((a, b) => b.date.localeCompare(a.date));
+
+  return items;
+}
+
+// ============================================
+// 메모 종류 관리
+// ============================================
+
+export interface MemoType {
+  id: number;
+  name: string;
+  color: string;
+  icon: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * 메모 종류 목록 조회
+ */
+export async function getMemoTypes(includeInactive: boolean = false): Promise<MemoType[]> {
+  // 테이블이 없을 수 있으므로 초기화 먼저 실행
+  await ensureReceiptTables();
+  const whereClause = includeInactive ? '' : 'WHERE is_active = true';
+  return query<MemoType>(`
+    SELECT * FROM cs_memo_types
+    ${whereClause}
+    ORDER BY sort_order ASC, id ASC
+  `);
+}
+
+/**
+ * 메모 종류 추가
+ */
+export async function createMemoType(data: {
+  name: string;
+  color?: string;
+  icon?: string;
+  sort_order?: number;
+}): Promise<number> {
+  const now = getCurrentTimestamp();
+  return insert(`
+    INSERT INTO cs_memo_types (name, color, icon, sort_order, created_at, updated_at)
+    VALUES (
+      ${escapeString(data.name)},
+      ${escapeString(data.color || '#6b7280')},
+      ${escapeString(data.icon || 'comment')},
+      ${data.sort_order ?? 0},
+      ${escapeString(now)},
+      ${escapeString(now)}
+    )
+  `);
+}
+
+/**
+ * 메모 종류 수정
+ */
+export async function updateMemoType(id: number, data: {
+  name?: string;
+  color?: string;
+  icon?: string;
+  sort_order?: number;
+  is_active?: boolean;
+}): Promise<void> {
+  const parts: string[] = [];
+  if (data.name !== undefined) parts.push(`name = ${escapeString(data.name)}`);
+  if (data.color !== undefined) parts.push(`color = ${escapeString(data.color)}`);
+  if (data.icon !== undefined) parts.push(`icon = ${escapeString(data.icon)}`);
+  if (data.sort_order !== undefined) parts.push(`sort_order = ${data.sort_order}`);
+  if (data.is_active !== undefined) parts.push(`is_active = ${data.is_active}`);
+  parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
+
+  await execute(`UPDATE cs_memo_types SET ${parts.join(', ')} WHERE id = ${id}`);
+}
+
+/**
+ * 메모 종류 삭제
+ */
+export async function deleteMemoType(id: number): Promise<void> {
+  await execute(`DELETE FROM cs_memo_types WHERE id = ${id}`);
 }

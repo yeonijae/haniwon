@@ -241,6 +241,7 @@ export interface YakchimUsageRecord {
   mssql_detail_id?: number;                // MSSQL Detail_PK (비급여 항목 연결)
   memo?: string;
   quantity?: number;                       // 사용 갯수
+  deduction_points?: number;               // 실제 차감 포인트 (약침 종류별 차감 포인트 합계)
   created_at: string;
 }
 
@@ -313,6 +314,24 @@ export const YAKCHIM_PAYMENT_TYPE_LABELS: Record<YakchimPaymentType, string> = {
   tongma: '통마',
   membership: '멤버십',
   service: '서비스',
+};
+
+// 약침 항목명 프리셋 (item_name 선택용)
+export const YAKCHIM_ITEM_PRESETS = [
+  '경근약침',
+  '녹용약침',
+  '봉독약침',
+  '태반약침',
+  '화타약침',
+  '비추약침',
+  '약침',
+] as const;
+
+// 사용방식 라벨
+export const SOURCE_TYPE_LABELS: Record<string, string> = {
+  'membership': '멤버십',
+  'package': '패키지',
+  'one-time': '일회성',
 };
 
 // 약침 사용 기록 (한 행)
@@ -1039,3 +1058,10 @@ export interface TimelineResult {
   totalCount: number;
   hasMore: boolean;
 }
+
+// ============================================
+// 직원 역할 타입 (CRM 모듈 re-export)
+// ============================================
+
+export type { StaffRole, PatientNote, PatientNoteType, NoteChannel, NoteStatus } from './types/crm';
+export { STAFF_ROLE_LABELS, NOTE_TYPE_LABELS, NOTE_TYPE_ICONS, NOTE_TYPE_COLORS, NOTE_CHANNEL_LABELS, NOTE_CHANNEL_ICONS, NOTE_STATUS_LABELS } from './types/crm';
