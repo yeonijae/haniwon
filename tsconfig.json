@@ -22,7 +22,7 @@
       "@modules/*": ["src/modules/*"],
       "@portal/*": ["src/modules/portal/*"],
       "@manage/*": ["src/modules/manage/*"],
-      "@chart/*": ["src/modules/chart/*"],
+      "@doctor/*": ["src/modules/doctor/*"],
       "@inventory/*": ["src/modules/inventory/*"],
       "@treatment/*": ["src/modules/treatment/*"],
       "@acting/*": ["src/modules/acting/*"],

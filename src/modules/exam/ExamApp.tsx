@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
@@ -11,6 +12,7 @@ interface ExamAppProps {
 }
 
 const ExamApp: React.FC<ExamAppProps> = ({ user }) => {
+  useDocumentTitle('검사결과');
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
 

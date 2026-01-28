@@ -8,8 +8,11 @@ import {
   type DeliveryMethod,
   type ReceiptMemo,
   type YakchimUsageRecord,
+  type DecoctionSlot,
   HERBAL_PACKAGE_ROUNDS,
 } from '../types';
+import { getAvailableSlots, reserveSlot } from '../lib/decoctionApi';
+import { fetchPatientMainDoctor } from '@modules/acting/api';
 import { type HerbalDiseaseTag } from '../lib/api';
 import {
   getPackageDiseaseTags,
@@ -35,6 +38,8 @@ import {
   createHerbalPickup,
   updateYakchimUsageRecord,
   deleteYakchimUsageRecord,
+  getActiveTreatmentPackages,
+  getActiveMembership,
 } from '../lib/api';
 
 // 인라인 메모 편집 컴포넌트
@@ -897,6 +902,12 @@ export const InlineHerbalPickupEdit: React.FC<{
   const [withNokryong, setWithNokryong] = useState(pickup.with_nokryong);
   const [selectedNokryongId, setSelectedNokryongId] = useState<number | undefined>(pickup.nokryong_package_id);
 
+  // 탕전/담당원장 상태
+  const [availableSlots, setAvailableSlots] = useState<DecoctionSlot[]>([]);
+  const [selectedDecoctionDate, setSelectedDecoctionDate] = useState<string>('');
+  const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(null);
+  const [selectedDoctorName, setSelectedDoctorName] = useState<string>('');
+
   // 초기 데이터 로드
   useEffect(() => {
     const loadData = async () => {
@@ -904,6 +915,12 @@ export const InlineHerbalPickupEdit: React.FC<{
       if (pickup.package_id) {
         const pkg = await getHerbalPackageById(pickup.package_id);
         setHerbalPackage(pkg);
+        // 패키지의 탕전일/담당원장 정보 설정
+        if (pkg) {
+          setSelectedDecoctionDate(pkg.decoction_date || '');
+          setSelectedDoctorId(pkg.doctor_id || null);
+          setSelectedDoctorName(pkg.doctor_name || '');
+        }
       }
       // 활성 녹용 패키지 로드
       const noks = await getActiveNokryongPackages(pickup.patient_id);
@@ -914,6 +931,9 @@ export const InlineHerbalPickupEdit: React.FC<{
       } else if (noks.length > 0) {
         setSelectedNokryongId(noks[0].id);
       }
+      // 탕전 슬롯 로드
+      const slots = await getAvailableSlots(21);
+      setAvailableSlots(slots);
     };
     loadData();
   }, [pickup.package_id, pickup.patient_id, pickup.nokryong_package_id]);
@@ -935,6 +955,16 @@ export const InlineHerbalPickupEdit: React.FC<{
         },
         previousNokryongId
       );
+
+      // 패키지에 탕전 정보 업데이트
+      if (herbalPackage?.id) {
+        await updateHerbalPackage(herbalPackage.id, {
+          decoction_date: selectedDecoctionDate || undefined,
+          delivery_method: deliveryMethod,
+          doctor_id: selectedDoctorId || undefined,
+          doctor_name: selectedDoctorName || undefined,
+        });
+      }
 
       onSuccess();
       onClose();
@@ -1033,6 +1063,50 @@ export const InlineHerbalPickupEdit: React.FC<{
         </div>
       </div>
 
+      {/* 탕전 예정일 */}
+      <div className="pickup-edit-row">
+        <label>탕전 예정일</label>
+        <select
+          value={selectedDecoctionDate}
+          onChange={(e) => setSelectedDecoctionDate(e.target.value)}
+          className="decoction-date-select"
+        >
+          <option value="">선택안함</option>
+          {availableSlots.map(slot => {
+            const date = new Date(slot.slot_date);
+            const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+            const dayName = dayNames[date.getDay()];
+            const month = date.getMonth() + 1;
+            const day = date.getDate();
+            const available = slot.total_capacity - slot.reserved_capacity;
+            return (
+              <option key={slot.slot_date} value={slot.slot_date}>
+                {month}/{day}({dayName}) - 잔여 {available}건
+              </option>
+            );
+          })}
+        </select>
+      </div>
+
+      {/* 담당 원장 */}
+      <div className="pickup-edit-row">
+        <label>담당 원장</label>
+        <select
+          value={selectedDoctorId || ''}
+          onChange={(e) => {
+            const id = e.target.value ? Number(e.target.value) : null;
+            setSelectedDoctorId(id);
+            const doc = DOCTOR_LIST.find(d => d.id === id);
+            setSelectedDoctorName(doc?.name || '');
+          }}
+        >
+          <option value="">선택 안함</option>
+          {DOCTOR_LIST.map(doc => (
+            <option key={doc.id} value={doc.id}>{doc.name}</option>
+          ))}
+        </select>
+      </div>
+
       {/* 버튼 */}
       <div className="timeline-edit-actions">
         <button
@@ -1059,6 +1133,14 @@ export const InlineHerbalPickupEdit: React.FC<{
 
 InlineHerbalPickupEdit.displayName = 'InlineHerbalPickupEdit';
 
+// 원장 목록
+const DOCTOR_LIST = [
+  { id: 1, name: '강희종' },
+  { id: 3, name: '김대현' },
+  { id: 13, name: '임세열' },
+  { id: 15, name: '전인태' },
+];
+
 // 한약 선결제 사용(새 수령 기록 생성) 인라인 패널
 export const InlineHerbalDeductPanel: React.FC<{
   patientId: number;
@@ -1084,6 +1166,12 @@ export const InlineHerbalDeductPanel: React.FC<{
   const [withNokryong, setWithNokryong] = useState(false);
   const [selectedNokryongId, setSelectedNokryongId] = useState<number | undefined>();
 
+  // 탕전/담당원장 상태
+  const [availableSlots, setAvailableSlots] = useState<DecoctionSlot[]>([]);
+  const [selectedDecoctionDate, setSelectedDecoctionDate] = useState<string>('');
+  const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(null);
+  const [selectedDoctorName, setSelectedDoctorName] = useState<string>('');
+
   // 초기 데이터 로드
   useEffect(() => {
     const loadData = async () => {
@@ -1099,6 +1187,21 @@ export const InlineHerbalDeductPanel: React.FC<{
       setNokryongPackages(noks);
       if (noks.length > 0) {
         setSelectedNokryongId(noks[0].id);
+      }
+
+      // 탕전 슬롯 로드
+      const slots = await getAvailableSlots(21);
+      setAvailableSlots(slots);
+
+      // 환자 주치의 로드
+      try {
+        const mainDoctor = await fetchPatientMainDoctor(patientId);
+        if (mainDoctor) {
+          setSelectedDoctorId(mainDoctor.doctorId);
+          setSelectedDoctorName(mainDoctor.doctorName);
+        }
+      } catch (e) {
+        // 주치의 정보 없음
       }
     };
     loadData();
@@ -1118,6 +1221,10 @@ export const InlineHerbalDeductPanel: React.FC<{
       alert('녹용 사용을 선택했지만 녹용 패키지가 없습니다.');
       return;
     }
+    if (!selectedDecoctionDate) {
+      alert('탕전 예정일을 선택해주세요.');
+      return;
+    }
 
     const selectedNokryong = nokryongPackages.find(n => n.id === selectedNokryongId);
     if (withNokryong && selectedNokryong && selectedNokryong.remaining_months <= 0) {
@@ -1128,6 +1235,21 @@ export const InlineHerbalDeductPanel: React.FC<{
     setIsSaving(true);
     try {
       const nextRound = selectedHerbal.used_count + 1;
+
+      // 탕전 슬롯 예약
+      await reserveSlot(selectedDecoctionDate);
+
+      // 패키지에 탕전 정보 업데이트
+      await updateHerbalPackage(selectedHerbal.id!, {
+        decoction_date: selectedDecoctionDate,
+        delivery_method: deliveryMethod,
+        doctor_id: selectedDoctorId || undefined,
+        doctor_name: selectedDoctorName || undefined,
+        prescription_due_date: selectedDecoctionDate,
+        prescription_status: 'pending',
+        decoction_status: 'pending',
+        delivery_status: 'pending',
+      });
 
       // 수령 기록 생성 (타임라인 이벤트로 표시됨)
       await createHerbalPickup({
@@ -1242,6 +1364,50 @@ export const InlineHerbalDeductPanel: React.FC<{
                   )}
                 </div>
               </div>
+
+              {/* 탕전 예정일 */}
+              <div className="pickup-edit-row">
+                <label>탕전 예정일 <span style={{ color: '#ef4444' }}>*</span></label>
+                <select
+                  value={selectedDecoctionDate}
+                  onChange={(e) => setSelectedDecoctionDate(e.target.value)}
+                  className="decoction-date-select"
+                >
+                  <option value="">선택해주세요</option>
+                  {availableSlots.map(slot => {
+                    const date = new Date(slot.slot_date);
+                    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+                    const dayName = dayNames[date.getDay()];
+                    const month = date.getMonth() + 1;
+                    const day = date.getDate();
+                    const available = slot.total_capacity - slot.reserved_capacity;
+                    return (
+                      <option key={slot.slot_date} value={slot.slot_date}>
+                        {month}/{day}({dayName}) - 잔여 {available}건
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* 담당 원장 */}
+              <div className="pickup-edit-row">
+                <label>담당 원장</label>
+                <select
+                  value={selectedDoctorId || ''}
+                  onChange={(e) => {
+                    const id = e.target.value ? Number(e.target.value) : null;
+                    setSelectedDoctorId(id);
+                    const doc = DOCTOR_LIST.find(d => d.id === id);
+                    setSelectedDoctorName(doc?.name || '');
+                  }}
+                >
+                  <option value="">선택 안함</option>
+                  {DOCTOR_LIST.map(doc => (
+                    <option key={doc.id} value={doc.id}>{doc.name}</option>
+                  ))}
+                </select>
+              </div>
             </>
           )}
         </>
@@ -1255,7 +1421,7 @@ export const InlineHerbalDeductPanel: React.FC<{
         <button
           className="btn-save-inline"
           onClick={handleDeduct}
-          disabled={isSaving || !selectedHerbal || selectedHerbal.remaining_count <= 0}
+          disabled={isSaving || !selectedHerbal || selectedHerbal.remaining_count <= 0 || !selectedDecoctionDate}
         >
           {isSaving ? '처리중...' : '사용'}
         </button>
@@ -1266,23 +1432,201 @@ export const InlineHerbalDeductPanel: React.FC<{
 
 InlineHerbalDeductPanel.displayName = 'InlineHerbalDeductPanel';
 
+// 약침 종류 타입
+interface YakchimTypeOption {
+  id: number;
+  name: string;
+  deduction_count?: number;
+}
+
+// 선택된 약침 아이템 타입
+interface SelectedYakchimItem {
+  name: string;
+  qty: number;
+  deductionCount: number;  // 패키지 차감 포인트
+}
+
 // 약침 사용 기록 인라인 편집 컴포넌트
 export const InlineYakchimEdit: React.FC<{
   record: YakchimUsageRecord;
+  linkedDetailName?: string;
+  linkedDetailAmount?: number;
   onSuccess: () => void;
   onClose: () => void;
-}> = React.memo(({ record, onSuccess, onClose }) => {
-  const [quantity, setQuantity] = useState(record.quantity || 1);
+}> = React.memo(({ record, linkedDetailName, linkedDetailAmount, onSuccess, onClose }) => {
+  // 기본 약침 종류 (DB에서 로드 실패 시 사용)
+  const DEFAULT_YAKCHIM_ITEMS = ['경근약침', '녹용약침', '봉독약침', '태반약침', '화타약침', '비추약침', '약침'];
+
+  // 약침 종류 옵션 (먼저 선언)
+  const [yakchimTypes, setYakchimTypes] = useState<YakchimTypeOption[]>([]);
+
+  // 기존 item_name을 파싱해서 선택된 항목 배열로 변환
+  const parseItemNames = (itemName: string, totalQty: number, types: YakchimTypeOption[]): SelectedYakchimItem[] => {
+    if (!itemName) return [];
+    const names = itemName.split(',').map(n => n.trim()).filter(n => n);
+    if (names.length === 0) return [];
+    // 각 항목에 수량을 균등 분배 (또는 첫 번째에 모두 할당)
+    if (names.length === 1) {
+      const type = types.find(t => t.name === names[0]);
+      return [{ name: names[0], qty: totalQty, deductionCount: type?.deduction_count || 1 }];
+    }
+    // 여러 항목일 경우 균등 분배
+    const baseQty = Math.floor(totalQty / names.length);
+    const remainder = totalQty % names.length;
+    return names.map((name, idx) => {
+      const type = types.find(t => t.name === name);
+      return {
+        name,
+        qty: baseQty + (idx < remainder ? 1 : 0),
+        deductionCount: type?.deduction_count || 1,
+      };
+    });
+  };
+
+  const [selectedItems, setSelectedItems] = useState<SelectedYakchimItem[]>([]);
   const [memo, setMemo] = useState(record.memo || '');
+  const [sourceType, setSourceType] = useState<'membership' | 'package' | 'one-time'>(record.source_type);
+  const [sourceId, setSourceId] = useState<number>(record.source_id);
+  const [sourceName, setSourceName] = useState(record.source_name || '');
+
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 패키지/멤버십 목록
+  const [packages, setPackages] = useState<TreatmentPackage[]>([]);
+  const [membership, setMembership] = useState<Membership | null>(null);
+
+  // 초기 데이터 로드
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const [pkgs, mem, types] = await Promise.all([
+          getActiveTreatmentPackages(record.patient_id),
+          getActiveMembership(record.patient_id),
+          import('../lib/api').then(m => m.getPackageTypes()),
+        ]);
+        setPackages(pkgs);
+        setMembership(mem);
+
+        // yakchim 타입만 필터링
+        let yakchimTypeList = types.filter((t: any) => t.type === 'yakchim');
+        if (yakchimTypeList.length === 0) {
+          // DB에 없으면 기본값 사용
+          yakchimTypeList = DEFAULT_YAKCHIM_ITEMS.map((name, idx) => ({ id: idx, name, deduction_count: 1 }));
+        }
+        setYakchimTypes(yakchimTypeList);
+
+        // 초기 선택 항목 설정 (yakchimTypes 로드 후)
+        const initialItems = parseItemNames(record.item_name || '', record.quantity || 1, yakchimTypeList);
+        setSelectedItems(initialItems);
+      } catch (err) {
+        console.error('데이터 로드 오류:', err);
+        const defaultTypes = DEFAULT_YAKCHIM_ITEMS.map((name, idx) => ({ id: idx, name, deduction_count: 1 }));
+        setYakchimTypes(defaultTypes);
+        const initialItems = parseItemNames(record.item_name || '', record.quantity || 1, defaultTypes);
+        setSelectedItems(initialItems);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, [record.patient_id, record.item_name, record.quantity]);
+
+  // 약침 종류 토글
+  const handleToggleYakchim = (typeName: string) => {
+    setSelectedItems(prev => {
+      const existing = prev.find(item => item.name === typeName);
+      if (existing) {
+        // 이미 선택됨 -> 제거
+        return prev.filter(item => item.name !== typeName);
+      } else {
+        // 선택 추가 (deductionCount 포함)
+        const type = yakchimTypes.find(t => t.name === typeName);
+        return [...prev, { name: typeName, qty: 1, deductionCount: type?.deduction_count || 1 }];
+      }
+    });
+  };
+
+  // 수량 변경
+  const handleQtyChange = (typeName: string, delta: number) => {
+    setSelectedItems(prev => prev.map(item => {
+      if (item.name === typeName) {
+        const newQty = Math.max(1, item.qty + delta);
+        return { ...item, qty: newQty };
+      }
+      return item;
+    }));
+  };
+
+  // 사용방식 변경 시 소스 선택
+  const handleSourceTypeChange = (newType: 'membership' | 'package' | 'one-time') => {
+    setSourceType(newType);
+    if (newType === 'one-time') {
+      setSourceId(0);
+      setSourceName('일회성');
+    } else if (newType === 'membership' && membership) {
+      setSourceId(membership.id || 0);
+      setSourceName(membership.membership_type);
+    } else if (newType === 'package' && packages.length > 0) {
+      setSourceId(packages[0].id || 0);
+      setSourceName(packages[0].package_name);
+    }
+  };
+
+  // 패키지 선택 변경
+  const handlePackageChange = (pkgId: number) => {
+    const pkg = packages.find(p => p.id === pkgId);
+    if (pkg) {
+      setSourceId(pkg.id || 0);
+      setSourceName(pkg.package_name);
+    }
+  };
+
+  // 총 수량 및 총 차감 포인트 계산
+  const totalQuantity = selectedItems.reduce((sum, item) => sum + item.qty, 0);
+  const totalDeductionPoints = selectedItems.reduce((sum, item) => sum + (item.qty * item.deductionCount), 0);
 
   const handleSave = async () => {
+    // 유효성 검사
+    if (selectedItems.length === 0) {
+      alert('약침 종류를 선택해주세요.');
+      return;
+    }
+    if (sourceType === 'package' && !sourceId) {
+      alert('패키지를 선택해주세요.');
+      return;
+    }
+    if (sourceType === 'membership' && !membership) {
+      alert('활성 멤버십이 없습니다.');
+      return;
+    }
+
+    // item_name과 source_name 생성
+    const itemName = selectedItems.map(item => item.name).join(', ');
+    const itemInfoParts = selectedItems.map(item => `${item.name} ${item.qty}개`);
+    const newSourceName = sourceType === 'one-time'
+      ? itemInfoParts.join(', ')
+      : sourceName;
+
+    // 약침 내용 변경 여부 확인 (item_name 또는 quantity가 변경된 경우)
+    const isContentChanged = itemName !== record.item_name || totalQuantity !== (record.quantity || 1);
+    // 사용방식 변경 여부
+    const isSourceChanged = sourceType !== record.source_type || sourceId !== record.source_id;
+
     setIsSaving(true);
     try {
       await updateYakchimUsageRecord(record.id, {
-        quantity,
-        memo: memo.trim() || undefined,
+        item_name: itemName,
+        quantity: totalQuantity,
+        memo: memo.trim(),  // 빈 문자열도 전달 (메모 삭제 가능)
+        source_type: sourceType,
+        source_id: sourceType === 'one-time' ? 0 : sourceId,
+        source_name: newSourceName,
+        // 약침 내용이나 사용방식이 변경된 경우에만 deduction_points 전달
+        // 변경 없으면 undefined로 전달하여 API에서 기존 값 유지
+        deduction_points: (isContentChanged || isSourceChanged) ? totalDeductionPoints : undefined,
       });
       onSuccess();
       onClose();
@@ -1309,12 +1653,8 @@ export const InlineYakchimEdit: React.FC<{
     }
   };
 
-  // 소스 타입 라벨
-  const sourceTypeLabel = {
-    'membership': '멤버십',
-    'package': '패키지',
-    'one-time': '일회성',
-  }[record.source_type] || record.source_type;
+  // 변경 여부 확인
+  const isSourceChanged = sourceType !== record.source_type || sourceId !== record.source_id;
 
   return (
     <div className="timeline-edit-inline yakchim-edit">
@@ -1324,71 +1664,200 @@ export const InlineYakchimEdit: React.FC<{
           <i className="fa-solid fa-calendar"></i>
           {record.usage_date}
         </span>
-        <span className="info-item">
-          {sourceTypeLabel}
-          {record.source_name && ` · ${record.source_name}`}
-        </span>
-        {record.source_type !== 'one-time' && (
+        {linkedDetailName && (
           <span className="info-item">
-            잔여 {record.remaining_after}회
+            {/* 멤버십 표시 간소화: "ㅇㅇ약침 · ㅇㅇ멤" → "ㅇㅇ약침 · 멤버십" */}
+            {linkedDetailName.includes(' · ') && linkedDetailName.endsWith('멤')
+              ? `${linkedDetailName.split(' · ')[0]} · 멤버십`
+              : linkedDetailName}
+            {linkedDetailAmount && linkedDetailAmount > 0 && (
+              <span className="linked-amount"> ({linkedDetailAmount.toLocaleString()}원)</span>
+            )}
           </span>
         )}
       </div>
 
-      {/* 항목명 */}
-      <div className="herbal-edit-row">
-        <label>항목</label>
-        <span className="yakchim-item-name">{record.item_name}</span>
-      </div>
+      {isLoading ? (
+        <div className="loading-small">로딩 중...</div>
+      ) : (
+        <>
+          {/* 약침 종류 (복수 선택) */}
+          <div className="herbal-edit-row">
+            <label>약침 종류</label>
+            <div className="yakchim-multi-select">
+              {yakchimTypes.map(type => {
+                const isSelected = selectedItems.some(item => item.name === type.name);
+                const selectedItem = selectedItems.find(item => item.name === type.name);
+                const deductionCount = type.deduction_count || 1;
+                return (
+                  <button
+                    key={type.id}
+                    type="button"
+                    className={`yakchim-select-btn ${isSelected ? 'selected' : ''}`}
+                    onClick={() => handleToggleYakchim(type.name)}
+                    disabled={isSaving || isDeleting}
+                    title={`차감 ${deductionCount}p`}
+                  >
+                    {type.name}
+                    {deductionCount > 1 && <span className="deduction-badge">{deductionCount}p</span>}
+                    {isSelected && selectedItem && (
+                      <span className="yakchim-qty-badge">{selectedItem.qty}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-      {/* 수량 */}
-      <div className="herbal-edit-row">
-        <label>수량</label>
-        <div className="count-input-group">
-          <button
-            type="button"
-            className="count-btn"
-            onClick={() => setQuantity(Math.max(1, quantity - 1))}
-            disabled={isSaving || isDeleting || quantity <= 1}
-          >
-            -
-          </button>
-          <input
-            type="number"
-            value={quantity}
-            onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-            min={1}
-            disabled={isSaving || isDeleting}
-          />
-          <button
-            type="button"
-            className="count-btn"
-            onClick={() => setQuantity(quantity + 1)}
-            disabled={isSaving || isDeleting}
-          >
-            +
-          </button>
-        </div>
-      </div>
+          {/* 선택된 항목별 수량 조절 */}
+          {selectedItems.length > 0 && (
+            <div className="herbal-edit-row">
+              <label>항목별 수량</label>
+              <div className="selected-yakchim-list">
+                {selectedItems.map(item => (
+                  <div key={item.name} className="selected-yakchim-item">
+                    <span className="yakchim-name">
+                      {item.name}
+                      {item.deductionCount > 1 && (
+                        <span className="yakchim-deduction-text">({item.deductionCount}p)</span>
+                      )}
+                    </span>
+                    <div className="count-input-group small">
+                      <button
+                        type="button"
+                        className="count-btn"
+                        onClick={() => handleQtyChange(item.name, -1)}
+                        disabled={isSaving || isDeleting || item.qty <= 1}
+                      >
+                        -
+                      </button>
+                      <span className="count-value">{item.qty}</span>
+                      <button
+                        type="button"
+                        className="count-btn"
+                        onClick={() => handleQtyChange(item.name, 1)}
+                        disabled={isSaving || isDeleting}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-      {/* 메모 */}
-      <div className="herbal-edit-row">
-        <label>메모</label>
-        <input
-          type="text"
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
-          placeholder="메모 (선택)"
-          disabled={isSaving || isDeleting}
-        />
-      </div>
+          {/* 사용방식 */}
+          <div className="herbal-edit-row">
+            <label>사용방식</label>
+            <div className="source-type-buttons">
+              <button
+                type="button"
+                className={`source-type-btn ${sourceType === 'one-time' ? 'active' : ''}`}
+                onClick={() => handleSourceTypeChange('one-time')}
+                disabled={isSaving || isDeleting}
+              >
+                일회성
+              </button>
+              <button
+                type="button"
+                className={`source-type-btn ${sourceType === 'package' ? 'active' : ''}`}
+                onClick={() => handleSourceTypeChange('package')}
+                disabled={isSaving || isDeleting || packages.length === 0}
+                title={packages.length === 0 ? '활성 패키지 없음' : ''}
+              >
+                패키지
+              </button>
+              <button
+                type="button"
+                className={`source-type-btn ${sourceType === 'membership' ? 'active' : ''}`}
+                onClick={() => handleSourceTypeChange('membership')}
+                disabled={isSaving || isDeleting || !membership}
+                title={!membership ? '활성 멤버십 없음' : ''}
+              >
+                멤버십
+              </button>
+            </div>
+          </div>
+
+          {/* 패키지 선택 (패키지 사용 시) */}
+          {sourceType === 'package' && packages.length > 0 && (
+            <div className="herbal-edit-row">
+              <label>패키지 선택</label>
+              <select
+                value={sourceId}
+                onChange={(e) => handlePackageChange(Number(e.target.value))}
+                disabled={isSaving || isDeleting}
+              >
+                {packages.map(pkg => {
+                  const currentRemaining = pkg.remaining_count || 0;
+                  return (
+                    <option key={pkg.id} value={pkg.id}>
+                      {pkg.package_name} ({currentRemaining}/{pkg.total_count})
+                    </option>
+                  );
+                })}
+              </select>
+              {/* 선택된 패키지의 예상 잔여 표시 */}
+              {sourceId > 0 && (() => {
+                const selectedPkg = packages.find(p => p.id === sourceId);
+                if (!selectedPkg) return null;
+                const currentRemaining = selectedPkg.remaining_count || 0;
+                const wasFromThisPackage = record.source_type === 'package' && record.source_id === selectedPkg.id;
+                // 차감 포인트 사용 (없으면 quantity로 폴백)
+                const originalDeduction = wasFromThisPackage ? (record.deduction_points ?? record.quantity ?? 0) : 0;
+                const expectedRemaining = currentRemaining + originalDeduction - totalDeductionPoints;
+                const isInsufficient = expectedRemaining < 0;
+
+                return (
+                  <div className={`expected-remaining-info ${isInsufficient ? 'insufficient' : ''}`}>
+                    <i className="fa-solid fa-arrow-right"></i>
+                    예상 잔여 <strong>{expectedRemaining}회</strong>
+                    {isInsufficient && <span className="warning-text"> (부족!)</span>}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* 멤버십 정보 (멤버십 사용 시) */}
+          {sourceType === 'membership' && membership && (
+            <div className="herbal-edit-row">
+              <label>멤버십</label>
+              <span className="membership-info">
+                {membership.membership_type} (만료: {membership.expire_date})
+              </span>
+            </div>
+          )}
+
+          {/* 변경 알림 */}
+          {isSourceChanged && (
+            <div className="source-change-notice">
+              <i className="fa-solid fa-exclamation-triangle"></i>
+              사용방식 변경 시 이전 재고가 복구되고 새 소스에서 차감됩니다
+            </div>
+          )}
+
+          {/* 메모 */}
+          <div className="herbal-edit-row">
+            <label>메모</label>
+            <input
+              type="text"
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              placeholder="메모 (선택)"
+              disabled={isSaving || isDeleting}
+            />
+          </div>
+        </>
+      )}
 
       {/* 버튼 */}
       <div className="timeline-edit-actions">
         <button
           className="btn-delete-inline"
           onClick={handleDelete}
-          disabled={isSaving || isDeleting}
+          disabled={isSaving || isDeleting || isLoading}
         >
           {isDeleting ? '삭제중...' : '삭제'}
         </button>
@@ -1398,7 +1867,7 @@ export const InlineYakchimEdit: React.FC<{
         <button
           className="btn-save-inline"
           onClick={handleSave}
-          disabled={isSaving || isDeleting}
+          disabled={isSaving || isDeleting || isLoading}
         >
           {isSaving ? '저장중...' : '저장'}
         </button>

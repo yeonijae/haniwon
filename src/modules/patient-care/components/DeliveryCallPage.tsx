@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../../chart/lib/supabaseClient';
+import { supabase } from '../../doctor/lib/supabaseClient';
 import { getCurrentDate } from '@shared/lib/postgres';
 
 interface DeliveryCallTarget {

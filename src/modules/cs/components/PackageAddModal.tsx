@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { getCurrentDate } from '@shared/lib/postgres';
-import { createTreatmentPackage, updateTreatmentPackage, deleteTreatmentPackage, getPackageTypes, type PackageType } from '../lib/api';
+import { createTreatmentPackage, updateTreatmentPackage, deleteTreatmentPackage, getPackageTypes, getPackageHistory, type PackageType, type PackageHistoryItem } from '../lib/api';
 import type { TreatmentPackage } from '../types';
 
 interface PackageAddModalProps {
@@ -42,6 +42,11 @@ export function PackageAddModal({
   const [memo, setMemo] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // 히스토리 상태
+  const [history, setHistory] = useState<PackageHistoryItem[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [activeTab, setActiveTab] = useState<'edit' | 'history'>('edit');
+
   // ESC 키로 모달 닫기
   useEscapeKey(onClose, isOpen);
 
@@ -77,6 +82,17 @@ export function PackageAddModal({
       setMemo(editData.memo || '');
     }
   }, [editData, packageTypes]);
+
+  // 수정 모드일 때 히스토리 로드
+  useEffect(() => {
+    if (isEditMode && editData?.id && isOpen) {
+      setIsLoadingHistory(true);
+      getPackageHistory(editData.id)
+        .then(setHistory)
+        .catch(err => console.error('히스토리 로드 실패:', err))
+        .finally(() => setIsLoadingHistory(false));
+    }
+  }, [isEditMode, editData?.id, isOpen]);
 
   if (!isOpen) return null;
 
@@ -168,6 +184,8 @@ export function PackageAddModal({
     setIncludes('');
     setExpireDate('');
     setMemo('');
+    setActiveTab('edit');
+    setHistory([]);
     onClose();
   };
 
@@ -192,6 +210,61 @@ export function PackageAddModal({
             <span className="patient-chart">({chartNo.replace(/^0+/, '')})</span>
           </div>
 
+          {/* 수정 모드일 때 탭 표시 */}
+          {isEditMode && (
+            <div className="package-modal-tabs">
+              <button
+                className={`tab-btn ${activeTab === 'edit' ? 'active' : ''}`}
+                onClick={() => setActiveTab('edit')}
+              >
+                수정
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`}
+                onClick={() => setActiveTab('history')}
+              >
+                히스토리
+              </button>
+            </div>
+          )}
+
+          {/* 히스토리 탭 */}
+          {isEditMode && activeTab === 'history' && (
+            <div className="package-history-section">
+              {isLoadingHistory ? (
+                <div className="history-loading">로딩 중...</div>
+              ) : history.length === 0 ? (
+                <div className="history-empty">사용 기록이 없습니다.</div>
+              ) : (
+                <div className="history-list">
+                  {history.map(item => (
+                    <div key={item.id} className={`history-item ${item.type}`}>
+                      <div className="history-date">{item.date}</div>
+                      <div className="history-content">
+                        <span className={`history-badge ${item.type}`}>
+                          {item.type === 'add' ? '등록' : '사용'}
+                        </span>
+                        <span className="history-label">{item.label}</span>
+                        {item.type === 'usage' && item.deductionPoints !== undefined && (
+                          <span className="history-deduction">-{item.deductionPoints}p</span>
+                        )}
+                        {item.type === 'usage' && item.remainingAfter !== undefined && (
+                          <span className="history-remaining">잔여 {item.remainingAfter}</span>
+                        )}
+                      </div>
+                      {item.subLabel && (
+                        <div className="history-sublabel">{item.subLabel}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 수정 폼 (기본 또는 수정 탭) */}
+          {(!isEditMode || activeTab === 'edit') && (
+          <>
           <div className="form-group">
             <label>패키지명 *</label>
             <div className="package-select-row">
@@ -291,6 +364,8 @@ export function PackageAddModal({
               placeholder="메모 입력"
             />
           </div>
+          </>
+          )}
         </div>
 
         <div className="modal-footer">

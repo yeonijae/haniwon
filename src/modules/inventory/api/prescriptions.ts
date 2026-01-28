@@ -28,6 +28,9 @@ export interface Prescription {
   issued_by: string;
   notes?: string;
   created_at: string;
+  // 한약 패키지 연결
+  herbal_package_id?: number;
+  dosage_instruction?: string;  // 복용법
 }
 
 export const prescriptionDefinitionsApi = {
@@ -132,7 +135,7 @@ export const prescriptionsApi = {
     const id = await insert(`
       INSERT INTO prescriptions (
         prescription_definition_id, patient_name, prescription_name, composition,
-        issued_date, issued_by, notes, created_at
+        issued_date, issued_by, notes, herbal_package_id, dosage_instruction, created_at
       ) VALUES (
         ${prescriptionData.prescription_definition_id || 'NULL'},
         ${prescriptionData.patient_name ? escapeString(prescriptionData.patient_name) : 'NULL'},
@@ -141,6 +144,8 @@ export const prescriptionsApi = {
         ${escapeString(issuedDate)},
         ${escapeString(prescriptionData.issued_by || '관리자')},
         ${prescriptionData.notes ? escapeString(prescriptionData.notes) : 'NULL'},
+        ${prescriptionData.herbal_package_id || 'NULL'},
+        ${prescriptionData.dosage_instruction ? escapeString(prescriptionData.dosage_instruction) : 'NULL'},
         ${escapeString(now)}
       )
     `);

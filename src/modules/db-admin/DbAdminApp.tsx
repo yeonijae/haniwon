@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import {
   ThemeToggle,
@@ -24,6 +25,7 @@ import './styles/themes.css';
 type ViewMode = 'table' | 'sql';
 
 function DbAdminContent() {
+  useDocumentTitle('DB관리');
   const { theme } = useTheme();
 
   // State

@@ -25,8 +25,7 @@ interface QuickReservationModalProps {
   memo?: string;
 }
 
-// 기본 진료 항목 (침)
-const DEFAULT_ITEMS = ['침'];
+// 기본 진료 항목 (빈 배열 - 오늘 진료내역 기반으로 결정)
 const DEFAULT_SLOTS = 1;
 
 // 현재 근무 중인 의사인지 확인
@@ -67,8 +66,8 @@ export const QuickReservationModal: React.FC<QuickReservationModalProps> = ({
   requiredSlots: propSlots,
   memo: propMemo,
 }) => {
-  // 1단계에서 전달된 값 또는 기본값 사용
-  const items = propItems && propItems.length > 0 ? propItems : DEFAULT_ITEMS;
+  // 1단계에서 전달된 값 사용 (빈 배열도 허용)
+  const items = propItems || [];
   const slots = propSlots || DEFAULT_SLOTS;
   const memoText = propMemo || '';
   // 날짜 상태

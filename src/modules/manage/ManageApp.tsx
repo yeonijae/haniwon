@@ -19,6 +19,7 @@ import ConsultationInfoModal from './components/ConsultationInfoModal';
 import PatientTreatmentInfoModal from './components/PatientTreatmentInfoModal';
 import TreatmentStatsView from './components/TreatmentStatsView';
 import { useFontScale } from '@shared/hooks/useFontScale';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 
 // Custom Hooks
 import { usePatients } from './hooks/usePatients';
@@ -63,6 +64,7 @@ const roleToAffiliation = (role: string): '의료진' | '데스크' | '치료실
 const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
   // 폰트 스케일
   const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('manage');
+  useDocumentTitle('접수/수납');
 
   // Convert PortalUser to internal User type
   const currentUser: User = useMemo(() => ({

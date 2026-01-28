@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
@@ -27,6 +28,7 @@ interface PatientCareAppProps {
 type ViewMode = 'dashboard' | 'medication' | 'delivery' | 'visit' | 'aftercall' | 'firstvisit';
 
 const PatientCareApp: React.FC<PatientCareAppProps> = ({ user }) => {
+  useDocumentTitle('환자케어');
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PortalUser } from '@shared/types';
 import { getSessionToken } from '@shared/lib/auth';
@@ -21,6 +22,7 @@ interface ChatAppProps {
 }
 
 function ChatAppContent({ user }: ChatAppProps) {
+  useDocumentTitle('채팅');
   const [isInitializing, setIsInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { isAuthenticated, isLoading } = useAuthStore();

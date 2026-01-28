@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { PortalUser } from '@shared/types';
 import { useFontScale } from '@shared/hooks/useFontScale';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { insert, execute, queryOne, escapeString } from '@shared/lib/postgres';
 import { addActing, cancelActing, updateActing } from '@acting/api';
 import CSSidebar, {
@@ -15,7 +16,9 @@ import PatientSearchView from './components/PatientSearchView';
 import NonCoveredManagementView from './components/NonCoveredManagementView';
 import TreatmentProgramAdmin from './components/TreatmentProgramAdmin';
 import SettingsView from './components/SettingsView';
+import CRMView from './components/CRMView';
 import PatientTimelineModal from './components/PatientTimelineModal';
+import type { ReservationDraft } from '../reservation/components/ReservationStep1Modal';
 import './styles/cs.css';
 
 const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
@@ -59,7 +62,7 @@ interface CSAppProps {
   user: PortalUser;
 }
 
-export type CSMenuType = 'reservation' | 'receipt' | 'inquiry' | 'search' | 'noncovered' | 'settings';
+export type CSMenuType = 'reservation' | 'receipt' | 'inquiry' | 'search' | 'noncovered' | 'crm' | 'settings';
 
 const MENU_TITLES: Record<CSMenuType, string> = {
   reservation: '예약관리',
@@ -67,6 +70,7 @@ const MENU_TITLES: Record<CSMenuType, string> = {
   inquiry: '문의접수',
   search: '환자검색',
   noncovered: '비급여관리',
+  crm: '환자CRM',
   settings: '프로그램설정',
 };
 
@@ -80,6 +84,7 @@ const MENU_ITEMS: MenuItem[] = [
   { id: 'receipt', icon: '💰', label: '수납' },
   { id: 'reservation', icon: '📅', label: '예약' },
   { id: 'noncovered', icon: '💊', label: '비급여' },
+  { id: 'crm', icon: '👤', label: 'CRM' },
   { id: 'inquiry', icon: '📝', label: '문의' },
   { id: 'search', icon: '🔍', label: '검색' },
   { id: 'settings', icon: '⚙️', label: '설정' },
@@ -88,6 +93,7 @@ const MENU_ITEMS: MenuItem[] = [
 function CSApp({ user }: CSAppProps) {
   const [activeMenu, setActiveMenu] = useState<CSMenuType>('receipt');
   const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('cs');
+  useDocumentTitle('CS수납');
 
   // 의사 목록 및 모달 상태
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -106,6 +112,9 @@ function CSApp({ user }: CSAppProps) {
   // 프로그램 등록 모달 상태
   const [showProgramModal, setShowProgramModal] = useState(false);
   const [programModalPatient, setProgramModalPatient] = useState<ConsultationPatient | null>(null);
+
+  // 예약 draft 상태 (수납 → 예약 탭 전환 시 사용)
+  const [reservationDraft, setReservationDraft] = useState<ReservationDraft | null>(null);
 
   // 의사 목록 가져오기 (입사일/퇴사일 필터 적용)
   useEffect(() => {
@@ -199,6 +208,17 @@ function CSApp({ user }: CSAppProps) {
     setProgramModalPatient(null);
   }, []);
 
+  // 예약 draft 준비 완료 핸들러 (수납에서 1단계 완료 시)
+  const handleReservationDraftReady = useCallback((draft: ReservationDraft) => {
+    setReservationDraft(draft);
+    setActiveMenu('reservation'); // 예약 탭으로 전환
+  }, []);
+
+  // 예약 완료 후 draft 초기화
+  const handleReservationComplete = useCallback(() => {
+    setReservationDraft(null);
+  }, []);
+
   // 액팅 배정/수정 모달에서 등록
   const handleSubmitActingAssignment = useCallback(async () => {
     if (!actingModalPatient || !selectedDoctor) return;
@@ -282,15 +302,28 @@ function CSApp({ user }: CSAppProps) {
   function renderContent() {
     switch (activeMenu) {
       case 'reservation':
-        return <ReservationView user={user} />;
+        return (
+          <ReservationView
+            user={user}
+            externalDraft={reservationDraft}
+            onDraftComplete={handleReservationComplete}
+          />
+        );
       case 'receipt':
-        return <ReceiptView user={user} />;
+        return (
+          <ReceiptView
+            user={user}
+            onReservationDraftReady={handleReservationDraftReady}
+          />
+        );
       case 'inquiry':
         return <InquiryView user={user} />;
       case 'search':
         return <PatientSearchView user={user} />;
       case 'noncovered':
         return <NonCoveredManagementView user={user} />;
+      case 'crm':
+        return <CRMView user={user} />;
       case 'settings':
         return <SettingsView user={user} />;
       default:

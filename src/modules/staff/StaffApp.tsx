@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
@@ -20,6 +21,7 @@ interface StaffAppProps {
 export type StaffTabType = 'doctors' | 'staff' | 'schedule';
 
 const StaffApp: React.FC<StaffAppProps> = ({ user }) => {
+  useDocumentTitle('직원관리');
   const navigate = useNavigate();
 
   // 상태

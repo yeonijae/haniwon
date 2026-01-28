@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
 import { useFontScale } from '@shared/hooks/useFontScale';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -13,11 +14,14 @@ import ReadyMedicineList from './pages/ReadyMedicineList';
 import MaterialList from './pages/MaterialList';
 import SupplyList from './pages/SupplyList';
 import DeliveryList from './pages/DeliveryList';
+import HerbalDecoctionManager from './pages/HerbalDecoctionManager';
+import HerbalDeliveryManager from './pages/HerbalDeliveryManager';
+import HerbalAutomationDashboard from './pages/HerbalAutomationDashboard';
 
 // Components
 import SettingsModal from './components/SettingsModal';
 
-type ViewType = 'dashboard' | 'herbs' | 'prescriptions' | 'decoctions' | 'medicines' | 'materials' | 'deliveries' | 'supplies';
+type ViewType = 'dashboard' | 'herbs' | 'prescriptions' | 'herbal-decoctions' | 'herbal-delivery' | 'herbal-automation' | 'decoctions' | 'medicines' | 'materials' | 'deliveries' | 'supplies';
 
 interface InventoryAppProps {
   user: PortalUser;
@@ -30,12 +34,16 @@ const InventoryApp: React.FC<InventoryAppProps> = ({ user }) => {
 
   // 폰트 스케일
   const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('inventory');
+  useDocumentTitle('재고관리');
 
   const menuItems = [
     { id: 'dashboard' as ViewType, icon: 'fa-solid fa-house', label: '대시보드' },
     { id: 'herbs' as ViewType, icon: 'fa-solid fa-leaf', label: '약재관리' },
     { id: 'prescriptions' as ViewType, icon: 'fa-solid fa-file-prescription', label: '처방전' },
-    { id: 'decoctions' as ViewType, icon: 'fa-solid fa-fire-burner', label: '탕전관리' },
+    { id: 'herbal-decoctions' as ViewType, icon: 'fa-solid fa-flask', label: '한약탕전' },
+    { id: 'herbal-delivery' as ViewType, icon: 'fa-solid fa-truck-fast', label: '한약배송' },
+    { id: 'herbal-automation' as ViewType, icon: 'fa-solid fa-robot', label: '자동화' },
+    { id: 'decoctions' as ViewType, icon: 'fa-solid fa-fire-burner', label: '상비탕전' },
     { id: 'medicines' as ViewType, icon: 'fa-solid fa-pills', label: '상비약' },
     { id: 'materials' as ViewType, icon: 'fa-solid fa-box', label: '자재관리' },
     { id: 'supplies' as ViewType, icon: 'fa-solid fa-clipboard-list', label: '구입요청' },
@@ -47,6 +55,9 @@ const InventoryApp: React.FC<InventoryAppProps> = ({ user }) => {
       case 'dashboard': return <Dashboard />;
       case 'herbs': return <HerbList />;
       case 'prescriptions': return <PrescriptionList />;
+      case 'herbal-decoctions': return <HerbalDecoctionManager />;
+      case 'herbal-delivery': return <HerbalDeliveryManager />;
+      case 'herbal-automation': return <HerbalAutomationDashboard />;
       case 'decoctions': return <DecoctionList />;
       case 'medicines': return <ReadyMedicineList />;
       case 'materials': return <MaterialList />;

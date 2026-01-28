@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../../chart/lib/supabaseClient';
+import { supabase } from '../../doctor/lib/supabaseClient';
 
 interface DashboardStats {
   // 배송콜

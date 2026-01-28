@@ -128,6 +128,7 @@ const MSSQL_API_BASE = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.1
 
 interface ReceiptViewProps {
   user: PortalUser;
+  onReservationDraftReady?: (draft: ReservationDraft) => void;
 }
 
 // 현재 근무 중인 의사인지 확인
@@ -156,7 +157,7 @@ const isActiveDoctor = (doc: Doctor): boolean => {
   return true;
 };
 
-function ReceiptView({ user }: ReceiptViewProps) {
+function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return getCurrentDate();
   });
@@ -170,6 +171,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
   // 예약 모달 상태
   const [showReservationModal, setShowReservationModal] = useState(false);
   const [selectedPatientForReservation, setSelectedPatientForReservation] = useState<InitialPatient | null>(null);
+  const [initialDetailsForReservation, setInitialDetailsForReservation] = useState<string>('');
+  const [defaultDoctorForReservation, setDefaultDoctorForReservation] = useState<string>('');
   const [doctors, setDoctors] = useState<Doctor[]>([]);
 
   // 빠른 예약 모달 상태
@@ -1703,34 +1706,91 @@ function ReceiptView({ user }: ReceiptViewProps) {
       chartNo: receipt.chart_no,
       name: receipt.patient_name,
     });
+
+    // 진료항목 파싱
+    const treatments = receipt.treatments || [];
+    const coveredTreatments = treatments.filter(t => t.is_covered);
+    const items: string[] = [];
+
+    // 추나 (급여/비급여 모두 확인)
+    const hasChoona = treatments.some(t => t.name.includes('추나'));
+    if (hasChoona) items.push('추나');
+
+    // 침 (추나 외 급여항목이 있으면)
+    const hasOtherCovered = coveredTreatments.some(t =>
+      !t.name.includes('추나') && !t.name.includes('진찰료')
+    );
+    if (hasOtherCovered) items.push('침');
+
+    // 한약 패키지(선결제) 잔여분 있으면 → 약재진(내원) 기본 추가
+    const activeHerbalPackages = receipt.herbalPackages?.filter(pkg =>
+      (pkg.total_count || 0) - (pkg.used_count || 0) > 0
+    ) || [];
+    if (activeHerbalPackages.length > 0) {
+      items.push('약재진(내원)');
+    }
+
+    // 비급여만 있고 추나도 없으면 빈 상태 유지
+
+    setInitialDetailsForReservation(items.join(', '));
+
+    // 담당의 설정 (첫 번째 진료 항목의 담당의)
+    const doctorName = receipt.treatments?.[0]?.doctor || '';
+    setDefaultDoctorForReservation(doctorName);
+
     setShowReservationModal(true);
   };
 
-  // 예약 1단계 완료 → 2단계(캘린더) 모달 열기
+  // 예약 1단계 완료 → CS예약 탭으로 전환 (2단계: 캘린더에서 시간 선택)
   const handleReservationNext = (draft: ReservationDraft) => {
     setShowReservationModal(false);
-    // 1단계에서 선택한 정보를 가지고 캘린더 모달 열기
-    setQuickReservationPatient({
-      patientId: draft.patient.id,
-      patientName: draft.patient.name,
-      chartNo: draft.patient.chartNo,
-      defaultDoctor: draft.doctor,
-      selectedItems: draft.selectedItems,
-      requiredSlots: draft.requiredSlots,
-      memo: draft.memo,
-    });
-    setShowQuickReservationModal(true);
+    // onReservationDraftReady가 있으면 CS예약 탭으로 전환
+    if (onReservationDraftReady) {
+      onReservationDraftReady(draft);
+    } else {
+      // fallback: 기존 방식 (QuickReservationModal)
+      setQuickReservationPatient({
+        patientId: draft.patient.id,
+        patientName: draft.patient.name,
+        chartNo: draft.patient.chartNo,
+        defaultDoctor: draft.doctor,
+        selectedItems: draft.selectedItems,
+        requiredSlots: draft.requiredSlots,
+        memo: draft.memo,
+      });
+      setShowQuickReservationModal(true);
+    }
   };
 
   // 빠른 예약 열기
   const handleQuickReservation = (receipt: ExpandedReceiptItem) => {
     // 오늘 담당 의사 추출 (첫 번째 진료 항목에서)
     const doctorName = receipt.treatments?.[0]?.doctor || undefined;
+
+    // 진료항목 분석하여 예약 모달 기본 선택 결정
+    const selectedItems: string[] = [];
+    const treatments = receipt.treatments || [];
+
+    // 추나 항목 확인 (급여/비급여 모두)
+    const hasChuna = treatments.some(t => t.name.includes('추나'));
+    if (hasChuna) {
+      selectedItems.push('추나');
+    }
+
+    // 추나 외 급여항목 확인 → 침 선택
+    const hasOtherCovered = treatments.some(t =>
+      t.is_covered && !t.name.includes('추나') && !t.name.includes('진찰료')
+    );
+    if (hasOtherCovered) {
+      selectedItems.push('침');
+    }
+
     setQuickReservationPatient({
       patientId: receipt.patient_id,
       patientName: receipt.patient_name,
       chartNo: receipt.chart_no,
       defaultDoctor: doctorName,
+      selectedItems,
     });
     setShowQuickReservationModal(true);
   };
@@ -1756,12 +1816,12 @@ function ReceiptView({ user }: ReceiptViewProps) {
       );
     }
 
-    // 2. 다음 예약이 없으면 예약 버튼 표시 (클릭 시 행 펼침)
+    // 2. 다음 예약이 없으면 예약 버튼 표시 (클릭 시 예약 모달 열기)
     return (
       <button
         onClick={(e) => {
           e.stopPropagation();
-          toggleExpand(receipt.id);
+          handleReservationClick(receipt);
         }}
         className="reservation-btn empty"
       >
@@ -1786,6 +1846,10 @@ function ReceiptView({ user }: ReceiptViewProps) {
       setReceipts(prev => prev.map(r =>
         r.id === receipt.id ? { ...r, isCompleted: newStatus } : r
       ));
+      // 사이드패널의 selectedReceipt도 업데이트
+      if (selectedReceipt?.id === receipt.id) {
+        setSelectedReceipt(prev => prev ? { ...prev, isCompleted: newStatus } : null);
+      }
       if (newStatus) {
         setCompletedIds(prev => new Set([...prev, receipt.id]));
       } else {
@@ -2588,6 +2652,8 @@ function ReceiptView({ user }: ReceiptViewProps) {
         onNext={handleReservationNext}
         doctors={doctors}
         initialPatient={selectedPatientForReservation}
+        initialDetails={initialDetailsForReservation}
+        defaultDoctor={defaultDoctorForReservation}
       />
 
       {/* 빠른 예약 모달 (2단계: 캘린더에서 시간 선택) */}

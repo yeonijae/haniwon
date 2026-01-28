@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
 import { useFontScale } from '@shared/hooks/useFontScale';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { getCurrentDate } from '@shared/lib/postgres';
 import type { HerbalTask, HerbalTasksResponse, FirstVisitTemplateType } from './types';
 import { fetchAllHerbalTasks, markEventBenefitSent, markFirstVisitMessageSent } from './api/herbalApi';
@@ -32,6 +33,7 @@ const HerbalApp: React.FC<HerbalAppProps> = ({ user }) => {
 
   // 폰트 스케일
   const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('herbal');
+  useDocumentTitle('복약관리');
 
   // 상태
   const [tasks, setTasks] = useState<HerbalTasksResponse | null>(null);

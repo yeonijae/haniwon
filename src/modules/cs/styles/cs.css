@@ -1165,6 +1165,15 @@
   background: #2563eb;
 }
 
+.patient-detail-actions .action-btn.dashboard {
+  background: #667eea;
+  color: white;
+}
+
+.patient-detail-actions .action-btn.dashboard:hover {
+  background: #5a6fd6;
+}
+
 /* ============================================
    수납관리 뷰 - 아코디언 스타일
    ============================================ */
@@ -12545,15 +12554,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  margin-left: 4px;
+  margin-left: 6px;
   background: #e0e7ff;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   color: #4f46e5;
-  font-size: 13px;
+  font-size: 16px;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -12696,32 +12705,33 @@
 .side-panel-header .status-badge.reservation .reservation-status.confirmed {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
+  gap: 6px;
+  padding: 6px 14px;
   background: #dbeafe;
   color: #1e40af;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .side-panel-header .status-badge.reservation .reservation-status.confirmed::before {
   content: '\f073';
   font-family: 'Font Awesome 6 Free';
   font-weight: 900;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .side-panel-header .status-badge.reservation .reservation-btn.empty {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
+  gap: 6px;
+  padding: 6px 14px;
   background: #f3f4f6;
   color: #6b7280;
   border: 1px dashed #d1d5db;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -12733,6 +12743,10 @@
 
 /* 완료 상태 배지 */
 .side-panel-header .status-badge.complete {
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -14533,6 +14547,54 @@
   border-radius: 0 0 6px 6px;
 }
 
+/* 탕전일 선택 */
+.register-modal-body .decoction-date-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #374151;
+  background: white;
+  cursor: pointer;
+}
+
+.register-modal-body .decoction-date-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+/* 수령 방식 버튼 */
+.register-modal-body .delivery-method-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.register-modal-body .delivery-method-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: white;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.register-modal-body .delivery-method-btn:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.register-modal-body .delivery-method-btn.active {
+  background: #dbeafe;
+  border-color: #3b82f6;
+  color: #1d4ed8;
+}
+
 /* 모달 푸터 */
 .register-modal-footer {
   display: flex;
@@ -16241,13 +16303,18 @@
 
 /* CRM 버튼 */
 .crm-btn {
-  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   background: #eef2ff;
   color: #4f46e5;
   border: 1px solid #c7d2fe;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 16px;
   transition: all 0.15s;
 }
 
@@ -17214,6 +17281,44 @@
   display: flex;
   flex-direction: column;
   background: #f9fafb;
+}
+
+/* CRM 모드 탭 */
+.crm-mode-tabs {
+  display: flex;
+  padding: 0 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  gap: 4px;
+}
+
+.crm-mode-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 24px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  font-size: 0.95em;
+  color: rgba(255, 255, 255, 0.7);
+  transition: all 0.2s;
+  margin-top: 8px;
+}
+
+.crm-mode-tab:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.crm-mode-tab.active {
+  background: #f9fafb;
+  color: #667eea;
+  font-weight: 600;
+}
+
+.crm-mode-tab i {
+  font-size: 1.1em;
 }
 
 /* 환자 검색 패널 */

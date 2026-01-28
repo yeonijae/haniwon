@@ -12,7 +12,7 @@ export default defineConfig({
       '@modules': path.resolve(__dirname, './src/modules'),
       '@portal': path.resolve(__dirname, './src/modules/portal'),
       '@manage': path.resolve(__dirname, './src/modules/manage'),
-      '@chart': path.resolve(__dirname, './src/modules/chart'),
+      '@doctor': path.resolve(__dirname, './src/modules/doctor'),
       '@inventory': path.resolve(__dirname, './src/modules/inventory'),
       '@treatment': path.resolve(__dirname, './src/modules/treatment'),
       '@funnel': path.resolve(__dirname, './src/modules/funnel'),

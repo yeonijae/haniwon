@@ -1,0 +1,372 @@
+/**
+ * 메시지 템플릿 관리 스타일
+ */
+
+.template-manager {
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.manager-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.manager-header h3 {
+  margin: 0;
+  font-size: 1.1em;
+  color: #333;
+}
+
+.btn-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background 0.2s;
+}
+
+.btn-add:hover {
+  background: #5a6fd6;
+}
+
+/* 상태 */
+.loading-state,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px;
+  color: #888;
+}
+
+.empty-state i {
+  font-size: 2em;
+  color: #ccc;
+}
+
+/* 템플릿 테이블 */
+.template-table {
+  overflow-x: auto;
+}
+
+.template-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.template-table th {
+  background: #f8f9fa;
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #555;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.template-table td {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+  vertical-align: middle;
+}
+
+.template-table tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.template-table tbody tr.inactive {
+  opacity: 0.6;
+}
+
+.template-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.channel-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  font-weight: 500;
+}
+
+.channel-badge.sms {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.channel-badge.kakao {
+  background: #fff9c4;
+  color: #f57f17;
+}
+
+.template-category {
+  color: #888;
+}
+
+.template-content {
+  max-width: 250px;
+  color: #555;
+}
+
+.template-content span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-toggle {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8em;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.status-toggle.active {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-toggle.inactive {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-edit,
+.btn-delete {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: all 0.2s;
+}
+
+.btn-edit {
+  background: #e8ecfd;
+  color: #667eea;
+}
+
+.btn-edit:hover {
+  background: #d0d8f8;
+}
+
+.btn-delete {
+  background: #fce4ec;
+  color: #c62828;
+}
+
+.btn-delete:hover {
+  background: #f8bbd0;
+}
+
+/* 폼 오버레이 */
+.template-form-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+.template-form {
+  background: #fff;
+  border-radius: 12px;
+  width: 550px;
+  max-width: 95vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.form-header h4 {
+  margin: 0;
+  font-size: 1.1em;
+  color: #333;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 1.2em;
+  color: #888;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.btn-close:hover {
+  color: #333;
+}
+
+.form-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.template-form .form-group {
+  margin-bottom: 16px;
+}
+
+.template-form .form-group label {
+  display: block;
+  font-size: 0.9em;
+  font-weight: 500;
+  color: #555;
+  margin-bottom: 6px;
+}
+
+.label-hint {
+  font-weight: 400;
+  font-size: 0.85em;
+  color: #888;
+  margin-left: 8px;
+}
+
+.template-form input[type="text"],
+.template-form textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.95em;
+  font-family: inherit;
+}
+
+.template-form input[type="text"]:focus,
+.template-form textarea:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.template-form textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.content-length {
+  text-align: right;
+  font-size: 0.8em;
+  color: #888;
+  margin-top: 4px;
+}
+
+.form-hint {
+  font-size: 0.8em;
+  color: #888;
+  margin-top: 4px;
+}
+
+.channel-options {
+  display: flex;
+  gap: 20px;
+}
+
+.channel-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 0.95em;
+}
+
+.channel-option input {
+  margin: 0;
+}
+
+.form-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 20px;
+  background: #f8f9fa;
+  border-top: 1px solid #e0e0e0;
+}
+
+.btn-cancel,
+.btn-save {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: all 0.2s;
+}
+
+.btn-cancel {
+  background: #f0f0f0;
+  color: #555;
+}
+
+.btn-cancel:hover:not(:disabled) {
+  background: #e0e0e0;
+}
+
+.btn-save {
+  background: #667eea;
+  color: white;
+}
+
+.btn-save:hover:not(:disabled) {
+  background: #5a6fd6;
+}
+
+.btn-cancel:disabled,
+.btn-save:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 반응형 */
+@media (max-width: 600px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}

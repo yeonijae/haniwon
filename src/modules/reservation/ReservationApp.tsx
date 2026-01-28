@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useReservations } from './hooks/useReservations';
 import { useReservationSettings } from './hooks/useReservationSettings';
 import { useFontScale } from '@shared/hooks/useFontScale';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { CalendarHeader } from './components/CalendarHeader';
 import { DayView } from './components/DayView';
 import { MonthView } from './components/MonthView';
@@ -17,11 +18,14 @@ import type { Reservation, CreateReservationRequest, UpdateReservationRequest } 
 
 interface ReservationAppProps {
   user?: any;
+  externalDraft?: ReservationDraft | null;  // 외부에서 전달받은 예약 draft (CS수납에서)
+  onDraftComplete?: () => void;  // 예약 완료 후 콜백
 }
 
-const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
+const ReservationApp: React.FC<ReservationAppProps> = ({ user, externalDraft, onDraftComplete }) => {
   // 폰트 스케일
   const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('reservation');
+  useDocumentTitle('예약관리');
 
   const {
     selectedDate,
@@ -122,6 +126,14 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
     }
   }, []);
 
+  // 외부에서 전달받은 draft 처리 (CS수납에서 전환 시)
+  useEffect(() => {
+    if (externalDraft) {
+      setReservationDraft(externalDraft);
+      setViewType('day'); // 일별 뷰로 전환
+    }
+  }, [externalDraft, setViewType]);
+
   // 예약 클릭 핸들러
   const handleReservationClick = (reservation: Reservation) => {
     setSelectedReservation(reservation);
@@ -211,6 +223,10 @@ const ReservationApp: React.FC<ReservationAppProps> = ({ user }) => {
     setReservationDraft(null);
     setInitialPatient(null);
     setInitialDetails('');
+    // 외부에서 전달받은 draft인 경우 완료 콜백 호출
+    if (onDraftComplete) {
+      onDraftComplete();
+    }
   };
 
   // 예약 모드 취소 버튼 핸들러

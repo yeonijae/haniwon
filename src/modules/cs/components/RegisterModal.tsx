@@ -23,7 +23,24 @@ import {
   type PackageType,
   type HerbalDiseaseTag,
 } from '../lib/api';
-import { HERBAL_PACKAGE_ROUNDS, type HerbalPackage, type NokryongPackage } from '../types';
+import { getAvailableSlots, reserveSlot } from '../lib/decoctionApi';
+import { fetchPatientMainDoctor } from '@modules/acting/api';
+import {
+  HERBAL_PACKAGE_ROUNDS,
+  type HerbalPackage,
+  type NokryongPackage,
+  type DecoctionSlot,
+  type DeliveryMethod,
+  DELIVERY_METHOD_LABELS,
+} from '../types';
+
+// 원장 목록 (하드코딩 - 추후 DB화 가능)
+const DOCTOR_LIST = [
+  { id: 1, name: '강희종' },
+  { id: 3, name: '김대현' },
+  { id: 13, name: '임세열' },
+  { id: 15, name: '전인태' },
+];
 
 interface UncoveredItem {
   detailId: number;
@@ -97,6 +114,22 @@ function RegisterModal({
     (editHerbalPackage?.package_type as '1month' | '2month' | '3month' | '6month') || '1month'
   );
   const [newHerbalMemo, setNewHerbalMemo] = useState(editHerbalPackage?.memo || '');
+
+  // 탕전/배송 관련 상태
+  const [availableDecoctionSlots, setAvailableDecoctionSlots] = useState<DecoctionSlot[]>([]);
+  const [selectedDecoctionDate, setSelectedDecoctionDate] = useState<string>(
+    editHerbalPackage?.decoction_date || ''
+  );
+  const [selectedDeliveryMethod, setSelectedDeliveryMethod] = useState<DeliveryMethod>(
+    editHerbalPackage?.delivery_method || 'pickup'
+  );
+  const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(
+    editHerbalPackage?.doctor_id || null
+  );
+  const [selectedDoctorName, setSelectedDoctorName] = useState<string>(
+    editHerbalPackage?.doctor_name || ''
+  );
+
   // 질환명 태그
   const [availableDiseaseTags, setAvailableDiseaseTags] = useState<HerbalDiseaseTag[]>([]);
   const [selectedDiseaseTags, setSelectedDiseaseTags] = useState<{ id?: number; name: string }[]>([]);
@@ -139,17 +172,26 @@ function RegisterModal({
           setMembershipType(types[0]);
         }
       } else if (type === 'herbal') {
-        const [purposes, tags, nokryongTypes, herbalPkgs, nokryongPkgs] = await Promise.all([
+        const [purposes, tags, nokryongTypes, herbalPkgs, nokryongPkgs, slots, mainDoctor] = await Promise.all([
           getHerbalPurposes(),
           getHerbalDiseaseTags(),
           getNokryongTypes(),
           getActiveHerbalPackages(patientId),
           getActiveNokryongPackages(patientId),
+          getAvailableSlots(21), // 다음 3주간 예약 가능 슬롯
+          fetchPatientMainDoctor(patientId).catch(() => null),
         ]);
         setHerbalPurposes(purposes);
         setAvailableDiseaseTags(tags);
         setNokryongTypeOptions(nokryongTypes);
         setActiveNokryongPackages(nokryongPkgs);
+        setAvailableDecoctionSlots(slots);
+
+        // 담당 원장 기본값 설정
+        if (mainDoctor && !isEditMode) {
+          setSelectedDoctorId(mainDoctor.doctorId);
+          setSelectedDoctorName(mainDoctor.doctorName);
+        }
 
         // 한약 패키지에 질환명 태그 추가
         const herbalPkgsWithTags = await Promise.all(
@@ -294,6 +336,12 @@ function RegisterModal({
           remaining_count: totalCount - (editHerbalPackage.used_count || 0),
           memo: newHerbalMemo.trim() || undefined,
           mssql_detail_id: selectedDetailId || undefined,
+          // 탕전/배송 관련
+          decoction_date: selectedDecoctionDate || undefined,
+          delivery_method: selectedDeliveryMethod,
+          doctor_id: selectedDoctorId || undefined,
+          doctor_name: selectedDoctorName || undefined,
+          prescription_due_date: selectedDecoctionDate || undefined, // 탕전일 = 처방 기한
         });
 
         // 질환명 태그 연결
@@ -311,6 +359,11 @@ function RegisterModal({
           await updateReceiptMemoById(editMemoId, `${monthNum}개월 선결제`);
         }
       } else {
+        // 탕전 슬롯 예약
+        if (selectedDecoctionDate) {
+          await reserveSlot(selectedDecoctionDate);
+        }
+
         // 신규 등록 모드
         const packageId = await createHerbalPackage({
           patient_id: patientId,
@@ -325,6 +378,15 @@ function RegisterModal({
           memo: newHerbalMemo.trim() || undefined,
           mssql_detail_id: selectedDetailId || undefined,
           status: 'active',
+          // 탕전/배송 관련
+          decoction_date: selectedDecoctionDate || undefined,
+          delivery_method: selectedDeliveryMethod,
+          doctor_id: selectedDoctorId || undefined,
+          doctor_name: selectedDoctorName || undefined,
+          prescription_due_date: selectedDecoctionDate || undefined,
+          prescription_status: 'pending',
+          decoction_status: 'pending',
+          delivery_status: 'pending',
         });
 
         // 질환명 태그 연결
@@ -739,6 +801,65 @@ function RegisterModal({
                       onChange={e => setNewHerbalMemo(e.target.value)}
                       placeholder="메모 (선택사항)"
                     />
+                  </div>
+
+                  {/* 탕전일 선택 */}
+                  <div className="form-group">
+                    <label>탕전 예정일</label>
+                    <select
+                      value={selectedDecoctionDate}
+                      onChange={e => setSelectedDecoctionDate(e.target.value)}
+                      className="decoction-date-select"
+                    >
+                      <option value="">선택 안함</option>
+                      {availableDecoctionSlots.map(slot => {
+                        const date = new Date(slot.slot_date);
+                        const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+                        const dayName = dayNames[date.getDay()];
+                        const available = slot.total_capacity - slot.reserved_capacity;
+                        return (
+                          <option key={slot.slot_date} value={slot.slot_date}>
+                            {slot.slot_date} ({dayName}) - 잔여 {available}건
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  {/* 수령방식 선택 */}
+                  <div className="form-group">
+                    <label>수령 방식</label>
+                    <div className="delivery-method-buttons">
+                      {(['pickup', 'local', 'express'] as DeliveryMethod[]).map(method => (
+                        <button
+                          key={method}
+                          type="button"
+                          className={`delivery-method-btn ${selectedDeliveryMethod === method ? 'active' : ''}`}
+                          onClick={() => setSelectedDeliveryMethod(method)}
+                        >
+                          {DELIVERY_METHOD_LABELS[method]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 담당 원장 선택 */}
+                  <div className="form-group">
+                    <label>담당 원장</label>
+                    <select
+                      value={selectedDoctorId || ''}
+                      onChange={e => {
+                        const id = e.target.value ? Number(e.target.value) : null;
+                        setSelectedDoctorId(id);
+                        const doc = DOCTOR_LIST.find(d => d.id === id);
+                        setSelectedDoctorName(doc?.name || '');
+                      }}
+                    >
+                      <option value="">선택 안함</option>
+                      {DOCTOR_LIST.map(doc => (
+                        <option key={doc.id} value={doc.id}>{doc.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </>
               ) : (

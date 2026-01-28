@@ -39,6 +39,7 @@ const TREATMENT_CATEGORIES = {
   '기본진료': [
     { name: '침', slots: 1 },
     { name: '추나', slots: 1 },
+    { name: '초음파', slots: 1 },
   ],
   '약상담': [
     { name: '약초진', slots: 6 },
@@ -55,7 +56,8 @@ Object.values(TREATMENT_CATEGORIES).flat().forEach(item => {
 
 // 진료내역에서 치료항목 파싱
 const parseDetailsToItems = (details: string): string[] => {
-  if (!details) return ['침'];
+  // 빈 문자열이면 빈 배열 반환 (비급여만 있는 경우)
+  if (!details) return [];
 
   const items: string[] = [];
   const lowerDetails = details.toLowerCase();
@@ -69,12 +71,13 @@ const parseDetailsToItems = (details: string): string[] => {
   else if (lowerDetails.includes('약재진') && lowerDetails.includes('내원')) items.push('약재진(내원)');
   else if (lowerDetails.includes('약재진') && lowerDetails.includes('전화')) items.push('약재진(전화)');
 
-  return items.length > 0 ? items : ['침'];
+  // 비급여만 있을 때는 빈 배열 유지
+  return items;
 };
 
 // 환자 기본치료 DB에서 항목 추출
 const getDefaultItemsFromTreatments = (treatments: PatientDefaultTreatments | null): string[] => {
-  if (!treatments) return ['침']; // 기본값
+  if (!treatments) return []; // 빈 배열
 
   const items: string[] = [];
 
@@ -82,8 +85,8 @@ const getDefaultItemsFromTreatments = (treatments: PatientDefaultTreatments | nu
   if (treatments.has_acupuncture) items.push('침');
   if (treatments.has_chuna) items.push('추나');
 
-  // 항목이 없으면 기본값으로 침
-  return items.length > 0 ? items : ['침'];
+  // 비급여만 있으면 빈 배열 유지
+  return items;
 };
 
 export const ReservationStep1Modal: React.FC<ReservationStep1ModalProps> = ({
@@ -107,7 +110,7 @@ export const ReservationStep1Modal: React.FC<ReservationStep1ModalProps> = ({
 
   // 예약 폼 관련 상태
   const [selectedDoctor, setSelectedDoctor] = useState('');
-  const [selectedItems, setSelectedItems] = useState<string[]>(['침']);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [memo, setMemo] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -123,47 +126,48 @@ export const ReservationStep1Modal: React.FC<ReservationStep1ModalProps> = ({
     }
   }, [initialPatient]);
 
-  // 모달 닫힐 때 상태 초기화
+  // 모달 열릴 때 초기값 설정
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen) {
+      // 환자 정보 설정
+      if (initialPatient) {
+        setSelectedPatient({
+          id: initialPatient.id,
+          chartNo: initialPatient.chartNo,
+          name: initialPatient.name,
+          phone: initialPatient.phone,
+        });
+      }
+      // 담당의 설정
+      setSelectedDoctor(defaultDoctor || '');
+      // 진료항목 설정 (비급여만 있으면 빈 배열)
+      setSelectedItems(parseDetailsToItems(initialDetails || ''));
+      // 기타 초기화
       setSearchTerm('');
       setSearchResults([]);
-      setSelectedPatient(initialPatient ? {
-        id: initialPatient.id,
-        chartNo: initialPatient.chartNo,
-        name: initialPatient.name,
-        phone: initialPatient.phone,
-      } : null);
       setShowSearchResults(false);
-      setSelectedDoctor(defaultDoctor || '');
-      setSelectedItems(initialDetails ? parseDetailsToItems(initialDetails) : ['침']);
       setMemo('');
       setError(null);
     }
   }, [isOpen, initialPatient, initialDetails, defaultDoctor]);
 
-  // initialDetails가 변경되면 진료항목 자동 선택
-  useEffect(() => {
-    if (initialDetails) {
-      setSelectedItems(parseDetailsToItems(initialDetails));
-    }
-  }, [initialDetails]);
-
-  // defaultDoctor 또는 initialPatient가 있을 때 의사 자동 선택
+  // doctors 로드 후 담당의 선택 (defaultDoctor가 없으면 첫 번째 의사)
   useEffect(() => {
     if (isOpen && doctors.length > 0 && !selectedDoctor) {
       if (defaultDoctor) {
         setSelectedDoctor(defaultDoctor);
-      } else if (initialPatient) {
+      } else {
         setSelectedDoctor(doctors[0].name);
       }
     }
-  }, [isOpen, initialPatient, doctors, selectedDoctor, defaultDoctor]);
+  }, [isOpen, doctors, selectedDoctor, defaultDoctor]);
 
-  // 환자 기본치료 정보 로드 (initialPatient가 있을 때)
+  // 환자 기본치료 정보 로드 (initialPatient가 있고, initialDetails가 없을 때만)
+  // CS수납에서 넘어온 경우 initialDetails가 있으므로 DB 조회 안 함
   useEffect(() => {
     const loadPatientDefaultTreatments = async () => {
-      if (!isOpen || !initialPatient) return;
+      // initialDetails가 있으면 그 값을 우선 사용 (CS수납에서 분석한 값)
+      if (!isOpen || !initialPatient || initialDetails !== undefined) return;
 
       try {
         const treatments = await fetchPatientDefaultTreatments(initialPatient.id);
@@ -178,7 +182,7 @@ export const ReservationStep1Modal: React.FC<ReservationStep1ModalProps> = ({
     };
 
     loadPatientDefaultTreatments();
-  }, [isOpen, initialPatient]);
+  }, [isOpen, initialPatient, initialDetails]);
 
   // 환자 검색 (디바운스 적용)
   const handleSearch = useCallback(async (term: string) => {

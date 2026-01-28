@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import type { PortalUser } from '@shared/types';
-
-// MSSQL 서버 URL
-const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
+import { searchAndSyncPatients, type LocalPatient } from '../lib/patientSync';
+import { PatientDashboardModal } from './patient-dashboard';
 
 interface PatientSearchViewProps {
   user: PortalUser;
@@ -20,56 +19,51 @@ interface Patient {
   lastVisit?: string;
 }
 
+// LocalPatient를 Patient 인터페이스로 변환
+function toPatient(local: LocalPatient): Patient {
+  return {
+    id: local.mssql_id || local.id,
+    chartNo: local.chart_number || '',
+    name: local.name,
+    phone: local.phone || undefined,
+    birthday: local.birth_date || undefined,
+    gender: local.gender || undefined,
+    address: local.address || undefined,
+    lastVisit: local.last_visit_date || undefined,
+  };
+}
+
 function PatientSearchView({ user }: PatientSearchViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [patients, setPatients] = useState<Patient[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 대시보드 모달 상태
+  const [showDashboard, setShowDashboard] = useState(false);
+  const [dashboardPatient, setDashboardPatient] = useState<LocalPatient | null>(null);
+  // 동기화된 LocalPatient 목록 (대시보드 모달용)
+  const [localPatients, setLocalPatients] = useState<LocalPatient[]>([]);
 
-  // 환자 검색
+  // 환자 검색 (MSSQL에서 검색 후 로컬 PostgreSQL에 동기화)
   const handleSearch = async () => {
     if (!searchTerm.trim()) {
       setPatients([]);
+      setLocalPatients([]);
       return;
     }
 
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${MSSQL_API_URL}/api/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sql: `
-            SELECT TOP 50
-              Id as id,
-              ChartNo as chartNo,
-              Name as name,
-              HP as phone,
-              Birthday as birthday,
-              Sex as gender,
-              Address as address,
-              CONVERT(VARCHAR, RecentDate, 23) as lastVisit
-            FROM Client
-            WHERE Name LIKE '%${searchTerm}%'
-               OR ChartNo LIKE '%${searchTerm}%'
-               OR HP LIKE '%${searchTerm}%'
-            ORDER BY RecentDate DESC
-          `
-        })
-      });
-
-      const data = await response.json();
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      setPatients(data.recordset || []);
+      const syncedPatients = await searchAndSyncPatients(searchTerm);
+      setLocalPatients(syncedPatients);
+      setPatients(syncedPatients.map(toPatient));
     } catch (err: any) {
       console.error('환자 검색 실패:', err);
       setError('검색에 실패했습니다.');
       setPatients([]);
+      setLocalPatients([]);
     } finally {
       setIsLoading(false);
     }
@@ -97,6 +91,19 @@ function PatientSearchView({ user }: PatientSearchViewProps) {
       phone: selectedPatient.phone || '',
     });
     window.open(`/reservation?${params.toString()}`, '_blank');
+  };
+
+  // 통합 대시보드 열기
+  const handleOpenDashboard = () => {
+    if (!selectedPatient) return;
+    // LocalPatient 찾기
+    const localPatient = localPatients.find(
+      lp => lp.chart_number === selectedPatient.chartNo || lp.mssql_id === selectedPatient.id
+    );
+    if (localPatient) {
+      setDashboardPatient(localPatient);
+      setShowDashboard(true);
+    }
   };
 
   // 생년월일 포맷
@@ -203,6 +210,9 @@ function PatientSearchView({ user }: PatientSearchViewProps) {
             </div>
 
             <div className="patient-detail-actions">
+              <button onClick={handleOpenDashboard} className="action-btn dashboard">
+                📋 통합정보
+              </button>
               <button onClick={handleReservation} className="action-btn reservation">
                 📅 예약 등록
               </button>
@@ -210,6 +220,19 @@ function PatientSearchView({ user }: PatientSearchViewProps) {
           </div>
         )}
       </div>
+
+      {/* 환자 통합 대시보드 모달 */}
+      {showDashboard && dashboardPatient && (
+        <PatientDashboardModal
+          isOpen={showDashboard}
+          onClose={() => {
+            setShowDashboard(false);
+            setDashboardPatient(null);
+          }}
+          initialPatient={dashboardPatient}
+          user={user}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import type { PortalUser } from '@shared/types';
 import { WikiPage, WikiTreeNode } from './types';
 import * as api from './lib/api';
@@ -11,6 +12,7 @@ interface WikiAppProps {
 }
 
 function WikiApp({ user }: WikiAppProps) {
+  useDocumentTitle('위키');
   const [pages, setPages] = useState<WikiPage[]>([]);
   const [treeData, setTreeData] = useState<WikiTreeNode[]>([]);
   const [selectedPageId, setSelectedPageId] = useState<number | null>(null);

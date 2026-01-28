@@ -552,20 +552,7 @@ export async function ensureReceiptTables(): Promise<void> {
 
   // 약침 사용 기록에 실제 차감 포인트 컬럼 추가 (약침 종류별 차감 포인트 합계)
   await execute(`ALTER TABLE cs_yakchim_usage_records ADD COLUMN IF NOT EXISTS deduction_points INTEGER`).catch(() => {});
-  // 기존 데이터 마이그레이션: 단일 약침인 경우 실제 차감 포인트 계산
-  // (item_name에 쉼표가 없는 경우 = 단일 약침)
-  await execute(`
-    UPDATE cs_yakchim_usage_records y
-    SET deduction_points = COALESCE(
-      (SELECT pt.deduction_count * y.quantity
-       FROM cs_package_types pt
-       WHERE pt.name = y.item_name AND pt.type = 'yakchim'),
-      y.quantity
-    )
-    WHERE y.deduction_points IS NULL
-      AND y.item_name NOT LIKE '%,%'
-  `).catch(() => {});
-  // 여러 약침인 경우: quantity로 설정 (정확하지 않지만 fallback)
+  // 기존 데이터 마이그레이션: deduction_points가 없는 경우 quantity로 설정
   await execute(`UPDATE cs_yakchim_usage_records SET deduction_points = quantity WHERE deduction_points IS NULL`).catch(() => {});
 
   // 상비약 재고관리 테이블 - last_decoction_date 컬럼 추가
@@ -892,6 +879,15 @@ export async function updateHerbalPackage(id: number, updates: Partial<HerbalPac
   if (updates.next_delivery_date !== undefined) parts.push(`next_delivery_date = ${toSqlValue(updates.next_delivery_date)}`);
   if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
   if (updates.status !== undefined) parts.push(`status = ${escapeString(updates.status)}`);
+  // 탕전 관련 필드
+  if (updates.doctor_id !== undefined) parts.push(`doctor_id = ${updates.doctor_id === null ? 'NULL' : updates.doctor_id}`);
+  if (updates.doctor_name !== undefined) parts.push(`doctor_name = ${toSqlValue(updates.doctor_name)}`);
+  if (updates.decoction_date !== undefined) parts.push(`decoction_date = ${toSqlValue(updates.decoction_date)}`);
+  if (updates.decoction_status !== undefined) parts.push(`decoction_status = ${toSqlValue(updates.decoction_status)}`);
+  if (updates.prescription_status !== undefined) parts.push(`prescription_status = ${toSqlValue(updates.prescription_status)}`);
+  if (updates.prescription_due_date !== undefined) parts.push(`prescription_due_date = ${toSqlValue(updates.prescription_due_date)}`);
+  if (updates.delivery_method !== undefined) parts.push(`delivery_method = ${toSqlValue(updates.delivery_method)}`);
+  if (updates.delivery_status !== undefined) parts.push(`delivery_status = ${toSqlValue(updates.delivery_status)}`);
   parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
 
   await execute(`UPDATE cs_herbal_packages SET ${parts.join(', ')} WHERE id = ${id}`);
@@ -4051,7 +4047,7 @@ export async function getHerbalPackageHistory(packageId: number): Promise<Packag
       type: 'add',
       date: pkg.start_date,
       label: `${pkg.purpose || '한약'} 선결제 등록`,
-      subLabel: `${pkg.total_rounds}회${pkg.disease_name ? ` (${pkg.disease_name})` : ''}`,
+      subLabel: `${pkg.total_count}회${pkg.purpose ? ` (${pkg.purpose})` : ''}`,
     });
   }
 
@@ -4064,14 +4060,14 @@ export async function getHerbalPackageHistory(packageId: number): Promise<Packag
 
   pickups.forEach(pickup => {
     const deliveryText = pickup.delivery_method === 'pickup' ? '수령' :
-                        pickup.delivery_method === 'delivery' ? '택배' : '퀵';
+                        pickup.delivery_method === 'local' ? '시내배송' : '택배';
     items.push({
       id: `usage_herbal_${pickup.id}`,
       type: 'usage',
       date: pickup.pickup_date,
       label: `${pickup.round_number}차 ${deliveryText}`,
       subLabel: pickup.with_nokryong ? '녹용 포함' : undefined,
-      remainingAfter: pkg ? pkg.total_rounds - pickup.round_number : undefined,
+      remainingAfter: pkg ? pkg.total_count - pickup.round_number : undefined,
     });
   });
 

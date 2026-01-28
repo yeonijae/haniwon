@@ -515,6 +515,10 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
       const yakchimInfoParts = selectedYakchims.map(y => `${y.typeName} ${y.qty}개`);
       const yakchimInfo = yakchimInfoParts.join(', ');
       const totalQty = selectedYakchims.reduce((sum, y) => sum + y.qty, 0);
+      // 총 차감 포인트 계산: Σ(deductionCount × qty)
+      const totalDeductPoints = selectedYakchims.reduce(
+        (sum, y) => sum + (y.deductionCount * y.qty), 0
+      );
 
       console.log('약침 일회성 저장 시작:', {
         patientId,
@@ -524,6 +528,7 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
         receiptDate,
         itemName,
         selectedYakchims,
+        totalDeductPoints,
       });
 
       // 약침 사용 기록 테이블에 저장 (일반 메모 덮어쓰지 않음)
@@ -537,8 +542,9 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
         remaining_after: 0,
         receipt_id: receiptId,
         mssql_detail_id: detailId,
-        memo: `${itemName} - ${yakchimInfo}`,
+        // memo는 사용자가 직접 입력한 경우에만 저장 (자동 정보는 item_name, quantity에 이미 저장됨)
         quantity: totalQty,  // 총 갯수
+        deduction_points: totalDeductPoints,  // 실제 차감 포인트
       });
 
       console.log('약침 일회성 저장 완료, 결과:', result);
@@ -594,7 +600,7 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
 
       await execute(`
         INSERT INTO cs_yakchim_usage_records
-        (patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id, mssql_detail_id, memo, quantity)
+        (patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id, mssql_detail_id, quantity, deduction_points)
         VALUES (
           ${patientId},
           'package',
@@ -605,8 +611,8 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
           ${newRemaining},
           ${receiptId},
           ${detailId || 'NULL'},
-          ${escapeString(`${itemName} - ${yakchimInfo} (총 ${totalDeductPoints}p 차감)`)},
-          ${totalQty}
+          ${totalQty},
+          ${totalDeductPoints}
         )
       `);
 

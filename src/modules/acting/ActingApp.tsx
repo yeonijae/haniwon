@@ -1,4 +1,5 @@
 import React from 'react';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import type { PortalUser } from '@shared/types';
 import { useTreatmentRooms } from '@treatment/hooks/useTreatmentRooms';
 import ActingManagementView from '@treatment/components/ActingManagementView';
@@ -8,6 +9,7 @@ interface ActingAppProps {
 }
 
 function ActingApp({ user }: ActingAppProps) {
+  useDocumentTitle('액팅관리');
   const { treatmentRooms } = useTreatmentRooms(user);
 
   const handleNavigateBack = () => {

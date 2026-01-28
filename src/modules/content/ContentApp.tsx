@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
@@ -27,6 +28,7 @@ interface ContentAppProps {
 type ViewMode = 'blog' | 'guide' | 'landing' | 'event_dm' | 'youtube' | 'media' | 'settings';
 
 const ContentApp: React.FC<ContentAppProps> = ({ user }) => {
+  useDocumentTitle('콘텐츠');
   const navigate = useNavigate();
   const location = useLocation();
 

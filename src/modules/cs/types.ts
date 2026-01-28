@@ -1,5 +1,17 @@
 // CS 관리 타입 정의
 
+// 탕전 슬롯 (일별 탕전 용량 관리)
+export interface DecoctionSlot {
+  id?: number;
+  slot_date: string;           // 탕전 날짜 (YYYY-MM-DD)
+  total_capacity: number;      // 총 용량 (기본 100)
+  reserved_capacity: number;   // 예약된 용량
+  is_available: boolean;       // 예약 가능 여부
+  memo?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export type InquiryChannel = 'phone' | 'kakao' | 'visit' | 'naver';
 export type InquiryType = 'new_patient' | 'reservation' | 'general' | 'other';
 export type InquiryStatus = 'pending' | 'completed' | 'converted';
@@ -121,6 +133,7 @@ export interface HerbalPackage {
   chart_number: string;
   patient_name: string;
   herbal_name: string;        // 약명 (시함마농, 궁귀교애탕 등)
+  purpose?: string;           // 처방 목적/질환명
   package_type: '0.5month' | '1month' | '2month' | '3month' | '6month';  // 선결 기간
   total_count: number;       // 총 회차
   used_count: number;        // 사용 회차
@@ -132,7 +145,70 @@ export interface HerbalPackage {
   status: 'active' | 'completed';
   created_at?: string;
   updated_at?: string;
+
+  // 담당원장 관련
+  doctor_id?: number;
+  doctor_name?: string;
+
+  // 탕전 관련
+  decoction_slot_id?: number;
+  decoction_date?: string;       // 탕전 예정일
+  decoction_status?: DecoctionStatus;
+  decoction_started_at?: string;
+  decoction_completed_at?: string;
+
+  // 처방 관련
+  prescription_id?: number;
+  prescription_status?: PrescriptionStatus;
+  prescription_due_date?: string;  // 처방 입력 기한 (탕전일 = decoction_date)
+  prescription_requested_at?: string;
+  prescription_request_count?: number;
+
+  // 복용법
+  dosage_instruction?: string;
+  dosage_status?: DosageStatus;
+
+  // 배송 관련
+  delivery_method?: DeliveryMethod;
+  delivery_date?: string;
+  delivery_status?: PackageDeliveryStatus;
+  tracking_number?: string;
+  delivery_completed_at?: string;
+  pickup_notified_at?: string;
+  shipping_notified_at?: string;
 }
+
+// 탕전 상태
+export type DecoctionStatus = 'pending' | 'ready' | 'in_progress' | 'completed';
+export const DECOCTION_STATUS_LABELS: Record<DecoctionStatus, string> = {
+  pending: '대기',
+  ready: '준비완료',
+  in_progress: '탕전중',
+  completed: '완료',
+};
+
+// 처방 상태
+export type PrescriptionStatus = 'pending' | 'completed';
+export const PRESCRIPTION_STATUS_LABELS: Record<PrescriptionStatus, string> = {
+  pending: '미입력',
+  completed: '완료',
+};
+
+// 복용법 상태
+export type DosageStatus = 'pending' | 'completed';
+export const DOSAGE_STATUS_LABELS: Record<DosageStatus, string> = {
+  pending: '미입력',
+  completed: '완료',
+};
+
+// 패키지 배송 상태
+export type PackageDeliveryStatus = 'pending' | 'ready' | 'shipped' | 'delivered';
+export const PACKAGE_DELIVERY_STATUS_LABELS: Record<PackageDeliveryStatus, string> = {
+  pending: '대기',
+  ready: '준비완료',
+  shipped: '배송중',
+  delivered: '배송완료',
+};
 
 // 한약패키지 회차별 관리 타입
 export type DeliveryMethod = 'pickup' | 'local' | 'express';

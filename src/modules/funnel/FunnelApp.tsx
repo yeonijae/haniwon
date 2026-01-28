@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
@@ -21,6 +22,7 @@ interface FunnelAppProps {
 type ViewMode = 'dashboard' | 'leads' | 'retargeting' | 'outbound';
 
 const FunnelApp: React.FC<FunnelAppProps> = ({ user }) => {
+  useDocumentTitle('퍼널관리');
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
 

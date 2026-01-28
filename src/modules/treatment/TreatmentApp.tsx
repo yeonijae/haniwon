@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { Patient, DefaultTreatment, TreatmentRoom } from './types';
@@ -15,6 +16,7 @@ interface TreatmentAppProps {
 }
 
 function TreatmentApp({ user }: TreatmentAppProps) {
+  useDocumentTitle('치료관리');
   const navigate = useNavigate();
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 

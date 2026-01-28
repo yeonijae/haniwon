@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { PortalUser } from '@shared/types';
 import { useFontScale } from '@shared/hooks/useFontScale';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { getCurrentDate } from '@shared/lib/postgres';
 
 const API_BASE = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
@@ -167,6 +168,7 @@ function formatMoney(amount: number): string {
 function StatisticsApp({ user }: StatisticsAppProps) {
   // 폰트 스케일
   const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('statistics');
+  useDocumentTitle('통계');
 
   const [period, setPeriod] = useState<PeriodType>('daily');
   const [selectedDate, setSelectedDate] = useState<string>(

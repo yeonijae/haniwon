@@ -10,7 +10,7 @@ import AdminPage from '@portal/pages/AdminPage';
 
 // Module placeholders (will be replaced with actual modules)
 import ManageApp from '@manage/ManageApp';
-import ChartApp from '@chart/ChartApp';
+import DoctorApp from '@doctor/DoctorApp';
 import InventoryApp from '@inventory/InventoryApp';
 import TreatmentApp from '@treatment/TreatmentApp';
 import ActingApp from '@acting/ActingApp';
@@ -18,7 +18,7 @@ import ActingApp from '@acting/ActingApp';
 import FunnelApp from './modules/funnel/FunnelApp';
 import ContentApp from './modules/content/ContentApp';
 import ReservationApp from './modules/reservation/ReservationApp';
-import { DoctorPadApp } from './modules/doctor-pad';
+import { PadApp } from './modules/pad';
 import StatisticsApp from './modules/statistics/StatisticsApp';
 import DbAdminApp from './modules/db-admin/DbAdminApp';
 import HerbalApp from './modules/herbal/HerbalApp';
@@ -109,10 +109,10 @@ function App() {
         element={user ? <ManageApp user={user} /> : <Navigate to="/login" replace />}
       />
 
-      {/* Chart Module Routes */}
+      {/* Doctor Module Routes (원장실) */}
       <Route
-        path="/chart/*"
-        element={user ? <ChartApp user={user} /> : <Navigate to="/login" replace />}
+        path="/doctor/*"
+        element={user ? <DoctorApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Inventory Module Routes */}
@@ -182,10 +182,10 @@ function App() {
       {/* Public Landing Routes (로그인 불필요) */}
       <Route path="/l/:slug" element={<LandingViewPage />} />
 
-      {/* Doctor Pad Routes (원장용 진료패드) */}
+      {/* Pad Routes (원장 패드 - 태블릿용) */}
       <Route
-        path="/doctor-pad/*"
-        element={user ? <DoctorPadApp user={user} /> : <Navigate to="/login" replace />}
+        path="/pad/*"
+        element={user ? <PadApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Statistics Routes (통계 대시보드) */}
