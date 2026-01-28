@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { query } from '@shared/lib/postgres';
 import type { Patient } from '../types';
+import { useAudioRecorder } from '@modules/pad/hooks/useAudioRecorder';
+import { processRecording } from '@modules/pad/services/transcriptionService';
 
 // MSSQL API URL
 const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
@@ -15,18 +18,136 @@ import TreatmentRecordList from '@shared/components/TreatmentRecordList';
 const PatientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
   const [chartView, setChartView] = useState<'initial' | 'diagnosis' | 'progress' | null>(null);
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0); // 목록 새로고침용
   const [showTreatmentHistory, setShowTreatmentHistory] = useState(false); // 진료내역 모달
+  const [autoCreateChecked, setAutoCreateChecked] = useState(false); // autoCreate 체크 완료 여부
+  const [recordingStarted, setRecordingStarted] = useState(false); // 녹음 시작 여부
+  const [isProcessing, setIsProcessing] = useState(false); // 녹음 처리 중
+
+  // 녹음 관련
+  const {
+    isRecording,
+    isPaused,
+    recordingTime,
+    startRecording,
+    stopRecording,
+    pauseRecording,
+    resumeRecording,
+    error: recordingError,
+  } = useAudioRecorder();
+
+  // URL에서 녹음 관련 파라미터 추출
+  const autoRecord = searchParams.get('autoRecord') === 'true';
+  const actingId = searchParams.get('actingId');
+  const actingType = searchParams.get('actingType') || '약상담';
+  const doctorId = searchParams.get('doctorId');
+  const doctorName = searchParams.get('doctorName') || '';
 
   useEffect(() => {
+    console.log('[PatientDetail] useParams id:', id);
     if (id) {
       loadPatient();
     }
   }, [id]);
+
+  // autoCreate 파라미터 처리: 차트가 없으면 자동으로 새 진료 시작
+  useEffect(() => {
+    const autoCreate = searchParams.get('autoCreate') === 'true';
+    console.log('[PatientDetail] autoCreate 체크:', { autoCreate, patient: !!patient, autoCreateChecked });
+
+    if (!autoCreate || !patient || autoCreateChecked) {
+      console.log('[PatientDetail] 조건 불충족으로 스킵:', { autoCreate, hasPatient: !!patient, autoCreateChecked });
+      return;
+    }
+
+    const checkAndCreate = async () => {
+      try {
+        console.log('[PatientDetail] 차트 조회 시작, patient.id:', patient.id);
+        // 기존 차트가 있는지 확인
+        const charts = await query<{ id: number }>(
+          `SELECT id FROM initial_charts WHERE patient_id = ${patient.id} LIMIT 1`
+        );
+
+        console.log('[PatientDetail] 차트 조회 결과:', charts);
+        setAutoCreateChecked(true);
+
+        // 차트가 없으면 자동으로 새 진료 시작
+        if (!charts || charts.length === 0) {
+          console.log('[PatientDetail] 차트 없음 - 새 진료 시작 화면 오픈');
+          setChartView('initial');
+        } else {
+          console.log('[PatientDetail] 기존 차트 있음:', charts.length, '개');
+        }
+      } catch (error) {
+        console.error('[PatientDetail] 차트 확인 실패:', error);
+        setAutoCreateChecked(true);
+      }
+    };
+
+    checkAndCreate();
+  }, [patient, searchParams, autoCreateChecked]);
+
+  // autoRecord 파라미터 처리: 자동 녹음 시작
+  useEffect(() => {
+    if (autoRecord && patient && autoCreateChecked && !recordingStarted && !isRecording) {
+      // 약간의 딜레이 후 녹음 시작 (UI 렌더링 후)
+      const timer = setTimeout(async () => {
+        const success = await startRecording();
+        if (success) {
+          setRecordingStarted(true);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [autoRecord, patient, autoCreateChecked, recordingStarted, isRecording, startRecording]);
+
+  // 녹음 중지 및 처리
+  const handleStopRecording = useCallback(async () => {
+    if (!patient || !actingId) return;
+
+    setIsProcessing(true);
+    try {
+      const audioBlob = await stopRecording();
+      if (!audioBlob) {
+        console.error('녹음 데이터가 없습니다');
+        setIsProcessing(false);
+        return;
+      }
+
+      // Whisper API로 변환 및 저장
+      const result = await processRecording(audioBlob, {
+        actingId: parseInt(actingId, 10),
+        patientId: patient.id,
+        doctorId: parseInt(doctorId || '0', 10),
+        doctorName: doctorName,
+        actingType: actingType,
+        saveAudio: true,
+      });
+
+      if (result.success) {
+        alert(`녹음이 완료되었습니다.\n변환된 텍스트: ${result.transcript.substring(0, 100)}...`);
+      } else {
+        alert(`녹음 처리 중 오류: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('녹음 처리 실패:', error);
+      alert('녹음 처리 중 오류가 발생했습니다.');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [patient, actingId, doctorId, doctorName, actingType, stopRecording]);
+
+  // 녹음 시간 포맷
+  const formatRecordingTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   // MSSQL 환자 데이터를 Patient 타입으로 변환
   const convertMssqlPatient = (mssqlData: any): Patient => ({
@@ -46,7 +167,19 @@ const PatientDetail: React.FC = () => {
     try {
       setLoading(true);
 
-      const response = await fetch(`${MSSQL_API_URL}/api/patients/${id}`);
+      // chartNo가 있으면 chart_no로 조회, 없으면 id로 조회
+      const chartNo = searchParams.get('chartNo');
+      let apiUrl: string;
+
+      if (chartNo) {
+        apiUrl = `${MSSQL_API_URL}/api/patients/chart/${chartNo}`;
+        console.log('[PatientDetail] chartNo로 환자 조회:', chartNo);
+      } else {
+        apiUrl = `${MSSQL_API_URL}/api/patients/${id}`;
+        console.log('[PatientDetail] id로 환자 조회:', id);
+      }
+
+      const response = await fetch(apiUrl);
       if (!response.ok) {
         throw new Error(`환자 정보 조회 실패: ${response.status}`);
       }
@@ -116,14 +249,87 @@ const PatientDetail: React.FC = () => {
     <div className="h-full flex flex-col overflow-hidden">
       <div className="max-w-7xl mx-auto w-full p-6 flex-1 flex flex-col overflow-hidden">
         <div className="flex justify-between items-center mb-4 flex-shrink-0">
-        <h1 className="text-2xl font-bold text-clinic-text-primary">차트 관리</h1>
-        <button
-          onClick={() => navigate('/doctor/patients')}
-          className="px-3 py-1.5 bg-clinic-text-secondary text-white rounded-lg hover:bg-gray-600 transition-colors font-medium text-sm"
-        >
-          <i className="fas fa-arrow-left mr-2"></i>목록으로
-        </button>
-      </div>
+          <h1 className="text-2xl font-bold text-clinic-text-primary">차트 관리</h1>
+
+          {/* 녹음 컨트롤 */}
+          <div className="flex items-center gap-3">
+            {/* 녹음 상태 표시 */}
+            {(isRecording || isProcessing) && (
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
+                isProcessing ? 'bg-yellow-100' : 'bg-red-100'
+              }`}>
+                {isProcessing ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-yellow-700 font-medium">변환 중...</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                    <span className="text-red-700 font-medium">
+                      녹음 중 {formatRecordingTime(recordingTime)}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* 녹음 에러 표시 */}
+            {recordingError && (
+              <div className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-sm">
+                <i className="fas fa-exclamation-circle mr-1"></i>
+                {recordingError}
+              </div>
+            )}
+
+            {/* 녹음 버튼들 */}
+            {isRecording && !isProcessing && (
+              <div className="flex items-center gap-2">
+                {isPaused ? (
+                  <button
+                    onClick={resumeRecording}
+                    className="px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm"
+                  >
+                    <i className="fas fa-play mr-1"></i>재개
+                  </button>
+                ) : (
+                  <button
+                    onClick={pauseRecording}
+                    className="px-3 py-1.5 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors text-sm"
+                  >
+                    <i className="fas fa-pause mr-1"></i>일시정지
+                  </button>
+                )}
+                <button
+                  onClick={handleStopRecording}
+                  className="px-3 py-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm"
+                >
+                  <i className="fas fa-stop mr-1"></i>녹음 중지
+                </button>
+              </div>
+            )}
+
+            {/* 수동 녹음 시작 버튼 (녹음 중이 아닐 때만) */}
+            {!isRecording && !isProcessing && actingId && (
+              <button
+                onClick={async () => {
+                  const success = await startRecording();
+                  if (success) setRecordingStarted(true);
+                }}
+                className="px-3 py-1.5 bg-clinic-primary text-white rounded-lg hover:bg-clinic-primary-dark transition-colors text-sm"
+              >
+                <i className="fas fa-microphone mr-1"></i>녹음 시작
+              </button>
+            )}
+
+            <button
+              onClick={() => navigate('/doctor/patients')}
+              className="px-3 py-1.5 bg-clinic-text-secondary text-white rounded-lg hover:bg-gray-600 transition-colors font-medium text-sm"
+            >
+              <i className="fas fa-arrow-left mr-2"></i>목록으로
+            </button>
+          </div>
+        </div>
 
         {/* 환자 기본 정보 + 치료 상태 */}
         <div className="mb-4 flex-shrink-0 flex gap-4">

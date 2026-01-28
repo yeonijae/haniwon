@@ -72,20 +72,38 @@ const Dashboard: React.FC = () => {
 
   // 액팅 시작 핸들러
   const handleStartActing = async (acting: ActingQueueItem) => {
-    if (!selectedDoctor) return;
+    console.log('[Dashboard] handleStartActing 호출됨:', acting);
+    if (!selectedDoctor) {
+      console.log('[Dashboard] selectedDoctor 없음, 리턴');
+      return;
+    }
 
     try {
+      console.log('[Dashboard] startActing API 호출...');
       await startActing(acting.id, getMssqlDoctorId(selectedDoctor), selectedDoctor.name);
-      // 차트 페이지로 이동
-      navigate(`/doctor/patient/${acting.patientId}?chartNo=${acting.chartNo}`);
+      console.log('[Dashboard] startActing 완료, 차트 페이지로 이동');
+
+      // 차트 페이지로 이동 (autoCreate=true로 차트 없으면 자동 생성, 녹음 자동 시작)
+      const params = new URLSearchParams({
+        chartNo: acting.chartNo,
+        autoCreate: 'true',
+        autoRecord: 'true',
+        actingId: String(acting.id),
+        actingType: acting.actingType || '약상담',
+        doctorId: String(getMssqlDoctorId(selectedDoctor)),
+        doctorName: selectedDoctor.name,
+      });
+      const url = `/doctor/patients/${acting.patientId}?${params.toString()}`;
+      console.log('[Dashboard] navigate to:', url);
+      navigate(url);
     } catch (error) {
-      console.error('액팅 시작 실패:', error);
+      console.error('[Dashboard] 액팅 시작 실패:', error);
     }
   };
 
   // 환자 클릭 핸들러
   const handlePatientClick = (patientId: number, chartNumber: string) => {
-    navigate(`/doctor/patient/${patientId}?chartNo=${chartNumber}`);
+    navigate(`/doctor/patients/${patientId}?chartNo=${chartNumber}`);
   };
 
   // 처방 클릭 핸들러

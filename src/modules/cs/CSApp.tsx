@@ -3,7 +3,7 @@ import type { PortalUser } from '@shared/types';
 import { useFontScale } from '@shared/hooks/useFontScale';
 import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { insert, execute, queryOne, escapeString } from '@shared/lib/postgres';
-import { addActing, cancelActing, updateActing } from '@acting/api';
+import { addActing, cancelActing, updateActing, resetActingToWaiting } from '@acting/api';
 import CSSidebar, {
   ConsultationPatient,
   CONSULTATION_TYPES,
@@ -201,6 +201,22 @@ function CSApp({ user }: CSAppProps) {
     }
     closeContextMenu();
   }, [contextPatient, doctors, closeContextMenu]);
+
+  // 컨텍스트 메뉴: 대기상태로 되돌리기
+  const handleContextResetToWaiting = useCallback(async () => {
+    if (contextPatient?.acting?.id) {
+      if (confirm(`${contextPatient.patient_name} 환자를 대기 상태로 되돌리시겠습니까?`)) {
+        try {
+          await resetActingToWaiting(contextPatient.acting.id);
+          console.log(`✅ ${contextPatient.patient_name} 환자 대기 상태로 복귀`);
+        } catch (error) {
+          console.error('대기상태 복귀 오류:', error);
+          alert('대기상태 복귀 중 오류가 발생했습니다.');
+        }
+      }
+    }
+    closeContextMenu();
+  }, [contextPatient, closeContextMenu]);
 
   // 프로그램 등록 모달 닫기
   const closeProgramModal = useCallback(() => {
@@ -424,12 +440,18 @@ function CSApp({ user }: CSAppProps) {
               )}
             </>
           )}
-          {/* 상담완료 (in_progress/completed): 비급여관리만 */}
+          {/* 상담완료 (in_progress/completed): 비급여관리, 대기상태로 */}
           {(contextPatient.consultationStatus === 'in_progress' || contextPatient.consultationStatus === 'completed') && (
-            <button className="cs-context-menu-item" onClick={handleContextRegisterProgram}>
-              <span className="cs-context-icon">💊</span>
-              <span>비급여관리</span>
-            </button>
+            <>
+              <button className="cs-context-menu-item" onClick={handleContextRegisterProgram}>
+                <span className="cs-context-icon">💊</span>
+                <span>비급여관리</span>
+              </button>
+              <button className="cs-context-menu-item" onClick={handleContextResetToWaiting}>
+                <span className="cs-context-icon">⏪</span>
+                <span>대기상태로</span>
+              </button>
+            </>
           )}
           <button className="cs-context-menu-item" onClick={closeContextMenu}>
             <span className="cs-context-icon">✕</span>

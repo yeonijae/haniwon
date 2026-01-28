@@ -207,6 +207,15 @@ export async function cancelActing(actingId: number): Promise<void> {
   await execute(`UPDATE daily_acting_records SET status = 'cancelled' WHERE id = ${actingId}`);
 }
 
+// 액팅을 대기 상태로 되돌리기 (상담완료 → 대기)
+export async function resetActingToWaiting(actingId: number): Promise<void> {
+  await execute(`
+    UPDATE daily_acting_records
+    SET status = 'waiting', started_at = NULL, completed_at = NULL
+    WHERE id = ${actingId}
+  `);
+}
+
 // 환자 ID로 대기 중인 액팅 모두 취소 (베드→대기 이동 시 사용)
 export async function cancelActingsByPatientId(patientId: number): Promise<number> {
   const today = getCurrentDate();
