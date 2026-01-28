@@ -73,9 +73,11 @@ const Dashboard: React.FC = () => {
   // 액팅 시작 핸들러
   const handleStartActing = async (acting: ActingQueueItem) => {
     if (!selectedDoctor) return;
-    
+
     try {
       await startActing(acting.id, getMssqlDoctorId(selectedDoctor), selectedDoctor.name);
+      // 차트 페이지로 이동
+      navigate(`/doctor/patient/${acting.patientId}?chartNo=${acting.chartNo}`);
     } catch (error) {
       console.error('액팅 시작 실패:', error);
     }
