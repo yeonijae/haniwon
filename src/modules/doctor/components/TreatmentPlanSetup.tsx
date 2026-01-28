@@ -116,8 +116,10 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
       const totalCost = calculateTotalCost();
       const totalVisits = calculateTotalVisits();
 
+      console.log('[TreatmentPlanSetup] 저장 시작:', { patientId, diseaseName, durationWeeks, visitFrequency });
+
       // 진료 계획 DB에 저장
-      const planId = await insert(`
+      const sql = `
         INSERT INTO treatment_plans (
           patient_id,
           disease_name,
@@ -145,7 +147,11 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
           NOW(),
           NOW()
         )
-      `);
+      `;
+      console.log('[TreatmentPlanSetup] SQL:', sql);
+
+      const planId = await insert(sql);
+      console.log('[TreatmentPlanSetup] 저장 완료, planId:', planId);
 
       const planData: Partial<TreatmentPlan> = {
         id: planId,
@@ -163,11 +169,15 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
         updated_at: new Date().toISOString(),
       };
 
+      console.log('[TreatmentPlanSetup] proceedToChart:', proceedToChart);
+
       if (proceedToChart) {
         // 초진차트 작성으로 진행
+        console.log('[TreatmentPlanSetup] onCreateChart 호출');
         onCreateChart(planData);
       } else {
         // 저장 후 닫기
+        console.log('[TreatmentPlanSetup] onSave 호출');
         if (onSave) {
           onSave(planData);
         } else {
@@ -175,8 +185,9 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
         }
       }
     } catch (error) {
-      console.error('진료 계획 저장 실패:', error);
+      console.error('[TreatmentPlanSetup] 진료 계획 저장 실패:', error);
       alert('진료 계획 저장에 실패했습니다.');
+    } finally {
       setSaving(false);
     }
   };
