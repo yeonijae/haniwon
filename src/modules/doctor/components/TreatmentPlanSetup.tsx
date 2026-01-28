@@ -139,7 +139,7 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
           ${escapeString(visitFrequency)},
           ${costPerVisit},
           ${totalCost || 'NULL'},
-          ${escapeString(JSON.stringify(selectedProgramsData))},
+          ${escapeString(JSON.stringify(selectedProgramsData))}::jsonb,
           ${notes ? escapeString(notes) : 'NULL'},
           'active',
           NOW(),
