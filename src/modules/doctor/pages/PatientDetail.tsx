@@ -417,6 +417,12 @@ const PatientDetail: React.FC = () => {
             setCurrentPlan(plan);
             setChartView('initial');
           }}
+          onSave={() => {
+            // 저장 후 닫기 (초진차트로 이동하지 않음)
+            setChartView(null);
+            setCurrentPlan(null);
+            setRefreshKey(prev => prev + 1); // 목록 새로고침
+          }}
           onClose={() => {
             setChartView(null);
             setCurrentPlan(null);

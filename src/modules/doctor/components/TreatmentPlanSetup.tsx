@@ -11,6 +11,7 @@ interface TreatmentPlanSetupProps {
   patientId: number;
   patientName: string;
   onCreateChart: (plan: Partial<TreatmentPlan>) => void;
+  onSave?: (plan: Partial<TreatmentPlan>) => void; // 저장 후 닫기
   onClose: () => void;
 }
 
@@ -18,6 +19,7 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
   patientId,
   patientName,
   onCreateChart,
+  onSave,
   onClose,
 }) => {
   const [programs, setPrograms] = useState<TreatmentProgram[]>([]);
@@ -104,8 +106,8 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
     return new Intl.NumberFormat('ko-KR').format(price);
   };
 
-  // 초진차트 작성으로 진행
-  const handleProceed = async () => {
+  // 저장 처리 (proceedToChart: true면 초진차트로 진행, false면 저장 후 닫기)
+  const handleSave = async (proceedToChart: boolean) => {
     setSaving(true);
 
     try {
@@ -145,8 +147,7 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
         )
       `);
 
-      // 부모 컴포넌트에 계획 정보 전달
-      onCreateChart({
+      const planData: Partial<TreatmentPlan> = {
         id: planId,
         patient_id: patientId,
         disease_name: diseaseName || undefined,
@@ -160,23 +161,24 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
         status: 'active',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      });
+      };
+
+      if (proceedToChart) {
+        // 초진차트 작성으로 진행
+        onCreateChart(planData);
+      } else {
+        // 저장 후 닫기
+        if (onSave) {
+          onSave(planData);
+        } else {
+          onClose();
+        }
+      }
     } catch (error) {
       console.error('진료 계획 저장 실패:', error);
       alert('진료 계획 저장에 실패했습니다.');
       setSaving(false);
     }
-  };
-
-  // 건너뛰기 (계획 없이 바로 초진차트 작성)
-  const handleSkip = () => {
-    onCreateChart({
-      patient_id: patientId,
-      selected_programs: [],
-      status: 'active',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
   };
 
   if (loading) {
@@ -359,38 +361,48 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
         </div>
 
         {/* 푸터 */}
-        <div className="flex-shrink-0 px-6 py-4 border-t bg-gray-50 rounded-b-xl flex items-center justify-between">
+        <div className="flex-shrink-0 px-6 py-4 border-t bg-gray-50 rounded-b-xl flex items-center justify-end gap-2">
           <button
-            onClick={handleSkip}
-            className="text-gray-500 hover:text-gray-700 text-sm"
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
           >
-            건너뛰고 바로 차트 작성
+            취소
           </button>
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              취소
-            </button>
-            <button
-              onClick={handleProceed}
-              disabled={saving}
-              className="px-6 py-2 bg-gradient-to-r from-clinic-primary to-clinic-secondary text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
-            >
-              {saving ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  저장 중...
-                </>
-              ) : (
-                <>
-                  <i className="fas fa-file-medical"></i>
-                  초진차트 작성
-                </>
-              )}
-            </button>
-          </div>
+          <button
+            onClick={() => handleSave(false)}
+            disabled={saving}
+            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {saving ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                저장 중...
+              </>
+            ) : (
+              <>
+                <i className="fas fa-save"></i>
+                저장
+              </>
+            )}
+          </button>
+          <button
+            onClick={() => handleSave(true)}
+            disabled={saving}
+            className="px-5 py-2 bg-gradient-to-r from-clinic-primary to-clinic-secondary text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+          >
+            {saving ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                저장 중...
+              </>
+            ) : (
+              <>
+                <i className="fas fa-file-medical"></i>
+                초진차트 작성
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>
