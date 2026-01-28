@@ -26,7 +26,7 @@ const Settings: React.FC = () => {
     try {
       const data = await query<TreatmentProgram>(`
         SELECT * FROM treatment_items
-        WHERE is_active = true
+        WHERE is_active = 1
         ORDER BY display_order ASC, name ASC
       `);
       setPrograms(data);
@@ -62,7 +62,7 @@ const Settings: React.FC = () => {
 
       await insert(`
         INSERT INTO treatment_items (name, category, duration, price, is_active, display_order)
-        VALUES (${escapeString(formData.name)}, ${escapeString(formData.category)}, ${formData.duration}, ${formData.price}, true, ${maxOrder})
+        VALUES (${escapeString(formData.name)}, ${escapeString(formData.category)}, ${formData.duration}, ${formData.price}, 1, ${maxOrder})
       `);
 
       await loadPrograms();
@@ -103,7 +103,7 @@ const Settings: React.FC = () => {
     try {
       await execute(`
         UPDATE treatment_items
-        SET is_active = false, updated_at = NOW()
+        SET is_active = 0, updated_at = NOW()
         WHERE id = ${id}
       `);
 

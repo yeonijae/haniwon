@@ -38,7 +38,7 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
     try {
       const data = await query<TreatmentProgram>(`
         SELECT * FROM treatment_items
-        WHERE is_active = true
+        WHERE is_active = 1
         ORDER BY display_order ASC, name ASC
       `);
       setPrograms(data);
