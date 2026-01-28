@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp, getCurrentDate } from '@shared/lib/postgres';
-import type { InitialChart } from '../types';
+import type { InitialChart, TreatmentPlan } from '../types';
 
 interface Props {
   patientId: number;
   patientName: string;
   onClose: () => void;
   forceNew?: boolean; // 새진료 시작일 때 true
+  treatmentPlan?: Partial<TreatmentPlan> | null; // 진료 계획 정보
 }
 
-const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, forceNew = false }) => {
+const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, forceNew = false, treatmentPlan }) => {
   const [chart, setChart] = useState<InitialChart | null>(null);
   const [isEditing, setIsEditing] = useState(forceNew); // forceNew이면 바로 편집 모드
   const [loading, setLoading] = useState(!forceNew); // forceNew이면 로딩 안함

@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { query } from '@shared/lib/postgres';
-import type { Patient } from '../types';
+import type { Patient, TreatmentPlan } from '../types';
 import { useAudioRecorder } from '@modules/pad/hooks/useAudioRecorder';
 import { processRecording } from '@modules/pad/services/transcriptionService';
 
 // MSSQL API URL
 const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 import InitialChartView from '../components/InitialChartView';
+import TreatmentPlanSetup from '../components/TreatmentPlanSetup';
 import DiagnosisListView from '../components/DiagnosisListView';
 import ProgressNoteView from '../components/ProgressNoteView';
 import MedicalRecordList from '../components/MedicalRecordList';
@@ -21,7 +22,8 @@ const PatientDetail: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
-  const [chartView, setChartView] = useState<'initial' | 'diagnosis' | 'progress' | null>(null);
+  const [chartView, setChartView] = useState<'plan' | 'initial' | 'diagnosis' | 'progress' | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<Partial<TreatmentPlan> | null>(null);
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0); // 목록 새로고침용
   const [showTreatmentHistory, setShowTreatmentHistory] = useState(false); // 진료내역 모달
@@ -76,10 +78,10 @@ const PatientDetail: React.FC = () => {
         console.log('[PatientDetail] 차트 조회 결과:', charts);
         setAutoCreateChecked(true);
 
-        // 차트가 없으면 자동으로 새 진료 시작
+        // 차트가 없으면 자동으로 새 진료 계획 설정 화면 오픈
         if (!charts || charts.length === 0) {
-          console.log('[PatientDetail] 차트 없음 - 새 진료 시작 화면 오픈');
-          setChartView('initial');
+          console.log('[PatientDetail] 차트 없음 - 새 진료 계획 설정 화면 오픈');
+          setChartView('plan');
         } else {
           console.log('[PatientDetail] 기존 차트 있음:', charts.length, '개');
         }
@@ -389,7 +391,7 @@ const PatientDetail: React.FC = () => {
               진료 관리
             </h3>
             <button
-              onClick={() => setChartView('initial')}
+              onClick={() => setChartView('plan')}
               className="px-4 py-2 bg-gradient-to-r from-clinic-primary to-clinic-secondary text-white rounded-lg hover:from-blue-900 hover:to-purple-900 transition-all transform hover:scale-105 font-semibold shadow-lg text-sm"
             >
               <i className="fas fa-file-medical mr-2"></i>새진료 시작
@@ -406,13 +408,31 @@ const PatientDetail: React.FC = () => {
           </div>
         </div>
 
-      {/* 차트 모달 */}
+      {/* 진료 계획 설정 모달 */}
+      {chartView === 'plan' && (
+        <TreatmentPlanSetup
+          patientId={patient.id}
+          patientName={patient.name}
+          onCreateChart={(plan) => {
+            setCurrentPlan(plan);
+            setChartView('initial');
+          }}
+          onClose={() => {
+            setChartView(null);
+            setCurrentPlan(null);
+          }}
+        />
+      )}
+
+      {/* 초진차트 모달 */}
       {chartView === 'initial' && (
         <InitialChartView
           patientId={patient.id}
           patientName={patient.name}
+          treatmentPlan={currentPlan}
           onClose={() => {
             setChartView(null);
+            setCurrentPlan(null);
             setRefreshKey(prev => prev + 1); // 목록 새로고침
           }}
           forceNew={true}

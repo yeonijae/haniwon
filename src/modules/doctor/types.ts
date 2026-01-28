@@ -231,3 +231,44 @@ export interface DosageInstruction {
   created_at?: string;
   updated_at?: string;
 }
+
+// ===== 치료 프로그램 및 진료 계획 타입 =====
+
+// 치료 프로그램 (설정에서 관리)
+export interface TreatmentProgram {
+  id: number;
+  name: string;              // 프로그램명 (예: 침, 부항, 추나)
+  category?: string;         // 분류
+  duration: number;          // 기본 소요시간 (분)
+  price: number;             // 가격
+  is_active: boolean;        // 활성 여부
+  display_order: number;     // 표시 순서
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 진료 계획에서 선택된 프로그램
+export interface SelectedProgram {
+  program_id: number;
+  name: string;
+  duration: number;
+  price: number;
+}
+
+// 진료 계획 (새 진료 시작 시 생성)
+export interface TreatmentPlan {
+  id: number;
+  patient_id: number;
+  initial_chart_id?: number;      // 연결된 초진차트
+  disease_name?: string;          // 질환명 (선택적)
+  planned_duration_weeks?: number; // 예상 치료기간 (주)
+  planned_visits?: number;        // 예상 내원횟수
+  visit_frequency?: string;       // 내원 빈도 (예: "주 2회")
+  estimated_cost_per_visit?: number; // 1회 예상 비용
+  estimated_total_cost?: number;  // 총 예상 비용
+  selected_programs: SelectedProgram[]; // 선택된 치료 프로그램들
+  notes?: string;                 // 비고
+  status: 'active' | 'completed' | 'cancelled';
+  created_at: string;
+  updated_at: string;
+}

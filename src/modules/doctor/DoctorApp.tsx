@@ -13,6 +13,7 @@ import PrescriptionDefinitions from './pages/PrescriptionDefinitions';
 import DosageInstructionManagement from './pages/DosageInstructionManagement';
 import DosageInstructionCreator from './pages/DosageInstructionCreator';
 import MedicalTranscripts from './pages/MedicalTranscripts';
+import Settings from './pages/Settings';
 
 // Components
 import TreatmentRecordList from '@shared/components/TreatmentRecordList';
@@ -114,10 +115,14 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
           {/* 설정 버튼 - 구분선 후 */}
           <div className="pt-4 mt-4 border-t border-gray-200">
             <button
-              onClick={() => console.log('설정 클릭됨')}
+              onClick={() => navigateTo('/settings')}
               className={`w-full flex items-center rounded-lg transition-colors duration-200 ${
                 isCollapsed ? 'justify-center px-2 py-3' : 'px-3 py-2.5'
-              } text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary`}
+              } ${
+                isActive('/settings')
+                  ? 'bg-clinic-primary text-white'
+                  : 'text-clinic-text-secondary hover:bg-clinic-background hover:text-clinic-primary'
+              }`}
               title={isCollapsed ? '설정' : undefined}
             >
               <i className={`fas fa-gear text-lg ${isCollapsed ? '' : 'w-6'}`}></i>
@@ -184,6 +189,7 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
           <Route path="/prescription-definitions" element={<PrescriptionDefinitions />} />
           <Route path="/dosage-instructions" element={<DosageInstructionManagement />} />
           <Route path="/dosage-instructions/create" element={<DosageInstructionCreator />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
     </div>

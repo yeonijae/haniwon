@@ -17,3 +17,6 @@ export { default as DiagnosisListView } from './DiagnosisListView';
 export { default as InitialChartView } from './InitialChartView';
 export { default as ProgressNoteView } from './ProgressNoteView';
 export { default as PrescriptionInput } from './PrescriptionInput';
+
+// 진료 계획 컴포넌트
+export { default as TreatmentPlanSetup } from './TreatmentPlanSetup';
