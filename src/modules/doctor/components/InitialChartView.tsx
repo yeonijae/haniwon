@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp, getCurrentDate } from '@shared/lib/postgres';
 import type { InitialChart, TreatmentPlan } from '../types';
+import { useAudioRecorder } from '@modules/pad/hooks/useAudioRecorder';
+import { transcribeAudio } from '@modules/pad/services/transcriptionService';
 
 interface Props {
   patientId: number;
@@ -10,12 +12,86 @@ interface Props {
   treatmentPlan?: Partial<TreatmentPlan> | null; // 진료 계획 정보
 }
 
+interface ChartHistory {
+  id: number;
+  initial_chart_id: number;
+  patient_id: number;
+  notes: string;
+  chart_date: string;
+  saved_at: string;
+  version: number;
+}
+
 const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, forceNew = false, treatmentPlan }) => {
   const [chart, setChart] = useState<InitialChart | null>(null);
   const [isEditing, setIsEditing] = useState(forceNew); // forceNew이면 바로 편집 모드
   const [loading, setLoading] = useState(!forceNew); // forceNew이면 로딩 안함
   const [formData, setFormData] = useState<Partial<InitialChart>>({});
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyList, setHistoryList] = useState<ChartHistory[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // 녹음 관련
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const {
+    isRecording,
+    isPaused,
+    recordingTime,
+    startRecording,
+    stopRecording,
+    pauseRecording,
+    resumeRecording,
+    error: recordingError,
+  } = useAudioRecorder();
+
+  // 녹음 시간 포맷
+  const formatRecordingTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // 녹음 중지 및 텍스트 변환
+  const handleStopRecording = async () => {
+    try {
+      const audioBlob = await stopRecording();
+      if (!audioBlob) {
+        console.error('녹음 데이터가 없습니다');
+        return;
+      }
+
+      setIsTranscribing(true);
+
+      // Whisper로 텍스트 변환
+      const result = await transcribeAudio(audioBlob, {
+        prompt: '한의원 초진 상담. 환자 주소증, 병력, 문진 내용.',
+      });
+
+      if (result.success && result.transcript) {
+        // 현재 notes에 변환된 텍스트 추가
+        const currentNotes = formData.notes || '';
+        const separator = currentNotes.trim() ? '\n\n[녹음 변환]\n' : '';
+        const newNotes = currentNotes + separator + result.transcript;
+        setFormData({ ...formData, notes: newNotes });
+
+        // textarea 스크롤을 맨 아래로
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+          }
+        }, 100);
+      } else {
+        alert(`음성 변환 실패: ${result.error || '알 수 없는 오류'}`);
+      }
+    } catch (error) {
+      console.error('녹음 처리 실패:', error);
+      alert('녹음 처리 중 오류가 발생했습니다.');
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
 
   // 구분자를 기준으로 섹션 파싱 ([], > 모두 지원)
   // 텍스트에서 날짜 추출 (YY/MM/DD, YYYY-MM-DD, YYYY.MM.DD 형식 지원)
@@ -197,24 +273,49 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
       const chartDate = new Date(formData.chart_date).toISOString();
       const notes = formData.notes.trim();
 
-      if (forceNew || !chart) {
-        // 새 차트 생성
+      // 자동저장: chart 상태만 확인 (forceNew는 수동 저장에서만 사용)
+      // forceNew를 조건에 넣으면 props가 true로 유지되어 매번 INSERT됨!
+      if (!chart) {
+        // 새 차트 생성 (chart가 없을 때만)
+        const planId = treatmentPlan?.id || null;
         const newId = await insert(`
-          INSERT INTO initial_charts (patient_id, notes, chart_date, created_at, updated_at)
-          VALUES (${patientId}, ${escapeString(notes)}, ${escapeString(chartDate)}, ${escapeString(now)}, ${escapeString(now)})
+          INSERT INTO initial_charts (patient_id, notes, chart_date, treatment_plan_id, created_at, updated_at)
+          VALUES (${patientId}, ${escapeString(notes)}, ${escapeString(chartDate)}, ${planId}, ${escapeString(now)}, ${escapeString(now)})
         `);
 
         if (newId) {
+          // 진료계획이 있으면 양방향 연결
+          if (planId) {
+            await execute(`
+              UPDATE treatment_plans SET initial_chart_id = ${newId}, updated_at = ${escapeString(now)}
+              WHERE id = ${planId}
+            `);
+            console.log('자동저장: 진료계획-초진차트 양방향 연결 완료');
+          }
+
           const newChart = await queryOne<InitialChart>(
             `SELECT * FROM initial_charts WHERE id = ${newId}`
           );
           if (newChart) {
             setChart(newChart);
-            console.log('자동저장 완료 (새 차트)');
+            console.log('자동저장 완료 (새 차트), id:', newId);
           }
         }
       } else {
-        // 기존 차트 업데이트
+        // 기존 차트 업데이트 (chart가 이미 있으면)
+
+        // 1. 현재 상태를 히스토리에 저장 (UPDATE 전에)
+        const lastVersion = await queryOne<{ max_version: number }>(
+          `SELECT COALESCE(MAX(version), 0) as max_version FROM initial_charts_history WHERE initial_chart_id = ${chart.id}`
+        );
+        const newVersion = (lastVersion?.max_version || 0) + 1;
+
+        await execute(`
+          INSERT INTO initial_charts_history (initial_chart_id, patient_id, notes, chart_date, saved_at, version)
+          VALUES (${chart.id}, ${patientId}, ${escapeString(chart.notes || '')}, ${escapeString(chart.chart_date?.toString() || now)}, ${escapeString(now)}, ${newVersion})
+        `);
+
+        // 2. 차트 업데이트
         await execute(`
           UPDATE initial_charts SET
             notes = ${escapeString(notes)},
@@ -222,7 +323,10 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
             updated_at = ${escapeString(now)}
           WHERE id = ${chart.id}
         `);
-        console.log('자동저장 완료 (업데이트)');
+
+        // 3. 로컬 상태도 업데이트
+        setChart({ ...chart, notes, chart_date: chartDate, updated_at: now });
+        console.log('자동저장 완료 (업데이트, 히스토리 v' + newVersion + ' 저장)');
       }
 
       setAutoSaveStatus('saved');
@@ -234,6 +338,68 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
     } catch (error) {
       console.error('자동저장 오류:', error);
       setAutoSaveStatus('idle');
+    }
+  };
+
+  // 히스토리 목록 조회
+  const loadHistory = async () => {
+    if (!chart) return;
+
+    try {
+      setHistoryLoading(true);
+      const history = await query<ChartHistory>(
+        `SELECT * FROM initial_charts_history
+         WHERE initial_chart_id = ${chart.id}
+         ORDER BY version DESC
+         LIMIT 20`
+      );
+      setHistoryList(history);
+      setShowHistory(true);
+    } catch (error) {
+      console.error('히스토리 로드 오류:', error);
+      alert('히스토리를 불러오는데 실패했습니다.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // 특정 버전으로 복원
+  const restoreVersion = async (historyItem: ChartHistory) => {
+    if (!chart) return;
+
+    const confirmed = confirm(`버전 ${historyItem.version}으로 복원하시겠습니까?\n(${new Date(historyItem.saved_at).toLocaleString('ko-KR')})`);
+    if (!confirmed) return;
+
+    try {
+      // 현재 상태를 먼저 히스토리에 저장
+      const now = getCurrentTimestamp();
+      const lastVersion = await queryOne<{ max_version: number }>(
+        `SELECT COALESCE(MAX(version), 0) as max_version FROM initial_charts_history WHERE initial_chart_id = ${chart.id}`
+      );
+      const newVersion = (lastVersion?.max_version || 0) + 1;
+
+      await execute(`
+        INSERT INTO initial_charts_history (initial_chart_id, patient_id, notes, chart_date, saved_at, version)
+        VALUES (${chart.id}, ${patientId}, ${escapeString(chart.notes || '')}, ${escapeString(chart.chart_date?.toString() || now)}, ${escapeString(now)}, ${newVersion})
+      `);
+
+      // 선택한 버전으로 복원
+      await execute(`
+        UPDATE initial_charts SET
+          notes = ${escapeString(historyItem.notes)},
+          chart_date = ${escapeString(historyItem.chart_date)},
+          updated_at = ${escapeString(now)}
+        WHERE id = ${chart.id}
+      `);
+
+      // 상태 업데이트
+      setChart({ ...chart, notes: historyItem.notes, chart_date: historyItem.chart_date, updated_at: now });
+      setFormData({ ...formData, notes: historyItem.notes, chart_date: historyItem.chart_date.split('T')[0] });
+      setShowHistory(false);
+      alert(`버전 ${historyItem.version}으로 복원되었습니다.`);
+    } catch (error) {
+      console.error('복원 오류:', error);
+      alert('복원에 실패했습니다.');
     }
   };
 
@@ -259,12 +425,22 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
       if (forceNew) {
         // 새진료 시작: 무조건 새로 insert
         console.log('새진료 차트 생성 시도...');
-        await insert(`
-          INSERT INTO initial_charts (patient_id, notes, chart_date, created_at, updated_at)
-          VALUES (${patientId}, ${escapeString(notes)}, ${escapeString(chartDate)}, ${escapeString(now)}, ${escapeString(now)})
+        const planId = treatmentPlan?.id || null;
+        const newChartId = await insert(`
+          INSERT INTO initial_charts (patient_id, notes, chart_date, treatment_plan_id, created_at, updated_at)
+          VALUES (${patientId}, ${escapeString(notes)}, ${escapeString(chartDate)}, ${planId}, ${escapeString(now)}, ${escapeString(now)})
         `);
 
-        console.log('생성 성공');
+        // 진료계획이 있으면 양방향 연결
+        if (planId && newChartId) {
+          await execute(`
+            UPDATE treatment_plans SET initial_chart_id = ${newChartId}, updated_at = ${escapeString(now)}
+            WHERE id = ${planId}
+          `);
+          console.log('진료계획-초진차트 양방향 연결 완료');
+        }
+
+        console.log('생성 성공, chartId:', newChartId);
         alert('새 진료차트가 생성되었습니다');
         onClose(); // 저장 후 닫기
       } else if (chart) {
@@ -283,12 +459,22 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
       } else {
         // 신규 생성
         console.log('초진차트 신규 생성 시도...');
-        await insert(`
-          INSERT INTO initial_charts (patient_id, notes, chart_date, created_at, updated_at)
-          VALUES (${patientId}, ${escapeString(notes)}, ${escapeString(chartDate)}, ${escapeString(now)}, ${escapeString(now)})
+        const planId = treatmentPlan?.id || null;
+        const newChartId = await insert(`
+          INSERT INTO initial_charts (patient_id, notes, chart_date, treatment_plan_id, created_at, updated_at)
+          VALUES (${patientId}, ${escapeString(notes)}, ${escapeString(chartDate)}, ${planId}, ${escapeString(now)}, ${escapeString(now)})
         `);
 
-        console.log('생성 성공');
+        // 진료계획이 있으면 양방향 연결
+        if (planId && newChartId) {
+          await execute(`
+            UPDATE treatment_plans SET initial_chart_id = ${newChartId}, updated_at = ${escapeString(now)}
+            WHERE id = ${planId}
+          `);
+          console.log('진료계획-초진차트 양방향 연결 완료');
+        }
+
+        console.log('생성 성공, chartId:', newChartId);
         alert('초진차트가 생성되었습니다');
         setIsEditing(false);
         await loadChart();
@@ -321,6 +507,15 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
             <h2 className="text-lg font-bold">초진차트 - {patientName}</h2>
           </div>
           <div className="flex gap-2">
+            {chart && (
+              <button
+                onClick={loadHistory}
+                disabled={historyLoading}
+                className="px-3 py-1.5 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition-colors font-medium text-sm"
+              >
+                <i className={`fas ${historyLoading ? 'fa-spinner fa-spin' : 'fa-history'} mr-1`}></i>히스토리
+              </button>
+            )}
             {!isEditing && chart && (
               <button
                 onClick={() => setIsEditing(true)}
@@ -339,6 +534,54 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
         </div>
 
         <div className="p-4">
+          {/* 히스토리 패널 */}
+          {showHistory && (
+            <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-800">
+                  <i className="fas fa-history text-blue-500 mr-2"></i>
+                  버전 히스토리
+                </h3>
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+              {historyList.length === 0 ? (
+                <p className="text-gray-500 text-sm">저장된 히스토리가 없습니다.</p>
+              ) : (
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {historyList.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between bg-white border rounded-lg p-3 hover:bg-blue-50 transition-colors"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-blue-600">v{item.version}</span>
+                          <span className="text-sm text-gray-500">
+                            {new Date(item.saved_at).toLocaleString('ko-KR')}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {item.notes ? `${item.notes.substring(0, 50)}...` : '(내용 없음)'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => restoreVersion(item)}
+                        className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                      >
+                        <i className="fas fa-undo mr-1"></i>복원
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {isEditing ? (
             <div className="space-y-4">
               {/* 진료일자 입력 */}
@@ -376,7 +619,71 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
               </div>
 
               <div>
-                <label className="block font-semibold mb-2 text-lg text-clinic-text-primary">초진차트 내용</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="font-semibold text-lg text-clinic-text-primary">초진차트 내용</label>
+
+                  {/* 녹음 컨트롤 */}
+                  <div className="flex items-center gap-2">
+                    {recordingError && (
+                      <span className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
+                        <i className="fas fa-exclamation-circle mr-1"></i>
+                        {recordingError}
+                      </span>
+                    )}
+
+                    {isRecording && (
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-red-100 rounded-lg">
+                        <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                        <span className="text-sm font-medium text-red-700">
+                          {formatRecordingTime(recordingTime)}
+                        </span>
+                      </div>
+                    )}
+
+                    {isTranscribing && (
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-100 rounded-lg">
+                        <i className="fas fa-spinner fa-spin text-yellow-600"></i>
+                        <span className="text-sm text-yellow-700">변환 중...</span>
+                      </div>
+                    )}
+
+                    {isRecording ? (
+                      <>
+                        {isPaused ? (
+                          <button
+                            onClick={resumeRecording}
+                            className="px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm"
+                          >
+                            <i className="fas fa-play mr-1"></i>계속
+                          </button>
+                        ) : (
+                          <button
+                            onClick={pauseRecording}
+                            className="px-3 py-1.5 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 text-sm"
+                          >
+                            <i className="fas fa-pause mr-1"></i>일시정지
+                          </button>
+                        )}
+                        <button
+                          onClick={handleStopRecording}
+                          disabled={isTranscribing}
+                          className="px-3 py-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm disabled:opacity-50"
+                        >
+                          <i className="fas fa-stop mr-1"></i>녹음 완료
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={startRecording}
+                        disabled={isTranscribing}
+                        className="px-3 py-1.5 bg-clinic-primary text-white rounded-lg hover:bg-clinic-primary-dark text-sm disabled:opacity-50"
+                      >
+                        <i className="fas fa-microphone mr-1"></i>음성 녹음
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
                   <p className="text-sm text-blue-800 mb-2">
                     <i className="fas fa-info-circle mr-1"></i>
@@ -390,9 +697,14 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
                       <i className="fas fa-save mr-1"></i>
                       입력 후 5초마다 자동저장됩니다
                     </li>
+                    <li className="text-purple-700">
+                      <i className="fas fa-microphone mr-1"></i>
+                      음성 녹음 후 자동으로 텍스트 변환됩니다
+                    </li>
                   </ul>
                 </div>
                 <textarea
+                  ref={textareaRef}
                   value={formData.notes || ''}
                   onChange={(e) => {
                     const newNotes = e.target.value;

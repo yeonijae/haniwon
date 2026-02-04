@@ -278,16 +278,39 @@ export async function saveMedicalTranscript(params: SaveTranscriptParams & {
   `;
 
   try {
+    // RETURNING id를 추가해서 삽입된 ID를 가져옴
+    const sqlWithReturning = sql.trim().replace(/;?\s*$/, ' RETURNING id');
+
     const response = await fetch(`${API_URL}/api/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sql }),
+      body: JSON.stringify({ sql: sqlWithReturning }),
     });
 
     const data = await response.json();
+
+    // PostgreSQL RETURNING 결과에서 id 추출
+    if (data.rows && data.rows.length > 0) {
+      const firstRow = data.rows[0];
+      // rows가 객체 배열인 경우
+      if (typeof firstRow === 'object' && !Array.isArray(firstRow)) {
+        return firstRow.id || null;
+      }
+      // rows가 배열인 경우 (columns + rows 형태)
+      if (data.columns && Array.isArray(firstRow)) {
+        const idIndex = data.columns.indexOf('id');
+        if (idIndex >= 0) {
+          return firstRow[idIndex];
+        }
+      }
+    }
+
+    // 호환성: lastrowid도 확인
     if (data.lastrowid > 0) {
       return data.lastrowid;
     }
+
+    console.log('진료녹취 저장 완료 (ID 없음):', data);
     return null;
   } catch (error) {
     console.error('진료녹취 저장 실패:', error);

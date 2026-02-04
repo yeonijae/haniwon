@@ -14,6 +14,7 @@ import type {
   MemoSummaryItem,
 } from '../types';
 import type { Reservation } from '../../reservation/types';
+import { searchLocalPatients, type LocalPatient } from '../lib/patientSync';
 
 const MSSQL_API_BASE = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
@@ -97,15 +98,50 @@ export interface TreatmentSummary {
 
 // 환자 검색 API
 export const searchPatients = async (query: string): Promise<PatientSearchResult[]> => {
-  try {
-    const res = await fetch(`${MSSQL_API_BASE}/api/patients/search?q=${encodeURIComponent(query)}&limit=10`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (data.error) return [];
-    return data;
-  } catch {
-    return [];
-  }
+  // MSSQL과 로컬 환자를 동시에 검색
+  const [mssqlResults, localResults] = await Promise.all([
+    // MSSQL 검색
+    (async () => {
+      try {
+        const res = await fetch(`${MSSQL_API_BASE}/api/patients/search?q=${encodeURIComponent(query)}&limit=10`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        if (data.error) return [];
+        return data as PatientSearchResult[];
+      } catch {
+        return [];
+      }
+    })(),
+    // 로컬 환자 검색
+    (async () => {
+      try {
+        const locals = await searchLocalPatients(query, 10);
+        // LocalPatient를 PatientSearchResult 형식으로 변환
+        return locals.map((p: LocalPatient): PatientSearchResult => ({
+          id: p.id,
+          chart_no: p.chart_number || '',
+          name: p.name,
+          birth: p.birth_date,
+          sex: p.gender === '남' ? 'M' : p.gender === '여' ? 'F' : 'M',
+          phone: p.phone,
+          last_visit: p.last_visit_date,
+        }));
+      } catch {
+        return [];
+      }
+    })(),
+  ]);
+
+  // 결과 병합 (로컬 환자를 먼저 표시)
+  const combined = [...localResults, ...mssqlResults];
+
+  // 중복 제거 (chart_no 기준)
+  const seen = new Set<string>();
+  return combined.filter(p => {
+    if (seen.has(p.chart_no)) return false;
+    seen.add(p.chart_no);
+    return true;
+  });
 };
 
 // 현장예약율 조회

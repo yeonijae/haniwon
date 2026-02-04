@@ -260,3 +260,105 @@ export async function syncRecentPatients(_daysAgo: number = 30): Promise<{ synce
   console.warn('syncRecentPatients: unified-server에 별도 엔드포인트 필요');
   return { synced: 0, errors: 0 };
 }
+
+// ============ 로컬 환자 등록 (MSSQL 없이) ============
+
+/**
+ * 로컬 차트번호 접두사
+ */
+export const LOCAL_CHART_PREFIX = 'L-';
+
+/**
+ * 다음 로컬 차트번호 생성
+ * 형식: L-00001, L-00002, ...
+ */
+export async function generateLocalChartNumber(): Promise<string> {
+  const results = await query<{ chart_number: string }>(
+    `SELECT chart_number FROM patients
+     WHERE chart_number LIKE '${LOCAL_CHART_PREFIX}%'
+     ORDER BY chart_number DESC LIMIT 1`
+  );
+
+  if (results.length === 0) {
+    return `${LOCAL_CHART_PREFIX}00001`;
+  }
+
+  const lastNumber = results[0].chart_number;
+  const numPart = parseInt(lastNumber.replace(LOCAL_CHART_PREFIX, ''), 10);
+  const nextNum = (numPart + 1).toString().padStart(5, '0');
+  return `${LOCAL_CHART_PREFIX}${nextNum}`;
+}
+
+/**
+ * 로컬 환자 등록 파라미터
+ */
+export interface CreateLocalPatientParams {
+  name: string;
+  phone?: string;
+  birth_date?: string;
+  gender?: '남' | '여';
+  address?: string;
+  memo?: string;
+}
+
+/**
+ * 로컬 환자 등록 (MSSQL 없이 PostgreSQL에만 저장)
+ */
+export async function createLocalPatient(params: CreateLocalPatientParams): Promise<LocalPatient | null> {
+  const now = getCurrentTimestamp();
+  const chartNumber = await generateLocalChartNumber();
+
+  try {
+    await execute(`
+      INSERT INTO patients (
+        mssql_id, name, chart_number, phone, birth_date, gender, address,
+        first_visit_date, last_visit_date, total_visits,
+        created_at, updated_at, synced_at
+      ) VALUES (
+        NULL,
+        ${escapeString(params.name)},
+        ${escapeString(chartNumber)},
+        ${escapeString(params.phone || null)},
+        ${escapeString(params.birth_date || null)},
+        ${escapeString(params.gender || null)},
+        ${escapeString(params.address || null)},
+        ${escapeString(now.split('T')[0])},
+        NULL,
+        0,
+        ${escapeString(now)},
+        ${escapeString(now)},
+        NULL
+      )
+    `);
+
+    return await getLocalPatientByChartNo(chartNumber);
+  } catch (err) {
+    console.error('로컬 환자 등록 오류:', err);
+    return null;
+  }
+}
+
+/**
+ * 로컬 환자 검색 (MSSQL 없이 PostgreSQL에서만)
+ */
+export async function searchLocalPatients(searchTerm: string, limit: number = 50): Promise<LocalPatient[]> {
+  const escaped = escapeString(`%${searchTerm}%`);
+  return await query<LocalPatient>(
+    `SELECT * FROM patients
+     WHERE (name ILIKE ${escaped} OR chart_number ILIKE ${escaped} OR phone ILIKE ${escaped})
+     ORDER BY updated_at DESC
+     LIMIT ${limit}`
+  );
+}
+
+/**
+ * 로컬 전용 환자 목록 조회 (mssql_id가 NULL인 환자)
+ */
+export async function getLocalOnlyPatients(limit: number = 100): Promise<LocalPatient[]> {
+  return await query<LocalPatient>(
+    `SELECT * FROM patients
+     WHERE mssql_id IS NULL
+     ORDER BY created_at DESC
+     LIMIT ${limit}`
+  );
+}

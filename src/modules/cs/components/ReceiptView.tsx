@@ -94,6 +94,7 @@ import PackageManageModal from './PackageManageModal';
 import PackageQuickAddModal from './PackageQuickAddModal';
 import { PackageTimeline } from './PackageTimeline';
 import PatientCRMView from './PatientCRMView';
+import LocalPatientRegisterModal from './LocalPatientRegisterModal';
 import type { TimelineEvent } from '../types';
 // 분리된 컴포넌트 및 헬퍼 import
 import {
@@ -214,6 +215,9 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
   const [searchResults, setSearchResults] = useState<PatientSearchResult[]>([]);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+
+  // 로컬 환자 등록 모달 상태
+  const [showLocalPatientModal, setShowLocalPatientModal] = useState(false);
 
   // 약침 모달 상태
   const [showYakchimModal, setShowYakchimModal] = useState(false);
@@ -2009,6 +2013,14 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
           )}
         </div>
 
+        <button
+          onClick={() => setShowLocalPatientModal(true)}
+          className="local-patient-btn"
+          title="로컬 환자 등록 (EMR 연동 없이)"
+        >
+          <i className="fa-solid fa-user-plus"></i> 환자등록
+        </button>
+
         <button onClick={loadReceipts} className="refresh-btn">
           <i className="fa-solid fa-rotate-right"></i> 새로고침
         </button>
@@ -2644,6 +2656,19 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
           )}
         </div>
       </div>
+
+      {/* 로컬 환자 등록 모달 */}
+      {showLocalPatientModal && (
+        <LocalPatientRegisterModal
+          onClose={() => setShowLocalPatientModal(false)}
+          onSuccess={(patientId, chartNumber, patientName) => {
+            console.log('로컬 환자 등록 완료:', { patientId, chartNumber, patientName });
+            // 등록 후 해당 환자로 검색
+            setSearchTerm(chartNumber);
+            setShowLocalPatientModal(false);
+          }}
+        />
+      )}
 
       {/* 예약 모달 */}
       <ReservationStep1Modal

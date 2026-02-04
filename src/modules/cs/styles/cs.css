@@ -17879,3 +17879,37 @@
   color: #6b7280;
   margin-top: 4px;
 }
+
+/* ============================================
+   로컬 환자 등록 버튼
+   ============================================ */
+.local-patient-btn {
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
+}
+
+.local-patient-btn:hover {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(99, 102, 241, 0.4);
+}
+
+.local-patient-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
+}
+
+.local-patient-btn i {
+  font-size: 12px;
+}
