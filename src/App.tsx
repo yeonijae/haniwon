@@ -27,6 +27,7 @@ import WikiApp from './modules/wiki/WikiApp';
 import CSApp from './modules/cs/CSApp';
 import ExamApp from './modules/exam/ExamApp';
 import ChatApp from './modules/chat/ChatApp';
+import MetricsApp from './modules/metrics/MetricsApp';
 
 // Public Blog Pages (공개 - 로그인 불필요)
 import BlogListPage from './modules/blog/pages/BlogListPage';
@@ -234,6 +235,12 @@ function App() {
       <Route
         path="/chat/*"
         element={user ? <ChatApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Metrics Routes (지표관리) */}
+      <Route
+        path="/metrics/*"
+        element={user ? <MetricsApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Fallback */}
