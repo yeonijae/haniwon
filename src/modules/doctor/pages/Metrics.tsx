@@ -17,7 +17,7 @@ import {
   type RevenuePerPatientResponse,
 } from '../api/metricsApi';
 
-type TabType = 'overview' | 'choojin' | 'revisit' | 'revenue' | 'weekly';
+type TabType = 'overview' | 'choojin' | 'revisit' | 'revenue' | 'weekly' | 'compare';
 
 // 주차 선택용 유틸
 function getWeekOptions() {
@@ -83,15 +83,19 @@ function MetricCard({
   );
 }
 
+// 주차 선택 props 타입
+interface WeekOption {
+  year: number;
+  week: number;
+  label: string;
+}
+
 // 종합 탭
-function OverviewTab() {
+function OverviewTab({ selectedWeek }: { selectedWeek: WeekOption }) {
   const [loading, setLoading] = useState(true);
   const [choojinData, setChoojinData] = useState<ChoojinListResponse['data'] | null>(null);
   const [revisitData, setRevisitData] = useState<RevisitRateResponse['data'] | null>(null);
   const [revenueData, setRevenueData] = useState<RevenuePerPatientResponse['data'] | null>(null);
-
-  const weekOptions = useMemo(() => getWeekOptions(), []);
-  const [selectedWeek, setSelectedWeek] = useState(weekOptions[0]);
 
   useEffect(() => {
     loadData();
@@ -134,26 +138,6 @@ function OverviewTab() {
 
   return (
     <div className="space-y-6">
-      {/* 주차 선택 */}
-      <div className="flex items-center gap-4">
-        <label className="text-sm font-medium text-gray-600">기간 선택:</label>
-        <select
-          value={`${selectedWeek.year}-${selectedWeek.week}`}
-          onChange={(e) => {
-            const [y, w] = e.target.value.split('-').map(Number);
-            const opt = weekOptions.find((o) => o.year === y && o.week === w);
-            if (opt) setSelectedWeek(opt);
-          }}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-primary"
-        >
-          {weekOptions.map((opt) => (
-            <option key={`${opt.year}-${opt.week}`} value={`${opt.year}-${opt.week}`}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
       {/* 초진수 요약 */}
       <div>
         <h3 className="text-sm font-semibold text-gray-700 mb-3">
@@ -333,13 +317,10 @@ function OverviewTab() {
 }
 
 // 초진분석 탭
-function ChoojinTab() {
+function ChoojinTab({ selectedWeek }: { selectedWeek: WeekOption }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<ChoojinListResponse['data'] | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'chim' | 'jabo' | 'yak'>('all');
-
-  const weekOptions = useMemo(() => getWeekOptions(), []);
-  const [selectedWeek, setSelectedWeek] = useState(weekOptions[0]);
 
   useEffect(() => {
     loadData();
@@ -375,39 +356,19 @@ function ChoojinTab() {
 
   return (
     <div className="space-y-4">
-      {/* 필터 */}
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-600">기간:</label>
-          <select
-            value={`${selectedWeek.year}-${selectedWeek.week}`}
-            onChange={(e) => {
-              const [y, w] = e.target.value.split('-').map(Number);
-              const opt = weekOptions.find((o) => o.year === y && o.week === w);
-              if (opt) setSelectedWeek(opt);
-            }}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-primary"
-          >
-            {weekOptions.map((opt) => (
-              <option key={`${opt.year}-${opt.week}`} value={`${opt.year}-${opt.week}`}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-600">유형:</label>
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value as typeof filterType)}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-primary"
-          >
-            <option value="all">전체</option>
-            <option value="chim">침환자</option>
-            <option value="jabo">자보환자</option>
-            <option value="yak">약환자</option>
-          </select>
-        </div>
+      {/* 유형 필터 */}
+      <div className="flex items-center gap-2">
+        <label className="text-sm font-medium text-gray-600">유형:</label>
+        <select
+          value={filterType}
+          onChange={(e) => setFilterType(e.target.value as typeof filterType)}
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-primary"
+        >
+          <option value="all">전체</option>
+          <option value="chim">침환자</option>
+          <option value="jabo">자보환자</option>
+          <option value="yak">약환자</option>
+        </select>
       </div>
 
       {/* 요약 카드 */}
@@ -499,12 +460,9 @@ function ChoojinTab() {
 }
 
 // 재진율 탭
-function RevisitTab() {
+function RevisitTab({ selectedWeek }: { selectedWeek: WeekOption }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<RevisitRateResponse['data'] | null>(null);
-
-  const weekOptions = useMemo(() => getWeekOptions(), []);
-  const [selectedWeek, setSelectedWeek] = useState(weekOptions[3]); // 3주 전부터 (추적 완료된 데이터)
 
   useEffect(() => {
     loadData();
@@ -530,31 +488,6 @@ function RevisitTab() {
 
   return (
     <div className="space-y-6">
-      {/* 기간 선택 */}
-      <div className="flex items-center gap-4">
-        <label className="text-sm font-medium text-gray-600">초진 기준 주차:</label>
-        <select
-          value={`${selectedWeek.year}-${selectedWeek.week}`}
-          onChange={(e) => {
-            const [y, w] = e.target.value.split('-').map(Number);
-            const opt = weekOptions.find((o) => o.year === y && o.week === w);
-            if (opt) setSelectedWeek(opt);
-          }}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-primary"
-        >
-          {weekOptions.map((opt) => (
-            <option key={`${opt.year}-${opt.week}`} value={`${opt.year}-${opt.week}`}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-        {data?.period && (
-          <span className="text-xs text-gray-500">
-            추적 종료일: {data.period.tracking_end_date}
-          </span>
-        )}
-      </div>
-
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <i className="fas fa-spinner fa-spin text-2xl text-gray-400"></i>
@@ -687,12 +620,9 @@ function RevisitTab() {
 }
 
 // 객단가 탭
-function RevenueTab() {
+function RevenueTab({ selectedWeek }: { selectedWeek: WeekOption }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<RevenuePerPatientResponse['data'] | null>(null);
-
-  const weekOptions = useMemo(() => getWeekOptions(), []);
-  const [selectedWeek, setSelectedWeek] = useState(weekOptions[0]);
 
   useEffect(() => {
     loadData();
@@ -718,26 +648,6 @@ function RevenueTab() {
 
   return (
     <div className="space-y-6">
-      {/* 기간 선택 */}
-      <div className="flex items-center gap-4">
-        <label className="text-sm font-medium text-gray-600">기간:</label>
-        <select
-          value={`${selectedWeek.year}-${selectedWeek.week}`}
-          onChange={(e) => {
-            const [y, w] = e.target.value.split('-').map(Number);
-            const opt = weekOptions.find((o) => o.year === y && o.week === w);
-            if (opt) setSelectedWeek(opt);
-          }}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-primary"
-        >
-          {weekOptions.map((opt) => (
-            <option key={`${opt.year}-${opt.week}`} value={`${opt.year}-${opt.week}`}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <i className="fas fa-spinner fa-spin text-2xl text-gray-400"></i>
@@ -863,15 +773,61 @@ function RevenueTab() {
   );
 }
 
+// 대표원장 (비교에서 제외)
+const EXCLUDED_DOCTOR = '김대현';
+
+// 주차별 추이 탭 뷰 모드
+type WeeklyViewMode = 'total' | 'by_doctor';
+
+// 원장별 주차 데이터 타입
+interface DoctorWeeklyData {
+  choojin: { total: number; chim_new: number; chim_re: number; jabo_new: number; jabo_re: number; yak_new: number; yak_re: number };
+  revisit: { total_choojin: number; rejin_rate: number; samjin_rate: number; ital_rate: number };
+  revenue: {
+    total: number;
+    avg_per_patient: number;
+    insurance: number;
+    insurance_pain_uncovered: number;  // 건보환자 통증비급여
+    insurance_daily_count: number;  // 건보 연인원
+    insurance_avg: number;  // 건보 객단가
+    jabo: number;
+    jabo_daily_count: number;  // 자보 연인원
+    jabo_avg: number;  // 자보 객단가
+    uncovered: number;
+    insurance_patients: number;
+    jabo_patients: number;
+    total_patients: number;
+    work_days: number;
+    daily_visit_count: number;
+  };
+}
+
 // 주차별 추이 탭 (16주)
 function WeeklyTrendTab() {
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<WeeklyViewMode>('total');
+  const [selectedDoctor, setSelectedDoctor] = useState<string>('');
+
   const [weeklyData, setWeeklyData] = useState<{
     week: { year: number; week: number; label: string; startDate: string; endDate: string };
     choojin: { total: number; chim_new: number; chim_re: number; jabo_new: number; jabo_re: number; yak_new: number; yak_re: number };
     revisit: { total_choojin: number; rejin_rate: number; samjin_rate: number; ital_rate: number };
-    revenue: { total: number; avg_per_patient: number };
+    revenue: { total: number; avg_per_patient: number; insurance: number; jabo: number; uncovered: number; insurance_patients: number; jabo_patients: number; total_patients: number; work_days: number; daily_visit_count: number };
+    byDoctor: Record<string, DoctorWeeklyData>;
   }[]>([]);
+
+  // 원장 목록 (김대현 제외)
+  const doctorList = useMemo(() => {
+    const doctors = new Set<string>();
+    weeklyData.forEach((data) => {
+      Object.keys(data.byDoctor).forEach((name) => {
+        if (name !== EXCLUDED_DOCTOR) {
+          doctors.add(name);
+        }
+      });
+    });
+    return Array.from(doctors).sort();
+  }, [weeklyData]);
 
   // 16주 옵션 생성
   const weeks16 = useMemo(() => {
@@ -903,6 +859,13 @@ function WeeklyTrendTab() {
     loadAllWeeksData();
   }, []);
 
+  // 첫 번째 원장 자동 선택
+  useEffect(() => {
+    if (doctorList.length > 0 && !selectedDoctor) {
+      setSelectedDoctor(doctorList[0]);
+    }
+  }, [doctorList, selectedDoctor]);
+
   async function loadAllWeeksData() {
     setLoading(true);
     try {
@@ -913,6 +876,60 @@ function WeeklyTrendTab() {
           getRevisitRate({ start_date: week.startDate, end_date: week.endDate }),
           getRevenuePerPatient({ start_date: week.startDate, end_date: week.endDate }),
         ]);
+
+        // 원장별 데이터 추출
+        const byDoctor: Record<string, DoctorWeeklyData> = {};
+        const choojinByDoctor = choojinRes.data?.summary?.by_doctor || {};
+        const revisitByDoctor = revisitRes.data?.by_doctor || {};
+        const revenueByDoctor = revenueRes.data?.by_doctor || {};
+
+        // 모든 원장 목록 수집
+        const allDoctors = new Set([
+          ...Object.keys(choojinByDoctor),
+          ...Object.keys(revisitByDoctor),
+          ...Object.keys(revenueByDoctor),
+        ]);
+
+        allDoctors.forEach((doctorName) => {
+          const choojinDoc = choojinByDoctor[doctorName];
+          const revisitDoc = revisitByDoctor[doctorName];
+          const revenueDoc = revenueByDoctor[doctorName];
+
+          byDoctor[doctorName] = {
+            choojin: {
+              total: choojinDoc?.total || 0,
+              chim_new: choojinDoc?.chim_new || 0,
+              chim_re: choojinDoc?.chim_re || 0,
+              jabo_new: choojinDoc?.jabo_new || 0,
+              jabo_re: choojinDoc?.jabo_re || 0,
+              yak_new: choojinDoc?.yak_new || 0,
+              yak_re: choojinDoc?.yak_re || 0,
+            },
+            revisit: {
+              total_choojin: revisitDoc?.total_choojin || 0,
+              rejin_rate: revisitDoc?.rejin_rate || 0,
+              samjin_rate: revisitDoc?.samjin_rate || 0,
+              ital_rate: revisitDoc?.ital_rate || 0,
+            },
+            revenue: {
+              total: revenueDoc?.total?.total_revenue || 0,
+              avg_per_patient: revenueDoc?.total?.avg_per_patient || 0,
+              insurance: revenueDoc?.insurance?.total_revenue || 0,
+              insurance_pain_uncovered: revenueDoc?.insurance?.pain_uncovered || 0,
+              insurance_daily_count: revenueDoc?.insurance?.daily_count || 0,
+              insurance_avg: revenueDoc?.insurance?.avg_per_patient || 0,
+              jabo: revenueDoc?.jabo?.total_revenue || 0,
+              jabo_daily_count: revenueDoc?.jabo?.daily_count || 0,
+              jabo_avg: revenueDoc?.jabo?.avg_per_patient || 0,
+              uncovered: revenueDoc?.uncovered?.total_revenue || 0,
+              insurance_patients: revenueDoc?.insurance?.patient_count || 0,
+              jabo_patients: revenueDoc?.jabo?.patient_count || 0,
+              total_patients: revenueDoc?.total?.patient_count || 0,
+              work_days: revenueDoc?.work_days || 0,
+              daily_visit_count: revenueDoc?.daily_visit_count || 0,
+            },
+          };
+        });
 
         return {
           week,
@@ -934,7 +951,16 @@ function WeeklyTrendTab() {
           revenue: {
             total: revenueRes.data?.overall?.total?.total_revenue || 0,
             avg_per_patient: revenueRes.data?.overall?.total?.avg_per_patient || 0,
+            insurance: revenueRes.data?.overall?.insurance?.total_revenue || 0,
+            jabo: revenueRes.data?.overall?.jabo?.total_revenue || 0,
+            uncovered: revenueRes.data?.overall?.uncovered?.total_revenue || 0,
+            insurance_patients: revenueRes.data?.overall?.insurance?.patient_count || 0,
+            jabo_patients: revenueRes.data?.overall?.jabo?.patient_count || 0,
+            total_patients: revenueRes.data?.overall?.total?.patient_count || 0,
+            work_days: 0, // overall에서는 사용하지 않음
+            daily_visit_count: 0, // overall에서는 사용하지 않음
           },
+          byDoctor,
         };
       });
 
@@ -947,6 +973,19 @@ function WeeklyTrendTab() {
     }
   }
 
+  // 선택된 원장의 주차별 데이터 추출
+  const selectedDoctorData = useMemo(() => {
+    if (!selectedDoctor) return [];
+    return weeklyData.map((data) => ({
+      week: data.week,
+      ...data.byDoctor[selectedDoctor] || {
+        choojin: { total: 0, chim_new: 0, chim_re: 0, jabo_new: 0, jabo_re: 0, yak_new: 0, yak_re: 0 },
+        revisit: { total_choojin: 0, rejin_rate: 0, samjin_rate: 0, ital_rate: 0 },
+        revenue: { total: 0, avg_per_patient: 0, insurance: 0, jabo: 0, uncovered: 0, insurance_patients: 0, jabo_patients: 0, total_patients: 0 },
+      },
+    }));
+  }, [weeklyData, selectedDoctor]);
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-64">
@@ -956,173 +995,667 @@ function WeeklyTrendTab() {
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100">
-          <h3 className="font-semibold text-gray-800">
-            <i className="fas fa-calendar-alt text-clinic-primary mr-2"></i>
-            최근 16주 주차별 추이
-          </h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th rowSpan={2} className="px-3 py-2 text-center text-gray-600 font-medium border-r sticky left-0 bg-gray-50 z-10">주차</th>
-                <th rowSpan={2} className="px-3 py-2 text-center text-gray-600 font-medium border-r">기간</th>
-                <th colSpan={7} className="px-3 py-2 text-center text-gray-600 font-medium border-b border-r bg-blue-50">초진수</th>
-                <th colSpan={4} className="px-3 py-2 text-center text-gray-600 font-medium border-b border-r bg-green-50">재진율/삼진율/이탈율</th>
-                <th colSpan={2} className="px-3 py-2 text-center text-gray-600 font-medium border-b bg-orange-50">객단가</th>
-              </tr>
-              <tr>
-                <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-blue-50">전체</th>
-                <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-blue-50">침신</th>
-                <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-blue-50">침재</th>
-                <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-blue-50">자신</th>
-                <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-blue-50">자재</th>
-                <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-blue-50">약신</th>
-                <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium border-r bg-blue-50">약재</th>
-                <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-green-50">초진</th>
-                <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-green-50">재진율</th>
-                <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-green-50">삼진율</th>
-                <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium border-r bg-green-50">이탈율</th>
-                <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-orange-50">총매출</th>
-                <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-orange-50">객단가</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {weeklyData.map((data, idx) => (
-                <tr key={`${data.week.year}-${data.week.week}`} className={idx === 0 ? 'bg-yellow-50' : 'hover:bg-gray-50'}>
-                  <td className="px-3 py-2 text-center font-medium text-gray-800 border-r sticky left-0 bg-inherit z-10">
-                    {data.week.year}년 {data.week.label}
-                    {idx === 0 && <span className="ml-1 text-xs text-orange-500">(현재)</span>}
-                  </td>
-                  <td className="px-3 py-2 text-center text-xs text-gray-500 border-r whitespace-nowrap">
-                    {data.week.startDate.slice(5)} ~ {data.week.endDate.slice(5)}
-                  </td>
-                  {/* 초진수 */}
-                  <td className="px-2 py-2 text-center font-semibold text-blue-600">{data.choojin.total}</td>
-                  <td className="px-2 py-2 text-center text-gray-600">{data.choojin.chim_new}</td>
-                  <td className="px-2 py-2 text-center text-gray-600">{data.choojin.chim_re}</td>
-                  <td className="px-2 py-2 text-center text-gray-600">{data.choojin.jabo_new}</td>
-                  <td className="px-2 py-2 text-center text-gray-600">{data.choojin.jabo_re}</td>
-                  <td className="px-2 py-2 text-center text-gray-600">{data.choojin.yak_new}</td>
-                  <td className="px-2 py-2 text-center text-gray-600 border-r">{data.choojin.yak_re}</td>
-                  {/* 재진율 */}
-                  <td className="px-2 py-2 text-center text-gray-600">{data.revisit.total_choojin}</td>
-                  <td className="px-2 py-2 text-center text-green-600 font-medium">{formatPercent(data.revisit.rejin_rate)}</td>
-                  <td className="px-2 py-2 text-center text-purple-600 font-medium">{formatPercent(data.revisit.samjin_rate)}</td>
-                  <td className="px-2 py-2 text-center text-red-600 font-medium border-r">{formatPercent(data.revisit.ital_rate)}</td>
-                  {/* 객단가 */}
-                  <td className="px-2 py-2 text-center text-gray-600 whitespace-nowrap">{formatNumber(Math.round(data.revenue.total / 10000))}만</td>
-                  <td className="px-2 py-2 text-center text-orange-600 font-medium whitespace-nowrap">{formatNumber(data.revenue.avg_per_patient)}원</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+  // 뷰 모드 선택 버튼
+  const ViewModeSelector = () => (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => setViewMode('total')}
+        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+          viewMode === 'total'
+            ? 'bg-clinic-primary text-white'
+            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+        }`}
+      >
+        <i className="fas fa-chart-bar mr-2"></i>전체
+      </button>
+      <button
+        onClick={() => setViewMode('by_doctor')}
+        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+          viewMode === 'by_doctor'
+            ? 'bg-clinic-primary text-white'
+            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+        }`}
+      >
+        <i className="fas fa-user-md mr-2"></i>원장별 구분
+      </button>
+    </div>
+  );
 
-      {/* 범례 */}
-      <div className="bg-white rounded-xl shadow-sm p-4">
-        <h4 className="text-sm font-medium text-gray-700 mb-2">범례</h4>
-        <div className="flex flex-wrap gap-4 text-xs text-gray-600">
-          <span><span className="font-medium">침신</span>: 침 신규초진</span>
-          <span><span className="font-medium">침재</span>: 침 재초진</span>
-          <span><span className="font-medium">자신</span>: 자보 신규초진</span>
-          <span><span className="font-medium">자재</span>: 자보 재초진</span>
-          <span><span className="font-medium">약신</span>: 약 신규초진</span>
-          <span><span className="font-medium">약재</span>: 약 재초진</span>
-        </div>
+  // 전체 테이블 렌더링
+  const renderTotalTable = (data: typeof weeklyData, title?: string, highlightFirst = true) => (
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-100">
+        <h3 className="font-semibold text-gray-800">
+          <i className="fas fa-calendar-alt text-clinic-primary mr-2"></i>
+          {title || '최근 16주 주차별 추이'}
+        </h3>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th rowSpan={2} className="px-3 py-2 text-center text-gray-600 font-medium border-r sticky left-0 bg-gray-50 z-10">주차</th>
+              <th rowSpan={2} className="px-3 py-2 text-center text-gray-600 font-medium border-r">기간</th>
+              <th colSpan={7} className="px-3 py-2 text-center text-gray-600 font-medium border-b border-r bg-blue-50">초진수</th>
+              <th colSpan={4} className="px-3 py-2 text-center text-gray-600 font-medium border-b border-r bg-green-50">재진율/삼진율/이탈율</th>
+              <th colSpan={2} className="px-3 py-2 text-center text-gray-600 font-medium border-b bg-orange-50">객단가</th>
+            </tr>
+            <tr>
+              <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-blue-50">전체</th>
+              <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-blue-50">침신</th>
+              <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-blue-50">침재</th>
+              <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-blue-50">자신</th>
+              <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-blue-50">자재</th>
+              <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-blue-50">약신</th>
+              <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium border-r bg-blue-50">약재</th>
+              <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-green-50">초진</th>
+              <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-green-50">재진율</th>
+              <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-green-50">삼진율</th>
+              <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium border-r bg-green-50">이탈율</th>
+              <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-orange-50">총매출</th>
+              <th className="px-2 py-2 text-center text-xs text-gray-500 font-medium bg-orange-50">객단가</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {data.map((d, idx) => (
+              <tr key={`${d.week.year}-${d.week.week}`} className={highlightFirst && idx === 0 ? 'bg-yellow-50' : 'hover:bg-gray-50'}>
+                <td className="px-3 py-2 text-center font-medium text-gray-800 border-r sticky left-0 bg-inherit z-10">
+                  {d.week.year}년 {d.week.label}
+                  {highlightFirst && idx === 0 && <span className="ml-1 text-xs text-orange-500">(현재)</span>}
+                </td>
+                <td className="px-3 py-2 text-center text-xs text-gray-500 border-r whitespace-nowrap">
+                  {d.week.startDate.slice(5)} ~ {d.week.endDate.slice(5)}
+                </td>
+                <td className="px-2 py-2 text-center font-semibold text-blue-600">{d.choojin.total}</td>
+                <td className="px-2 py-2 text-center text-gray-600">{d.choojin.chim_new}</td>
+                <td className="px-2 py-2 text-center text-gray-600">{d.choojin.chim_re}</td>
+                <td className="px-2 py-2 text-center text-gray-600">{d.choojin.jabo_new}</td>
+                <td className="px-2 py-2 text-center text-gray-600">{d.choojin.jabo_re}</td>
+                <td className="px-2 py-2 text-center text-gray-600">{d.choojin.yak_new}</td>
+                <td className="px-2 py-2 text-center text-gray-600 border-r">{d.choojin.yak_re}</td>
+                <td className="px-2 py-2 text-center text-gray-600">{d.revisit.total_choojin}</td>
+                <td className="px-2 py-2 text-center text-green-600 font-medium">{formatPercent(d.revisit.rejin_rate)}</td>
+                <td className="px-2 py-2 text-center text-purple-600 font-medium">{formatPercent(d.revisit.samjin_rate)}</td>
+                <td className="px-2 py-2 text-center text-red-600 font-medium border-r">{formatPercent(d.revisit.ital_rate)}</td>
+                <td className="px-2 py-2 text-center text-gray-600 whitespace-nowrap">{formatNumber(Math.round(d.revenue.total / 10000))}만</td>
+                <td className="px-2 py-2 text-center text-orange-600 font-medium whitespace-nowrap">{formatNumber(d.revenue.avg_per_patient)}원</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
+
+  return (
+    <div className="space-y-6">
+      {/* 뷰 모드 선택 */}
+      <ViewModeSelector />
+
+      {/* 전체 모드 */}
+      {viewMode === 'total' && (
+        <>
+          {renderTotalTable(weeklyData)}
+          {/* 범례 */}
+          <div className="bg-white rounded-xl shadow-sm p-4">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">범례</h4>
+            <div className="flex flex-wrap gap-4 text-xs text-gray-600">
+              <span><span className="font-medium">침신</span>: 침 신규초진</span>
+              <span><span className="font-medium">침재</span>: 침 재초진</span>
+              <span><span className="font-medium">자신</span>: 자보 신규초진</span>
+              <span><span className="font-medium">자재</span>: 자보 재초진</span>
+              <span><span className="font-medium">약신</span>: 약 신규초진</span>
+              <span><span className="font-medium">약재</span>: 약 재초진</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 원장별 구분 모드 */}
+      {viewMode === 'by_doctor' && (
+        <div className="space-y-4">
+          {/* 원장 선택 */}
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-600">원장 선택:</span>
+            <select
+              value={selectedDoctor}
+              onChange={(e) => setSelectedDoctor(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-primary"
+            >
+              {doctorList.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+
+          {selectedDoctor && renderTotalTable(
+            selectedDoctorData,
+            `${selectedDoctor} 원장 - 최근 16주 주차별 추이`,
+            true
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
+
+// 비교 항목 정의
+const COMPARE_ITEMS = [
+  // 초진수
+  { category: '초진수', key: 'choojin_chim', label: '침초', defaultChecked: true },
+  { category: '초진수', key: 'choojin_jabo', label: '자초', defaultChecked: false },
+  { category: '초진수', key: 'choojin_yak', label: '약초', defaultChecked: false },
+  // 평환 (초진수 다음 위치)
+  { category: '평환', key: 'pyunghwan', label: '평환', defaultChecked: true },
+  // 재진율
+  { category: '재진율', key: 'revisit_rejin', label: '재진율', defaultChecked: true },
+  { category: '재진율', key: 'revisit_samjin', label: '삼진율', defaultChecked: true },
+  { category: '재진율', key: 'revisit_ital', label: '이탈율', defaultChecked: true },
+  // 매출
+  { category: '매출', key: 'revenue_total', label: '총매출', defaultChecked: false },
+  { category: '매출', key: 'revenue_insurance', label: '건보매출', defaultChecked: false },
+  { category: '매출', key: 'revenue_jabo', label: '자보매출', defaultChecked: false },
+  { category: '매출', key: 'revenue_uncovered', label: '비보매출', defaultChecked: false },
+  { category: '매출', key: 'avg_insurance', label: '건보객단', defaultChecked: true },
+  { category: '매출', key: 'avg_jabo', label: '자보객단', defaultChecked: true },
+];
+
+// 카테고리별 그룹화
+const COMPARE_CATEGORIES = ['초진수', '평환', '재진율', '매출'];
+
+// 원장간 비교 탭
+function DoctorCompareTab({ checkedItems }: { checkedItems: Set<string> }) {
+  const [loading, setLoading] = useState(true);
+
+  const [weeklyData, setWeeklyData] = useState<{
+    week: { year: number; week: number; label: string; startDate: string; endDate: string };
+    byDoctor: Record<string, DoctorWeeklyData>;
+  }[]>([]);
+
+  // 원장 목록 (김대현 제외)
+  const doctorList = useMemo(() => {
+    const doctors = new Set<string>();
+    weeklyData.forEach((data) => {
+      Object.keys(data.byDoctor).forEach((name) => {
+        if (name !== EXCLUDED_DOCTOR) {
+          doctors.add(name);
+        }
+      });
+    });
+    return Array.from(doctors).sort();
+  }, [weeklyData]);
+
+  // 12주 옵션 생성
+  const weeks12 = useMemo(() => {
+    const options: { year: number; week: number; label: string; startDate: string; endDate: string }[] = [];
+    const today = new Date();
+    const currentWeek = getISOWeek(today);
+
+    for (let i = 0; i < 12; i++) {
+      let y = currentWeek.year;
+      let w = currentWeek.week - i;
+      if (w < 1) {
+        y -= 1;
+        w += 52;
+      }
+      const dates = getWeekDates(y, w);
+      const label = `${w}주`;
+      options.push({
+        year: y,
+        week: w,
+        label,
+        startDate: formatDate(dates.start),
+        endDate: formatDate(dates.end),
+      });
+    }
+    return options;
+  }, []);
+
+  // 체크된 항목 목록
+  const visibleItems = useMemo(() => {
+    return COMPARE_ITEMS.filter(item => checkedItems.has(item.key));
+  }, [checkedItems]);
+
+  // 주차 데이터 (역순: 12주전 → 현재)
+  const weeks = useMemo(() => [...weeks12].reverse(), [weeks12]);
+
+  useEffect(() => {
+    loadAllWeeksData();
+  }, []);
+
+  async function loadAllWeeksData() {
+    setLoading(true);
+    try {
+      const promises = weeks12.map(async (week) => {
+        const [choojinRes, revisitRes, revenueRes] = await Promise.all([
+          getChoojinList({ start_date: week.startDate, end_date: week.endDate }),
+          getRevisitRate({ start_date: week.startDate, end_date: week.endDate }),
+          getRevenuePerPatient({ start_date: week.startDate, end_date: week.endDate }),
+        ]);
+
+        const byDoctor: Record<string, DoctorWeeklyData> = {};
+        const choojinByDoctor = choojinRes.data?.summary?.by_doctor || {};
+        const revisitByDoctor = revisitRes.data?.by_doctor || {};
+        const revenueByDoctor = revenueRes.data?.by_doctor || {};
+
+        const allDoctors = new Set([
+          ...Object.keys(choojinByDoctor),
+          ...Object.keys(revisitByDoctor),
+          ...Object.keys(revenueByDoctor),
+        ]);
+
+        allDoctors.forEach((doctorName) => {
+          const choojinDoc = choojinByDoctor[doctorName];
+          const revisitDoc = revisitByDoctor[doctorName];
+          const revenueDoc = revenueByDoctor[doctorName];
+
+          byDoctor[doctorName] = {
+            choojin: {
+              total: choojinDoc?.total || 0,
+              chim_new: choojinDoc?.chim_new || 0,
+              chim_re: choojinDoc?.chim_re || 0,
+              jabo_new: choojinDoc?.jabo_new || 0,
+              jabo_re: choojinDoc?.jabo_re || 0,
+              yak_new: choojinDoc?.yak_new || 0,
+              yak_re: choojinDoc?.yak_re || 0,
+            },
+            revisit: {
+              total_choojin: revisitDoc?.total_choojin || 0,
+              rejin_rate: revisitDoc?.rejin_rate || 0,
+              samjin_rate: revisitDoc?.samjin_rate || 0,
+              ital_rate: revisitDoc?.ital_rate || 0,
+            },
+            revenue: {
+              total: revenueDoc?.total?.total_revenue || 0,
+              avg_per_patient: revenueDoc?.total?.avg_per_patient || 0,
+              insurance: revenueDoc?.insurance?.total_revenue || 0,
+              insurance_pain_uncovered: revenueDoc?.insurance?.pain_uncovered || 0,
+              insurance_daily_count: revenueDoc?.insurance?.daily_count || 0,
+              insurance_avg: revenueDoc?.insurance?.avg_per_patient || 0,
+              jabo: revenueDoc?.jabo?.total_revenue || 0,
+              jabo_daily_count: revenueDoc?.jabo?.daily_count || 0,
+              jabo_avg: revenueDoc?.jabo?.avg_per_patient || 0,
+              uncovered: revenueDoc?.uncovered?.total_revenue || 0,
+              insurance_patients: revenueDoc?.insurance?.patient_count || 0,
+              jabo_patients: revenueDoc?.jabo?.patient_count || 0,
+              total_patients: revenueDoc?.total?.patient_count || 0,
+              work_days: revenueDoc?.work_days || 0,
+              daily_visit_count: revenueDoc?.daily_visit_count || 0,
+            },
+          };
+        });
+
+        return { week, byDoctor };
+      });
+
+      const results = await Promise.all(promises);
+      setWeeklyData(results);
+    } catch (error) {
+      console.error('원장별 데이터 로드 실패:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // 데이터 값 추출 함수
+  const getValue = (data: DoctorWeeklyData, key: string): string | number => {
+    switch (key) {
+      case 'choojin_total': return data.choojin.total;
+      case 'choojin_chim': return `${data.choojin.chim_new + data.choojin.chim_re}(${data.choojin.chim_new}+${data.choojin.chim_re})`;
+      case 'choojin_jabo': return data.choojin.jabo_new + data.choojin.jabo_re;
+      case 'choojin_yak': return data.choojin.yak_new + data.choojin.yak_re;
+      case 'revisit_choojin': return data.revisit.total_choojin;
+      case 'revisit_rejin': return formatPercent(data.revisit.rejin_rate);
+      case 'revisit_samjin': return formatPercent(data.revisit.samjin_rate);
+      case 'revisit_ital': return formatPercent(data.revisit.ital_rate);
+      case 'revenue_total': return `${formatNumber(Math.round(data.revenue.total / 10000))}만`;
+      case 'revenue_insurance': return `${formatNumber(Math.round(data.revenue.insurance / 10000))}만`;
+      case 'revenue_jabo': return `${formatNumber(Math.round(data.revenue.jabo / 10000))}만`;
+      case 'revenue_uncovered': return `${formatNumber(Math.round(data.revenue.uncovered / 10000))}만`;
+      case 'avg_insurance': {
+        // 건보 객단가 = (건보매출 + 통증비급여) / 건보 연인원
+        const insuranceAvg = data.revenue.insurance_avg || 0;
+        if (insuranceAvg === 0) return '-';
+        return `${formatNumber(insuranceAvg)}원`;
+      }
+      case 'avg_jabo': {
+        // 자보 객단가 = 자보매출 / 자보 연인원
+        const jaboAvg = data.revenue.jabo_avg || 0;
+        if (jaboAvg === 0) return '-';
+        return `${formatNumber(jaboAvg)}원`;
+      }
+      case 'pyunghwan': {
+        // 평환 = 연인원(일별 건보+자보 환자수 합계) / 근무일수
+        const dailyVisitCount = data.revenue.daily_visit_count || 0;
+        const workDays = data.revenue.work_days || 0;
+        if (workDays === 0) return '-';
+        return (dailyVisitCount / workDays).toFixed(1);
+      }
+      default: return '-';
+    }
+  };
+
+  // 셀 스타일
+  const getCellStyle = (key: string): string => {
+    if (key === 'choojin_total') return 'font-semibold text-blue-600';
+    if (key.startsWith('choojin_')) return 'text-gray-600';
+    if (key === 'revisit_rejin') return 'text-green-600 font-medium';
+    if (key === 'revisit_samjin') return 'text-purple-600 font-medium';
+    if (key === 'revisit_ital') return 'text-red-600 font-medium';
+    if (key === 'revisit_choojin') return 'text-gray-600';
+    if (key === 'revenue_avg') return 'text-orange-600 font-medium';
+    if (key === 'revenue_insurance') return 'text-green-600';
+    if (key === 'revenue_jabo') return 'text-blue-600';
+    if (key === 'revenue_uncovered') return 'text-purple-600';
+    if (key === 'revenue_total') return 'text-gray-600';
+    if (key === 'pyunghwan') return 'text-teal-600 font-semibold';
+    return 'text-gray-600';
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64">
+        <i className="fas fa-spinner fa-spin text-2xl text-gray-400 mb-4"></i>
+        <p className="text-gray-500">원장별 12주 데이터를 불러오는 중...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* 선택된 항목이 없을 때 */}
+      {visibleItems.length === 0 && (
+        <div className="bg-white rounded-xl shadow-sm p-8 text-center text-gray-500">
+          <i className="fas fa-exclamation-circle text-2xl mb-2"></i>
+          <p>표시할 항목을 선택해주세요</p>
+        </div>
+      )}
+
+      {/* 통합 테이블 */}
+      {visibleItems.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-2 py-2 text-center text-gray-600 font-medium sticky left-0 bg-gray-50 z-20 w-8">
+                    원장
+                  </th>
+                  <th className="px-3 py-2 text-left text-gray-600 font-medium sticky left-8 bg-gray-50 z-20 min-w-[70px]">
+                    항목
+                  </th>
+                  {/* 주차 헤더 */}
+                  {weeks.map((w, idx) => (
+                    <th
+                      key={`${w.year}-${w.week}`}
+                      className={`px-2 py-2 text-center text-gray-500 font-medium whitespace-nowrap min-w-[45px] ${
+                        idx === weeks.length - 1 ? 'bg-yellow-50' : ''
+                      }`}
+                    >
+                      {w.label}
+                      {idx === weeks.length - 1 && (
+                        <span className="block text-[10px] text-orange-500">현재</span>
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {doctorList.map((doctorName, doctorIdx) => {
+                  // 원장별 주차 데이터
+                  const getDoctorData = (weekInfo: typeof weeks[0]) => {
+                    const weekData = weeklyData.find(
+                      (d) => d.week.year === weekInfo.year && d.week.week === weekInfo.week
+                    );
+                    return weekData?.byDoctor[doctorName] || {
+                      choojin: { total: 0, chim_new: 0, chim_re: 0, jabo_new: 0, jabo_re: 0, yak_new: 0, yak_re: 0 },
+                      revisit: { total_choojin: 0, rejin_rate: 0, samjin_rate: 0, ital_rate: 0 },
+                      revenue: { total: 0, avg_per_patient: 0, insurance: 0, jabo: 0, uncovered: 0, insurance_patients: 0, jabo_patients: 0, total_patients: 0 },
+                    };
+                  };
+
+                  return visibleItems.map((item, itemIdx) => (
+                    <tr
+                      key={`${doctorName}-${item.key}`}
+                      className={`${itemIdx === visibleItems.length - 1 ? 'border-b-2 border-gray-200' : 'border-b border-gray-100'} hover:bg-gray-50`}
+                    >
+                      {/* 원장명 (첫 번째 항목에만 표시, rowSpan 적용) */}
+                      {itemIdx === 0 && (
+                        <td
+                          rowSpan={visibleItems.length}
+                          className={`px-1 py-2 text-center font-semibold text-gray-800 sticky left-0 z-10 border-r border-gray-200 ${
+                            doctorIdx % 2 === 0 ? 'bg-gray-50' : 'bg-white'
+                          }`}
+                          style={{
+                            writingMode: 'vertical-rl',
+                            textOrientation: 'upright',
+                            letterSpacing: '0.1em',
+                          }}
+                        >
+                          {doctorName}
+                        </td>
+                      )}
+                      {/* 항목명 */}
+                      <td className={`px-3 py-1.5 text-gray-700 font-medium sticky left-8 z-10 ${
+                        doctorIdx % 2 === 0 ? 'bg-gray-50' : 'bg-white'
+                      }`}>
+                        {item.label}
+                      </td>
+                      {/* 주차별 데이터 */}
+                      {weeks.map((w, weekIdx) => (
+                        <td
+                          key={`${w.year}-${w.week}`}
+                          className={`px-2 py-1.5 text-center whitespace-nowrap ${getCellStyle(item.key)} ${
+                            weekIdx === weeks.length - 1 ? 'bg-yellow-50' : ''
+                          }`}
+                        >
+                          {getValue(getDoctorData(w), item.key)}
+                        </td>
+                      ))}
+                    </tr>
+                  ));
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 사이드바 메뉴 아이템
+const MENU_ITEMS: { id: TabType; label: string; icon: string }[] = [
+  { id: 'overview', label: '종합', icon: 'fa-home' },
+  { id: 'choojin', label: '초진분석', icon: 'fa-user-plus' },
+  { id: 'revisit', label: '재진율', icon: 'fa-chart-line' },
+  { id: 'revenue', label: '객단가', icon: 'fa-won-sign' },
+  { id: 'weekly', label: '주차별 추이', icon: 'fa-calendar-alt' },
+  { id: 'compare', label: '원장간 비교', icon: 'fa-users' },
+];
 
 // 메인 컴포넌트
 function Metrics() {
   const [selectedTab, setSelectedTab] = useState<TabType>('overview');
 
-  return (
-    <div className="h-full flex flex-col bg-gray-50">
-      {/* 헤더 */}
-      <div className="bg-white border-b px-6 py-4">
-        <h1 className="text-xl font-bold text-gray-800">
-          <i className="fas fa-chart-pie text-clinic-primary mr-2"></i>
-          지표관리
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">진료 성과 및 운영 지표를 확인합니다</p>
-      </div>
+  // 공통 주차 선택 상태
+  const weekOptions = useMemo(() => getWeekOptions(), []);
+  const [selectedWeek, setSelectedWeek] = useState(weekOptions[0]);
 
-      {/* 탭 네비게이션 */}
-      <div className="bg-white border-b px-6">
-        <div className="flex gap-1">
-          <button
-            onClick={() => setSelectedTab('overview')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              selectedTab === 'overview'
-                ? 'border-clinic-primary text-clinic-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <i className="fas fa-home mr-2"></i>
-            종합
-          </button>
-          <button
-            onClick={() => setSelectedTab('choojin')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              selectedTab === 'choojin'
-                ? 'border-clinic-primary text-clinic-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <i className="fas fa-user-plus mr-2"></i>
-            초진분석
-          </button>
-          <button
-            onClick={() => setSelectedTab('revisit')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              selectedTab === 'revisit'
-                ? 'border-clinic-primary text-clinic-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <i className="fas fa-chart-line mr-2"></i>
-            재진율
-          </button>
-          <button
-            onClick={() => setSelectedTab('revenue')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              selectedTab === 'revenue'
-                ? 'border-clinic-primary text-clinic-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <i className="fas fa-won-sign mr-2"></i>
-            객단가
-          </button>
-          <button
-            onClick={() => setSelectedTab('weekly')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              selectedTab === 'weekly'
-                ? 'border-clinic-primary text-clinic-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <i className="fas fa-calendar-alt mr-2"></i>
-            주차별 추이
-          </button>
+  // 재진율 탭용 (3주 전 기본값)
+  const [revisitWeek, setRevisitWeek] = useState(weekOptions[3]);
+
+  // 원장간 비교 탭용 - 체크된 항목 상태
+  const [checkedItems, setCheckedItems] = useState<Set<string>>(() => {
+    const defaultChecked = new Set<string>();
+    COMPARE_ITEMS.forEach(item => {
+      if (item.defaultChecked) defaultChecked.add(item.key);
+    });
+    return defaultChecked;
+  });
+
+  // 체크박스 토글
+  const toggleItem = (key: string) => {
+    setCheckedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  // 전체 선택/해제
+  const selectAllItems = () => setCheckedItems(new Set(COMPARE_ITEMS.map(item => item.key)));
+  const deselectAllItems = () => setCheckedItems(new Set());
+
+  // 현재 탭에 따른 주차/기간 정보
+  const currentWeek = selectedTab === 'revisit' ? revisitWeek : selectedWeek;
+  const setCurrentWeek = selectedTab === 'revisit' ? setRevisitWeek : setSelectedWeek;
+
+  // 추적 종료일 계산 (재진율 탭용)
+  const trackingEndDate = useMemo(() => {
+    const dates = getWeekDates(revisitWeek.year, revisitWeek.week);
+    const endDate = new Date(dates.end);
+    endDate.setDate(endDate.getDate() + 21);
+    return formatDate(endDate);
+  }, [revisitWeek]);
+
+  return (
+    <div className="h-full flex bg-gray-50">
+      {/* 좌측 사이드바 */}
+      <div className="w-48 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+        {/* 사이드바 헤더 */}
+        <div className="px-4 py-4 border-b border-gray-100">
+          <h1 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <i className="fas fa-chart-pie text-clinic-primary"></i>
+            지표관리
+          </h1>
+        </div>
+
+        {/* 메뉴 목록 */}
+        <nav className="flex-1 py-2">
+          {MENU_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setSelectedTab(item.id)}
+              className={`w-full px-4 py-3 text-left text-sm font-medium flex items-center gap-3 transition-colors ${
+                selectedTab === item.id
+                  ? 'bg-clinic-primary/10 text-clinic-primary border-r-3 border-clinic-primary'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+              }`}
+            >
+              <i className={`fas ${item.icon} w-4 text-center`}></i>
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        {/* 사이드바 푸터 */}
+        <div className="px-4 py-3 border-t border-gray-100 text-xs text-gray-400">
+          <i className="fas fa-info-circle mr-1"></i>
+          21일 추적 기준
         </div>
       </div>
 
-      {/* 콘텐츠 영역 */}
-      <div className="flex-1 overflow-auto p-6">
-        {selectedTab === 'overview' && <OverviewTab />}
-        {selectedTab === 'choojin' && <ChoojinTab />}
-        {selectedTab === 'revisit' && <RevisitTab />}
-        {selectedTab === 'revenue' && <RevenueTab />}
-        {selectedTab === 'weekly' && <WeeklyTrendTab />}
+      {/* 우측 콘텐츠 영역 */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* 콘텐츠 헤더 */}
+        <div className="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-800 flex-shrink-0">
+              <i className={`fas ${MENU_ITEMS.find(m => m.id === selectedTab)?.icon} text-clinic-primary mr-2`}></i>
+              {MENU_ITEMS.find(m => m.id === selectedTab)?.label}
+            </h2>
+
+            {/* 기간 선택 (주차별 추이, 원장간 비교 제외) */}
+            {selectedTab !== 'weekly' && selectedTab !== 'compare' && (
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600">
+                    {selectedTab === 'revisit' ? '초진 기준 주차:' : '기간:'}
+                  </label>
+                  <select
+                    value={`${currentWeek.year}-${currentWeek.week}`}
+                    onChange={(e) => {
+                      const [y, w] = e.target.value.split('-').map(Number);
+                      const opt = weekOptions.find((o) => o.year === y && o.week === w);
+                      if (opt) setCurrentWeek(opt);
+                    }}
+                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-primary"
+                  >
+                    {weekOptions.map((opt) => (
+                      <option key={`${opt.year}-${opt.week}`} value={`${opt.year}-${opt.week}`}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {selectedTab === 'revisit' && (
+                  <span className="text-xs text-gray-500">
+                    추적 종료일: {trackingEndDate}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* 원장간 비교 - 항목 선택 */}
+            {selectedTab === 'compare' && (
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* 전체선택/해제 버튼 */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={selectAllItems}
+                    className="px-2 py-1 text-xs font-medium bg-clinic-primary text-white rounded hover:bg-clinic-primary/90 transition-colors"
+                  >
+                    전체
+                  </button>
+                  <button
+                    onClick={deselectAllItems}
+                    className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
+                  >
+                    해제
+                  </button>
+                  <span className="text-xs text-gray-400">({checkedItems.size})</span>
+                </div>
+
+                <div className="w-px h-5 bg-gray-200"></div>
+
+                {/* 카테고리별 체크박스 */}
+                {COMPARE_CATEGORIES.map((category, catIdx) => (
+                  <div key={category} className="flex items-center gap-2">
+                    {COMPARE_ITEMS.filter(item => item.category === category).map(item => (
+                      <label key={item.key} className="flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checkedItems.has(item.key)}
+                          onChange={() => toggleItem(item.key)}
+                          className="w-3.5 h-3.5 rounded border-gray-300 text-clinic-primary focus:ring-clinic-primary"
+                        />
+                        <span className="text-xs text-gray-600">{item.label}</span>
+                      </label>
+                    ))}
+                    {catIdx < COMPARE_CATEGORIES.length - 1 && (
+                      <div className="w-px h-4 bg-gray-200 ml-1"></div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 콘텐츠 본문 */}
+        <div className="flex-1 overflow-auto p-6">
+          {selectedTab === 'overview' && <OverviewTab selectedWeek={selectedWeek} />}
+          {selectedTab === 'choojin' && <ChoojinTab selectedWeek={selectedWeek} />}
+          {selectedTab === 'revisit' && <RevisitTab selectedWeek={revisitWeek} />}
+          {selectedTab === 'revenue' && <RevenueTab selectedWeek={selectedWeek} />}
+          {selectedTab === 'weekly' && <WeeklyTrendTab />}
+          {selectedTab === 'compare' && <DoctorCompareTab checkedItems={checkedItems} />}
+        </div>
       </div>
     </div>
   );
