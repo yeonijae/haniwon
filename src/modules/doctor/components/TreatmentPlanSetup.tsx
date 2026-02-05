@@ -4,12 +4,13 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { query, insert, escapeString } from '@shared/lib/postgres';
+import { query, insert, execute, escapeString } from '@shared/lib/postgres';
 import type { TreatmentProgram, TreatmentPlan, SelectedProgram } from '../types';
 
 interface TreatmentPlanSetupProps {
   patientId: number;
   patientName: string;
+  existingPlan?: Partial<TreatmentPlan>; // 수정 모드일 때 기존 계획
   onCreateChart: (plan: Partial<TreatmentPlan>) => void;
   onSave?: (plan: Partial<TreatmentPlan>) => void; // 저장 후 닫기
   onClose: () => void;
@@ -18,20 +19,36 @@ interface TreatmentPlanSetupProps {
 const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
   patientId,
   patientName,
+  existingPlan,
   onCreateChart,
   onSave,
   onClose,
 }) => {
+  const isEditMode = !!existingPlan?.id;
   const [programs, setPrograms] = useState<TreatmentProgram[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // 폼 상태
-  const [diseaseName, setDiseaseName] = useState('');
-  const [durationWeeks, setDurationWeeks] = useState<number | null>(null);
-  const [visitFrequency, setVisitFrequency] = useState('주 2회');
-  const [selectedPrograms, setSelectedPrograms] = useState<number[]>([]);
-  const [notes, setNotes] = useState('');
+  // 현재 날짜/시간 기본값 계산
+  const getDefaultDateTime = () => {
+    const now = existingPlan?.created_at ? new Date(existingPlan.created_at) : new Date();
+    const date = now.toISOString().split('T')[0];
+    const time = now.toTimeString().slice(0, 5); // HH:MM
+    return { date, time };
+  };
+
+  const defaultDateTime = getDefaultDateTime();
+
+  // 폼 상태 (수정 모드일 때 기존 값으로 초기화)
+  const [planDate, setPlanDate] = useState(defaultDateTime.date);
+  const [planTime, setPlanTime] = useState(defaultDateTime.time);
+  const [diseaseName, setDiseaseName] = useState(existingPlan?.disease_name || '');
+  const [durationWeeks, setDurationWeeks] = useState<number | null>(existingPlan?.planned_duration_weeks || null);
+  const [visitFrequency, setVisitFrequency] = useState(existingPlan?.visit_frequency || '30일');
+  const [selectedPrograms, setSelectedPrograms] = useState<number[]>(
+    existingPlan?.selected_programs?.map(p => p.program_id) || []
+  );
+  const [notes, setNotes] = useState(existingPlan?.notes || '');
 
   // 치료 프로그램 목록 로드
   const loadPrograms = useCallback(async () => {
@@ -62,48 +79,16 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
     );
   };
 
-  // 선택된 프로그램들의 정보 계산
+  // 선택된 프로그램들의 정보
   const getSelectedProgramsInfo = (): SelectedProgram[] => {
     return programs
       .filter(p => selectedPrograms.includes(p.id))
       .map(p => ({
         program_id: p.id,
         name: p.name,
-        duration: p.duration,
-        price: p.price,
+        duration: 0,
+        price: 0,
       }));
-  };
-
-  // 1회 비용 계산
-  const calculateCostPerVisit = () => {
-    return getSelectedProgramsInfo().reduce((sum, p) => sum + p.price, 0);
-  };
-
-  // 예상 총 비용 계산
-  const calculateTotalCost = () => {
-    if (!durationWeeks) return 0;
-
-    // 내원 빈도 파싱 (예: "주 2회" -> 2)
-    const frequencyMatch = visitFrequency.match(/주\s*(\d+)\s*회/);
-    const visitsPerWeek = frequencyMatch ? parseInt(frequencyMatch[1]) : 2;
-
-    const totalVisits = durationWeeks * visitsPerWeek;
-    return totalVisits * calculateCostPerVisit();
-  };
-
-  // 예상 총 내원 횟수 계산
-  const calculateTotalVisits = () => {
-    if (!durationWeeks) return 0;
-
-    const frequencyMatch = visitFrequency.match(/주\s*(\d+)\s*회/);
-    const visitsPerWeek = frequencyMatch ? parseInt(frequencyMatch[1]) : 2;
-
-    return durationWeeks * visitsPerWeek;
-  };
-
-  // 금액 포맷
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('ko-KR').format(price);
   };
 
   // 저장 처리 (proceedToChart: true면 초진차트로 진행, false면 저장 후 닫기)
@@ -112,60 +97,71 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
 
     try {
       const selectedProgramsData = getSelectedProgramsInfo();
-      const costPerVisit = calculateCostPerVisit();
-      const totalCost = calculateTotalCost();
-      const totalVisits = calculateTotalVisits();
 
-      console.log('[TreatmentPlanSetup] 저장 시작:', { patientId, diseaseName, durationWeeks, visitFrequency });
+      // 사용자가 선택한 날짜/시간을 타임스탬프로 변환
+      const planTimestamp = `${planDate} ${planTime}:00`;
 
-      // 진료 계획 DB에 저장
-      const sql = `
-        INSERT INTO treatment_plans (
-          patient_id,
-          disease_name,
-          planned_duration_weeks,
-          planned_visits,
-          visit_frequency,
-          estimated_cost_per_visit,
-          estimated_total_cost,
-          selected_programs,
-          notes,
-          status,
-          created_at,
-          updated_at
-        ) VALUES (
-          ${patientId},
-          ${diseaseName ? escapeString(diseaseName) : 'NULL'},
-          ${durationWeeks || 'NULL'},
-          ${totalVisits || 'NULL'},
-          ${escapeString(visitFrequency)},
-          ${costPerVisit},
-          ${totalCost || 'NULL'},
-          ${escapeString(JSON.stringify(selectedProgramsData))}::jsonb,
-          ${notes ? escapeString(notes) : 'NULL'},
-          'active',
-          NOW(),
-          NOW()
-        )
-      `;
-      console.log('[TreatmentPlanSetup] SQL:', sql);
+      console.log('[TreatmentPlanSetup] 저장 시작:', { patientId, diseaseName, durationWeeks, visitFrequency, isEditMode, planTimestamp });
 
-      const planId = await insert(sql);
-      console.log('[TreatmentPlanSetup] 저장 완료, planId:', planId);
+      let planId: number;
+
+      if (isEditMode && existingPlan?.id) {
+        // 수정 모드: UPDATE 쿼리
+        const updateSql = `
+          UPDATE treatment_plans SET
+            disease_name = ${diseaseName ? escapeString(diseaseName) : 'NULL'},
+            planned_duration_weeks = ${durationWeeks || 'NULL'},
+            visit_frequency = ${escapeString(visitFrequency)},
+            selected_programs = ${escapeString(JSON.stringify(selectedProgramsData))}::jsonb,
+            notes = ${notes ? escapeString(notes) : 'NULL'},
+            created_at = ${escapeString(planTimestamp)}::timestamptz,
+            updated_at = NOW()
+          WHERE id = ${existingPlan.id}
+        `;
+        console.log('[TreatmentPlanSetup] UPDATE SQL:', updateSql);
+        await execute(updateSql);
+        planId = existingPlan.id;
+        console.log('[TreatmentPlanSetup] 수정 완료, planId:', planId);
+      } else {
+        // 신규 모드: INSERT 쿼리
+        const insertSql = `
+          INSERT INTO treatment_plans (
+            patient_id,
+            disease_name,
+            planned_duration_weeks,
+            visit_frequency,
+            selected_programs,
+            notes,
+            status,
+            created_at,
+            updated_at
+          ) VALUES (
+            ${patientId},
+            ${diseaseName ? escapeString(diseaseName) : 'NULL'},
+            ${durationWeeks || 'NULL'},
+            ${escapeString(visitFrequency)},
+            ${escapeString(JSON.stringify(selectedProgramsData))}::jsonb,
+            ${notes ? escapeString(notes) : 'NULL'},
+            'active',
+            ${escapeString(planTimestamp)}::timestamptz,
+            NOW()
+          )
+        `;
+        console.log('[TreatmentPlanSetup] INSERT SQL:', insertSql);
+        planId = await insert(insertSql);
+        console.log('[TreatmentPlanSetup] 저장 완료, planId:', planId);
+      }
 
       const planData: Partial<TreatmentPlan> = {
         id: planId,
         patient_id: patientId,
         disease_name: diseaseName || undefined,
         planned_duration_weeks: durationWeeks || undefined,
-        planned_visits: totalVisits || undefined,
         visit_frequency: visitFrequency,
-        estimated_cost_per_visit: costPerVisit,
-        estimated_total_cost: totalCost || undefined,
         selected_programs: selectedProgramsData,
         notes: notes || undefined,
         status: 'active',
-        created_at: new Date().toISOString(),
+        created_at: new Date(`${planDate}T${planTime}:00`).toISOString(),
         updated_at: new Date().toISOString(),
       };
 
@@ -208,7 +204,7 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
         {/* 헤더 */}
         <div className="flex-shrink-0 px-6 py-4 border-b flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-gray-800">새 진료 시작</h2>
+            <h2 className="text-lg font-bold text-gray-800">{isEditMode ? '진료계획 수정' : '새 진료 시작'}</h2>
             <p className="text-sm text-gray-500">{patientName} 환자</p>
           </div>
           <button
@@ -221,6 +217,27 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
 
         {/* 컨텐츠 */}
         <div className="flex-1 overflow-auto p-6 space-y-6">
+          {/* 진료계획 날짜/시간 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              진료계획 일시
+            </label>
+            <div className="flex gap-3">
+              <input
+                type="date"
+                value={planDate}
+                onChange={(e) => setPlanDate(e.target.value)}
+                className="w-44 px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
+              />
+              <input
+                type="time"
+                value={planTime}
+                onChange={(e) => setPlanTime(e.target.value)}
+                className="w-36 px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
+              />
+            </div>
+          </div>
+
           {/* 질환명 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -241,7 +258,12 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
               예상 치료기간 <span className="text-gray-400 font-normal">(선택)</span>
             </label>
             <div className="flex flex-wrap gap-2">
-              {[4, 8, 12, 16, 24].map(weeks => (
+              {[
+                { weeks: 4, label: '1개월' },
+                { weeks: 12, label: '3개월' },
+                { weeks: 26, label: '6개월~1년' },
+                { weeks: 52, label: '1년이상' },
+              ].map(({ weeks, label }) => (
                 <button
                   key={weeks}
                   onClick={() => setDurationWeeks(durationWeeks === weeks ? null : weeks)}
@@ -251,20 +273,9 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
                       : 'bg-white text-gray-700 border-gray-300 hover:border-clinic-primary'
                   }`}
                 >
-                  {weeks}주
+                  {label}
                 </button>
               ))}
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  value={durationWeeks && ![4, 8, 12, 16, 24].includes(durationWeeks) ? durationWeeks : ''}
-                  onChange={(e) => setDurationWeeks(parseInt(e.target.value) || null)}
-                  className="w-20 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
-                  placeholder="직접"
-                  min="1"
-                />
-                <span className="text-gray-500">주</span>
-              </div>
             </div>
           </div>
 
@@ -274,7 +285,7 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
               예상 내원 빈도
             </label>
             <div className="flex flex-wrap gap-2">
-              {['주 1회', '주 2회', '주 3회', '격주'].map(freq => (
+              {['미정', '15일', '30일', '3개월'].map(freq => (
                 <button
                   key={freq}
                   onClick={() => setVisitFrequency(freq)}
@@ -293,7 +304,7 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
           {/* 치료 프로그램 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              치료 프로그램 <span className="text-gray-400 font-normal">(선택)</span>
+              치료 프로그램 <span className="text-gray-400 font-normal">(복수 선택 가능)</span>
             </label>
             {programs.length === 0 ? (
               <div className="text-center py-6 bg-gray-50 rounded-lg">
@@ -301,60 +312,26 @@ const TreatmentPlanSetup: React.FC<TreatmentPlanSetupProps> = ({
                 <p className="text-sm text-gray-400 mt-1">설정에서 프로그램을 추가해주세요.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-wrap gap-2">
                 {programs.map(program => (
                   <button
                     key={program.id}
                     onClick={() => toggleProgram(program.id)}
-                    className={`p-3 rounded-lg border text-left transition-colors ${
+                    className={`px-4 py-2 rounded-lg border transition-colors flex items-center gap-2 ${
                       selectedPrograms.includes(program.id)
-                        ? 'bg-clinic-primary/10 border-clinic-primary text-clinic-primary'
-                        : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
+                        ? 'bg-clinic-primary text-white border-clinic-primary'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-clinic-primary'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{program.name}</span>
-                      {selectedPrograms.includes(program.id) && (
-                        <i className="fas fa-check text-clinic-primary"></i>
-                      )}
-                    </div>
-                    <div className="text-sm text-gray-500 mt-0.5">
-                      {program.duration}분 · ₩{formatPrice(program.price)}
-                    </div>
+                    {selectedPrograms.includes(program.id) && (
+                      <i className="fas fa-check text-sm"></i>
+                    )}
+                    <span className="font-medium">{program.name}</span>
                   </button>
                 ))}
               </div>
             )}
           </div>
-
-          {/* 비용 요약 (프로그램 선택 시만 표시) */}
-          {selectedPrograms.length > 0 && (
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">예상 비용</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">1회 진료비</span>
-                  <span className="font-medium">₩{formatPrice(calculateCostPerVisit())}</span>
-                </div>
-                {durationWeeks && (
-                  <>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">
-                        예상 총 내원 ({durationWeeks}주 × {visitFrequency})
-                      </span>
-                      <span className="font-medium">{calculateTotalVisits()}회</span>
-                    </div>
-                    <div className="border-t pt-2 mt-2 flex justify-between">
-                      <span className="font-medium text-gray-700">예상 총 비용</span>
-                      <span className="font-bold text-lg text-clinic-primary">
-                        ₩{formatPrice(calculateTotalCost())}
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
 
           {/* 비고 */}
           <div>

@@ -5,10 +5,11 @@ import type { ProgressNote } from '../types';
 interface Props {
   patientId: number;
   patientName: string;
+  treatmentPlanId?: number; // 연결된 진료계획 ID (선택적)
   onClose: () => void;
 }
 
-const ProgressNoteView: React.FC<Props> = ({ patientId, patientName, onClose }) => {
+const ProgressNoteView: React.FC<Props> = ({ patientId, patientName, treatmentPlanId, onClose }) => {
   const [notes, setNotes] = useState<ProgressNote[]>([]);
   const [selectedNote, setSelectedNote] = useState<ProgressNote | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -61,7 +62,7 @@ const ProgressNoteView: React.FC<Props> = ({ patientId, patientName, onClose }) 
         alert('경과기록이 수정되었습니다');
       } else {
         await insert(`
-          INSERT INTO progress_notes (patient_id, note_date, subjective, objective, assessment, plan, follow_up_plan, notes, created_at, updated_at)
+          INSERT INTO progress_notes (patient_id, note_date, subjective, objective, assessment, plan, follow_up_plan, notes, treatment_plan_id, created_at, updated_at)
           VALUES (
             ${patientId},
             ${escapeString(noteDate)},
@@ -71,6 +72,7 @@ const ProgressNoteView: React.FC<Props> = ({ patientId, patientName, onClose }) 
             ${toSqlValue(formData.plan)},
             ${toSqlValue(formData.follow_up_plan)},
             ${toSqlValue(formData.notes)},
+            ${treatmentPlanId || 'NULL'},
             ${escapeString(now)},
             ${escapeString(now)}
           )
@@ -312,6 +314,13 @@ const ProgressNoteView: React.FC<Props> = ({ patientId, patientName, onClose }) 
                       <div>
                         <h4 className="font-semibold mb-2">추적 계획</h4>
                         <p className="whitespace-pre-wrap bg-gray-50 p-3 rounded">{selectedNote.follow_up_plan}</p>
+                      </div>
+                    )}
+
+                    {selectedNote.notes && (
+                      <div>
+                        <h4 className="font-semibold text-gray-700 mb-2">상세 기록</h4>
+                        <pre className="whitespace-pre-wrap bg-gray-100 p-3 rounded text-sm font-sans">{selectedNote.notes}</pre>
                       </div>
                     )}
                   </div>

@@ -10,6 +10,14 @@ interface RecentPatient extends Patient {
   last_visit_date?: string;
 }
 
+interface DailyPatient extends Patient {
+  has_chart: boolean;
+  has_plan: boolean;
+  plan_time?: string;
+  chart_time?: string;
+  disease_name?: string;
+}
+
 const PatientList: React.FC = () => {
   const navigate = useNavigate();
   const [recentPatients, setRecentPatients] = useState<RecentPatient[]>([]);
@@ -18,6 +26,12 @@ const PatientList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+
+  // 날짜별 진료 환자 필터
+  const [filterDate, setFilterDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [dailyPatients, setDailyPatients] = useState<DailyPatient[]>([]);
+  const [loadingDaily, setLoadingDaily] = useState(false);
+  const [showDailyFilter, setShowDailyFilter] = useState(false);
 
   useEffect(() => {
     loadRecentPatients();
@@ -32,6 +46,109 @@ const PatientList: React.FC = () => {
       setIsSearching(false);
     }
   }, [searchTerm]);
+
+  // 날짜별 필터가 활성화되면 해당 날짜의 환자 로드
+  useEffect(() => {
+    if (showDailyFilter) {
+      loadDailyPatients();
+    }
+  }, [filterDate, showDailyFilter]);
+
+  // 날짜별 진료 환자 로드
+  const loadDailyPatients = async () => {
+    try {
+      setLoadingDaily(true);
+
+      const startOfDay = `${filterDate} 00:00:00`;
+      const endOfDay = `${filterDate} 23:59:59`;
+
+      // 1. 해당 날짜의 진료계획 조회
+      const plansData = await query<{
+        patient_id: number;
+        disease_name: string | null;
+        created_at: string;
+      }>(`
+        SELECT patient_id, disease_name, created_at
+        FROM treatment_plans
+        WHERE created_at >= '${startOfDay}' AND created_at <= '${endOfDay}'
+        ORDER BY created_at DESC
+      `);
+
+      // 2. 해당 날짜의 초진차트 조회
+      const chartsData = await query<{
+        patient_id: number;
+        chart_date: string;
+        created_at: string;
+      }>(`
+        SELECT patient_id, chart_date, created_at
+        FROM initial_charts
+        WHERE chart_date = '${filterDate}' OR (created_at >= '${startOfDay}' AND created_at <= '${endOfDay}')
+        ORDER BY created_at DESC
+      `);
+
+      // 3. 환자 ID별로 정보 수집
+      const patientMap = new Map<number, {
+        has_chart: boolean;
+        has_plan: boolean;
+        plan_time?: string;
+        chart_time?: string;
+        disease_name?: string;
+      }>();
+
+      // 진료계획 데이터 처리
+      (plansData || []).forEach(plan => {
+        const existing = patientMap.get(plan.patient_id) || { has_chart: false, has_plan: false };
+        existing.has_plan = true;
+        existing.plan_time = plan.created_at;
+        existing.disease_name = plan.disease_name || undefined;
+        patientMap.set(plan.patient_id, existing);
+      });
+
+      // 초진차트 데이터 처리
+      (chartsData || []).forEach(chart => {
+        const existing = patientMap.get(chart.patient_id) || { has_chart: false, has_plan: false };
+        existing.has_chart = true;
+        existing.chart_time = chart.created_at;
+        patientMap.set(chart.patient_id, existing);
+      });
+
+      if (patientMap.size === 0) {
+        setDailyPatients([]);
+        return;
+      }
+
+      // 4. MSSQL에서 환자 정보 가져오기
+      const patients: DailyPatient[] = [];
+      for (const [patientId, info] of patientMap) {
+        try {
+          const response = await fetch(`${MSSQL_API_URL}/api/patients/${patientId}`);
+          if (response.ok) {
+            const mssqlData = await response.json();
+            const patient = convertMssqlPatient(mssqlData);
+            patients.push({
+              ...patient,
+              ...info,
+            });
+          }
+        } catch (err) {
+          console.error(`환자 ${patientId} 정보 조회 실패:`, err);
+        }
+      }
+
+      // 시간순 정렬 (최신순)
+      patients.sort((a, b) => {
+        const timeA = a.plan_time || a.chart_time || '';
+        const timeB = b.plan_time || b.chart_time || '';
+        return new Date(timeB).getTime() - new Date(timeA).getTime();
+      });
+
+      setDailyPatients(patients);
+    } catch (error) {
+      console.error('날짜별 진료 환자 로드 실패:', error);
+    } finally {
+      setLoadingDaily(false);
+    }
+  };
 
   // MSSQL에서 여러 환자 정보 가져오기
   const fetchPatientsFromMssql = async (patientIds: number[]): Promise<Patient[]> => {
@@ -277,22 +394,117 @@ const PatientList: React.FC = () => {
           환자 차트
         </h1>
 
-        {/* 검색 */}
+        {/* 검색 + 날짜 필터 */}
         <div className="bg-white rounded-lg shadow-sm p-4 mb-4 flex-shrink-0">
-          <input
-            type="text"
-            placeholder="환자 이름, 차트번호, 전화번호로 검색 (2글자 이상)..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-clinic-primary focus:ring-2 focus:ring-clinic-primary focus:ring-opacity-20 transition-colors"
-          />
-          {searchTerm.length > 0 && searchTerm.length < 2 && (
-            <p className="text-xs text-orange-600 mt-2">검색어를 2글자 이상 입력해주세요</p>
-          )}
-          {isSearching && (
-            <p className="text-xs text-clinic-text-secondary mt-2">검색 중...</p>
-          )}
+          <div className="flex gap-4 items-start">
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="환자 이름, 차트번호, 전화번호로 검색 (2글자 이상)..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  if (e.target.value.length >= 2) {
+                    setShowDailyFilter(false);
+                  }
+                }}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-clinic-primary focus:ring-2 focus:ring-clinic-primary focus:ring-opacity-20 transition-colors"
+              />
+              {searchTerm.length > 0 && searchTerm.length < 2 && (
+                <p className="text-xs text-orange-600 mt-2">검색어를 2글자 이상 입력해주세요</p>
+              )}
+              {isSearching && (
+                <p className="text-xs text-clinic-text-secondary mt-2">검색 중...</p>
+              )}
+            </div>
+
+            {/* 날짜별 필터 토글 */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowDailyFilter(!showDailyFilter)}
+                className={`px-4 py-2 rounded-lg border transition-colors flex items-center gap-2 ${
+                  showDailyFilter
+                    ? 'bg-clinic-primary text-white border-clinic-primary'
+                    : 'bg-white text-gray-700 border-gray-300 hover:border-clinic-primary'
+                }`}
+              >
+                <i className="fas fa-calendar-day"></i>
+                날짜별 조회
+              </button>
+              {showDailyFilter && (
+                <input
+                  type="date"
+                  value={filterDate}
+                  onChange={(e) => setFilterDate(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-clinic-primary"
+                />
+              )}
+            </div>
+          </div>
         </div>
+
+        {/* 날짜별 진료 환자 목록 */}
+        {showDailyFilter && searchTerm.length < 2 && (
+          <div className="bg-blue-50 border-2 border-blue-300 rounded-lg shadow-sm p-4 mb-4 flex-shrink-0">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-blue-800 flex items-center">
+                <i className="fas fa-calendar-check mr-2"></i>
+                {filterDate} 진료 환자 ({dailyPatients.length}명)
+              </h2>
+              {loadingDaily && (
+                <div className="flex items-center gap-2 text-blue-600">
+                  <div className="w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin"></div>
+                  <span className="text-sm">로딩 중...</span>
+                </div>
+              )}
+            </div>
+
+            {!loadingDaily && dailyPatients.length === 0 ? (
+              <p className="text-center py-6 text-blue-600">해당 날짜에 진료 기록이 없습니다</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-64 overflow-auto">
+                {dailyPatients.map((patient) => (
+                  <div
+                    key={patient.id}
+                    onClick={() => navigate(`/doctor/patients/${patient.id}?chartNo=${patient.chart_number}`)}
+                    className={`border-2 rounded-lg p-3 cursor-pointer transition-colors ${
+                      patient.has_chart
+                        ? 'bg-green-50 border-green-400 hover:bg-green-100'
+                        : 'bg-amber-50 border-amber-400 hover:bg-amber-100'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-gray-800 truncate">{patient.name}</p>
+                        <p className="text-xs text-gray-500">#{patient.chart_number}</p>
+                        {patient.disease_name && (
+                          <p className="text-xs text-gray-600 mt-1 truncate">{patient.disease_name}</p>
+                        )}
+                        <p className="text-xs text-gray-400 mt-1">
+                          {patient.plan_time && new Date(patient.plan_time).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-1 ml-2">
+                        {patient.has_plan && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            patient.has_chart ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {patient.has_chart ? '차트완료' : '계획만'}
+                          </span>
+                        )}
+                        {!patient.has_plan && patient.has_chart && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                            차트완료
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 차팅할 환자 (검색 중이 아닐 때만 표시) */}
         {searchTerm.length < 2 && needsChartingPatients.length > 0 && (

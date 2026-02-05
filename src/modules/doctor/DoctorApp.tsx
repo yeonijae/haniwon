@@ -14,18 +14,8 @@ import DosageInstructionManagement from './pages/DosageInstructionManagement';
 import DosageInstructionCreator from './pages/DosageInstructionCreator';
 import MedicalTranscripts from './pages/MedicalTranscripts';
 import Settings from './pages/Settings';
-
-// Components
-import TreatmentRecordList from '@shared/components/TreatmentRecordList';
-
-// 진료내역 페이지 컴포넌트
-const TreatmentRecordsPage: React.FC = () => {
-  return (
-    <div className="h-full bg-white">
-      <TreatmentRecordList />
-    </div>
-  );
-};
+import TreatmentHistory from './pages/TreatmentHistory';
+import Metrics from './pages/Metrics';
 
 interface ChartAppProps {
   user: PortalUser;
@@ -37,6 +27,7 @@ const menuItems = [
   { path: '/treatment-records', label: '진료내역', icon: 'fa-history' },
   { path: '/transcripts', label: '진료녹취', icon: 'fa-microphone' },
   { path: '/patients', label: '환자차트', icon: 'fa-users' },
+  { path: '/metrics', label: '지표관리', icon: 'fa-chart-pie' },
   { path: '/prescriptions', label: '처방관리', icon: 'fa-prescription' },
   { path: '/prescription-definitions', label: '처방정의', icon: 'fa-book-medical' },
   { path: '/dosage-instructions', label: '복용법', icon: 'fa-capsules' },
@@ -181,10 +172,11 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
       <main className="flex-1 overflow-hidden">
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/treatment-records" element={<TreatmentRecordsPage />} />
+          <Route path="/treatment-records" element={<TreatmentHistory />} />
           <Route path="/transcripts" element={<MedicalTranscripts />} />
           <Route path="/patients" element={<PatientList />} />
           <Route path="/patients/:id" element={<PatientDetail />} />
+          <Route path="/metrics" element={<Metrics />} />
           <Route path="/prescriptions" element={<PrescriptionManagement />} />
           <Route path="/prescription-definitions" element={<PrescriptionDefinitions />} />
           <Route path="/dosage-instructions" element={<DosageInstructionManagement />} />

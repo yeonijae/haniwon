@@ -7,9 +7,10 @@ import PrescriptionInput, { PrescriptionData } from './PrescriptionInput';
 interface ProgressEntry {
   id: number;
   entry_date: string;
-  treatment: string;  // 진료
-  diagnosis: string;  // 진단
-  prescription: string;  // 처방
+  treatment: string;  // 진료 (objective)
+  diagnosis: string;  // 진단 (assessment)
+  prescription: string;  // 처방 (plan)
+  notes: string;  // 상세 기록 (notes) - LegacyChartImporter에서 저장한 데이터
   prescription_issued: boolean;  // 처방전 발급 여부
   prescription_issued_at?: string;  // 처방전 발급 시각
   created_at: string;
@@ -92,6 +93,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
         objective: string;
         assessment: string;
         plan: string;
+        notes: string;
         prescription_issued: boolean;
         prescription_issued_at: string;
         created_at: string;
@@ -104,6 +106,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
         treatment: note.objective || '',
         diagnosis: note.assessment || '',
         prescription: note.plan || '',
+        notes: note.notes || '',
         prescription_issued: note.prescription_issued || false,
         prescription_issued_at: note.prescription_issued_at || undefined,
         created_at: note.created_at
@@ -193,6 +196,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
             objective = ${toSqlValue(parsed.treatment)},
             assessment = ${toSqlValue(parsed.diagnosis)},
             plan = ${toSqlValue(parsed.prescription)},
+            notes = ${toSqlValue(progressText.trim())},
             updated_at = ${escapeString(now)}
           WHERE id = ${editingProgressId}
         `);
@@ -206,6 +210,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
             objective = ${toSqlValue(parsed.treatment)},
             assessment = ${toSqlValue(parsed.diagnosis)},
             plan = ${toSqlValue(parsed.prescription)},
+            notes = ${toSqlValue(progressText.trim())},
             updated_at = ${escapeString(now)}
           WHERE id = ${lastSavedId}
         `);
@@ -214,13 +219,14 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
       } else {
         // 새 경과 생성
         const newId = await insert(`
-          INSERT INTO progress_notes (patient_id, note_date, objective, assessment, plan, created_at, updated_at)
+          INSERT INTO progress_notes (patient_id, note_date, objective, assessment, plan, notes, created_at, updated_at)
           VALUES (
             ${initialChart.patient_id},
             ${escapeString(noteDate)},
             ${toSqlValue(parsed.treatment)},
             ${toSqlValue(parsed.diagnosis)},
             ${toSqlValue(parsed.prescription)},
+            ${toSqlValue(progressText.trim())},
             ${escapeString(now)},
             ${escapeString(now)}
           )
@@ -267,13 +273,14 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
       const noteDate = new Date(progressDate).toISOString();
 
       await insert(`
-        INSERT INTO progress_notes (patient_id, note_date, objective, assessment, plan, created_at, updated_at)
+        INSERT INTO progress_notes (patient_id, note_date, objective, assessment, plan, notes, created_at, updated_at)
         VALUES (
           ${initialChart.patient_id},
           ${escapeString(noteDate)},
           ${toSqlValue(parsed.treatment)},
           ${toSqlValue(parsed.diagnosis)},
           ${toSqlValue(parsed.prescription)},
+          ${toSqlValue(progressText.trim())},
           ${escapeString(now)},
           ${escapeString(now)}
         )
@@ -355,25 +362,30 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     const entryDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     setProgressDate(entryDate);
 
-    // 텍스트 재구성 (diagnosis에 이미 [복진], [설진] 등이 포함되어 있을 수 있음)
-    let text = '';
-    if (entry.treatment) {
-      text += `[경과]\n${entry.treatment}\n\n`;
-    }
-    if (entry.diagnosis) {
-      // diagnosis에 이미 구분자가 있으면 그대로, 없으면 추가
-      if (entry.diagnosis.includes('[복진]') || entry.diagnosis.includes('[설진]') ||
-          entry.diagnosis.includes('[맥진]') || entry.diagnosis.includes('[혈색]')) {
-        text += `${entry.diagnosis}\n\n`;
-      } else {
-        text += `${entry.diagnosis}\n\n`;
+    // notes가 있으면 그것을 직접 사용 (LegacyChartImporter로 저장된 데이터)
+    if (entry.notes) {
+      setProgressText(entry.notes);
+    } else {
+      // 텍스트 재구성 (diagnosis에 이미 [복진], [설진] 등이 포함되어 있을 수 있음)
+      let text = '';
+      if (entry.treatment) {
+        text += `[경과]\n${entry.treatment}\n\n`;
       }
-    }
-    if (entry.prescription) {
-      text += `[처방]\n${entry.prescription}`;
+      if (entry.diagnosis) {
+        // diagnosis에 이미 구분자가 있으면 그대로, 없으면 추가
+        if (entry.diagnosis.includes('[복진]') || entry.diagnosis.includes('[설진]') ||
+            entry.diagnosis.includes('[맥진]') || entry.diagnosis.includes('[혈색]')) {
+          text += `${entry.diagnosis}\n\n`;
+        } else {
+          text += `${entry.diagnosis}\n\n`;
+        }
+      }
+      if (entry.prescription) {
+        text += `[처방]\n${entry.prescription}`;
+      }
+      setProgressText(text.trim());
     }
 
-    setProgressText(text.trim());
     setEditingProgressId(entry.id);
     setShowAddForm(true);
   };
@@ -402,6 +414,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
           objective = ${toSqlValue(parsed.treatment)},
           assessment = ${toSqlValue(parsed.diagnosis)},
           plan = ${toSqlValue(parsed.prescription)},
+          notes = ${toSqlValue(progressText.trim())},
           updated_at = ${escapeString(now)}
         WHERE id = ${editingProgressId}
       `);
@@ -536,8 +549,15 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     const progressEntry = progressEntries.find(entry => entry.id === progressId);
     if (!progressEntry) return;
 
-    // 처방 내용에서 공식 추출
-    const formula = extractFormulaFromPrescription(progressEntry.prescription || '');
+    // 처방 내용에서 공식 추출 (notes 또는 prescription 필드에서)
+    let prescriptionText = progressEntry.prescription || '';
+
+    // notes에서 [처방] 섹션 추출 (LegacyChartImporter로 저장된 경우)
+    if (!prescriptionText && progressEntry.notes) {
+      prescriptionText = extractSectionFromNotes(progressEntry.notes, '처방');
+    }
+
+    const formula = extractFormulaFromPrescription(prescriptionText);
 
     setPrescriptionFormula(formula);
     setPrescriptionSourceType('progress_note');
@@ -646,49 +666,49 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
 
     // 경과에서 진단 정보 추가
     progressEntries.forEach(entry => {
-      if (entry.diagnosis) {
-        const entryDate = new Date(entry.entry_date).toLocaleDateString('ko-KR');
-        if (!dates.includes(entryDate)) {
-          dates.push(entryDate);
+      const entryDate = new Date(entry.entry_date).toLocaleDateString('ko-KR');
+
+      // notes 또는 diagnosis에서 데이터 추출
+      const sourceText = entry.notes || entry.diagnosis || '';
+      if (!sourceText) return;
+
+      if (!dates.includes(entryDate)) {
+        dates.push(entryDate);
+      }
+
+      if (!data[entryDate]) {
+        data[entryDate] = {};
+      }
+
+      // [복진], [설진], [맥진], [혈색]로 구분되어 있는지 확인
+      const hasSections = /\[(복진|설진|맥진|혈색)\]/.test(sourceText);
+
+      if (hasSections) {
+        // 구분자가 있는 경우 각각 추출
+        const bokjinMatch = sourceText.match(/\[복진\]\s*([^\[]*)/i);
+        if (bokjinMatch && bokjinMatch[1].trim()) {
+          data[entryDate].복진 = cleanDiagnosisContent(bokjinMatch[1]);
         }
 
-        if (!data[entryDate]) {
-          data[entryDate] = {};
+        const seoljinMatch = sourceText.match(/\[설진\]\s*([^\[]*)/i);
+        if (seoljinMatch && seoljinMatch[1].trim()) {
+          data[entryDate].설진 = cleanDiagnosisContent(seoljinMatch[1]);
         }
 
-        // 경과의 diagnosis에서 각 섹션 추출
-        const diagnosisText = entry.diagnosis;
+        const maekjinMatch = sourceText.match(/\[맥진\]\s*([^\[]*)/i);
+        if (maekjinMatch && maekjinMatch[1].trim()) {
+          data[entryDate].맥진 = cleanDiagnosisContent(maekjinMatch[1]);
+        }
 
-        // [복진], [설진], [맥진], [혈색]로 구분되어 있는지 확인
-        const hasSections = /\[(복진|설진|맥진|혈색)\]/.test(diagnosisText);
-
-        if (hasSections) {
-          // 구분자가 있는 경우 각각 추출
-          const bokjinMatch = diagnosisText.match(/\[복진\]\s*([^\[]*)/i);
-          if (bokjinMatch && bokjinMatch[1].trim()) {
-            data[entryDate].복진 = cleanDiagnosisContent(bokjinMatch[1]);
-          }
-
-          const seoljinMatch = diagnosisText.match(/\[설진\]\s*([^\[]*)/i);
-          if (seoljinMatch && seoljinMatch[1].trim()) {
-            data[entryDate].설진 = cleanDiagnosisContent(seoljinMatch[1]);
-          }
-
-          const maekjinMatch = diagnosisText.match(/\[맥진\]\s*([^\[]*)/i);
-          if (maekjinMatch && maekjinMatch[1].trim()) {
-            data[entryDate].맥진 = cleanDiagnosisContent(maekjinMatch[1]);
-          }
-
-          const hyeolsaekMatch = diagnosisText.match(/\[혈색\]\s*([^\[]*)/i);
-          if (hyeolsaekMatch && hyeolsaekMatch[1].trim()) {
-            data[entryDate].혈색 = cleanDiagnosisContent(hyeolsaekMatch[1]);
-          }
-        } else {
-          // 구분자가 없는 경우 메모로 저장
-          const cleaned = cleanDiagnosisContent(diagnosisText);
-          if (cleaned) {
-            data[entryDate].메모 = cleaned;
-          }
+        const hyeolsaekMatch = sourceText.match(/\[혈색\]\s*([^\[]*)/i);
+        if (hyeolsaekMatch && hyeolsaekMatch[1].trim()) {
+          data[entryDate].혈색 = cleanDiagnosisContent(hyeolsaekMatch[1]);
+        }
+      } else if (entry.diagnosis) {
+        // 구분자가 없고 diagnosis 필드가 있는 경우 메모로 저장
+        const cleaned = cleanDiagnosisContent(entry.diagnosis);
+        if (cleaned) {
+          data[entryDate].메모 = cleaned;
         }
       }
     });
@@ -726,8 +746,19 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
 
     // 경과에서 처방 정보 추가
     progressEntries.forEach(entry => {
+      const entryDate = new Date(entry.entry_date).toLocaleDateString('ko-KR');
+
+      // notes에서 [처방] 섹션 추출 (LegacyChartImporter 데이터)
+      if (entry.notes) {
+        const prescriptionFromNotes = cleanDiagnosisContent(extractSectionFromNotes(entry.notes, '처방'));
+        if (prescriptionFromNotes) {
+          data.push({ date: entryDate, content: prescriptionFromNotes });
+          return; // notes에서 찾았으면 다음 entry로
+        }
+      }
+
+      // 기존 prescription 필드 확인
       if (entry.prescription) {
-        const entryDate = new Date(entry.entry_date).toLocaleDateString('ko-KR');
         const cleaned = cleanDiagnosisContent(entry.prescription);
         if (cleaned) {
           data.push({ date: entryDate, content: cleaned });
@@ -768,8 +799,19 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
 
     // 경과에서 진료(treatment) 정보 추가
     progressEntries.forEach(entry => {
+      const entryDate = new Date(entry.entry_date).toLocaleDateString('ko-KR');
+
+      // notes에서 [경과] 섹션 추출 (LegacyChartImporter 데이터)
+      if (entry.notes) {
+        const progressFromNotes = cleanDiagnosisContent(extractSectionFromNotes(entry.notes, '경과'));
+        if (progressFromNotes) {
+          data.push({ date: entryDate, content: progressFromNotes });
+          return; // notes에서 찾았으면 다음 entry로
+        }
+      }
+
+      // 기존 treatment 필드 확인
       if (entry.treatment) {
-        const entryDate = new Date(entry.entry_date).toLocaleDateString('ko-KR');
         const cleaned = cleanDiagnosisContent(entry.treatment);
         if (cleaned) {
           data.push({ date: entryDate, content: cleaned });
@@ -1199,47 +1241,92 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
                       </div>
                     </div>
 
-                    {entry.treatment && (
-                      <div className="mb-3">
-                        <h5 className="font-semibold text-gray-700 mb-2" style={{ fontSize: '0.95rem' }}>진료</h5>
-                        <p className="text-gray-600 whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '0.9rem' }}>{entry.treatment}</p>
-                      </div>
-                    )}
+                    {/* notes가 있으면 우선 표시 (LegacyChartImporter로 저장된 데이터) */}
+                    {entry.notes ? (
+                      (() => {
+                        // notes에서 [처방] 섹션 추출
+                        const prescriptionFromNotes = extractSectionFromNotes(entry.notes, '처방');
+                        return (
+                          <div>
+                            <pre className="text-gray-600 whitespace-pre-wrap font-sans" style={{ lineHeight: '1.7', fontSize: '0.9rem' }}>{entry.notes}</pre>
+                            {/* 처방 섹션이 있으면 처방전 발급 버튼 표시 */}
+                            {prescriptionFromNotes && (
+                              <div className="mt-3 pt-3 border-t border-gray-200">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-semibold text-gray-700">
+                                    <i className="fas fa-prescription mr-1"></i>처방 발급
+                                  </span>
+                                  {entry.prescription_issued ? (
+                                    <button
+                                      onClick={() => {
+                                        onClose();
+                                        navigate('/doctor/prescriptions');
+                                      }}
+                                      className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold hover:bg-green-200 transition-colors cursor-pointer"
+                                      title="처방 목록 보기"
+                                    >
+                                      <i className="fas fa-check-circle mr-1"></i>처방완료
+                                      <i className="fas fa-external-link-alt ml-1 text-[10px]"></i>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleIssuePrescriptionProgress(entry.id)}
+                                      className="px-2 py-1 bg-orange-500 text-white text-xs rounded hover:bg-orange-600 transition-colors font-semibold"
+                                    >
+                                      <i className="fas fa-paper-plane mr-1"></i>처방전 발급
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <>
+                        {entry.treatment && (
+                          <div className="mb-3">
+                            <h5 className="font-semibold text-gray-700 mb-2" style={{ fontSize: '0.95rem' }}>진료</h5>
+                            <p className="text-gray-600 whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '0.9rem' }}>{entry.treatment}</p>
+                          </div>
+                        )}
 
-                    {entry.diagnosis && (
-                      <div className="mb-3">
-                        <h5 className="font-semibold text-gray-700 mb-2" style={{ fontSize: '0.95rem' }}>진단</h5>
-                        <p className="text-gray-600 whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '0.9rem' }}>{entry.diagnosis}</p>
-                      </div>
-                    )}
+                        {entry.diagnosis && (
+                          <div className="mb-3">
+                            <h5 className="font-semibold text-gray-700 mb-2" style={{ fontSize: '0.95rem' }}>진단</h5>
+                            <p className="text-gray-600 whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '0.9rem' }}>{entry.diagnosis}</p>
+                          </div>
+                        )}
 
-                    {entry.prescription && (
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <h5 className="font-semibold text-gray-700" style={{ fontSize: '0.95rem' }}>처방</h5>
-                          {entry.prescription_issued ? (
-                            <button
-                              onClick={() => {
-                                onClose();
-                                navigate('/doctor/prescriptions');
-                              }}
-                              className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold hover:bg-green-200 transition-colors cursor-pointer"
-                              title="처방 목록 보기"
-                            >
-                              <i className="fas fa-check-circle mr-1"></i>처방완료
-                              <i className="fas fa-external-link-alt ml-1 text-[10px]"></i>
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleIssuePrescriptionProgress(entry.id)}
-                              className="px-2 py-1 bg-orange-500 text-white text-xs rounded hover:bg-orange-600 transition-colors font-semibold"
-                            >
-                              <i className="fas fa-paper-plane mr-1"></i>처방전 발급
-                            </button>
-                          )}
-                        </div>
-                        <p className="text-gray-600 whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '0.9rem' }}>{entry.prescription}</p>
-                      </div>
+                        {entry.prescription && (
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <h5 className="font-semibold text-gray-700" style={{ fontSize: '0.95rem' }}>처방</h5>
+                              {entry.prescription_issued ? (
+                                <button
+                                  onClick={() => {
+                                    onClose();
+                                    navigate('/doctor/prescriptions');
+                                  }}
+                                  className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold hover:bg-green-200 transition-colors cursor-pointer"
+                                  title="처방 목록 보기"
+                                >
+                                  <i className="fas fa-check-circle mr-1"></i>처방완료
+                                  <i className="fas fa-external-link-alt ml-1 text-[10px]"></i>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleIssuePrescriptionProgress(entry.id)}
+                                  className="px-2 py-1 bg-orange-500 text-white text-xs rounded hover:bg-orange-600 transition-colors font-semibold"
+                                >
+                                  <i className="fas fa-paper-plane mr-1"></i>처방전 발급
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-gray-600 whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '0.9rem' }}>{entry.prescription}</p>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 ))

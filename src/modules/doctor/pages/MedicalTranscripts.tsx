@@ -20,6 +20,8 @@ interface MedicalTranscript {
   soap_assessment: string | null;
   soap_plan: string | null;
   soap_status: 'pending' | 'processing' | 'completed' | 'failed';
+  processing_status: 'uploading' | 'transcribing' | 'processing' | 'completed' | 'failed' | null;
+  processing_message: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -387,6 +389,53 @@ const MedicalTranscripts: React.FC = () => {
     }
   };
 
+  // 처리 상태 배지 (서버 사이드 처리)
+  const getProcessingStatusBadge = (transcript: MedicalTranscript) => {
+    const status = transcript.processing_status;
+    if (!status || status === 'completed') return null;
+
+    const statusConfig: Record<string, { bg: string; text: string; icon: string; label: string }> = {
+      uploading: { bg: 'bg-gray-100', text: 'text-gray-700', icon: 'fa-cloud-upload-alt', label: '업로드' },
+      transcribing: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: 'fa-microphone', label: '녹취변환' },
+      processing: { bg: 'bg-blue-100', text: 'text-blue-700', icon: 'fa-cog fa-spin', label: 'SOAP변환' },
+      failed: { bg: 'bg-red-100', text: 'text-red-700', icon: 'fa-exclamation-circle', label: '실패' },
+    };
+
+    const config = statusConfig[status] || statusConfig.uploading;
+
+    return (
+      <div className={`flex items-center gap-1 px-2 py-0.5 text-xs ${config.bg} ${config.text} rounded-full`}>
+        <i className={`fas ${config.icon}`}></i>
+        <span>{config.label}</span>
+      </div>
+    );
+  };
+
+  // 서버 사이드 재처리 요청
+  const handleServerRetry = async (transcriptId: number) => {
+    setIsReprocessing(true);
+    try {
+      const response = await fetch(`${API_URL}/api/transcribe/retry/${transcriptId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        alert('재처리가 시작되었습니다. 잠시 후 새로고침하세요.');
+        fetchTranscripts();
+      } else {
+        throw new Error(data.error || '재처리 실패');
+      }
+    } catch (error: any) {
+      console.error('재처리 실패:', error);
+      alert(`재처리 실패: ${error.message}`);
+    } finally {
+      setIsReprocessing(false);
+    }
+  };
+
   // 시간 포맷
   const formatTime = (dateStr: string) => {
     try {
@@ -663,7 +712,10 @@ const MedicalTranscripts: React.FC = () => {
                           <span className="ml-2 text-xs text-gray-400">#{patient.chart_no}</span>
                         )}
                       </div>
-                      {getSoapStatusBadge(t.soap_status)}
+                      <div className="flex items-center gap-1">
+                        {getProcessingStatusBadge(t)}
+                        {(!t.processing_status || t.processing_status === 'completed') && getSoapStatusBadge(t.soap_status)}
+                      </div>
                     </div>
                     <div className="flex items-center gap-3 text-sm text-gray-500 mb-2">
                       <span>
@@ -965,28 +1017,99 @@ const MedicalTranscripts: React.FC = () => {
                 </div>
               )}
 
-              {/* SOAP 처리중/실패 상태 */}
-              {selectedTranscript.soap_status === 'processing' && (
+              {/* 서버 사이드 처리 상태 */}
+              {selectedTranscript.processing_status && selectedTranscript.processing_status !== 'completed' && (
+                <div className={`rounded-xl p-6 ${
+                  selectedTranscript.processing_status === 'failed'
+                    ? 'bg-red-50 border border-red-200'
+                    : 'bg-blue-50 border border-blue-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {selectedTranscript.processing_status === 'failed' ? (
+                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                          <i className="fas fa-exclamation-circle text-red-500 text-xl"></i>
+                        </div>
+                      ) : (
+                        <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                          <i className="fas fa-cog fa-spin text-blue-500 text-xl"></i>
+                        </div>
+                      )}
+                      <div>
+                        <p className={`font-medium ${
+                          selectedTranscript.processing_status === 'failed' ? 'text-red-700' : 'text-blue-700'
+                        }`}>
+                          {selectedTranscript.processing_status === 'uploading' && '업로드 완료, 처리 대기 중...'}
+                          {selectedTranscript.processing_status === 'transcribing' && 'Whisper 음성 변환 중...'}
+                          {selectedTranscript.processing_status === 'processing' && 'SOAP 및 화자 분리 중...'}
+                          {selectedTranscript.processing_status === 'failed' && '처리 실패'}
+                        </p>
+                        {selectedTranscript.processing_message && (
+                          <p className={`text-sm ${
+                            selectedTranscript.processing_status === 'failed' ? 'text-red-600' : 'text-blue-600'
+                          }`}>
+                            {selectedTranscript.processing_message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {selectedTranscript.processing_status === 'failed' && (
+                      <button
+                        onClick={() => handleServerRetry(selectedTranscript.id)}
+                        disabled={isReprocessing}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                      >
+                        <i className={`fas fa-redo mr-1 ${isReprocessing ? 'animate-spin' : ''}`}></i>
+                        {isReprocessing ? '처리중...' : '재처리'}
+                      </button>
+                    )}
+                  </div>
+                  {selectedTranscript.processing_status !== 'failed' && (
+                    <div className="mt-4">
+                      <div className="flex items-center gap-2 text-xs text-blue-600">
+                        <div className={`w-2 h-2 rounded-full ${
+                          selectedTranscript.processing_status === 'uploading' ? 'bg-blue-500' : 'bg-blue-300'
+                        }`}></div>
+                        <span>업로드</span>
+                        <div className="flex-1 h-0.5 bg-blue-200"></div>
+                        <div className={`w-2 h-2 rounded-full ${
+                          selectedTranscript.processing_status === 'transcribing' ? 'bg-blue-500 animate-pulse' :
+                          selectedTranscript.processing_status === 'processing' ? 'bg-blue-300' : 'bg-gray-200'
+                        }`}></div>
+                        <span>음성변환</span>
+                        <div className="flex-1 h-0.5 bg-blue-200"></div>
+                        <div className={`w-2 h-2 rounded-full ${
+                          selectedTranscript.processing_status === 'processing' ? 'bg-blue-500 animate-pulse' : 'bg-gray-200'
+                        }`}></div>
+                        <span>SOAP</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SOAP 처리중/실패 상태 (processing_status가 없는 경우 기존 로직) */}
+              {(!selectedTranscript.processing_status || selectedTranscript.processing_status === 'completed') && selectedTranscript.soap_status === 'processing' && (
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
                   <i className="fas fa-spinner fa-spin text-blue-500 text-2xl mb-2"></i>
                   <p className="text-blue-700">SOAP 변환 중입니다...</p>
                 </div>
               )}
-              {selectedTranscript.soap_status === 'failed' && (
+              {(!selectedTranscript.processing_status || selectedTranscript.processing_status === 'completed') && selectedTranscript.soap_status === 'failed' && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
                   <i className="fas fa-exclamation-circle text-red-500 text-2xl mb-2"></i>
                   <p className="text-red-700 mb-3">SOAP 변환에 실패했습니다</p>
                   <button
-                    onClick={handleReprocessSoap}
+                    onClick={() => handleServerRetry(selectedTranscript.id)}
                     disabled={isReprocessing}
                     className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
                   >
                     <i className={`fas fa-redo mr-1 ${isReprocessing ? 'animate-spin' : ''}`}></i>
-                    {isReprocessing ? '처리중...' : '다시 시도'}
+                    {isReprocessing ? '처리중...' : '서버 재처리'}
                   </button>
                 </div>
               )}
-              {selectedTranscript.soap_status === 'pending' && (
+              {(!selectedTranscript.processing_status || selectedTranscript.processing_status === 'completed') && selectedTranscript.soap_status === 'pending' && (
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
                   <i className="fas fa-clock text-gray-400 text-2xl mb-2"></i>
                   <p className="text-gray-600 mb-3">SOAP 변환 대기 중</p>

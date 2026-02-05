@@ -20,3 +20,5 @@ export { default as PrescriptionInput } from './PrescriptionInput';
 
 // 진료 계획 컴포넌트
 export { default as TreatmentPlanSetup } from './TreatmentPlanSetup';
+export { default as TodayTreatmentPlansPanel } from './TodayTreatmentPlansPanel';
+export { default as LegacyChartImporter } from './LegacyChartImporter';

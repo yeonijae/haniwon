@@ -17,6 +17,7 @@ import {
   PrescriptionPendingPanel,
   DosagePendingPanel,
   ConsultationPanel,
+  TodayTreatmentPlansPanel,
 } from '../components';
 
 const Dashboard: React.FC = () => {
@@ -177,10 +178,10 @@ const Dashboard: React.FC = () => {
       {/* 메인 컨텐츠 영역 */}
       <div className="flex-1 overflow-hidden p-4">
         <div className="h-full flex flex-col gap-4">
-          {/* 상단 3열 레이아웃 */}
-          <div className="flex-1 min-h-0 grid grid-cols-3 gap-4">
+          {/* 상단 3열 레이아웃 (55%) */}
+          <div className="min-h-0 grid grid-cols-3 gap-4" style={{ flex: '55 1 0%' }}>
             {/* 좌측: 진행중 상담 */}
-            <div className="h-full">
+            <div className="h-full overflow-hidden">
               <ConsultationPanel
                 doctorId={getMssqlDoctorId(selectedDoctor)}
                 doctorName={selectedDoctor.name}
@@ -190,7 +191,7 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* 중앙: 액팅 대기열 */}
-            <div className="h-full">
+            <div className="h-full overflow-hidden">
               <ActingQueuePanel
                 doctorId={getMssqlDoctorId(selectedDoctor)}
                 doctorName={selectedDoctor.name}
@@ -200,7 +201,7 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* 우측: 처방 대기 */}
-            <div className="h-full">
+            <div className="h-full overflow-hidden">
               <PrescriptionPendingPanel
                 doctorId={getMssqlDoctorId(selectedDoctor)}
                 doctorName={selectedDoctor.name}
@@ -210,14 +211,24 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* 하단: 복용법 대기 */}
-          <div className="flex-shrink-0 h-48">
-            <DosagePendingPanel
-              doctorId={getMssqlDoctorId(selectedDoctor)}
-              doctorName={selectedDoctor.name}
-              onPatientClick={handlePatientClick}
-              onDosageClick={handleDosageClick}
-            />
+          {/* 하단: 2열 레이아웃 (45%) */}
+          <div className="min-h-0 grid grid-cols-2 gap-4" style={{ flex: '45 1 0%' }}>
+            {/* 좌측: 오늘의 진료계획 */}
+            <div className="h-full overflow-hidden">
+              <TodayTreatmentPlansPanel
+                onPatientClick={handlePatientClick}
+              />
+            </div>
+
+            {/* 우측: 복용법 대기 */}
+            <div className="h-full overflow-hidden">
+              <DosagePendingPanel
+                doctorId={getMssqlDoctorId(selectedDoctor)}
+                doctorName={selectedDoctor.name}
+                onPatientClick={handlePatientClick}
+                onDosageClick={handleDosageClick}
+              />
+            </div>
           </div>
         </div>
       </div>
