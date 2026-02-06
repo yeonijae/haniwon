@@ -8,6 +8,7 @@ import {
   getChoojinList,
   getRevisitRate,
   getRevenuePerPatient,
+  getCumulativeStatsAll,
   formatNumber,
   formatPercent,
   getISOWeek,
@@ -1172,6 +1173,23 @@ function DoctorCompareTab({ checkedItems, weekOffset }: { checkedItems: Set<stri
     byDoctor: Record<string, DoctorWeeklyData>;
   }[]>([]);
 
+  // 누적 통계 데이터
+  const [cumulativeData, setCumulativeData] = useState<Record<string, {
+    start_date: string;
+    total_work_days: number;
+    choojin: { total: number; chim: number; jabo: number };
+    revenue: {
+      total: number;
+      insurance: number;
+      jabo: number;
+      uncovered: number;
+      insurance_patients: number;
+      jabo_patients: number;
+      insurance_avg: number;
+      jabo_avg: number;
+    };
+  }>>({});
+
   // 원장 목록 (김대현 제외)
   const doctorList = useMemo(() => {
     const doctors = new Set<string>();
@@ -1290,6 +1308,16 @@ function DoctorCompareTab({ checkedItems, weekOffset }: { checkedItems: Set<stri
 
       const results = await Promise.all(promises);
       setWeeklyData(results);
+
+      // 누적 통계 로드
+      try {
+        const cumulativeRes = await getCumulativeStatsAll();
+        if (cumulativeRes.success && cumulativeRes.data?.by_doctor) {
+          setCumulativeData(cumulativeRes.data.by_doctor);
+        }
+      } catch (cumErr) {
+        console.error('누적 통계 로드 실패:', cumErr);
+      }
     } catch (error) {
       console.error('원장별 데이터 로드 실패:', error);
     } finally {
@@ -1330,6 +1358,45 @@ function DoctorCompareTab({ checkedItems, weekOffset }: { checkedItems: Set<stri
         const workDays = data.revenue.work_days || 0;
         if (workDays === 0) return '-';
         return (dailyVisitCount / workDays).toFixed(1);
+      }
+      default: return '-';
+    }
+  };
+
+  // 누적 데이터 값 추출 함수
+  const getCumulativeValue = (doctorName: string, key: string): string | number => {
+    const data = cumulativeData[doctorName];
+    if (!data) return '-';
+
+    switch (key) {
+      case 'choojin_total': return data.choojin.total;
+      case 'choojin_chim': return data.choojin.chim;
+      case 'choojin_jabo': return data.choojin.jabo;
+      case 'choojin_yak': return '-'; // 누적에는 약초진 없음
+      case 'revisit_choojin': return '-'; // 누적 재진율은 미지원
+      case 'revisit_rejin': return '-';
+      case 'revisit_samjin': return '-';
+      case 'revisit_ital': return '-';
+      case 'revenue_total': return `${formatNumber(Math.round(data.revenue.total / 10000))}만`;
+      case 'revenue_insurance': return `${formatNumber(Math.round(data.revenue.insurance / 10000))}만`;
+      case 'revenue_jabo': return `${formatNumber(Math.round(data.revenue.jabo / 10000))}만`;
+      case 'revenue_uncovered': return `${formatNumber(Math.round(data.revenue.uncovered / 10000))}만`;
+      case 'avg_insurance': {
+        const avg = data.revenue.insurance_avg || 0;
+        if (avg === 0) return '-';
+        return `${formatNumber(avg)}원`;
+      }
+      case 'avg_jabo': {
+        const avg = data.revenue.jabo_avg || 0;
+        if (avg === 0) return '-';
+        return `${formatNumber(avg)}원`;
+      }
+      case 'pyunghwan': {
+        // 누적 평환 = 누적연인원 / 누적근무일수
+        const totalPatients = (data.revenue.insurance_patients || 0) + (data.revenue.jabo_patients || 0);
+        const workDays = data.total_work_days || 0;
+        if (workDays === 0) return '-';
+        return (totalPatients / workDays).toFixed(1);
       }
       default: return '-';
     }
@@ -1398,6 +1465,11 @@ function DoctorCompareTab({ checkedItems, weekOffset }: { checkedItems: Set<stri
                       )}
                     </th>
                   ))}
+                  {/* 누적 헤더 */}
+                  <th className="px-2 py-2 text-center text-white font-medium whitespace-nowrap min-w-[55px] bg-indigo-500">
+                    누적
+                    <span className="block text-[10px] text-indigo-200">입사~현재</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1452,6 +1524,10 @@ function DoctorCompareTab({ checkedItems, weekOffset }: { checkedItems: Set<stri
                           {getValue(getDoctorData(w), item.key)}
                         </td>
                       ))}
+                      {/* 누적 데이터 */}
+                      <td className={`px-2 py-1.5 text-center whitespace-nowrap bg-indigo-50 ${getCellStyle(item.key)}`}>
+                        {getCumulativeValue(doctorName, item.key)}
+                      </td>
                     </tr>
                   ));
                 })}

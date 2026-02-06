@@ -271,6 +271,41 @@ export async function getCumulativeStats(params: {
   return response.json();
 }
 
+export interface CumulativeStatsAllResponse {
+  success: boolean;
+  data: {
+    by_doctor: Record<string, {
+      doctor_name: string;
+      start_date: string;
+      total_work_days: number;
+      choojin: {
+        total: number;
+        chim: number;
+        jabo: number;
+      };
+      revenue: {
+        total: number;
+        insurance: number;
+        jabo: number;
+        uncovered: number;
+        pain_uncovered: number;
+        insurance_patients: number;
+        jabo_patients: number;
+        insurance_avg: number;
+        jabo_avg: number;
+      };
+    }>;
+  };
+}
+
+/**
+ * 전체 원장 누적 통계 조회 (입사일부터 현재까지)
+ */
+export async function getCumulativeStatsAll(): Promise<CumulativeStatsAllResponse> {
+  const response = await fetch(`${POSTGRES_API}/api/metrics/cumulative-stats`);
+  return response.json();
+}
+
 // 유틸리티 함수
 export function formatCurrency(value: number): string {
   return new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(value);
