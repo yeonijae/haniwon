@@ -1616,7 +1616,18 @@ function Metrics() {
                   >
                     <i className="fas fa-chevron-left"></i>
                   </button>
-                  <span className="text-xs text-gray-500 px-1">{weekOffset > 0 ? `-${weekOffset}주` : '현재'}</span>
+                  <select
+                    value={weekOffset}
+                    onChange={(e) => setWeekOffset(Number(e.target.value))}
+                    className="text-xs text-gray-600 bg-transparent border-none cursor-pointer focus:outline-none focus:ring-0 px-0.5 py-0"
+                    title="기준 주차 선택"
+                  >
+                    {Array.from({ length: 20 }, (_, i) => i * 3).map(offset => (
+                      <option key={offset} value={offset}>
+                        {offset === 0 ? '현재' : `-${offset}주`}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     onClick={() => setWeekOffset(prev => Math.max(0, prev - 3))}
                     disabled={weekOffset === 0}
