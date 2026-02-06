@@ -1178,6 +1178,12 @@ function DoctorCompareTab({ checkedItems, weekOffset }: { checkedItems: Set<stri
     start_date: string;
     total_work_days: number;
     choojin: { total: number; chim: number; jabo: number };
+    revisit: {
+      total_choojin: number;
+      rejin_rate: number;
+      samjin_rate: number;
+      ital_rate: number;
+    };
     revenue: {
       total: number;
       insurance: number;
@@ -1373,10 +1379,10 @@ function DoctorCompareTab({ checkedItems, weekOffset }: { checkedItems: Set<stri
       case 'choojin_chim': return data.choojin.chim;
       case 'choojin_jabo': return data.choojin.jabo;
       case 'choojin_yak': return '-'; // 누적에는 약초진 없음
-      case 'revisit_choojin': return '-'; // 누적 재진율은 미지원
-      case 'revisit_rejin': return '-';
-      case 'revisit_samjin': return '-';
-      case 'revisit_ital': return '-';
+      case 'revisit_choojin': return data.revisit?.total_choojin || '-';
+      case 'revisit_rejin': return data.revisit ? formatPercent(data.revisit.rejin_rate) : '-';
+      case 'revisit_samjin': return data.revisit ? formatPercent(data.revisit.samjin_rate) : '-';
+      case 'revisit_ital': return data.revisit ? formatPercent(data.revisit.ital_rate) : '-';
       case 'revenue_total': return `${formatNumber(Math.round(data.revenue.total / 10000))}만`;
       case 'revenue_insurance': return `${formatNumber(Math.round(data.revenue.insurance / 10000))}만`;
       case 'revenue_jabo': return `${formatNumber(Math.round(data.revenue.jabo / 10000))}만`;

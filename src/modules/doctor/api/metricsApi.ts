@@ -283,6 +283,15 @@ export interface CumulativeStatsAllResponse {
         chim: number;
         jabo: number;
       };
+      revisit: {
+        total_choojin: number;
+        rejin_count: number;
+        samjin_count: number;
+        ital_count: number;
+        rejin_rate: number;
+        samjin_rate: number;
+        ital_rate: number;
+      };
       revenue: {
         total: number;
         insurance: number;
