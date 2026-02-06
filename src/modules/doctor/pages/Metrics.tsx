@@ -1164,7 +1164,7 @@ const COMPARE_ITEMS = [
 const COMPARE_CATEGORIES = ['초진수', '평환', '재진율', '매출'];
 
 // 원장간 비교 탭
-function DoctorCompareTab({ checkedItems }: { checkedItems: Set<string> }) {
+function DoctorCompareTab({ checkedItems, weekOffset }: { checkedItems: Set<string>; weekOffset: number }) {
   const [loading, setLoading] = useState(true);
 
   const [weeklyData, setWeeklyData] = useState<{
@@ -1185,7 +1185,7 @@ function DoctorCompareTab({ checkedItems }: { checkedItems: Set<string> }) {
     return Array.from(doctors).sort();
   }, [weeklyData]);
 
-  // 12주 옵션 생성
+  // 12주 옵션 생성 (weekOffset 반영)
   const weeks12 = useMemo(() => {
     const options: { year: number; week: number; label: string; startDate: string; endDate: string }[] = [];
     const today = new Date();
@@ -1193,8 +1193,8 @@ function DoctorCompareTab({ checkedItems }: { checkedItems: Set<string> }) {
 
     for (let i = 0; i < 12; i++) {
       let y = currentWeek.year;
-      let w = currentWeek.week - i;
-      if (w < 1) {
+      let w = currentWeek.week - i - weekOffset;
+      while (w < 1) {
         y -= 1;
         w += 52;
       }
@@ -1209,7 +1209,7 @@ function DoctorCompareTab({ checkedItems }: { checkedItems: Set<string> }) {
       });
     }
     return options;
-  }, []);
+  }, [weekOffset]);
 
   // 체크된 항목 목록
   const visibleItems = useMemo(() => {
@@ -1221,7 +1221,7 @@ function DoctorCompareTab({ checkedItems }: { checkedItems: Set<string> }) {
 
   useEffect(() => {
     loadAllWeeksData();
-  }, []);
+  }, [weeks12]);
 
   async function loadAllWeeksData() {
     setLoading(true);
@@ -1494,6 +1494,9 @@ function Metrics() {
     return defaultChecked;
   });
 
+  // 원장간 비교 탭용 - 주차 오프셋 (0: 현재~12주전, 3: 3주전~15주전, ...)
+  const [weekOffset, setWeekOffset] = useState(0);
+
   // 체크박스 토글
   const toggleItem = (key: string) => {
     setCheckedItems(prev => {
@@ -1603,42 +1606,63 @@ function Metrics() {
 
             {/* 원장간 비교 - 항목 선택 */}
             {selectedTab === 'compare' && (
-              <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {/* 주차 이동 버튼 */}
+                <div className="flex items-center gap-0.5">
+                  <button
+                    onClick={() => setWeekOffset(prev => prev + 3)}
+                    className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
+                    title="3주 이전"
+                  >
+                    <i className="fas fa-chevron-left"></i>
+                  </button>
+                  <span className="text-xs text-gray-500 px-1">{weekOffset > 0 ? `-${weekOffset}주` : '현재'}</span>
+                  <button
+                    onClick={() => setWeekOffset(prev => Math.max(0, prev - 3))}
+                    disabled={weekOffset === 0}
+                    className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="3주 이후"
+                  >
+                    <i className="fas fa-chevron-right"></i>
+                  </button>
+                </div>
+
+                <div className="w-px h-4 bg-gray-200"></div>
+
                 {/* 전체선택/해제 버튼 */}
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-0.5">
                   <button
                     onClick={selectAllItems}
-                    className="px-2 py-1 text-xs font-medium bg-clinic-primary text-white rounded hover:bg-clinic-primary/90 transition-colors"
+                    className="px-1.5 py-0.5 text-xs font-medium bg-clinic-primary text-white rounded hover:bg-clinic-primary/90 transition-colors"
                   >
                     전체
                   </button>
                   <button
                     onClick={deselectAllItems}
-                    className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
+                    className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
                   >
                     해제
                   </button>
-                  <span className="text-xs text-gray-400">({checkedItems.size})</span>
                 </div>
 
-                <div className="w-px h-5 bg-gray-200"></div>
+                <div className="w-px h-4 bg-gray-200"></div>
 
                 {/* 카테고리별 체크박스 */}
                 {COMPARE_CATEGORIES.map((category, catIdx) => (
-                  <div key={category} className="flex items-center gap-2">
+                  <div key={category} className="flex items-center gap-1">
                     {COMPARE_ITEMS.filter(item => item.category === category).map(item => (
-                      <label key={item.key} className="flex items-center gap-1 cursor-pointer">
+                      <label key={item.key} className="flex items-center gap-0.5 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={checkedItems.has(item.key)}
                           onChange={() => toggleItem(item.key)}
-                          className="w-3.5 h-3.5 rounded border-gray-300 text-clinic-primary focus:ring-clinic-primary"
+                          className="w-3 h-3 rounded border-gray-300 text-clinic-primary focus:ring-clinic-primary"
                         />
                         <span className="text-xs text-gray-600">{item.label}</span>
                       </label>
                     ))}
                     {catIdx < COMPARE_CATEGORIES.length - 1 && (
-                      <div className="w-px h-4 bg-gray-200 ml-1"></div>
+                      <div className="w-px h-3 bg-gray-200"></div>
                     )}
                   </div>
                 ))}
@@ -1654,7 +1678,7 @@ function Metrics() {
           {selectedTab === 'revisit' && <RevisitTab selectedWeek={revisitWeek} />}
           {selectedTab === 'revenue' && <RevenueTab selectedWeek={selectedWeek} />}
           {selectedTab === 'weekly' && <WeeklyTrendTab />}
-          {selectedTab === 'compare' && <DoctorCompareTab checkedItems={checkedItems} />}
+          {selectedTab === 'compare' && <DoctorCompareTab checkedItems={checkedItems} weekOffset={weekOffset} />}
         </div>
       </div>
     </div>
