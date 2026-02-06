@@ -1622,11 +1622,22 @@ function Metrics() {
                     className="text-xs text-gray-600 bg-transparent border-none cursor-pointer focus:outline-none focus:ring-0 px-0.5 py-0"
                     title="기준 주차 선택"
                   >
-                    {Array.from({ length: 20 }, (_, i) => i * 3).map(offset => (
-                      <option key={offset} value={offset}>
-                        {offset === 0 ? '현재' : `-${offset}주`}
-                      </option>
-                    ))}
+                    {Array.from({ length: 20 }, (_, i) => i * 3).map(offset => {
+                      const today = new Date();
+                      const currentWeek = getISOWeek(today);
+                      let y = currentWeek.year;
+                      let w = currentWeek.week - offset;
+                      while (w < 1) {
+                        y -= 1;
+                        w += 52;
+                      }
+                      const label = `${String(y).slice(-2)}년${w}주`;
+                      return (
+                        <option key={offset} value={offset}>
+                          {label}
+                        </option>
+                      );
+                    })}
                   </select>
                   <button
                     onClick={() => setWeekOffset(prev => Math.max(0, prev - 3))}
