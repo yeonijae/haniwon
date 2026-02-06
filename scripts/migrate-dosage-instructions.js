@@ -5,7 +5,7 @@
 
 const SUPABASE_URL = 'https://vipyakvxzfccytwjaqet.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpcHlha3Z4emZjY3l0d2phcWV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTc2MjUsImV4cCI6MjA3ODUzMzYyNX0.xuR3LxaR69t1RGB74G3FtlBIoxelfAH6fdZrnZSjHfQ';
-const SQLITE_API_URL = 'http://192.168.0.173:3200';
+const POSTGRES_API_URL = 'http://192.168.0.173:3200';
 
 async function fetchFromSupabase(table, select = '*') {
   const url = `${SUPABASE_URL}/rest/v1/${table}?select=${select}`;
@@ -23,7 +23,7 @@ async function fetchFromSupabase(table, select = '*') {
 
 async function executeSql(sql) {
   try {
-    const res = await fetch(`${SQLITE_API_URL}/api/sqlite/execute`, {
+    const res = await fetch(`${POSTGRES_API_URL}/api/sqlite/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql })

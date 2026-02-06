@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { fetchDoctorsWithSqliteStatus } from '@modules/staff/api/staffApi';
+import { fetchDoctorsWithDbStatus } from '@modules/staff/api/staffApi';
 import { startActing } from '@modules/acting/api';
 import type { StaffMember } from '@modules/staff/types';
 import type { ActingQueueItem } from '@modules/acting/types';
@@ -32,7 +32,7 @@ const Dashboard: React.FC = () => {
   // 원장 정보 로드
   const loadDoctor = useCallback(async (doctorId: number) => {
     try {
-      const doctors = await fetchDoctorsWithSqliteStatus();
+      const doctors = await fetchDoctorsWithDbStatus();
       const doctor = doctors.find(d => d.id === doctorId);
       if (doctor) {
         setSelectedDoctor(doctor);

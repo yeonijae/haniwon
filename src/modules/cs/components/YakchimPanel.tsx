@@ -89,7 +89,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // PostgreSQL patient_id 조회
-  const [sqlitePatientId, setSqlitePatientId] = useState<number | null>(null);
+  const [dbPatientId, setDbPatientId] = useState<number | null>(null);
 
   // 멤버십 인라인 폼 상태
   const [showMembershipForm, setShowMembershipForm] = useState(false);
@@ -179,7 +179,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
 
     try {
       const pid = await getOrCreatePatient();
-      setSqlitePatientId(pid);
+      setDbPatientId(pid);
 
       if (!pid) {
         setMemberships([]);
@@ -250,7 +250,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
         INSERT INTO cs_yakchim_usage_records
         (patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id)
         VALUES (
-          ${sqlitePatientId},
+          ${dbPatientId},
           'membership',
           ${membership.id},
           ${escapeString(membership.membership_type)},
@@ -307,7 +307,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
         INSERT INTO cs_yakchim_usage_records
         (patient_id, source_type, source_id, source_name, usage_date, item_name, remaining_after, receipt_id)
         VALUES (
-          ${sqlitePatientId},
+          ${dbPatientId},
           'package',
           ${pkg.id},
           ${escapeString(pkg.package_name)},
@@ -352,7 +352,7 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
       // 사용 기록 삭제
       await execute(`
         DELETE FROM cs_yakchim_usage_records
-        WHERE patient_id = ${sqlitePatientId}
+        WHERE patient_id = ${dbPatientId}
           AND source_type = ${escapeString(pendingItem.processedWith!)}
           AND source_id = ${pendingItem.processedId}
           AND usage_date = ${escapeString(receiptDate)}
@@ -416,10 +416,10 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
 
     setIsSaving(true);
     try {
-      let pid = sqlitePatientId;
+      let pid = dbPatientId;
       if (!pid) {
         pid = await getOrCreatePatient();
-        setSqlitePatientId(pid);
+        setDbPatientId(pid);
       }
 
       if (!pid) {
@@ -477,10 +477,10 @@ const YakchimPanel: React.FC<YakchimPanelProps> = ({
 
     setIsSaving(true);
     try {
-      let pid = sqlitePatientId;
+      let pid = dbPatientId;
       if (!pid) {
         pid = await getOrCreatePatient();
-        setSqlitePatientId(pid);
+        setDbPatientId(pid);
       }
 
       const today = getCurrentDate();

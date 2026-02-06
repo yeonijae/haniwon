@@ -54,7 +54,7 @@
 - **Frontend**: React 18, TypeScript, Vite
 - **Styling**: Tailwind CSS
 - **State Management**: React Query (TanStack Query)
-- **Database**: SQLite (내부 서버), MSSQL (EMR 연동)
+- **Database**: PostgreSQL (내부 서버), MSSQL (EMR 연동)
 - **Editor**: TipTap (Rich Text), CodeMirror (Code)
 - **PDF**: jsPDF, pdf.js
 
@@ -79,7 +79,7 @@ src/
 │   ├── api/           # 공용 API
 │   ├── components/    # 공용 컴포넌트
 │   ├── hooks/         # 공용 훅
-│   ├── lib/           # 유틸리티 (sqlite, auth)
+│   ├── lib/           # 유틸리티 (postgres, auth)
 │   └── types/         # 공용 타입
 └── scripts/           # 스크립트
     └── init-sqlite-schema.sql  # DB 스키마
@@ -106,13 +106,13 @@ npm run typecheck
 `.env.local` 파일 생성:
 
 ```env
-VITE_SQLITE_API_URL=http://192.168.0.173:3200
+VITE_POSTGRES_API_URL=http://192.168.0.173:3200
 VITE_MSSQL_API_URL=http://192.168.0.173:3100
 ```
 
 ## API 서버
 
-- **SQLite API**: `192.168.0.173:3200` - 내부 데이터 저장
+- **PostgreSQL API**: `192.168.0.173:3200` - 내부 데이터 저장
 - **MSSQL API**: `192.168.0.173:3100` - EMR 시스템 연동 (환자정보, 예약)
 
 ## 라이선스

@@ -3,11 +3,11 @@
  * 사용법: node scripts/init-exam-tables.js
  */
 
-const SQLITE_API_URL = 'http://192.168.0.173:3200';
+const POSTGRES_API_URL = 'http://192.168.0.173:3200';
 
 async function executeSql(sql, description) {
   try {
-    const res = await fetch(`${SQLITE_API_URL}/api/execute`, {
+    const res = await fetch(`${POSTGRES_API_URL}/api/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql })
@@ -111,7 +111,7 @@ async function main() {
   console.log('');
   console.log('생성된 테이블 확인:');
 
-  const tablesRes = await fetch(`${SQLITE_API_URL}/api/tables`);
+  const tablesRes = await fetch(`${POSTGRES_API_URL}/api/tables`);
   const tablesData = await tablesRes.json();
 
   const examTables = tablesData.tables?.filter(t => t.startsWith('exam_')) || [];

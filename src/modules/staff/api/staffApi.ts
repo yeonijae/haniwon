@@ -198,17 +198,17 @@ export async function importWorkPatternsFromManageSystem(
 }
 
 // MSSQL 의료진을 StaffMember 형태로 변환 (PostgreSQL 미등록 상태)
-export function convertMssqlDoctorToStaff(doc: MssqlDoctor, sqliteRecord?: StaffMember | null): StaffMember {
+export function convertMssqlDoctorToStaff(doc: MssqlDoctor, dbRecord?: StaffMember | null): StaffMember {
   // PostgreSQL에 등록된 경우 해당 정보 사용
-  if (sqliteRecord) {
+  if (dbRecord) {
     return {
-      ...sqliteRecord,
+      ...dbRecord,
       // MSSQL 정보로 동기화 (이름, 입사일, 퇴사일은 MSSQL 우선)
       name: doc.name,
-      hire_date: doc.workStartDate ? doc.workStartDate.split('T')[0] : sqliteRecord.hire_date,
-      resign_date: doc.workEndDate ? doc.workEndDate.split('T')[0] : sqliteRecord.resign_date,
+      hire_date: doc.workStartDate ? doc.workStartDate.split('T')[0] : dbRecord.hire_date,
+      resign_date: doc.workEndDate ? doc.workEndDate.split('T')[0] : dbRecord.resign_date,
       status: doc.resigned ? 'resigned' : 'active',
-      isRegisteredInSqlite: true
+      isRegisteredInDb: true
     };
   }
 
@@ -223,7 +223,7 @@ export function convertMssqlDoctorToStaff(doc: MssqlDoctor, sqliteRecord?: Staff
     resign_date: doc.workEndDate ? doc.workEndDate.split('T')[0] : undefined,
     position: '원장',
     mssql_doctor_id: doc.id,
-    isRegisteredInSqlite: false
+    isRegisteredInDb: false
   };
 }
 
@@ -232,29 +232,29 @@ export function convertMssqlDoctorToStaff(doc: MssqlDoctor, sqliteRecord?: Staff
 // =====================================================
 
 // PostgreSQL에서 의료진(doctor) 목록 조회
-export async function fetchDoctorsFromSqlite(): Promise<StaffMember[]> {
+export async function fetchDoctorsFromDb(): Promise<StaffMember[]> {
   const data = await query<any>(`SELECT * FROM staff WHERE employee_type = 'doctor' ORDER BY name`);
 
   return (data || []).map((row) => ({
     ...row,
     permissions: row.permissions ? JSON.parse(row.permissions) : DEFAULT_DOCTOR_PERMISSIONS,
-    isRegisteredInSqlite: true
+    isRegisteredInDb: true
   }));
 }
 
 // MSSQL 의료진 + PostgreSQL 상태 병합
-export async function fetchDoctorsWithSqliteStatus(): Promise<StaffMember[]> {
+export async function fetchDoctorsWithDbStatus(): Promise<StaffMember[]> {
   // MSSQL에서 활성 의료진 목록
   const mssqlDoctors = await fetchActiveMssqlDoctors();
 
   // PostgreSQL에서 의료진 목록
-  const sqliteDoctors = await fetchDoctorsFromSqlite();
+  const dbDoctors = await fetchDoctorsFromDb();
 
   // mssql_doctor_id로 매핑
-  const sqliteByMssqlId = new Map<string, StaffMember>();
-  for (const doc of sqliteDoctors) {
+  const dbByMssqlId = new Map<string, StaffMember>();
+  for (const doc of dbDoctors) {
     if (doc.mssql_doctor_id) {
-      sqliteByMssqlId.set(doc.mssql_doctor_id, doc);
+      dbByMssqlId.set(doc.mssql_doctor_id, doc);
     }
   }
 
@@ -262,12 +262,12 @@ export async function fetchDoctorsWithSqliteStatus(): Promise<StaffMember[]> {
   const result: StaffMember[] = [];
 
   for (const mssqlDoc of mssqlDoctors) {
-    const sqliteRecord = sqliteByMssqlId.get(mssqlDoc.id);
-    const merged = convertMssqlDoctorToStaff(mssqlDoc, sqliteRecord);
+    const dbRecord = dbByMssqlId.get(mssqlDoc.id);
+    const merged = convertMssqlDoctorToStaff(mssqlDoc, dbRecord);
 
     // PostgreSQL에 있고 MSSQL 정보가 변경된 경우 자동 동기화
-    if (sqliteRecord && needsSync(mssqlDoc, sqliteRecord)) {
-      await syncDoctorFromMssql(sqliteRecord.id, mssqlDoc);
+    if (dbRecord && needsSync(mssqlDoc, dbRecord)) {
+      await syncDoctorFromMssql(dbRecord.id, mssqlDoc);
       merged.name = mssqlDoc.name;
       merged.hire_date = mssqlDoc.workStartDate ? mssqlDoc.workStartDate.split('T')[0] : merged.hire_date;
       merged.resign_date = mssqlDoc.workEndDate ? mssqlDoc.workEndDate.split('T')[0] : merged.resign_date;
@@ -368,9 +368,9 @@ export async function migrateMedicalStaffData(): Promise<{
     }
 
     // 3. 기존 PostgreSQL 의료진 확인
-    const existingSqlite = await fetchDoctorsFromSqlite();
+    const existingDb = await fetchDoctorsFromDb();
     const existingByMssqlId = new Map<string, StaffMember>();
-    for (const doc of existingSqlite) {
+    for (const doc of existingDb) {
       if (doc.mssql_doctor_id) {
         existingByMssqlId.set(doc.mssql_doctor_id, doc);
       }

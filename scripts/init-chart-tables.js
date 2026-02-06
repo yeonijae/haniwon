@@ -3,11 +3,11 @@
  * 사용법: node scripts/init-chart-tables.js
  */
 
-const SQLITE_API_URL = process.env.SQLITE_API_URL || 'http://192.168.0.173:3200';
+const POSTGRES_API_URL = process.env.POSTGRES_API_URL || 'http://192.168.0.173:3200';
 
 async function executeSql(sql) {
   try {
-    const res = await fetch(`${SQLITE_API_URL}/api/sqlite/execute`, {
+    const res = await fetch(`${POSTGRES_API_URL}/api/sqlite/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql })
@@ -157,7 +157,7 @@ const statements = [
 
 async function main() {
   console.log('Chart 모듈 테이블 초기화 시작...');
-  console.log(`API URL: ${SQLITE_API_URL}`);
+  console.log(`API URL: ${POSTGRES_API_URL}`);
 
   let success = 0;
   let failed = 0;

@@ -25,17 +25,17 @@ const mssqlConfig = {
   }
 };
 
-// SQLite API 설정
-const SQLITE_API_URL = 'http://192.168.0.173:3200';
+// PostgreSQL API 설정
+const POSTGRES_API_URL = 'http://192.168.0.173:3200';
 
 // 한약 결제 판단 기준 금액
 const HERBAL_MIN_AMOUNT = 200000;
 
 /**
- * SQLite API 쿼리 실행
+ * PostgreSQL API 쿼리 실행
  */
-async function sqliteQuery(sqlQuery) {
-  const res = await fetch(`${SQLITE_API_URL}/api/execute`, {
+async function postgresQuery(sqlQuery) {
+  const res = await fetch(`${POSTGRES_API_URL}/api/execute`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sql: sqlQuery })
@@ -59,7 +59,7 @@ async function getPendingHerbalSetup(days = 7) {
   // SQLite에서 이미 처리된 receipt_pk 목록 조회
   let processedPks = [];
   try {
-    const processed = await sqliteQuery(
+    const processed = await postgresQuery(
       `SELECT receipt_pk FROM herbal_purchases WHERE receipt_pk IS NOT NULL`
     );
     processedPks = processed.map(p => p.receipt_pk);
@@ -163,7 +163,7 @@ async function getPendingCalls() {
   };
 
   try {
-    const data = await sqliteQuery(`
+    const data = await postgresQuery(`
       SELECT
         hc.*,
         hp.herbal_name,
@@ -213,7 +213,7 @@ async function getPendingCalls() {
  */
 async function getPendingEventBenefits() {
   try {
-    const data = await sqliteQuery(`
+    const data = await postgresQuery(`
       SELECT
         hp.*,
         he.name as event_name,
@@ -253,7 +253,7 @@ async function getPendingEventBenefits() {
  */
 async function getFollowupNeeded() {
   try {
-    const data = await sqliteQuery(`
+    const data = await postgresQuery(`
       SELECT
         hp.*,
         julianday('now') - julianday(hp.actual_end_date) as days_since_completion

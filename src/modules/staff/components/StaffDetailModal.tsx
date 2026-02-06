@@ -63,7 +63,7 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
   // 의료진인지 확인
   const isDoctor = staff?.employee_type === 'doctor' || defaultType === 'doctor';
   // PostgreSQL에 등록되었는지 확인 (id가 0이면 미등록)
-  const isRegisteredInSqlite = staff?.isRegisteredInSqlite !== false && staff?.id !== 0;
+  const isRegisteredInDb = staff?.isRegisteredInDb !== false && staff?.id !== 0;
 
   const [activeTab, setActiveTab] = useState<TabType>('info');
   const [loading, setLoading] = useState(false);
@@ -95,7 +95,7 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
   const [leaveRecords, setLeaveRecords] = useState<LeaveRecord[]>([]);
 
   // PostgreSQL에 등록된 의료진만 추가 데이터 조회 가능
-  const staffIdForData = isRegisteredInSqlite ? staff?.id : undefined;
+  const staffIdForData = isRegisteredInDb ? staff?.id : undefined;
 
   useEffect(() => {
     if (staffIdForData) {
@@ -296,7 +296,7 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
                       OKC
                     </span>
                   )}
-                  {isDoctor && !isRegisteredInSqlite && (
+                  {isDoctor && !isRegisteredInDb && (
                     <span className="px-2 py-0.5 bg-orange-400 text-white text-xs rounded-full">
                       미등록
                     </span>
@@ -318,7 +318,7 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
           </div>
 
           {/* 탭 - 등록된 직원/의료진만 */}
-          {!isNew && isRegisteredInSqlite && (
+          {!isNew && isRegisteredInDb && (
             <div className="flex gap-2 mt-4">
               <button
                 onClick={() => setActiveTab('info')}
@@ -371,7 +371,7 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
         {/* 본문 */}
         <div className="flex-1 overflow-y-auto p-6">
           {/* 미등록 의료진: 정보 생성 폼 */}
-          {isDoctor && !isRegisteredInSqlite && (
+          {isDoctor && !isRegisteredInDb && (
             <UnregisteredDoctorForm
               staff={staff}
               alias={alias}
@@ -390,11 +390,11 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
           )}
 
           {/* 등록된 의료진 또는 직원: 탭별 콘텐츠 */}
-          {(isRegisteredInSqlite || isNew) && (
+          {(isRegisteredInDb || isNew) && (
             <>
               {/* 기본정보 탭 */}
               {activeTab === 'info' && (
-                isDoctor && isRegisteredInSqlite ? (
+                isDoctor && isRegisteredInDb ? (
                   // 등록된 의료진: 의료진 전용 편집 폼
                   <DoctorInfoForm
                     name={name}
@@ -477,7 +477,7 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
         <div className="px-6 py-4 bg-gray-50 border-t flex justify-between flex-shrink-0">
           <div>
             {/* 등록된 직원만 삭제 가능 (의료진은 삭제 불가 - MSSQL에서 관리) */}
-            {!isNew && isRegisteredInSqlite && !isDoctor && (
+            {!isNew && isRegisteredInDb && !isDoctor && (
               <button
                 onClick={handleDelete}
                 className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -494,11 +494,11 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
               className="px-6 py-2 text-gray-600 font-medium rounded-lg hover:bg-gray-100 transition-colors"
               disabled={loading}
             >
-              {isDoctor && !isRegisteredInSqlite ? '닫기' : '취소'}
+              {isDoctor && !isRegisteredInDb ? '닫기' : '취소'}
             </button>
 
             {/* 미등록 의료진: 정보 생성 버튼 */}
-            {isDoctor && !isRegisteredInSqlite && (
+            {isDoctor && !isRegisteredInDb && (
               <button
                 onClick={handleCreateDoctor}
                 disabled={loading}
@@ -519,7 +519,7 @@ const StaffDetailModal: React.FC<StaffDetailModalProps> = ({
             )}
 
             {/* 등록된 직원/의료진: 저장 버튼 */}
-            {activeTab === 'info' && isRegisteredInSqlite && !isNew && (
+            {activeTab === 'info' && isRegisteredInDb && !isNew && (
               <button
                 onClick={handleSave}
                 disabled={loading}

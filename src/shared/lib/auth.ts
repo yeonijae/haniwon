@@ -143,7 +143,7 @@ export async function signIn(username: string, password: string): Promise<Portal
     throw new Error('아이디 또는 비밀번호가 올바르지 않습니다.');
   }
 
-  // ID 컬럼 확인 (SQLite는 대소문자 구분 없이 반환할 수 있음)
+  // ID 컬럼 확인 (PostgreSQL은 대소문자 구분 없이 반환할 수 있음)
   const userId = data.id || data.ID || data.Id;
   if (!userId) {
     console.error('signIn: user data has no id field', data);

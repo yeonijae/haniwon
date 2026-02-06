@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { fetchDoctorsWithSqliteStatus } from '@modules/staff/api/staffApi';
+import { fetchDoctorsWithDbStatus } from '@modules/staff/api/staffApi';
 import { getAllDoctorsUrgentCounts } from '../lib/dashboardApi';
 import type { StaffMember } from '@modules/staff/types';
 
@@ -23,7 +23,7 @@ export function DoctorSelectPanel() {
   const loadDoctors = async () => {
     try {
       const [doctorList, counts] = await Promise.all([
-        fetchDoctorsWithSqliteStatus(),
+        fetchDoctorsWithDbStatus(),
         getAllDoctorsUrgentCounts(),
       ]);
       // 활성 의사만 필터링

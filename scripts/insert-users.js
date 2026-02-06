@@ -2,7 +2,7 @@
  * 포털 사용자 데이터 SQLite 삽입 스크립트
  */
 
-const SQLITE_API_URL = 'http://192.168.0.173:3200';
+const POSTGRES_API_URL = 'http://192.168.0.173:3200';
 
 const users = [
   {
@@ -109,7 +109,7 @@ async function insertUser(user) {
 VALUES (${user.id}, '${user.name}', '${user.login_id}', '${user.password_hash}', '${user.role}', '${permissionsJson}', 1, datetime('now'), datetime('now'))`;
 
   try {
-    const res = await fetch(`${SQLITE_API_URL}/api/execute`, {
+    const res = await fetch(`${POSTGRES_API_URL}/api/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql })
@@ -135,7 +135,7 @@ async function main() {
   console.log('\n=== 완료 ===');
 
   // 확인 쿼리
-  const res = await fetch(`${SQLITE_API_URL}/api/execute`, {
+  const res = await fetch(`${POSTGRES_API_URL}/api/execute`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sql: 'SELECT id, name, login_id, role FROM portal_users ORDER BY id' })

@@ -50,8 +50,8 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Unified Server (192.168.0.173)               │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │ SQLite API   │  │ MSSQL API    │  │ File API (신규)      │  │
-│  │ :3200        │  │ :3100        │  │ :3200                │  │
+│  │ PostgreSQL   │  │ MSSQL API    │  │ File API (신규)      │  │
+│  │ API :3200    │  │ :3100        │  │ :3200                │  │
 │  │ - exam_results│ │ - 환자정보   │  │ - POST /api/files/   │  │
 │  │ - attachments │ │              │  │ - GET /api/files/    │  │
 │  └──────────────┘  └──────────────┘  └──────────────────────┘  │
@@ -60,7 +60,7 @@
               ┌───────────────┴───────────────┐
               ▼                               ▼
 ┌──────────────────────┐        ┌──────────────────────────────┐
-│   SQLite Database    │        │   로컬 파일 저장소            │
+│   PostgreSQL DB      │        │   로컬 파일 저장소            │
 │   haniwon.db         │        │   C:\haniwon_data\exams\     │
 └──────────────────────┘        └──────────────────────────────┘
 ```
@@ -340,7 +340,7 @@ Content-Type: multipart/form-data
 |------|------|
 | Frontend | React + TypeScript + Tailwind CSS |
 | Backend | Flask (unified-server) |
-| Database | SQLite (검사결과), MSSQL (환자정보) |
+| Database | PostgreSQL (검사결과), MSSQL (환자정보) |
 | File Storage | 로컬 서버 (`C:\haniwon_data`) |
 | AI | Gemini 2.5 Flash API |
 | 썸네일 생성 | Pillow (Python) |
@@ -383,7 +383,7 @@ Content-Type: multipart/form-data
 |------|------|
 | 로컬 서버 | 무료 (기존 활용) |
 | 파일 저장소 | 무료 (로컬 HDD) |
-| SQLite DB | 무료 |
+| PostgreSQL DB | 무료 |
 
 ### 12.2 AI API 비용 (Gemini 2.5 Flash)
 

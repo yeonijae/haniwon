@@ -3,7 +3,7 @@
  * 사용법: node scripts/migrate-prescriptions.js
  */
 
-const SQLITE_API_URL = process.env.SQLITE_API_URL || 'http://192.168.0.173:3200';
+const POSTGRES_API_URL = process.env.POSTGRES_API_URL || 'http://192.168.0.173:3200';
 
 // gosibang에서 가져온 처방 데이터 (308개)
 const PRESCRIPTION_DEFINITIONS = [
@@ -91,7 +91,7 @@ const PRESCRIPTION_DEFINITIONS = [
 
 async function executeSql(sql) {
   try {
-    const res = await fetch(SQLITE_API_URL + '/api/sqlite/execute', {
+    const res = await fetch(POSTGRES_API_URL + '/api/sqlite/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql })

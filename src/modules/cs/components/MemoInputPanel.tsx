@@ -93,7 +93,7 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
   // 공통 상태
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [sqlitePatientId, setSqlitePatientId] = useState<number | null>(null);
+  const [dbPatientId, setDbPatientId] = useState<number | null>(null);
 
   // 약침 상태
   const [yakchimTab, setYakchimTab] = useState<'onetime' | 'package' | 'membership'>('onetime');
@@ -364,7 +364,7 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
     setIsLoading(true);
     try {
       const pid = await getOrCreatePatient();
-      setSqlitePatientId(pid);
+      setDbPatientId(pid);
 
       if (!pid) return;
 

@@ -47,7 +47,7 @@ const StaffListView: React.FC<StaffListViewProps> = ({
   }
 
   // 미등록 원장 여부 확인
-  const hasUnregisteredDoctors = employeeType === 'doctor' && staffList.some(s => s.isRegisteredInSqlite === false);
+  const hasUnregisteredDoctors = employeeType === 'doctor' && staffList.some(s => s.isRegisteredInDb === false);
 
   return (
     <div className="p-4 h-full overflow-auto">
@@ -82,7 +82,7 @@ const StaffCard: React.FC<{
   onClick: () => void;
 }> = ({ staff, onClick }) => {
   const isDoctor = staff.employee_type === 'doctor';
-  const isRegistered = staff.isRegisteredInSqlite !== false; // undefined도 등록된 것으로 간주
+  const isRegistered = staff.isRegisteredInDb !== false; // undefined도 등록된 것으로 간주
 
   const statusColor = {
     active: 'bg-green-100 text-green-700',

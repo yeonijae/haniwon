@@ -95,9 +95,9 @@
 
 | 섹션 | 설명 | 데이터 소스 |
 |------|------|------------|
-| 📋 내 액팅 대기 | 내가 해야 할 액팅 목록 | SQLite `acting_queue` (doctor_id=나, status='waiting') |
-| 🛏️ 내 환자 치료 현황 | 내 담당 환자들이 베드에서 받는 치료 | SQLite `treatment_rooms` (doctor_name=나) |
-| ⏱️ 진행 중인 내 액팅 | 현재 진행 중인 액팅 (시간 카운팅) | SQLite `acting_queue` (doctor_id=나, status='in_progress') |
+| 📋 내 액팅 대기 | 내가 해야 할 액팅 목록 | PostgreSQL `acting_queue` (doctor_id=나, status='waiting') |
+| 🛏️ 내 환자 치료 현황 | 내 담당 환자들이 베드에서 받는 치료 | PostgreSQL `treatment_rooms` (doctor_name=나) |
+| ⏱️ 진행 중인 내 액팅 | 현재 진행 중인 액팅 (시간 카운팅) | PostgreSQL `acting_queue` (doctor_id=나, status='in_progress') |
 
 ### 3.3 "내 환자" 기준
 - **접수된 담당의** 기준 (오늘만 담당의가 다를 수 있음)
@@ -147,7 +147,7 @@
 | 메모 | MSSQL | 주치의메모, 간호사메모, 주소증, 진료메모1/2, 기타메모 |
 | 진료내역 | MSSQL | 최근 3건 진료 세부정보 (날짜, 처치, 진단 등) |
 | 수납내역 | MSSQL | 최근 3건 수납내역 (날짜, 금액, 항목) |
-| 오늘치료 | SQLite | patient_default_treatments, 오늘 치료 항목/약침 정보 |
+| 오늘치료 | PostgreSQL | patient_default_treatments, 오늘 치료 항목/약침 정보 |
 
 ### 4.3 액팅 진행 중 상태
 

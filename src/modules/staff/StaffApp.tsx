@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
 import type { StaffMember, EmployeeType } from './types';
-import { fetchStaffList, fetchDoctorsWithSqliteStatus, migrateMedicalStaffData } from './api/staffApi';
+import { fetchStaffList, fetchDoctorsWithDbStatus, migrateMedicalStaffData } from './api/staffApi';
 
 import StaffListView from './components/StaffListView';
 import StaffDetailModal from './components/StaffDetailModal';
@@ -66,7 +66,7 @@ const StaffApp: React.FC<StaffAppProps> = ({ user }) => {
 
       // 원장: MSSQL + PostgreSQL 상태 병합, 직원: PostgreSQL에서 불러오기
       const [doctorData, staffData] = await Promise.all([
-        fetchDoctorsWithSqliteStatus(),
+        fetchDoctorsWithDbStatus(),
         fetchStaffList('staff')
       ]);
 
