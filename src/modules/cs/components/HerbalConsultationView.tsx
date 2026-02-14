@@ -195,144 +195,119 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
         ))}
       </div>
 
-      {/* 리스트 */}
-      <div className="herbal-list-container">
+      {/* 그리드 */}
+      <div className="herbal-grid-container">
         {loading ? (
           <div className="timeline-loading">
             <i className="fas fa-spinner fa-spin"></i> 로딩 중...
           </div>
-        ) : groupedDrafts.length === 0 ? (
+        ) : drafts.length === 0 ? (
           <div className="timeline-empty">
             <i className="fas fa-mortar-pestle"></i>
             <p>약상담 기록이 없습니다</p>
           </div>
         ) : (
-          groupedDrafts.map((group) => (
-            <div key={group.date} className="timeline-date-group">
-              <div className="timeline-date-header">
-                <span className="timeline-date">{formatDate(group.date)}</span>
-                <span className="timeline-date-full">{group.date}</span>
-                <span className="herbal-group-count">{group.drafts.length}건</span>
-              </div>
-              <div className="herbal-draft-list">
-                {group.drafts.map((draft) => {
-                  const medicines = parseMedicines(draft.medicine_items);
-                  const isExpanded = expandedId === draft.id;
+          <div className="herbal-card-grid">
+            {drafts.map((draft) => {
+              const medicines = parseMedicines(draft.medicine_items);
+              const isExpanded = expandedId === draft.id;
+              const dateLabel = formatDate(extractDate(draft.created_at));
 
-                  return (
-                    <div
-                      key={draft.id}
-                      className={`herbal-draft-card ${isExpanded ? 'expanded' : ''}`}
-                      onClick={() => setExpandedId(isExpanded ? null : (draft.id ?? null))}
-                    >
-                      <div className="herbal-draft-card-header">
-                        <div className="herbal-draft-card-left">
-                          <span
-                            className="herbal-branch-dot"
-                            style={{ backgroundColor: getBranchColor(draft.consultation_type) }}
-                          />
-                          <span className="herbal-draft-patient">
-                            {draft.patient_name}
-                            <span className="herbal-draft-chart">({draft.chart_number})</span>
-                          </span>
-                          <span
-                            className="herbal-branch-badge"
-                            style={{ color: getBranchColor(draft.consultation_type) }}
-                          >
-                            {getBranchLabel(draft.consultation_type)}
-                          </span>
-                        </div>
-                        <div className="herbal-draft-card-right">
-                          {draft.payment_type && (
-                            <span className="herbal-draft-tag">{draft.payment_type}</span>
-                          )}
-                          {draft.delivery_method && (
-                            <span className="herbal-draft-tag">
-                              {DRAFT_DELIVERY_LABELS[draft.delivery_method as DraftDeliveryMethod] || draft.delivery_method}
-                            </span>
-                          )}
-                          {getStatusBadge(draft.status)}
-                          <i className={`fas fa-chevron-${isExpanded ? 'up' : 'down'} herbal-expand-icon`}></i>
-                        </div>
+              return (
+                <div
+                  key={draft.id}
+                  className={`hc-card ${isExpanded ? 'expanded' : ''}`}
+                  onClick={() => setExpandedId(isExpanded ? null : (draft.id ?? null))}
+                >
+                  {/* 상단: 분기 컬러바 */}
+                  <div
+                    className="hc-card-accent"
+                    style={{ backgroundColor: getBranchColor(draft.consultation_type) }}
+                  />
+
+                  <div className="hc-card-body">
+                    {/* 환자 + 상태 */}
+                    <div className="hc-card-top">
+                      <div className="hc-card-patient">
+                        <span className="hc-patient-name">{draft.patient_name}</span>
+                        <span className="hc-patient-chart">{draft.chart_number}</span>
                       </div>
+                      {getStatusBadge(draft.status)}
+                    </div>
 
-                      {/* 기본 정보 (항상 표시) */}
-                      <div className="herbal-draft-card-summary">
-                        {draft.decoction_date && (
-                          <span className="herbal-draft-info">
-                            <i className="fas fa-fire"></i> 탕전: {draft.decoction_date}
-                          </span>
-                        )}
-                        {draft.nokryong_grade && (
-                          <span className="herbal-draft-info">
-                            🦌 녹용: {draft.nokryong_grade}{draft.nokryong_count && draft.nokryong_count > 1 ? ` ×${draft.nokryong_count}` : ''}
-                          </span>
-                        )}
-                        {draft.sub_type && (
-                          <span className="herbal-draft-info">{draft.sub_type}</span>
-                        )}
-                        {draft.created_by && (
-                          <span className="herbal-draft-info herbal-draft-author">
-                            <i className="fas fa-user"></i> {draft.created_by}
-                          </span>
-                        )}
-                      </div>
+                    {/* 분기 */}
+                    <div className="hc-card-branch" style={{ color: getBranchColor(draft.consultation_type) }}>
+                      {getBranchLabel(draft.consultation_type)}
+                    </div>
 
-                      {/* 확장 상세 */}
-                      {isExpanded && (
-                        <div className="herbal-draft-card-detail" onClick={e => e.stopPropagation()}>
-                          <div className="herbal-detail-grid">
-                            {draft.treatment_months && (
-                              <div className="herbal-detail-item">
-                                <span className="herbal-detail-label">치료기간</span>
-                                <span className="herbal-detail-value">{draft.treatment_months}</span>
-                              </div>
-                            )}
-                            {draft.visit_pattern && (
-                              <div className="herbal-detail-item">
-                                <span className="herbal-detail-label">내원패턴</span>
-                                <span className="herbal-detail-value">{draft.visit_pattern}</span>
-                              </div>
-                            )}
-                            {draft.nokryong_type && (
-                              <div className="herbal-detail-item">
-                                <span className="herbal-detail-label">녹용권유</span>
-                                <span className="herbal-detail-value">{draft.nokryong_type}</span>
-                              </div>
-                            )}
-                            {draft.consultation_method && (
-                              <div className="herbal-detail-item">
-                                <span className="herbal-detail-label">상담방법</span>
-                                <span className="herbal-detail-value">{draft.consultation_method}</span>
-                              </div>
-                            )}
-                          </div>
-                          {medicines.length > 0 && (
-                            <div className="herbal-detail-medicines">
-                              <span className="herbal-detail-label">약재</span>
-                              <div className="herbal-medicine-chips">
-                                {medicines.map((m, i) => (
-                                  <span key={i} className="herbal-medicine-chip">
-                                    {m.name} ×{m.quantity}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {draft.memo && (
-                            <div className="herbal-detail-memo">
-                              <span className="herbal-detail-label">메모</span>
-                              <p>{draft.memo}</p>
-                            </div>
-                          )}
-                        </div>
+                    {/* 태그들 */}
+                    <div className="hc-card-tags">
+                      {draft.payment_type && (
+                        <span className="hc-tag">{draft.payment_type}</span>
+                      )}
+                      {draft.nokryong_grade && (
+                        <span className="hc-tag">🦌 {draft.nokryong_grade}{draft.nokryong_count && draft.nokryong_count > 1 ? ` ×${draft.nokryong_count}` : ''}</span>
+                      )}
+                      {draft.delivery_method && (
+                        <span className="hc-tag">{DRAFT_DELIVERY_LABELS[draft.delivery_method as DraftDeliveryMethod] || draft.delivery_method}</span>
+                      )}
+                      {draft.sub_type && (
+                        <span className="hc-tag">{draft.sub_type}</span>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))
+
+                    {/* 탕전일 */}
+                    {draft.decoction_date && (
+                      <div className="hc-card-decoction">
+                        <i className="fas fa-fire"></i> 탕전: {draft.decoction_date}
+                      </div>
+                    )}
+
+                    {/* 메모 미리보기 */}
+                    {draft.memo && (
+                      <div className="hc-card-memo">{draft.memo}</div>
+                    )}
+
+                    {/* 하단: 날짜 + 담당 */}
+                    <div className="hc-card-footer">
+                      <span className="hc-card-date">{dateLabel}</span>
+                      {draft.created_by && (
+                        <span className="hc-card-author"><i className="fas fa-user"></i> {draft.created_by}</span>
+                      )}
+                    </div>
+
+                    {/* 확장 상세 */}
+                    {isExpanded && (
+                      <div className="hc-card-detail" onClick={e => e.stopPropagation()}>
+                        {draft.treatment_months && (
+                          <div className="hc-detail-row"><span className="hc-detail-label">치료기간</span><span>{draft.treatment_months}</span></div>
+                        )}
+                        {draft.visit_pattern && (
+                          <div className="hc-detail-row"><span className="hc-detail-label">내원패턴</span><span>{draft.visit_pattern}</span></div>
+                        )}
+                        {draft.nokryong_type && (
+                          <div className="hc-detail-row"><span className="hc-detail-label">녹용권유</span><span>{draft.nokryong_type}</span></div>
+                        )}
+                        {draft.consultation_method && (
+                          <div className="hc-detail-row"><span className="hc-detail-label">상담방법</span><span>{draft.consultation_method}</span></div>
+                        )}
+                        {medicines.length > 0 && (
+                          <div className="hc-detail-medicines">
+                            <span className="hc-detail-label">약재</span>
+                            <div className="herbal-medicine-chips">
+                              {medicines.map((m, i) => (
+                                <span key={i} className="herbal-medicine-chip">{m.name} ×{m.quantity}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
@@ -369,91 +344,70 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
           margin-top: 2px;
         }
 
-        .herbal-group-count {
-          font-size: 12px;
-          color: var(--text-muted, #94a3b8);
-          margin-left: 8px;
+        /* 그리드 레이아웃 */
+        .herbal-card-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 12px;
         }
 
-        .herbal-draft-list {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          padding-left: 20px;
-        }
-
-        .herbal-draft-card {
+        /* 카드 */
+        .hc-card {
           background: var(--bg-primary, #fff);
           border: 1px solid var(--border-color, #e2e8f0);
-          border-radius: 8px;
-          padding: 10px 14px;
+          border-radius: 10px;
+          overflow: hidden;
           cursor: pointer;
           transition: all 0.15s;
+          display: flex;
+          flex-direction: column;
         }
 
-        .herbal-draft-card:hover {
+        .hc-card:hover {
           border-color: var(--accent-color, #3b82f6);
-          box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+          transform: translateY(-1px);
         }
 
-        .herbal-draft-card.expanded {
+        .hc-card.expanded {
           border-color: var(--accent-color, #3b82f6);
+          box-shadow: 0 2px 12px rgba(59,130,246,0.12);
         }
 
-        .herbal-draft-card-header {
+        .hc-card-accent {
+          height: 4px;
+          width: 100%;
+          flex-shrink: 0;
+        }
+
+        .hc-card-body {
+          padding: 14px 16px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          flex: 1;
+        }
+
+        .hc-card-top {
           display: flex;
           justify-content: space-between;
-          align-items: center;
-          gap: 8px;
+          align-items: flex-start;
         }
 
-        .herbal-draft-card-left {
+        .hc-card-patient {
           display: flex;
-          align-items: center;
-          gap: 8px;
-          min-width: 0;
+          flex-direction: column;
         }
 
-        .herbal-branch-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          flex-shrink: 0;
+        .hc-patient-name {
+          font-weight: 700;
+          font-size: 15px;
+          line-height: 1.2;
         }
 
-        .herbal-draft-patient {
-          font-weight: 600;
-          font-size: 14px;
-          white-space: nowrap;
-        }
-
-        .herbal-draft-chart {
-          font-weight: 400;
+        .hc-patient-chart {
+          font-size: 12px;
           color: var(--text-muted, #94a3b8);
-          font-size: 12px;
-          margin-left: 4px;
-        }
-
-        .herbal-branch-badge {
-          font-size: 12px;
-          font-weight: 600;
-          white-space: nowrap;
-        }
-
-        .herbal-draft-card-right {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          flex-shrink: 0;
-        }
-
-        .herbal-draft-tag {
-          font-size: 11px;
-          padding: 2px 6px;
-          background: var(--bg-secondary, #f1f5f9);
-          border-radius: 4px;
-          color: var(--text-secondary, #64748b);
-          white-space: nowrap;
         }
 
         .herbal-status-badge {
@@ -463,21 +417,30 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
           color: #fff;
           font-weight: 600;
           white-space: nowrap;
+          flex-shrink: 0;
         }
 
-        .herbal-expand-icon {
-          font-size: 10px;
-          color: var(--text-muted, #94a3b8);
+        .hc-card-branch {
+          font-size: 13px;
+          font-weight: 700;
         }
 
-        .herbal-draft-card-summary {
+        .hc-card-tags {
           display: flex;
-          gap: 12px;
-          margin-top: 6px;
+          gap: 4px;
           flex-wrap: wrap;
         }
 
-        .herbal-draft-info {
+        .hc-tag {
+          font-size: 11px;
+          padding: 2px 8px;
+          background: var(--bg-secondary, #f1f5f9);
+          border-radius: 4px;
+          color: var(--text-secondary, #64748b);
+          white-space: nowrap;
+        }
+
+        .hc-card-decoction {
           font-size: 12px;
           color: var(--text-secondary, #64748b);
           display: flex;
@@ -485,46 +448,68 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
           gap: 4px;
         }
 
-        .herbal-draft-info i {
+        .hc-card-decoction i {
+          color: #ef4444;
           font-size: 11px;
         }
 
-        .herbal-draft-author {
-          margin-left: auto;
+        .hc-card-memo {
+          font-size: 12px;
+          color: var(--text-muted, #94a3b8);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
-        .herbal-draft-card-detail {
-          margin-top: 10px;
-          padding-top: 10px;
+        .hc-card-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-top: auto;
+          padding-top: 8px;
+          border-top: 1px solid var(--border-color, #f1f5f9);
+        }
+
+        .hc-card-date {
+          font-size: 11px;
+          color: var(--text-muted, #94a3b8);
+        }
+
+        .hc-card-author {
+          font-size: 11px;
+          color: var(--text-muted, #94a3b8);
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .hc-card-author i {
+          font-size: 10px;
+        }
+
+        /* 확장 상세 */
+        .hc-card-detail {
+          margin-top: 8px;
+          padding-top: 8px;
           border-top: 1px solid var(--border-color, #e2e8f0);
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 6px;
         }
 
-        .herbal-detail-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-          gap: 8px;
-        }
-
-        .herbal-detail-item {
+        .hc-detail-row {
           display: flex;
-          flex-direction: column;
-          gap: 2px;
+          justify-content: space-between;
+          font-size: 12px;
         }
 
-        .herbal-detail-label {
+        .hc-detail-label {
           font-size: 11px;
           color: var(--text-muted, #94a3b8);
           font-weight: 600;
         }
 
-        .herbal-detail-value {
-          font-size: 13px;
-        }
-
-        .herbal-detail-medicines {
+        .hc-detail-medicines {
           display: flex;
           flex-direction: column;
           gap: 4px;
@@ -541,19 +526,6 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
           padding: 2px 8px;
           background: var(--bg-secondary, #f1f5f9);
           border-radius: 4px;
-        }
-
-        .herbal-detail-memo {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-        }
-
-        .herbal-detail-memo p {
-          font-size: 13px;
-          margin: 0;
-          white-space: pre-wrap;
-          color: var(--text-secondary, #64748b);
         }
       `}</style>
     </div>
