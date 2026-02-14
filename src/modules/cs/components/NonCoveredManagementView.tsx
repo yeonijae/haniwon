@@ -5,12 +5,13 @@ import { query, execute, escapeString, getCurrentDate } from '@shared/lib/postgr
 import DailyUncoveredStatus from './DailyUncoveredStatus';
 import PackageAlertView from './PackageAlertView';
 import PrepaidManagementView from './PrepaidManagementView';
+import HerbalConsultationView from './HerbalConsultationView';
 
 interface NonCoveredManagementViewProps {
   user: PortalUser;
 }
 
-type NonCoveredTab = 'timeline' | 'daily-uncovered' | 'package-alert' | 'prepaid';
+type NonCoveredTab = 'timeline' | 'daily-uncovered' | 'package-alert' | 'prepaid' | 'herbal-consultation';
 
 // 이벤트 타입 정의
 export const EVENT_TYPES = [
@@ -179,6 +180,13 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
           <i className="fa-solid fa-pills"></i>
           선결제 관리
         </button>
+        <button
+          className={`noncovered-tab ${activeTab === 'herbal-consultation' ? 'active' : ''}`}
+          onClick={() => setActiveTab('herbal-consultation')}
+        >
+          <i className="fa-solid fa-mortar-pestle"></i>
+          약상담
+        </button>
       </div>
 
       {activeTab === 'daily-uncovered' ? (
@@ -187,6 +195,8 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
         <PackageAlertView user={user} />
       ) : activeTab === 'prepaid' ? (
         <PrepaidManagementView user={user} />
+      ) : activeTab === 'herbal-consultation' ? (
+        <HerbalConsultationView user={user} />
       ) : (
         <>
       {/* 헤더 */}
