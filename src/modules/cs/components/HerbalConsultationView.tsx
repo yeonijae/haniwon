@@ -132,6 +132,16 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
         <div className="noncovered-header-left">
           <h2>💊 약상담</h2>
           <span className="noncovered-count">총 {drafts.length}건</span>
+          <div className="header-badges">
+            <span className="header-badge" style={{ '--badge-color': '#f59e0b' } as React.CSSProperties}>초안 {drafts.filter(d => d.status === 'draft').length}</span>
+            <span className="header-badge" style={{ '--badge-color': '#10b981' } as React.CSSProperties}>탕전배정 {drafts.filter(d => d.status === 'scheduled').length}</span>
+            {DRAFT_BRANCH_TYPES.map(b => {
+              const cnt = drafts.filter(d => d.consultation_type === b.value).length;
+              return cnt > 0 ? (
+                <span key={b.value} className="header-badge" style={{ '--badge-color': getBranchColor(b.value) } as React.CSSProperties}>{b.label} {cnt}</span>
+              ) : null;
+            })}
+          </div>
         </div>
         <div className="noncovered-header-right">
           <input
@@ -173,26 +183,6 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
             <i className={`fas fa-sync-alt ${loading ? 'fa-spin' : ''}`}></i>
           </button>
         </div>
-      </div>
-
-      {/* 요약 카드 */}
-      <div className="herbal-summary-cards">
-        <div className="herbal-summary-card">
-          <div className="herbal-summary-value">{drafts.filter(d => d.status === 'draft').length}</div>
-          <div className="herbal-summary-label">초안</div>
-        </div>
-        <div className="herbal-summary-card">
-          <div className="herbal-summary-value">{drafts.filter(d => d.status === 'scheduled').length}</div>
-          <div className="herbal-summary-label">탕전배정</div>
-        </div>
-        {DRAFT_BRANCH_TYPES.map(b => (
-          <div key={b.value} className="herbal-summary-card">
-            <div className="herbal-summary-value" style={{ color: getBranchColor(b.value) }}>
-              {drafts.filter(d => d.consultation_type === b.value).length}
-            </div>
-            <div className="herbal-summary-label">{b.label}</div>
-          </div>
-        ))}
       </div>
 
       {/* 그리드 */}
@@ -303,6 +293,23 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
           display: flex;
           flex-direction: column;
           gap: 12px;
+        }
+
+        .header-badges {
+          display: flex;
+          gap: 4px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .header-badge {
+          font-size: 11px;
+          padding: 2px 8px;
+          border-radius: 10px;
+          background: color-mix(in srgb, var(--badge-color) 15%, transparent);
+          color: var(--badge-color);
+          font-weight: 600;
+          white-space: nowrap;
         }
 
         .herbal-grid-container {

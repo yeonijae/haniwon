@@ -114,6 +114,14 @@ function MedicineUsageView() {
         <div className="noncovered-header-left">
           <h2>💊 상비약</h2>
           <span className="noncovered-count">총 {usages.length}건</span>
+          <div className="header-badges">
+            {MEDICINE_CATEGORIES.map(cat => {
+              const cnt = usages.filter(u => u.category === cat).length;
+              return cnt > 0 ? (
+                <span key={cat} className="header-badge" style={{ '--badge-color': getCategoryColor(cat) } as React.CSSProperties}>{cat} {cnt}</span>
+              ) : null;
+            })}
+          </div>
         </div>
         <div className="noncovered-header-right">
           <input
@@ -137,18 +145,6 @@ function MedicineUsageView() {
             <i className={`fas fa-sync-alt ${loading ? 'fa-spin' : ''}`}></i>
           </button>
         </div>
-      </div>
-
-      {/* 요약 카드 */}
-      <div className="herbal-summary-cards">
-        {MEDICINE_CATEGORIES.map(cat => (
-          <div key={cat} className="herbal-summary-card">
-            <div className="herbal-summary-value" style={{ color: getCategoryColor(cat) }}>
-              {usages.filter(u => u.category === cat).length}
-            </div>
-            <div className="herbal-summary-label">{cat}</div>
-          </div>
-        ))}
       </div>
 
       {/* 그리드 */}
@@ -207,6 +203,23 @@ function MedicineUsageView() {
       </div>
 
       <style>{`
+        .medicine-usage-view .header-badges {
+          display: flex;
+          gap: 4px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .medicine-usage-view .header-badge {
+          font-size: 11px;
+          padding: 2px 8px;
+          border-radius: 10px;
+          background: color-mix(in srgb, var(--badge-color) 15%, transparent);
+          color: var(--badge-color);
+          font-weight: 600;
+          white-space: nowrap;
+        }
+
         .medicine-usage-view {
           display: flex;
           flex-direction: column;

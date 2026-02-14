@@ -81,34 +81,31 @@ function PackageManagementView() {
         <div className="noncovered-header-left">
           <h2>📦 패키지</h2>
           <span className="noncovered-count">총 {filteredAlerts.length}건</span>
+          <div className="header-badges">
+            {(Object.entries(FILTER_CONFIG) as [PackageFilter, typeof FILTER_CONFIG[PackageFilter]][]).map(([key, cfg]) => {
+              const cnt = key === 'all' ? baseAlerts.length
+                : key === 'treatment' ? typeCounts.treatment
+                : key === 'membership' ? typeCounts.membership
+                : key === 'low-remaining' ? baseAlerts.filter(a => a.alertType === 'low-remaining').length
+                : baseAlerts.filter(a => a.alertType === 'expire-soon' || a.alertType === 'membership-expire').length;
+              return (
+                <span
+                  key={key}
+                  className={`header-badge clickable ${filter === key ? 'active' : ''}`}
+                  style={{ '--badge-color': cfg.color } as React.CSSProperties}
+                  onClick={() => setFilter(key)}
+                >
+                  {cfg.label}{key !== 'all' ? ` ${cnt}` : ''}
+                </span>
+              );
+            })}
+          </div>
         </div>
         <div className="noncovered-header-right">
           <button className="noncovered-refresh-btn" onClick={loadData} disabled={loading}>
             <i className={`fas fa-sync-alt ${loading ? 'fa-spin' : ''}`}></i>
           </button>
         </div>
-      </div>
-
-      {/* 필터 */}
-      <div className="pkg-filter-bar">
-        {(Object.entries(FILTER_CONFIG) as [PackageFilter, typeof FILTER_CONFIG[PackageFilter]][]).map(([key, cfg]) => (
-          <button
-            key={key}
-            className={`pkg-filter-btn ${filter === key ? 'active' : ''}`}
-            style={{ '--filter-color': cfg.color } as React.CSSProperties}
-            onClick={() => setFilter(key)}
-          >
-            <i className={`fa-solid ${cfg.icon}`}></i> {cfg.label}
-            {key !== 'all' && (
-              <span className="pkg-filter-count">
-                {key === 'treatment' ? typeCounts.treatment
-                  : key === 'membership' ? typeCounts.membership
-                  : key === 'low-remaining' ? filteredAlerts.filter(a => a.alertType === 'low-remaining').length
-                  : filteredAlerts.filter(a => a.alertType === 'expire-soon' || a.alertType === 'membership-expire').length}
-              </span>
-            )}
-          </button>
-        ))}
       </div>
 
       {/* 그리드 */}
@@ -175,65 +172,35 @@ function PackageManagementView() {
           gap: 20px;
         }
 
-        .package-mgmt-view .herbal-summary-cards {
+        .header-badges {
           display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .package-mgmt-view .herbal-summary-card {
-          background: var(--bg-secondary, #f8f9fa);
-          border: 1px solid var(--border-color, #e2e8f0);
-          border-radius: 8px;
-          padding: 10px 16px;
-          text-align: center;
-          min-width: 70px;
-        }
-
-        .package-mgmt-view .herbal-summary-value {
-          font-size: 20px;
-          font-weight: 700;
-        }
-
-        .package-mgmt-view .herbal-summary-label {
-          font-size: 11px;
-          color: var(--text-muted, #94a3b8);
-          margin-top: 2px;
-        }
-
-        .pkg-filter-bar {
-          display: flex;
-          gap: 6px;
-          flex-wrap: wrap;
-        }
-
-        .pkg-filter-btn {
-          display: flex;
-          align-items: center;
           gap: 4px;
-          padding: 6px 12px;
-          border: 1px solid var(--border-color, #e2e8f0);
-          border-radius: 8px;
-          background: var(--bg-primary, #fff);
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .header-badge {
+          font-size: 11px;
+          padding: 2px 8px;
+          border-radius: 10px;
+          background: color-mix(in srgb, var(--badge-color) 15%, transparent);
+          color: var(--badge-color);
+          font-weight: 600;
+          white-space: nowrap;
+        }
+
+        .header-badge.clickable {
           cursor: pointer;
-          font-size: 13px;
           transition: all 0.15s;
         }
 
-        .pkg-filter-btn:hover {
-          border-color: var(--filter-color, #3b82f6);
+        .header-badge.clickable:hover {
+          background: color-mix(in srgb, var(--badge-color) 25%, transparent);
         }
 
-        .pkg-filter-btn.active {
-          background: var(--filter-color, #3b82f6);
+        .header-badge.clickable.active {
+          background: var(--badge-color);
           color: #fff;
-          border-color: var(--filter-color, #3b82f6);
-        }
-
-        .pkg-filter-count {
-          font-size: 11px;
-          font-weight: 700;
-          opacity: 0.8;
         }
 
         .package-mgmt-view .herbal-card-grid {
