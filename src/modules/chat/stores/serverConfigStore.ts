@@ -14,8 +14,8 @@ interface ServerConfigState extends ServerConfig {
 }
 
 const DEFAULT_CONFIG: ServerConfig = {
-  serverUrl: '192.168.0.173',  // 프로덕션 서버
-  serverPort: '3300',
+  serverUrl: import.meta.env.VITE_CHAT_SERVER_HOST || '192.168.0.173',
+  serverPort: import.meta.env.VITE_CHAT_SERVER_PORT || '3300',
 };
 
 export const useServerConfigStore = create<ServerConfigState>()(

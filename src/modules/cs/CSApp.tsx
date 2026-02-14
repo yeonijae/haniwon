@@ -224,6 +224,37 @@ function CSApp({ user }: CSAppProps) {
     closeContextMenu();
   }, [contextPatient, closeContextMenu]);
 
+  // 컨텍스트 메뉴: 대시보드 열기
+  const handleContextDashboard = useCallback(() => {
+    if (contextPatient) {
+      const localPatient: LocalPatient = {
+        id: contextPatient.patient_id || 0,
+        mssql_id: contextPatient.patient_id,
+        name: contextPatient.patient_name,
+        chart_number: contextPatient.chart_no,
+        phone: null,
+        birth_date: null,
+        gender: contextPatient.sex || null,
+        address: null,
+        first_visit_date: null,
+        last_visit_date: null,
+        total_visits: 0,
+        created_at: '',
+        updated_at: '',
+        synced_at: null,
+        treatment_clothing: null,
+        treatment_notes: null,
+        deletion_date: null,
+        main_doctor: null,
+        doctor_memo: null,
+        nurse_memo: null,
+        referral_type: null,
+      };
+      setSelectedHeaderPatient(localPatient);
+    }
+    closeContextMenu();
+  }, [contextPatient, closeContextMenu]);
+
   // 프로그램 등록 모달 닫기
   const closeProgramModal = useCallback(() => {
     setShowProgramModal(false);
@@ -486,6 +517,10 @@ function CSApp({ user }: CSAppProps) {
               </button>
             </>
           )}
+          <button className="cs-context-menu-item" onClick={handleContextDashboard}>
+            <span className="cs-context-icon">📋</span>
+            <span>대시보드</span>
+          </button>
           <button className="cs-context-menu-item" onClick={closeContextMenu}>
             <span className="cs-context-icon">✕</span>
             <span>닫기</span>
