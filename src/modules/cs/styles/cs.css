@@ -18013,14 +18013,6 @@
 }
 
 /* === 비급여관리 서브탭 === */
-.noncovered-tabs {
-  display: flex;
-  gap: 6px;
-  padding: 12px 16px;
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
-}
-
 .noncovered-tab {
   padding: 8px 14px;
   border: none;
