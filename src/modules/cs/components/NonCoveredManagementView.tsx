@@ -244,7 +244,7 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
           align-items: center;
           justify-content: space-between;
           gap: 12px;
-          padding: 8px 0;
+          padding: 0;
           flex-wrap: wrap;
         }
 
