@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { PortalUser } from '@shared/types';
 import { query, getCurrentDate } from '@shared/lib/postgres';
-import type { HerbalDraft, DraftBranchType, DraftStatus, DraftDeliveryMethod } from '../types';
-import { DRAFT_BRANCH_TYPES, DRAFT_STATUS_LABELS, DRAFT_DELIVERY_LABELS } from '../types';
+import type { HerbalDraft, DraftBranchType, DraftStatus, DraftDeliveryMethod, JourneyStatus } from '../types';
+import { DRAFT_BRANCH_TYPES, DRAFT_STATUS_LABELS, DRAFT_DELIVERY_LABELS, JOURNEY_STEPS } from '../types';
+import { updateHerbalDraftJourney } from '../lib/api';
 
 interface HerbalConsultationViewProps {
   user: PortalUser;
@@ -71,6 +72,23 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
     return '알수없음';
+  };
+
+  const parseJourney = (j: any): JourneyStatus => {
+    if (!j) return {};
+    if (typeof j === 'string') try { return JSON.parse(j); } catch { return {}; }
+    return j;
+  };
+
+  const handleJourneyToggle = async (draftId: number, stepKey: keyof JourneyStatus, currentJourney: JourneyStatus) => {
+    const newJourney = { ...currentJourney, [stepKey]: !currentJourney[stepKey] };
+    setDrafts(prev => prev.map(d => d.id === draftId ? { ...d, journey_status: newJourney } : d));
+    try {
+      await updateHerbalDraftJourney(draftId, newJourney);
+    } catch (err) {
+      console.error('여정 업데이트 오류:', err);
+      setDrafts(prev => prev.map(d => d.id === draftId ? { ...d, journey_status: currentJourney } : d));
+    }
   };
 
   const groupedDrafts: GroupedDrafts[] = drafts.reduce((acc: GroupedDrafts[], draft) => {
@@ -190,7 +208,31 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
                           </div>
                         )}
                         {draft.memo && <div className="hc-card-memo">{draft.memo}</div>}
+                        {/* 한약 여정 파이프라인 */}
+                        <div className="hc-journey" onClick={e => e.stopPropagation()}>
+                          {JOURNEY_STEPS.map((step, idx) => {
+                            const journey = parseJourney(draft.journey_status);
+                            const done = !!journey[step.key];
+                            const isLast = idx === JOURNEY_STEPS.length - 1;
+                            return (
+                              <React.Fragment key={step.key}>
+                                <button
+                                  className={`hc-journey-step ${done ? 'done' : ''}`}
+                                  onClick={() => handleJourneyToggle(draft.id!, step.key, journey)}
+                                  title={`${step.label} ${done ? '(완료)' : '(미완료)'} - 클릭하여 토글`}
+                                >
+                                  <span className="hc-journey-dot">{done ? '●' : '○'}</span>
+                                  <span className="hc-journey-label">{step.label}</span>
+                                </button>
+                                {!isLast && <span className={`hc-journey-line ${done ? 'done' : ''}`} />}
+                              </React.Fragment>
+                            );
+                          })}
+                        </div>
                         <div className="hc-card-footer">
+                          {draft.doctor && (
+                            <span className="hc-card-doctor"><i className="fas fa-user-md"></i> {draft.doctor}</span>
+                          )}
                           {draft.created_by && (
                             <span className="hc-card-author"><i className="fas fa-user"></i> {draft.created_by}</span>
                           )}
@@ -394,6 +436,77 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+
+        /* 여정 파이프라인 */
+        .hc-journey {
+          display: flex;
+          align-items: center;
+          gap: 0;
+          padding: 8px 0 4px;
+          border-top: 1px solid var(--border-color, #f1f5f9);
+          margin-top: 6px;
+        }
+
+        .hc-journey-step {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 2px 4px;
+          transition: all 0.15s;
+        }
+
+        .hc-journey-step:hover {
+          transform: scale(1.1);
+        }
+
+        .hc-journey-dot {
+          font-size: 14px;
+          color: var(--text-muted, #cbd5e1);
+          line-height: 1;
+        }
+
+        .hc-journey-step.done .hc-journey-dot {
+          color: #10b981;
+        }
+
+        .hc-journey-label {
+          font-size: 9px;
+          color: var(--text-muted, #94a3b8);
+          white-space: nowrap;
+        }
+
+        .hc-journey-step.done .hc-journey-label {
+          color: #10b981;
+          font-weight: 600;
+        }
+
+        .hc-journey-line {
+          flex: 1;
+          height: 2px;
+          min-width: 8px;
+          background: var(--border-color, #e2e8f0);
+          margin-bottom: 14px;
+        }
+
+        .hc-journey-line.done {
+          background: #10b981;
+        }
+
+        .hc-card-doctor {
+          font-size: 11px;
+          color: #3b82f6;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .hc-card-doctor i {
+          font-size: 10px;
         }
 
         .hc-card-footer {

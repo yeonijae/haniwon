@@ -83,6 +83,7 @@ function isDirty(form: HerbalDraftFormData): boolean {
 export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuccess, editDraft, defaultReceiptDate }: HerbalDraftModalProps) {
   const [formData, setFormData] = useState<HerbalDraftFormData>({ ...INITIAL_DRAFT_FORM_DATA });
   const [receiptDate, setReceiptDate] = useState(defaultReceiptDate || '');
+  const [doctor, setDoctor] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   // 드래그 상태
@@ -97,9 +98,11 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
       if (editDraft) {
         setFormData(recordToFormData(editDraft));
         setReceiptDate(editDraft.receipt_date || '');
+        setDoctor(editDraft.doctor || '');
       } else {
         setFormData({ ...INITIAL_DRAFT_FORM_DATA });
         setReceiptDate(defaultReceiptDate || '');
+        setDoctor('');
       }
     }
   }, [isOpen, editDraft, defaultReceiptDate]);
@@ -173,6 +176,7 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
     try {
       const record = formDataToRecord(formData, patient, user);
       record.receipt_date = receiptDate || undefined;
+      record.doctor = doctor || undefined;
 
       if (editDraft?.id) {
         // 수정 모드
@@ -242,6 +246,14 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
                   value={receiptDate}
                   onChange={(e) => setReceiptDate(e.target.value)}
                   style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
+                />
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap', marginLeft: 12 }}>담당의</label>
+                <input
+                  type="text"
+                  value={doctor}
+                  onChange={(e) => setDoctor(e.target.value)}
+                  placeholder="담당의"
+                  style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, width: 80 }}
                 />
               </div>
 

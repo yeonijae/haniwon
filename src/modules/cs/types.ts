@@ -1261,6 +1261,24 @@ export const INITIAL_DRAFT_FORM_DATA: HerbalDraftFormData = {
 };
 
 // DB 레코드 인터페이스
+export interface JourneyStatus {
+  prescription?: boolean;
+  dosage?: boolean;
+  preparation?: boolean;
+  decoction?: boolean;
+  shipping?: boolean;
+  received?: boolean;
+}
+
+export const JOURNEY_STEPS: { key: keyof JourneyStatus; label: string; icon: string }[] = [
+  { key: 'prescription', label: '처방', icon: '📋' },
+  { key: 'dosage', label: '복용법', icon: '📝' },
+  { key: 'preparation', label: '조제', icon: '🧪' },
+  { key: 'decoction', label: '탕전', icon: '🔥' },
+  { key: 'shipping', label: '배송', icon: '🚚' },
+  { key: 'received', label: '수령', icon: '✅' },
+];
+
 export interface HerbalDraft {
   id?: number;
   patient_id: number;
@@ -1286,6 +1304,8 @@ export interface HerbalDraft {
   memo?: string;
   medicine_items?: string;
   receipt_date?: string;
+  doctor?: string;
+  journey_status?: JourneyStatus;
   status: DraftStatus;
   created_by?: string;
   created_at?: string;
