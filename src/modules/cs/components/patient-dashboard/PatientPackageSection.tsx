@@ -10,6 +10,8 @@ interface PatientPackageSectionProps {
   packages: PackageStatusSummary | null;
   herbalDrafts: HerbalDraft[];
   isLoading: boolean;
+  onEditDraft?: (draft: HerbalDraft) => void;
+  onDeleteDraft?: (draft: HerbalDraft) => void;
 }
 
 // 분기 타입 → 표시 라벨
@@ -43,6 +45,8 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
   packages,
   herbalDrafts,
   isLoading,
+  onEditDraft,
+  onDeleteDraft,
 }) => {
   if (isLoading) {
     return <div className="section-loading">로딩 중...</div>;
@@ -155,6 +159,20 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
 
                 return (
                   <div key={draft.id} className="herbal-draft-history-item">
+                    {(onEditDraft || onDeleteDraft) && (
+                      <div className="herbal-draft-item-actions">
+                        {onEditDraft && (
+                          <button className="herbal-draft-action-btn" onClick={() => onEditDraft(draft)} title="수정">
+                            <i className="fa-solid fa-pen" />
+                          </button>
+                        )}
+                        {onDeleteDraft && (
+                          <button className="herbal-draft-action-btn delete" onClick={() => onDeleteDraft(draft)} title="삭제">
+                            <i className="fa-solid fa-trash" />
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <div className="herbal-draft-history-row">
                       <span className="herbal-draft-history-branch">{branchLabel}</span>
                       {draft.sub_type && (
@@ -217,11 +235,45 @@ const DRAFT_HISTORY_STYLES = `
     gap: 6px;
   }
   .herbal-draft-history-item {
+    position: relative;
     padding: 8px 10px;
     background: #f9fafb;
     border: 1px solid #e5e7eb;
     border-radius: 6px;
     font-size: 12px;
+  }
+  .herbal-draft-item-actions {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .herbal-draft-history-item:hover .herbal-draft-item-actions {
+    opacity: 1;
+  }
+  .herbal-draft-action-btn {
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: #9ca3af;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .herbal-draft-action-btn:hover {
+    background: #e5e7eb;
+    color: #374151;
+  }
+  .herbal-draft-action-btn.delete:hover {
+    background: #fef2f2;
+    color: #dc2626;
   }
   .herbal-draft-history-row {
     display: flex;

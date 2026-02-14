@@ -7,7 +7,9 @@ import React, { useState, useEffect } from 'react';
 import type { PortalUser } from '@shared/types';
 import type { LocalPatient } from '../lib/patientSync';
 import type { StaffRole } from '../types/crm';
+import type { HerbalDraft } from '../types';
 import { usePatientDashboard } from '../hooks/usePatientDashboard';
+import { deleteHerbalDraft } from '../lib/api';
 
 // 연속 줄바꿈을 1회로 축약
 const trimMemo = (text: string): string => text.replace(/(\r?\n){2,}/g, '\n');
@@ -47,6 +49,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
   const [showMemoForm, setShowMemoForm] = useState(false);
   const [showPackageModal, setShowPackageModal] = useState(false);
   const [showDraftModal, setShowDraftModal] = useState(false);
+  const [editingDraft, setEditingDraft] = useState<HerbalDraft | null>(null);
   const [showStep1Modal, setShowStep1Modal] = useState(false);
   const [showStep2Modal, setShowStep2Modal] = useState(false);
   const [reservationDraft, setReservationDraft] = useState<ReservationDraft | null>(null);
@@ -83,6 +86,21 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
       setDoctors(active);
     }).catch(console.error);
   }, [isOpen]);
+
+  const handleEditDraft = (draft: HerbalDraft) => {
+    setEditingDraft(draft);
+    setShowDraftModal(true);
+  };
+
+  const handleDeleteDraft = async (draft: HerbalDraft) => {
+    if (!confirm(`한약 기록을 삭제하시겠습니까?\n(${draft.consultation_type} - ${draft.patient_name})`)) return;
+    try {
+      await deleteHerbalDraft(draft.id!);
+      refresh();
+    } catch (err) {
+      alert('삭제 중 오류가 발생했습니다.');
+    }
+  };
 
   // Step1 완료 → Step2 (캘린더 시간 선택)
   const handleReservationNext = (draft: ReservationDraft) => {
@@ -294,6 +312,8 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
               packages={packages}
               herbalDrafts={herbalDrafts}
               isLoading={isLoading}
+              onEditDraft={handleEditDraft}
+              onDeleteDraft={handleDeleteDraft}
             />
           </div>
 
@@ -302,8 +322,9 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
             isOpen={showDraftModal}
             patient={patient}
             user={user}
-            onClose={() => setShowDraftModal(false)}
-            onSuccess={() => { setShowDraftModal(false); refresh(); }}
+            editDraft={editingDraft}
+            onClose={() => { setShowDraftModal(false); setEditingDraft(null); }}
+            onSuccess={() => { setShowDraftModal(false); setEditingDraft(null); refresh(); }}
           />
 
           {/* 한약/비급여 관리 모달 */}

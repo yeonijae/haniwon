@@ -1,9 +1,9 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { PortalUser } from '@shared/types';
 import type { LocalPatient } from '../lib/patientSync';
-import type { HerbalDraftFormData, DraftBranchType } from '../types';
+import type { HerbalDraftFormData, DraftBranchType, HerbalDraft, TreatmentMonth, DraftVisitPattern, NokryongRecommendation, ConsultationMethod, OtherSubType, PaymentMonth, NokryongGrade, DraftDeliveryMethod } from '../types';
 import { DRAFT_BRANCH_TYPES, INITIAL_DRAFT_FORM_DATA } from '../types';
-import { createHerbalDraft, useMedicineStock } from '../lib/api';
+import { createHerbalDraft, updateHerbalDraft, useMedicineStock } from '../lib/api';
 import BranchInitialHerbal from './herbal-draft/BranchInitialHerbal';
 import BranchFollowUpDeduct from './herbal-draft/BranchFollowUpDeduct';
 import BranchFollowUpPayment from './herbal-draft/BranchFollowUpPayment';
@@ -15,6 +15,33 @@ interface HerbalDraftModalProps {
   user: PortalUser;
   onClose: () => void;
   onSuccess: () => void;
+  editDraft?: HerbalDraft | null;
+}
+
+function recordToFormData(draft: HerbalDraft): HerbalDraftFormData {
+  let medicines: HerbalDraftFormData['medicines'] = [];
+  if (draft.medicine_items) {
+    try {
+      medicines = JSON.parse(draft.medicine_items).map((m: any) => ({
+        inventoryId: m.id, name: m.name, quantity: m.qty, currentStock: 0, unit: ''
+      }));
+    } catch {}
+  }
+  return {
+    branch: (draft.consultation_type || '') as DraftBranchType | '',
+    treatmentMonths: draft.treatment_months ? draft.treatment_months.split(',') as TreatmentMonth[] : [],
+    visitPattern: (draft.visit_pattern || '') as DraftVisitPattern | '',
+    nokryongRecommendation: (draft.nokryong_type || '') as NokryongRecommendation | '',
+    consultationMethod: (draft.consultation_method || '') as ConsultationMethod | '',
+    subType: (draft.sub_type || '') as OtherSubType | '',
+    paymentMonth: (draft.payment_type || '') as PaymentMonth | '',
+    nokryongGrade: (draft.nokryong_grade || '') as NokryongGrade | '',
+    nokryongCount: draft.nokryong_count || 1,
+    deliveryMethod: (draft.delivery_method || '') as DraftDeliveryMethod | '',
+    decoctionDate: draft.decoction_date || undefined,
+    memo: draft.memo || '',
+    medicines,
+  };
 }
 
 // 폼 데이터 → DB 레코드 변환
@@ -52,7 +79,7 @@ function isDirty(form: HerbalDraftFormData): boolean {
     form.memo.trim() !== '';
 }
 
-export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuccess }: HerbalDraftModalProps) {
+export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuccess, editDraft }: HerbalDraftModalProps) {
   const [formData, setFormData] = useState<HerbalDraftFormData>({ ...INITIAL_DRAFT_FORM_DATA });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -61,10 +88,17 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
   const dragState = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
 
-  // 모달 열릴 때 위치 초기화
+  // 모달 열릴 때 위치 초기화 + 수정 모드 폼 초기화
   useEffect(() => {
-    if (isOpen) setPos(null);
-  }, [isOpen]);
+    if (isOpen) {
+      setPos(null);
+      if (editDraft) {
+        setFormData(recordToFormData(editDraft));
+      } else {
+        setFormData({ ...INITIAL_DRAFT_FORM_DATA });
+      }
+    }
+  }, [isOpen, editDraft]);
 
   // 드래그 핸들러
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -133,21 +167,27 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
     if (!formData.branch) return;
     setIsSaving(true);
     try {
-      await createHerbalDraft(formDataToRecord(formData, patient, user));
+      if (editDraft?.id) {
+        // 수정 모드
+        await updateHerbalDraft(editDraft.id, formDataToRecord(formData, patient, user));
+      } else {
+        // 신규 모드
+        await createHerbalDraft(formDataToRecord(formData, patient, user));
 
-      // 상비약/보완처방: 재고 차감
-      const today = new Date().toISOString().slice(0, 10);
-      const purpose = formData.subType || '상비약';
-      for (const med of formData.medicines) {
-        await useMedicineStock(
-          med.inventoryId,
-          patient.id,
-          patient.chart_number || '',
-          patient.name,
-          med.quantity,
-          purpose,
-          today,
-        );
+        // 상비약/보완처방: 재고 차감 (신규만)
+        const today = new Date().toISOString().slice(0, 10);
+        const purpose = formData.subType || '상비약';
+        for (const med of formData.medicines) {
+          await useMedicineStock(
+            med.inventoryId,
+            patient.id,
+            patient.chart_number || '',
+            patient.name,
+            med.quantity,
+            purpose,
+            today,
+          );
+        }
       }
 
       setFormData({ ...INITIAL_DRAFT_FORM_DATA });
@@ -179,7 +219,7 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
             className="pkg-modal-header herbal-draft-drag-handle"
             onMouseDown={handleMouseDown}
           >
-            <h3>한약 기록 — {patient.name}</h3>
+            <h3>{editDraft ? '한약 기록 수정' : '한약 기록'} — {patient.name}</h3>
             <button className="pkg-modal-close-btn" onClick={handleClose}>
               <i className="fa-solid fa-xmark"></i>
             </button>
