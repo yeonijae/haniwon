@@ -3,7 +3,7 @@ import type { PortalUser } from '@shared/types';
 import { query, getCurrentDate } from '@shared/lib/postgres';
 import type { HerbalDraft, DraftBranchType, DraftStatus, DraftDeliveryMethod, JourneyStatus } from '../types';
 import { DRAFT_BRANCH_TYPES, DRAFT_STATUS_LABELS, DRAFT_DELIVERY_LABELS, JOURNEY_STEPS } from '../types';
-import { updateHerbalDraftJourney } from '../lib/api';
+import { updateHerbalDraft, updateHerbalDraftJourney } from '../lib/api';
 
 interface HerbalConsultationViewProps {
   user: PortalUser;
@@ -25,6 +25,8 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
   const [drafts, setDrafts] = useState<HerbalDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [editingDeliveryId, setEditingDeliveryId] = useState<number | null>(null);
+  const [editingDecoctionId, setEditingDecoctionId] = useState<number | null>(null);
 
   const loadDrafts = useCallback(async () => {
     setLoading(true);
@@ -80,8 +82,17 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
     return j;
   };
 
-  const handleJourneyToggle = async (draftId: number, stepKey: keyof JourneyStatus, currentJourney: JourneyStatus) => {
-    const newJourney = { ...currentJourney, [stepKey]: !currentJourney[stepKey] };
+  const handleJourneyToggle = async (draft: HerbalDraft, stepKey: keyof JourneyStatus, currentJourney: JourneyStatus) => {
+    const draftId = draft.id!;
+    const done = !!currentJourney[stepKey];
+    if (stepKey === 'received' && !done) {
+      const method = draft.delivery_method;
+      let msg = '수령 완료 처리하시겠습니까?';
+      if (method === 'quick') msg = '퀵 배송 — 당일 수령 확인되었나요?';
+      else if (method === 'express') msg = '택배 — 환자에게 도착 확인되었나요?';
+      if (!confirm(msg)) return;
+    }
+    const newJourney = { ...currentJourney, [stepKey]: !done };
     setDrafts(prev => prev.map(d => d.id === draftId ? { ...d, journey_status: newJourney } : d));
     try {
       await updateHerbalDraftJourney(draftId, newJourney);
@@ -144,6 +155,17 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
     try { return JSON.parse(items); } catch { return []; }
   };
 
+  const getVisibleSteps = (draft: HerbalDraft) => {
+    let steps = [...JOURNEY_STEPS];
+    if (draft.consultation_type !== '약초진') {
+      steps = steps.filter(s => s.key !== 'dosage');
+    }
+    if (draft.delivery_method === 'pickup' || !draft.delivery_method) {
+      steps = steps.filter(s => s.key !== 'shipping');
+    }
+    return steps;
+  };
+
   return (
     <div className="herbal-consultation-view">
       {/* 그리드 */}
@@ -197,37 +219,91 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
                           {draft.nokryong_grade && (
                             <span className="hc-tag">🦌 {draft.nokryong_grade}{draft.nokryong_count && draft.nokryong_count > 1 ? ` ×${draft.nokryong_count}` : ''}</span>
                           )}
-                          {draft.delivery_method && (
-                            <span className="hc-tag">{DRAFT_DELIVERY_LABELS[draft.delivery_method as DraftDeliveryMethod] || draft.delivery_method}</span>
+                          {/* 배송방식 - 인라인 칩 토글 */}
+                          <span 
+                            className="hc-tag hc-tag-editable"
+                            onClick={(e) => { e.stopPropagation(); setEditingDeliveryId(editingDeliveryId === draft.id ? null : (draft.id ?? null)); setEditingDecoctionId(null); }}
+                          >
+                            {DRAFT_DELIVERY_LABELS[draft.delivery_method as DraftDeliveryMethod] || draft.delivery_method || '배송미정'}
+                            <i className="fas fa-chevron-right" style={{ fontSize: 8, marginLeft: 4 }} />
+                          </span>
+                          {editingDeliveryId === draft.id && (
+                            <div className="hc-delivery-chips" onClick={e => e.stopPropagation()}>
+                              {(Object.entries(DRAFT_DELIVERY_LABELS) as [DraftDeliveryMethod, string][]).map(([key, label]) => (
+                                <button
+                                  key={key}
+                                  className={`hc-delivery-chip ${draft.delivery_method === key ? 'active' : ''}`}
+                                  onClick={async () => {
+                                    setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, delivery_method: key } : d));
+                                    setEditingDeliveryId(null);
+                                    try {
+                                      await updateHerbalDraft(draft.id!, { delivery_method: key });
+                                    } catch (err) {
+                                      console.error('배송방식 수정 오류:', err);
+                                    }
+                                  }}
+                                >
+                                  {label}{draft.delivery_method === key ? ' ✓' : ''}
+                                </button>
+                              ))}
+                            </div>
                           )}
                           {draft.sub_type && <span className="hc-tag">{draft.sub_type}</span>}
                         </div>
-                        {draft.decoction_date && (
-                          <div className="hc-card-decoction">
-                            <i className="fas fa-fire"></i> 탕전: {draft.decoction_date}
-                          </div>
-                        )}
+                        <div className="hc-card-decoction" onClick={e => e.stopPropagation()}>
+                          <i className="fas fa-fire"></i>
+                          {editingDecoctionId === draft.id ? (
+                            <input
+                              type="date"
+                              className="hc-decoction-input"
+                              value={draft.decoction_date || ''}
+                              autoFocus
+                              onChange={async (e) => {
+                                const newDate = e.target.value;
+                                setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, decoction_date: newDate } : d));
+                                try {
+                                  await updateHerbalDraft(draft.id!, { decoction_date: newDate, status: newDate ? 'scheduled' : 'draft' });
+                                  setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, status: newDate ? 'scheduled' as DraftStatus : 'draft' as DraftStatus } : d));
+                                } catch (err) {
+                                  console.error('탕전일 수정 오류:', err);
+                                }
+                              }}
+                              onBlur={() => setEditingDecoctionId(null)}
+                              onKeyDown={(e) => { if (e.key === 'Escape') setEditingDecoctionId(null); }}
+                            />
+                          ) : (
+                            <span 
+                              className="hc-decoction-value"
+                              onClick={() => { setEditingDecoctionId(draft.id ?? null); setEditingDeliveryId(null); }}
+                            >
+                              탕전: {draft.decoction_date || '미정'} <i className="fas fa-pen" style={{ fontSize: 9, marginLeft: 4, opacity: 0.5 }} />
+                            </span>
+                          )}
+                        </div>
                         {draft.memo && <div className="hc-card-memo">{draft.memo}</div>}
                         {/* 한약 여정 파이프라인 */}
                         <div className="hc-journey" onClick={e => e.stopPropagation()}>
-                          {JOURNEY_STEPS.map((step, idx) => {
-                            const journey = parseJourney(draft.journey_status);
-                            const done = !!journey[step.key];
-                            const isLast = idx === JOURNEY_STEPS.length - 1;
-                            return (
-                              <React.Fragment key={step.key}>
-                                <button
-                                  className={`hc-journey-step ${done ? 'done' : ''}`}
-                                  onClick={() => handleJourneyToggle(draft.id!, step.key, journey)}
-                                  title={`${step.label} ${done ? '(완료)' : '(미완료)'} - 클릭하여 토글`}
-                                >
-                                  <span className="hc-journey-dot">{done ? '●' : '○'}</span>
-                                  <span className="hc-journey-label">{step.label}</span>
-                                </button>
-                                {!isLast && <span className={`hc-journey-line ${done ? 'done' : ''}`} />}
-                              </React.Fragment>
-                            );
-                          })}
+                          {(() => {
+                            const visibleSteps = getVisibleSteps(draft);
+                            return visibleSteps.map((step, idx) => {
+                              const journey = parseJourney(draft.journey_status);
+                              const done = !!journey[step.key];
+                              const isLast = idx === visibleSteps.length - 1;
+                              return (
+                                <React.Fragment key={step.key}>
+                                  <button
+                                    className={`hc-journey-step ${done ? 'done' : ''}`}
+                                    onClick={() => handleJourneyToggle(draft, step.key, journey)}
+                                    title={`${step.label} ${done ? '(완료)' : '(미완료)'} - 클릭하여 토글`}
+                                  >
+                                    <span className="hc-journey-dot">{done ? '●' : '○'}</span>
+                                    <span className="hc-journey-label">{step.label}</span>
+                                  </button>
+                                  {!isLast && <span className={`hc-journey-line ${done ? 'done' : ''}`} />}
+                                </React.Fragment>
+                              );
+                            });
+                          })()}
                         </div>
                         <div className="hc-card-footer">
                           {draft.doctor && (
@@ -568,6 +644,62 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
           padding: 2px 8px;
           background: var(--bg-secondary, #f1f5f9);
           border-radius: 4px;
+        }
+
+        .hc-tag-editable {
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .hc-tag-editable:hover {
+          background: color-mix(in srgb, var(--accent-color, #3b82f6) 15%, transparent);
+          border-color: var(--accent-color, #3b82f6);
+        }
+
+        .hc-delivery-chips {
+          display: flex;
+          gap: 4px;
+          flex-wrap: wrap;
+        }
+
+        .hc-delivery-chip {
+          font-size: 11px;
+          padding: 2px 8px;
+          border-radius: 4px;
+          border: 1px solid var(--border-color, #e2e8f0);
+          background: var(--bg-primary, #fff);
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .hc-delivery-chip:hover {
+          border-color: var(--accent-color, #3b82f6);
+          background: color-mix(in srgb, var(--accent-color, #3b82f6) 10%, transparent);
+        }
+
+        .hc-delivery-chip.active {
+          background: #3b82f6;
+          color: #fff;
+          border-color: #3b82f6;
+        }
+
+        .hc-decoction-input {
+          padding: 2px 6px;
+          border: 1px solid #3b82f6;
+          border-radius: 4px;
+          font-size: 12px;
+          outline: none;
+          background: var(--bg-primary, #fff);
+          color: var(--text-primary, #1e293b);
+        }
+
+        .hc-decoction-value {
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .hc-decoction-value:hover {
+          color: #3b82f6;
         }
       `}</style>
     </div>
