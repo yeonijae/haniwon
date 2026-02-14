@@ -16,6 +16,7 @@ interface HerbalDraftModalProps {
   onClose: () => void;
   onSuccess: () => void;
   editDraft?: HerbalDraft | null;
+  defaultReceiptDate?: string;  // 최근 수납일 (진료일)
 }
 
 function recordToFormData(draft: HerbalDraft): HerbalDraftFormData {
@@ -65,7 +66,7 @@ function formDataToRecord(form: HerbalDraftFormData, patient: LocalPatient, user
     medicine_items: form.medicines.length > 0
       ? JSON.stringify(form.medicines.map(m => ({ id: m.inventoryId, name: m.name, qty: m.quantity })))
       : undefined,
-    receipt_date: undefined,  // api.ts에서 getCurrentDate()로 자동 설정
+    receipt_date: undefined as string | undefined,  // handleSave에서 설정
     status: form.decoctionDate ? 'scheduled' as const : 'draft' as const,
     created_by: user.name,
   };
@@ -79,8 +80,9 @@ function isDirty(form: HerbalDraftFormData): boolean {
     form.memo.trim() !== '';
 }
 
-export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuccess, editDraft }: HerbalDraftModalProps) {
+export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuccess, editDraft, defaultReceiptDate }: HerbalDraftModalProps) {
   const [formData, setFormData] = useState<HerbalDraftFormData>({ ...INITIAL_DRAFT_FORM_DATA });
+  const [receiptDate, setReceiptDate] = useState(defaultReceiptDate || '');
   const [isSaving, setIsSaving] = useState(false);
 
   // 드래그 상태
@@ -94,11 +96,13 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
       setPos(null);
       if (editDraft) {
         setFormData(recordToFormData(editDraft));
+        setReceiptDate(editDraft.receipt_date || '');
       } else {
         setFormData({ ...INITIAL_DRAFT_FORM_DATA });
+        setReceiptDate(defaultReceiptDate || '');
       }
     }
-  }, [isOpen, editDraft]);
+  }, [isOpen, editDraft, defaultReceiptDate]);
 
   // 드래그 핸들러
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -167,12 +171,15 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
     if (!formData.branch) return;
     setIsSaving(true);
     try {
+      const record = formDataToRecord(formData, patient, user);
+      record.receipt_date = receiptDate || undefined;
+
       if (editDraft?.id) {
         // 수정 모드
-        await updateHerbalDraft(editDraft.id, formDataToRecord(formData, patient, user));
+        await updateHerbalDraft(editDraft.id, record);
       } else {
         // 신규 모드
-        await createHerbalDraft(formDataToRecord(formData, patient, user));
+        await createHerbalDraft(record);
 
         // 상비약/보완처방: 재고 차감 (신규만)
         const today = new Date().toISOString().slice(0, 10);
@@ -226,6 +233,17 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
           </div>
           <div className="pkg-modal-body">
             <div className="herbal-draft-form">
+
+              {/* 진료일 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap' }}>진료일</label>
+                <input
+                  type="date"
+                  value={receiptDate}
+                  onChange={(e) => setReceiptDate(e.target.value)}
+                  style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
+                />
+              </div>
 
               {/* 분기 선택 */}
               <div className="herbal-draft-branch-selector">

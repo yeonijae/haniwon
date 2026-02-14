@@ -4898,6 +4898,7 @@ export async function updateHerbalDraft(id: number, updates: Partial<HerbalDraft
   if (updates.delivery_method !== undefined) setClauses.push(`delivery_method = ${escapeString(updates.delivery_method)}`);
   if (updates.decoction_date !== undefined) setClauses.push(`decoction_date = ${escapeString(updates.decoction_date)}`);
   if (updates.memo !== undefined) setClauses.push(`memo = ${escapeString(updates.memo)}`);
+  if (updates.receipt_date !== undefined) setClauses.push(`receipt_date = ${escapeString(updates.receipt_date)}`);
   if (updates.status !== undefined) setClauses.push(`status = ${escapeString(updates.status)}`);
   setClauses.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
   await execute(`UPDATE cs_herbal_drafts SET ${setClauses.join(', ')} WHERE id = ${id}`);

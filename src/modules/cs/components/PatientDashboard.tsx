@@ -323,6 +323,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
             patient={patient}
             user={user}
             editDraft={editingDraft}
+            defaultReceiptDate={receipts[0]?.receipt_date}
             onClose={() => { setShowDraftModal(false); setEditingDraft(null); }}
             onSuccess={() => { setShowDraftModal(false); setEditingDraft(null); refresh(); }}
           />
