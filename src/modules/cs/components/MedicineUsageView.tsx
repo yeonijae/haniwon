@@ -29,6 +29,8 @@ function MedicineUsageView() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState<FilterCategory>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const loadUsages = useCallback(async () => {
     setLoading(true);
@@ -45,6 +47,12 @@ function MedicineUsageView() {
       if (filterCategory !== 'all') {
         sql += ` AND i.category = '${filterCategory}'`;
       }
+      if (dateFrom) {
+        sql += ` AND u.usage_date >= '${dateFrom}'`;
+      }
+      if (dateTo) {
+        sql += ` AND u.usage_date <= '${dateTo}'`;
+      }
       sql += ` ORDER BY u.usage_date DESC, u.created_at DESC LIMIT 200`;
 
       const data = await query<MedicineUsageRow>(sql);
@@ -54,7 +62,7 @@ function MedicineUsageView() {
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, filterCategory]);
+  }, [searchTerm, filterCategory, dateFrom, dateTo]);
 
   useEffect(() => {
     loadUsages();
@@ -141,6 +149,14 @@ function MedicineUsageView() {
               <option key={cat} value={cat}>{cat}</option>
             ))}
           </select>
+          <div className="date-range-filter">
+            <input type="date" className="date-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <span className="date-separator">~</span>
+            <input type="date" className="date-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            {(dateFrom || dateTo) && (
+              <button className="date-clear-btn" onClick={() => { setDateFrom(''); setDateTo(''); }}>✕</button>
+            )}
+          </div>
           <button className="noncovered-refresh-btn" onClick={loadUsages} disabled={loading}>
             <i className={`fas fa-sync-alt ${loading ? 'fa-spin' : ''}`}></i>
           </button>
@@ -218,6 +234,39 @@ function MedicineUsageView() {
           color: var(--badge-color);
           font-weight: 600;
           white-space: nowrap;
+        }
+
+        .medicine-usage-view .date-range-filter {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .medicine-usage-view .date-input {
+          padding: 4px 6px;
+          border: 1px solid var(--border-color, #e2e8f0);
+          border-radius: 6px;
+          font-size: 12px;
+          background: var(--bg-primary, #fff);
+          color: var(--text-primary, #1e293b);
+        }
+
+        .medicine-usage-view .date-separator {
+          font-size: 12px;
+          color: var(--text-muted, #94a3b8);
+        }
+
+        .medicine-usage-view .date-clear-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          font-size: 12px;
+          color: var(--text-muted, #94a3b8);
+          padding: 2px 4px;
+        }
+
+        .medicine-usage-view .date-clear-btn:hover {
+          color: #ef4444;
         }
 
         .medicine-usage-view {

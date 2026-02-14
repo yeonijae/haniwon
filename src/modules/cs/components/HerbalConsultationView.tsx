@@ -24,6 +24,8 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
   const [filterBranch, setFilterBranch] = useState<FilterBranch>('all');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [sortField, setSortField] = useState<SortField>('created_at');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const loadDrafts = useCallback(async () => {
@@ -40,6 +42,12 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
       if (filterStatus !== 'all') {
         sql += ` AND status = '${filterStatus}'`;
       }
+      if (dateFrom) {
+        sql += ` AND created_at >= '${dateFrom}'`;
+      }
+      if (dateTo) {
+        sql += ` AND created_at < '${dateTo}T23:59:59'`;
+      }
 
       sql += ` ORDER BY ${sortField} DESC NULLS LAST LIMIT 200`;
 
@@ -50,7 +58,7 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, filterBranch, filterStatus, sortField]);
+  }, [searchTerm, filterBranch, filterStatus, sortField, dateFrom, dateTo]);
 
   useEffect(() => {
     loadDrafts();
@@ -179,6 +187,14 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
             <option value="decoction_date">탕전일순</option>
             <option value="patient_name">환자명순</option>
           </select>
+          <div className="date-range-filter">
+            <input type="date" className="date-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <span className="date-separator">~</span>
+            <input type="date" className="date-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            {(dateFrom || dateTo) && (
+              <button className="date-clear-btn" onClick={() => { setDateFrom(''); setDateTo(''); }}>✕</button>
+            )}
+          </div>
           <button className="noncovered-refresh-btn" onClick={loadDrafts} disabled={loading}>
             <i className={`fas fa-sync-alt ${loading ? 'fa-spin' : ''}`}></i>
           </button>
@@ -310,6 +326,39 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
           color: var(--badge-color);
           font-weight: 600;
           white-space: nowrap;
+        }
+
+        .date-range-filter {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .date-input {
+          padding: 4px 6px;
+          border: 1px solid var(--border-color, #e2e8f0);
+          border-radius: 6px;
+          font-size: 12px;
+          background: var(--bg-primary, #fff);
+          color: var(--text-primary, #1e293b);
+        }
+
+        .date-separator {
+          font-size: 12px;
+          color: var(--text-muted, #94a3b8);
+        }
+
+        .date-clear-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          font-size: 12px;
+          color: var(--text-muted, #94a3b8);
+          padding: 2px 4px;
+        }
+
+        .date-clear-btn:hover {
+          color: #ef4444;
         }
 
         .herbal-grid-container {
