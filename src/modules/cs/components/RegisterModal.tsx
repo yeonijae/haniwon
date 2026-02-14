@@ -399,7 +399,7 @@ function RegisterModal({
           await setPackageDiseaseTags(packageId, tagIds);
         }
 
-        // 메모 생성: "1개월 선결제" 형식 + herbal_package_id 연결
+        // 메모 생성: "1개월 선결제" 형식
         await addReceiptMemo({
           patient_id: patientId,
           chart_number: chartNumber,
@@ -407,7 +407,6 @@ function RegisterModal({
           mssql_receipt_id: receiptId,
           receipt_date: receiptDate,
           memo: `${monthNum}개월 선결제`,
-          herbal_package_id: packageId,
         });
       }
 
@@ -463,7 +462,7 @@ function RegisterModal({
           mssql_detail_id: selectedDetailId || undefined,
         });
 
-        // 메모 생성 (nokryong_package_id + mssql_detail_id 연결)
+        // 메모 생성
         await addReceiptMemo({
           patient_id: patientId,
           chart_number: chartNumber,
@@ -472,7 +471,6 @@ function RegisterModal({
           mssql_detail_id: selectedDetailId || undefined,
           receipt_date: receiptDate,
           memo: memoText,
-          nokryong_package_id: packageId,
         });
       }
 

@@ -2,31 +2,30 @@ import { useState, useEffect, useCallback } from 'react';
 import * as api from '../lib/api';
 import type { Inquiry, CreateInquiryRequest, UpdateInquiryRequest, InquiryStatus } from '../types';
 
+function getCurrentDateStr(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
 export function useInquiries() {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'today' | 'pending'>('today');
+  const [selectedDate, setSelectedDate] = useState<string>(getCurrentDateStr());
+  const [dateViewMode, setDateViewMode] = useState<'created' | 'completed'>('created');
 
   // 문의 목록 로드
   const loadInquiries = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      // 테이블이 없으면 생성
       await api.ensureInquiriesTable();
 
-      let data: Inquiry[];
-      switch (filter) {
-        case 'today':
-          data = await api.getTodayInquiries();
-          break;
-        case 'pending':
-          data = await api.getPendingInquiries();
-          break;
-        default:
-          data = await api.getInquiries({ limit: 100 });
-      }
+      const data = await api.getInquiries({
+        date: selectedDate,
+        dateField: dateViewMode === 'created' ? 'created_at' : 'completed_at',
+        includeOpen: true,
+      });
       setInquiries(data);
     } catch (err) {
       console.error('문의 목록 로드 실패:', err);
@@ -34,7 +33,7 @@ export function useInquiries() {
     } finally {
       setIsLoading(false);
     }
-  }, [filter]);
+  }, [selectedDate, dateViewMode]);
 
   // 초기 로드
   useEffect(() => {
@@ -85,16 +84,30 @@ export function useInquiries() {
     }
   }, [loadInquiries]);
 
+  // 환자 매칭
+  const matchPatient = useCallback(async (inquiryId: number, patientId: number | null) => {
+    try {
+      await api.updateInquiry(inquiryId, { patient_id: patientId === null ? null : Number(patientId) });
+      await loadInquiries();
+    } catch (err) {
+      console.error('환자 매칭 실패:', err);
+      throw err;
+    }
+  }, [loadInquiries]);
+
   return {
     inquiries,
     isLoading,
     error,
-    filter,
-    setFilter,
+    selectedDate,
+    setSelectedDate,
+    dateViewMode,
+    setDateViewMode,
     loadInquiries,
     createInquiry,
     updateInquiry,
     deleteInquiry,
     updateStatus,
+    matchPatient,
   };
 }

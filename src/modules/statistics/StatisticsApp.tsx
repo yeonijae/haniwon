@@ -138,7 +138,12 @@ interface DoctorStats {
 }
 
 interface StatisticsAppProps {
-  user: PortalUser;
+  user?: PortalUser;
+  defaultPeriod?: PeriodType;
+  embedded?: boolean;
+  controlledDate?: string;
+  controlledYear?: number;
+  controlledMonth?: number;
 }
 
 type PeriodType = 'daily' | 'weekly' | 'monthly';
@@ -165,12 +170,12 @@ function formatMoney(amount: number): string {
   return amount.toLocaleString();
 }
 
-function StatisticsApp({ user }: StatisticsAppProps) {
+function StatisticsApp({ user, defaultPeriod, embedded, controlledDate, controlledYear, controlledMonth }: StatisticsAppProps) {
   // 폰트 스케일
   const { scale, scalePercent, increaseScale, decreaseScale, resetScale, canIncrease, canDecrease } = useFontScale('statistics');
   useDocumentTitle('통계');
 
-  const [period, setPeriod] = useState<PeriodType>('daily');
+  const [period, setPeriod] = useState<PeriodType>(defaultPeriod || 'daily');
   const [selectedDate, setSelectedDate] = useState<string>(
     getCurrentDate()
   );
@@ -272,6 +277,17 @@ function StatisticsApp({ user }: StatisticsAppProps) {
   const [hiddenChimPatient, setHiddenChimPatient] = useState<Set<string>>(new Set());
   const [hiddenYakChojin, setHiddenYakChojin] = useState<Set<string>>(new Set());
   const [hiddenUncovered, setHiddenUncovered] = useState<Set<string>>(new Set());
+
+  // embedded 모드: 외부에서 날짜 제어
+  useEffect(() => {
+    if (controlledDate !== undefined) setSelectedDate(controlledDate);
+  }, [controlledDate]);
+  useEffect(() => {
+    if (controlledYear !== undefined) setSelectedYear(controlledYear);
+  }, [controlledYear]);
+  useEffect(() => {
+    if (controlledMonth !== undefined) setSelectedMonth(controlledMonth);
+  }, [controlledMonth]);
 
   // 뷰 모드: 전체 통계 vs 원장별 통계
   const [viewMode, setViewMode] = useState<'all' | 'doctor'>('all');
@@ -657,9 +673,9 @@ function StatisticsApp({ user }: StatisticsAppProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className={embedded ? "h-full bg-gray-100 overflow-auto" : "min-h-screen bg-gray-100"}>
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
+      {!embedded && <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="w-full px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <span className="text-2xl">📊</span>
@@ -774,10 +790,10 @@ function StatisticsApp({ user }: StatisticsAppProps) {
             </button>
           </div>
         </div>
-      </header>
+      </header>}
 
       {/* Main Content */}
-      <main className="w-full px-6 py-6" style={{ zoom: scale }}>
+      <main className={embedded ? "w-full px-6 py-6" : "w-full px-6 py-6"} style={embedded ? undefined : { zoom: scale }}>
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
             {error}
@@ -792,7 +808,8 @@ function StatisticsApp({ user }: StatisticsAppProps) {
 
         {!loading && totalStats && (
           <>
-            {/* 뷰 모드 탭 */}
+            {/* 뷰 모드 탭 (embedded 모드에서는 숨김) */}
+            {!embedded && (
             <div className="mb-6 flex justify-center">
               <div className="flex bg-gray-200 rounded-lg p-1">
                 <button
@@ -817,6 +834,7 @@ function StatisticsApp({ user }: StatisticsAppProps) {
                 </button>
               </div>
             </div>
+            )}
 
             {/* 전체 통계 뷰 */}
             {viewMode === 'all' && (

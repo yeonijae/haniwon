@@ -11,13 +11,16 @@ import CSSidebar, {
 } from './components/CSSidebar';
 import ReservationView from './components/ReservationView';
 import ReceiptView from './components/ReceiptView';
-import InquiryView from './components/InquiryView';
-import PatientSearchView from './components/PatientSearchView';
+import PatientDashboard from './components/PatientDashboard';
 import NonCoveredManagementView from './components/NonCoveredManagementView';
 import TreatmentProgramAdmin from './components/TreatmentProgramAdmin';
 import SettingsView from './components/SettingsView';
-import CRMView from './components/CRMView';
+import InquiryView from './components/InquiryView';
+import { OutboundCallCenter } from './components/call-center';
 import PatientTimelineModal from './components/PatientTimelineModal';
+import HeaderPatientSearch from './components/HeaderPatientSearch';
+import QuickMemoPanel from './components/QuickMemoPanel';
+import type { LocalPatient } from './lib/patientSync';
 import type { ReservationDraft } from '../reservation/components/ReservationStep1Modal';
 import './styles/cs.css';
 
@@ -62,15 +65,14 @@ interface CSAppProps {
   user: PortalUser;
 }
 
-export type CSMenuType = 'reservation' | 'receipt' | 'inquiry' | 'search' | 'noncovered' | 'crm' | 'settings';
+export type CSMenuType = 'reservation' | 'receipt' | 'noncovered' | 'inbound' | 'outbound' | 'settings';
 
 const MENU_TITLES: Record<CSMenuType, string> = {
   reservation: '예약관리',
   receipt: '수납관리',
-  inquiry: '문의접수',
-  search: '환자검색',
   noncovered: '비급여관리',
-  crm: '환자CRM',
+  inbound: '인콜',
+  outbound: '아웃콜',
   settings: '프로그램설정',
 };
 
@@ -84,9 +86,8 @@ const MENU_ITEMS: MenuItem[] = [
   { id: 'receipt', icon: '💰', label: '수납' },
   { id: 'reservation', icon: '📅', label: '예약' },
   { id: 'noncovered', icon: '💊', label: '비급여' },
-  { id: 'crm', icon: '👤', label: 'CRM' },
-  { id: 'inquiry', icon: '📝', label: '문의' },
-  { id: 'search', icon: '🔍', label: '검색' },
+  { id: 'inbound', icon: '📞', label: '인콜' },
+  { id: 'outbound', icon: '📣', label: '아웃콜' },
   { id: 'settings', icon: '⚙️', label: '설정' },
 ];
 
@@ -99,6 +100,11 @@ function CSApp({ user }: CSAppProps) {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 헤더 환자 검색 상태
+  const [selectedHeaderPatient, setSelectedHeaderPatient] = useState<LocalPatient | null>(null);
+  // 빠른 기록 패널 상태
+  const [showQuickMemo, setShowQuickMemo] = useState(false);
 
   // 우클릭 컨텍스트 메뉴 상태
   const [contextPatient, setContextPatient] = useState<ConsultationPatient | null>(null);
@@ -332,14 +338,12 @@ function CSApp({ user }: CSAppProps) {
             onReservationDraftReady={handleReservationDraftReady}
           />
         );
-      case 'inquiry':
-        return <InquiryView user={user} />;
-      case 'search':
-        return <PatientSearchView user={user} />;
       case 'noncovered':
         return <NonCoveredManagementView user={user} />;
-      case 'crm':
-        return <CRMView user={user} />;
+      case 'inbound':
+        return <InquiryView user={user} />;
+      case 'outbound':
+        return <OutboundCallCenter user={user} />;
       case 'settings':
         return <SettingsView user={user} />;
       default:
@@ -360,13 +364,23 @@ function CSApp({ user }: CSAppProps) {
             <button
               key={item.id}
               className={`cs-top-nav-item ${activeMenu === item.id ? 'active' : ''}`}
-              onClick={() => setActiveMenu(item.id)}
+              onClick={() => { setActiveMenu(item.id); setSelectedHeaderPatient(null); }}
             >
               <span className="cs-top-nav-icon">{item.icon}</span>
               <span className="cs-top-nav-label">{item.label}</span>
             </button>
           ))}
         </nav>
+        <div className="cs-header-tools">
+          <HeaderPatientSearch onPatientSelect={setSelectedHeaderPatient} />
+          <button
+            className={`cs-quick-memo-btn ${showQuickMemo ? 'active' : ''}`}
+            onClick={() => setShowQuickMemo(!showQuickMemo)}
+            title="빠른 기록"
+          >
+            <i className="fa-solid fa-pen-to-square"></i>
+          </button>
+        </div>
         <div className="cs-top-header-right">
           <div className="font-scale-controls">
             <button
@@ -390,9 +404,18 @@ function CSApp({ user }: CSAppProps) {
             </button>
           </div>
           <span className="cs-user-info">👤 {user.name}</span>
-          <button className="cs-close-btn" onClick={handleClose}>✕</button>
         </div>
       </header>
+
+
+      {/* 빠른 기록 패널 */}
+      {showQuickMemo && (
+        <QuickMemoPanel
+          user={user}
+          onClose={() => setShowQuickMemo(false)}
+          onSaved={() => setShowQuickMemo(false)}
+        />
+      )}
 
       {/* 메인 영역 (대기환자 패널 + 콘텐츠) */}
       <div className="cs-body">
@@ -405,6 +428,16 @@ function CSApp({ user }: CSAppProps) {
         <div className="cs-main-new">
           <div className="cs-content" style={{ zoom: scale }}>
             {renderContent()}
+
+            {/* 통합 환자 대시보드 (콘텐츠 영역 내 오버레이) */}
+            {selectedHeaderPatient && (
+              <PatientDashboard
+                isOpen={!!selectedHeaderPatient}
+                patient={selectedHeaderPatient}
+                user={user}
+                onClose={() => setSelectedHeaderPatient(null)}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -539,6 +572,7 @@ function CSApp({ user }: CSAppProps) {
           onClose={closeProgramModal}
         />
       )}
+
     </div>
   );
 }

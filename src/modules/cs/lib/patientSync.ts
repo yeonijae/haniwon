@@ -125,6 +125,16 @@ export async function getLocalPatientByMssqlId(mssqlId: number): Promise<LocalPa
 }
 
 /**
+ * 로컬 PostgreSQL에서 환자 조회 (id로)
+ */
+export async function getLocalPatientById(id: number): Promise<LocalPatient | null> {
+  const results = await query<LocalPatient>(
+    `SELECT * FROM patients WHERE id = ${id}`
+  );
+  return results[0] || null;
+}
+
+/**
  * 로컬 PostgreSQL에서 환자 조회 (차트번호로)
  */
 export async function getLocalPatientByChartNo(chartNo: string): Promise<LocalPatient | null> {
@@ -346,7 +356,7 @@ export async function searchLocalPatients(searchTerm: string, limit: number = 50
   return await query<LocalPatient>(
     `SELECT * FROM patients
      WHERE (name ILIKE ${escaped} OR chart_number ILIKE ${escaped} OR phone ILIKE ${escaped})
-     ORDER BY updated_at DESC
+     ORDER BY chart_number ASC
      LIMIT ${limit}`
   );
 }

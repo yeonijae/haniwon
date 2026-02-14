@@ -550,7 +550,7 @@ export async function findDoctorIdByNameOrAlias(nameOrAlias: string): Promise<{ 
  * ============================================
  */
 
-const POSTGRES_API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
+const POSTGRES_API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
 
 export interface TreatmentRecord {
   id: number;

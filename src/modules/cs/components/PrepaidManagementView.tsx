@@ -160,7 +160,12 @@ function PrepaidManagementView({ user }: PrepaidManagementViewProps) {
                     <span className="prepaid-patient-name">{pkg.patient_name}</span>
                     <span className="prepaid-chart-no">({pkg.chart_number})</span>
                   </div>
-                  <div className="prepaid-herbal-name">{pkg.herbal_name || '약명 미지정'}</div>
+                  <div className="prepaid-herbal-name">
+                    {pkg.herbal_name || '약명 미지정'}
+                    {!pkg.mssql_detail_id && (
+                      <span className="prepaid-unlinked-badge">미연결</span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="prepaid-card-meta">
@@ -350,6 +355,8 @@ function AddPackageModal({ onClose, onSuccess }: AddPackageModalProps) {
     total_count: 1,
     start_date: getCurrentDate(),
     memo: '',
+    decoction_date: '',
+    delivery_method: 'pickup' as DeliveryMethod,
   });
   const [saving, setSaving] = useState(false);
 
@@ -393,6 +400,8 @@ function AddPackageModal({ onClose, onSuccess }: AddPackageModalProps) {
         start_date: form.start_date,
         memo: form.memo,
         status: 'active',
+        decoction_date: form.decoction_date || undefined,
+        delivery_method: form.delivery_method,
       });
 
       // 회차 자동 생성
@@ -480,6 +489,28 @@ function AddPackageModal({ onClose, onSuccess }: AddPackageModalProps) {
                 value={form.start_date}
                 onChange={(e) => setForm({ ...form, start_date: e.target.value })}
               />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>탕전 예정일</label>
+              <input
+                type="date"
+                value={form.decoction_date}
+                onChange={(e) => setForm({ ...form, decoction_date: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label>수령방법</label>
+              <select
+                value={form.delivery_method}
+                onChange={(e) => setForm({ ...form, delivery_method: e.target.value as DeliveryMethod })}
+              >
+                {Object.entries(DELIVERY_METHOD_LABELS).map(([key, label]) => (
+                  <option key={key} value={key}>{label}</option>
+                ))}
+              </select>
             </div>
           </div>
 

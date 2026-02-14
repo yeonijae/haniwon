@@ -1,20 +1,25 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import type { PortalUser } from '@shared/types';
 import type { PatientNote, PackageStatusSummary, StaffRole } from '../types/crm';
+import type { Inquiry } from '../types';
 import {
   getPatientNotes,
   getPatientPackageStatus,
   getPatientNoteStats,
 } from '../lib/patientCrmApi';
+import { getInquiries } from '../lib/api';
+import { getLocalPatientByMssqlId } from '../lib/patientSync';
 import PatientNoteTimeline from './PatientNoteTimeline';
 import PatientNoteInput from './PatientNoteInput';
 import PatientPackageStatus from './PatientPackageStatus';
 import PatientHappyCallHistory from './PatientHappyCallHistory';
+import InquiryView from './InquiryView';
 import { OutboundCallCenter } from './call-center';
 import { CRM_TAB_LABELS, type CRMTabType } from '../types/crm';
+import { CHANNEL_LABELS, CHANNEL_ICONS, INQUIRY_TYPE_LABELS, STATUS_LABELS } from '../types';
 
-// CRM 모드: 환자관리 또는 콜센터
-type CRMMode = 'patient' | 'callcenter';
+// CRM 모드: 인바운드(문의), 콜센터(아웃바운드), 환자별관리
+type CRMMode = 'inbound' | 'callcenter' | 'patient';
 
 const MSSQL_API_BASE = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
@@ -34,7 +39,7 @@ interface PatientSearchResult {
 
 const CRMView: React.FC<CRMViewProps> = ({ user }) => {
   // CRM 모드 상태
-  const [crmMode, setCrmMode] = useState<CRMMode>('callcenter');
+  const [crmMode, setCrmMode] = useState<CRMMode>('inbound');
 
   // 환자 검색 상태
   const [searchTerm, setSearchTerm] = useState('');
@@ -49,6 +54,7 @@ const CRMView: React.FC<CRMViewProps> = ({ user }) => {
   const [notes, setNotes] = useState<PatientNote[]>([]);
   const [packageStatus, setPackageStatus] = useState<PackageStatusSummary | null>(null);
   const [noteStats, setNoteStats] = useState<{ total: number; activeComplaints: number }>({ total: 0, activeComplaints: 0 });
+  const [linkedInquiries, setLinkedInquiries] = useState<Inquiry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [editingNote, setEditingNote] = useState<PatientNote | null>(null);
@@ -89,13 +95,13 @@ const CRMView: React.FC<CRMViewProps> = ({ user }) => {
   };
 
   // 환자 선택 시 CRM 데이터 로드
-  const loadCRMData = useCallback(async (patientId: number) => {
+  const loadCRMData = useCallback(async (mssqlPatientId: number) => {
     setIsLoading(true);
     try {
       const [notesData, statusData, statsData] = await Promise.all([
-        getPatientNotes(patientId),
-        getPatientPackageStatus(patientId),
-        getPatientNoteStats(patientId),
+        getPatientNotes(mssqlPatientId),
+        getPatientPackageStatus(mssqlPatientId),
+        getPatientNoteStats(mssqlPatientId),
       ]);
 
       setNotes(notesData);
@@ -104,6 +110,16 @@ const CRMView: React.FC<CRMViewProps> = ({ user }) => {
         total: statsData.total,
         activeComplaints: statsData.activeComplaints,
       });
+
+      // MSSQL ID → PostgreSQL patients.id 변환 후 연결된 문의 조회
+      const localPatient = await getLocalPatientByMssqlId(mssqlPatientId);
+      if (localPatient) {
+        const allInquiries = await getInquiries({ limit: 100 });
+        const matched = allInquiries.filter(inq => inq.patient_id === localPatient.id);
+        setLinkedInquiries(matched);
+      } else {
+        setLinkedInquiries([]);
+      }
     } catch (error) {
       console.error('CRM 데이터 로드 오류:', error);
     } finally {
@@ -139,6 +155,7 @@ const CRMView: React.FC<CRMViewProps> = ({ user }) => {
   const handleBackToSearch = () => {
     setSelectedPatient(null);
     setNotes([]);
+    setLinkedInquiries([]);
     setPackageStatus(null);
     setNoteStats({ total: 0, activeComplaints: 0 });
   };
@@ -148,11 +165,18 @@ const CRMView: React.FC<CRMViewProps> = ({ user }) => {
       {/* 모드 전환 탭 */}
       <div className="crm-mode-tabs">
         <button
+          className={`crm-mode-tab ${crmMode === 'inbound' ? 'active' : ''}`}
+          onClick={() => setCrmMode('inbound')}
+        >
+          <i className="fa-solid fa-arrow-down"></i>
+          인바운드
+        </button>
+        <button
           className={`crm-mode-tab ${crmMode === 'callcenter' ? 'active' : ''}`}
           onClick={() => setCrmMode('callcenter')}
         >
           <i className="fa-solid fa-phone-volume"></i>
-          아웃바운드 콜센터
+          아웃바운드
         </button>
         <button
           className={`crm-mode-tab ${crmMode === 'patient' ? 'active' : ''}`}
@@ -162,6 +186,11 @@ const CRMView: React.FC<CRMViewProps> = ({ user }) => {
           환자별 관리
         </button>
       </div>
+
+      {/* 인바운드 모드 (문의접수) */}
+      {crmMode === 'inbound' && (
+        <InquiryView user={user} />
+      )}
 
       {/* 콜센터 모드 */}
       {crmMode === 'callcenter' && (
@@ -328,6 +357,39 @@ const CRMView: React.FC<CRMViewProps> = ({ user }) => {
                         >
                           전체 메모 보기 ({notes.length}개)
                         </button>
+                      )}
+
+                      {/* 연결된 문의 */}
+                      {linkedInquiries.length > 0 && (
+                        <div className="crm-linked-inquiries">
+                          <h4>연결된 문의 ({linkedInquiries.length}건)</h4>
+                          {linkedInquiries.map(inq => (
+                            <div key={inq.id} className="crm-linked-inquiry-card">
+                              <div className="crm-linked-inquiry-header">
+                                <span className="channel-badge">
+                                  {CHANNEL_ICONS[inq.channel]} {CHANNEL_LABELS[inq.channel]}
+                                </span>
+                                <span className="type-badge">
+                                  {INQUIRY_TYPE_LABELS[inq.inquiry_type]}
+                                </span>
+                                <span className="status-badge">
+                                  {STATUS_LABELS[inq.status]}
+                                </span>
+                                <span className="crm-linked-inquiry-time">
+                                  {new Date(inq.created_at).toLocaleString('ko-KR', {
+                                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+                              <p className="crm-linked-inquiry-content">{inq.content}</p>
+                              {inq.response && (
+                                <p className="crm-linked-inquiry-response">
+                                  <span>응대:</span> {inq.response}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>

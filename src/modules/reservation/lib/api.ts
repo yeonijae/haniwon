@@ -84,7 +84,7 @@ export async function fetchReservationsByDoctor(
 
 // 환자별 예약 이력 조회
 export async function fetchPatientReservations(patientId: number): Promise<Reservation[]> {
-  const response = await fetch(`${API_BASE}/patients/${patientId}/reservations`);
+  const response = await fetch(`${API_BASE}/reservations?patientId=${patientId}`);
   if (!response.ok) throw new Error('환자 예약 이력 조회 실패');
   const data: MssqlReservationResponse[] = await response.json();
   return data.map(mapMssqlToReservation);

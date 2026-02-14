@@ -1049,7 +1049,6 @@ const MemoInputPanel: React.FC<MemoInputPanelProps> = ({
         mssql_detail_id: detailId,
         receipt_date: receiptDate,
         memo: memoText,
-        herbal_pickup_id: pickupId,
       });
 
       onSuccess();

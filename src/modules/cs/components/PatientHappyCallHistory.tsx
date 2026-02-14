@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { query, escapeString } from '@shared/lib/postgres';
+import { query, execute, escapeString } from '@shared/lib/postgres';
 import type { HappyCallRecord } from '../types/crm';
 
 interface PatientHappyCallHistoryProps {
@@ -43,8 +43,22 @@ const PatientHappyCallHistory: React.FC<PatientHappyCallHistoryProps> = ({
       setError(null);
 
       try {
-        // patient_care 모듈의 해피콜 테이블에서 조회
-        // 테이블이 없을 수 있으므로 에러 처리 필요
+        // 테이블 자동 생성
+        await execute(`
+          CREATE TABLE IF NOT EXISTS happy_call_records (
+            id SERIAL PRIMARY KEY,
+            patient_id INTEGER NOT NULL,
+            chart_number TEXT,
+            patient_name TEXT,
+            call_date TIMESTAMPTZ DEFAULT NOW(),
+            call_type TEXT NOT NULL DEFAULT 'post_visit',
+            call_result TEXT NOT NULL DEFAULT 'completed',
+            notes TEXT,
+            staff_name TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          )
+        `).catch(() => {});
+
         const results = await query<HappyCallRecord>(`
           SELECT * FROM happy_call_records
           WHERE patient_id = ${patientId}

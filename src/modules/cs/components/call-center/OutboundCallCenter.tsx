@@ -18,7 +18,9 @@ import {
   type CallTargetPatient,
 } from '../../lib/callQueueApi';
 import { createContactLog } from '../../lib/contactLogApi';
-import { PatientDashboardModal } from '../patient-dashboard';
+import PatientDashboard from '../PatientDashboard';
+import { getLocalPatientById } from '../../lib/patientSync';
+import type { LocalPatient } from '../../lib/patientSync';
 import { MessageSendModal } from '../messaging';
 import CallTargetList from './CallTargetList';
 import CallResultModal from './CallResultModal';
@@ -38,6 +40,9 @@ const CALL_TYPES: CallType[] = [
   'vip_care',
   'churn_risk_1',
   'churn_risk_3',
+  'repayment_consult',
+  'remind_3month',
+  'expiry_warning',
 ];
 
 const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
@@ -50,7 +55,7 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
 
   // 모달 상태
   const [showDashboard, setShowDashboard] = useState(false);
-  const [dashboardPatientId, setDashboardPatientId] = useState<number | null>(null);
+  const [dashboardPatient, setDashboardPatient] = useState<LocalPatient | null>(null);
   const [showResultModal, setShowResultModal] = useState(false);
   const [selectedQueueItem, setSelectedQueueItem] = useState<CallQueueItem | null>(null);
   // 메시지 발송 모달
@@ -121,10 +126,13 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
     }
   };
 
-  // 환자 클릭 → 대시보드 열기
-  const handlePatientClick = (patientId: number) => {
-    setDashboardPatientId(patientId);
-    setShowDashboard(true);
+  // 환자 클릭 → 환자 통합 대시보드 열기
+  const handlePatientClick = async (patientId: number) => {
+    const patient = await getLocalPatientById(patientId);
+    if (patient) {
+      setDashboardPatient(patient);
+      setShowDashboard(true);
+    }
   };
 
   // 콜 완료 버튼 클릭
@@ -426,16 +434,16 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
         )}
       </div>
 
-      {/* 환자 대시보드 모달 */}
-      {showDashboard && dashboardPatientId && (
-        <PatientDashboardModal
+      {/* 환자 통합 대시보드 */}
+      {showDashboard && dashboardPatient && (
+        <PatientDashboard
           isOpen={showDashboard}
+          patient={dashboardPatient}
+          user={user}
           onClose={() => {
             setShowDashboard(false);
-            setDashboardPatientId(null);
+            setDashboardPatient(null);
           }}
-          patientId={dashboardPatientId}
-          user={user}
         />
       )}
 

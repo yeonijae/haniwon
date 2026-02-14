@@ -8,7 +8,7 @@ import type { DbType, DatabaseInfo, TableInfo, ColumnInfo, QueryResult } from '.
 // API 엔드포인트
 const API_ENDPOINTS = {
   mssql: import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100',
-  postgres: import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200',
+  postgres: import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200',
 };
 
 /**

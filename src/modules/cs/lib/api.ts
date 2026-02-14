@@ -15,6 +15,7 @@ import type {
   GiftDispensing,
   DocumentIssue,
   ReceiptMemo,
+  ReceiptStatus,
   ReservationStatus,
   MedicineUsage,
   YakchimUsageRecord,
@@ -27,6 +28,9 @@ import type {
   TimelineEventType,
   TimelineAuditLog,
   TimelineResult,
+  HerbalDraft,
+  StaffScheduleEntry,
+  DecoctionDayCapacity,
 } from '../types';
 import {
   TIMELINE_EVENT_ICONS,
@@ -43,6 +47,7 @@ const MSSQL_API_BASE_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168
 // ============================================
 
 export interface ReceiptDetailItem {
+  detail_id: number;      // Detail_PK (비급여 연결용)
   item_name: string;      // PxName
   amount: number;         // TxMoney
   days: number;           // TxCount (일수)
@@ -61,6 +66,7 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
   try {
     const sql = `
       SELECT
+        Detail_PK as detail_id,
         PxName as item_name,
         TxMoney as amount,
         TxCount as days,
@@ -113,19 +119,34 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
 export async function getInquiries(options?: {
   status?: string;
   date?: string;
+  dateField?: 'created_at' | 'completed_at';
+  includeOpen?: boolean;
   limit?: number;
 }): Promise<Inquiry[]> {
-  let sql = 'SELECT * FROM cs_inquiries WHERE 1=1';
+  const dateField = options?.dateField || 'created_at';
+
+  let sql = `
+    SELECT i.*,
+      p.name AS matched_patient_name,
+      p.chart_number AS matched_chart_number
+    FROM cs_inquiries i
+    LEFT JOIN patients p ON i.patient_id = p.id
+    WHERE 1=1`;
 
   if (options?.status) {
-    sql += ` AND status = ${escapeString(options.status)}`;
+    sql += ` AND i.status = ${escapeString(options.status)}`;
   }
 
   if (options?.date) {
-    sql += ` AND DATE(created_at) = ${escapeString(options.date)}`;
+    if (options?.includeOpen) {
+      // 미완료 항목은 항상 표시 + 선택 날짜의 완료 항목
+      sql += ` AND (i.status IN ('pending', 'in_progress') OR DATE(i.${dateField}) = ${escapeString(options.date)})`;
+    } else {
+      sql += ` AND DATE(i.${dateField}) = ${escapeString(options.date)}`;
+    }
   }
 
-  sql += ' ORDER BY created_at DESC';
+  sql += ' ORDER BY i.created_at DESC';
 
   if (options?.limit) {
     sql += ` LIMIT ${options.limit}`;
@@ -165,7 +186,7 @@ export async function getInquiry(id: number): Promise<Inquiry | null> {
 export async function createInquiry(data: CreateInquiryRequest): Promise<number> {
   const sql = `
     INSERT INTO cs_inquiries (
-      channel, patient_name, contact, inquiry_type, content, response, status, staff_name, created_at, updated_at
+      channel, patient_name, contact, inquiry_type, content, response, status, staff_name, handler_name, created_at, updated_at
     ) VALUES (
       ${escapeString(data.channel)},
       ${toSqlValue(data.patient_name)},
@@ -175,6 +196,7 @@ export async function createInquiry(data: CreateInquiryRequest): Promise<number>
       ${toSqlValue(data.response)},
       'pending',
       ${toSqlValue(data.staff_name)},
+      ${toSqlValue(data.handler_name)},
       ${escapeString(getCurrentTimestamp())},
       ${escapeString(getCurrentTimestamp())}
     )
@@ -196,6 +218,8 @@ export async function updateInquiry(id: number, data: UpdateInquiryRequest): Pro
   if (data.response !== undefined) updates.push(`response = ${toSqlValue(data.response)}`);
   if (data.status !== undefined) updates.push(`status = ${escapeString(data.status)}`);
   if (data.staff_name !== undefined) updates.push(`staff_name = ${toSqlValue(data.staff_name)}`);
+  if (data.handler_name !== undefined) updates.push(`handler_name = ${data.handler_name === null ? 'NULL' : escapeString(data.handler_name)}`);
+  if (data.patient_id !== undefined) updates.push(`patient_id = ${data.patient_id === null ? 'NULL' : Number(data.patient_id)}`);
 
   updates.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
 
@@ -214,7 +238,9 @@ export async function deleteInquiry(id: number): Promise<void> {
  * 문의 상태 변경
  */
 export async function updateInquiryStatus(id: number, status: string): Promise<void> {
-  await updateInquiry(id, { status: status as any });
+  const isCompleted = status === 'completed' || status === 'converted';
+  const completedAt = isCompleted ? escapeString(getCurrentTimestamp()) : 'NULL';
+  await execute(`UPDATE cs_inquiries SET status = ${escapeString(status)}, completed_at = ${completedAt}, updated_at = ${escapeString(getCurrentTimestamp())} WHERE id = ${id}`);
 }
 
 /**
@@ -241,7 +267,70 @@ export async function ensureInquiriesTable(): Promise<void> {
     )
   `;
   await execute(sql);
+
+  // patient_id 컬럼 마이그레이션
+  await execute(`ALTER TABLE cs_inquiries ADD COLUMN IF NOT EXISTS patient_id INTEGER`);
+
+  // completed_at, handler_name 컬럼 마이그레이션
+  await execute(`ALTER TABLE cs_inquiries ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP`);
+  await execute(`ALTER TABLE cs_inquiries ADD COLUMN IF NOT EXISTS handler_name TEXT`);
+
   markTableInitialized('cs_inquiries');
+}
+
+// ============================================
+// CS 담당자 관리
+// ============================================
+
+export interface CsHandler {
+  id: number;
+  name: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at?: string;
+}
+
+export async function ensureHandlersTable(): Promise<void> {
+  if (isTableInitialized('cs_handlers')) return;
+
+  const sql = `
+    CREATE TABLE IF NOT EXISTS cs_handlers (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      is_active BOOLEAN DEFAULT true,
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  await execute(sql);
+  markTableInitialized('cs_handlers');
+}
+
+export async function getHandlers(activeOnly = false): Promise<CsHandler[]> {
+  await ensureHandlersTable();
+  let sql = 'SELECT * FROM cs_handlers';
+  if (activeOnly) sql += ' WHERE is_active = true';
+  sql += ' ORDER BY sort_order, name';
+  return query<CsHandler>(sql);
+}
+
+export async function createHandler(name: string): Promise<number> {
+  await ensureHandlersTable();
+  const sql = `INSERT INTO cs_handlers (name) VALUES (${escapeString(name)})`;
+  return insert(sql);
+}
+
+export async function updateHandler(id: number, data: { name?: string; is_active?: boolean; sort_order?: number }): Promise<void> {
+  const updates: string[] = [];
+  if (data.name !== undefined) updates.push(`name = ${escapeString(data.name)}`);
+  if (data.is_active !== undefined) updates.push(`is_active = ${data.is_active}`);
+  if (data.sort_order !== undefined) updates.push(`sort_order = ${data.sort_order}`);
+  if (updates.length === 0) return;
+  await execute(`UPDATE cs_handlers SET ${updates.join(', ')} WHERE id = ${id}`);
+}
+
+export async function deleteHandler(id: number): Promise<void> {
+  await execute(`DELETE FROM cs_handlers WHERE id = ${id}`);
 }
 
 // ============================================
@@ -299,6 +388,8 @@ export async function ensureReceiptTables(): Promise<void> {
   // 한약패키지 테이블 마이그레이션 - 누락된 컬럼 추가
   await execute(`ALTER TABLE cs_herbal_packages ADD COLUMN IF NOT EXISTS herbal_name TEXT`).catch(() => {});
   await execute(`ALTER TABLE cs_herbal_packages ADD COLUMN IF NOT EXISTS purpose TEXT`).catch(() => {});
+  // 수납 연결용 컬럼 (선등록 → 후향 연결)
+  await execute(`ALTER TABLE cs_herbal_packages ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {});
 
   // 한약패키지 회차별 관리 테이블
   await execute(`
@@ -490,7 +581,7 @@ export async function ensureReceiptTables(): Promise<void> {
     )
   `);
 
-  // 수납 메모 테이블
+  // 수납 메모 테이블 (순수 메모 전용)
   await execute(`
     CREATE TABLE IF NOT EXISTS cs_receipt_memos (
       id SERIAL PRIMARY KEY,
@@ -498,31 +589,63 @@ export async function ensureReceiptTables(): Promise<void> {
       chart_number TEXT,
       patient_name TEXT,
       mssql_receipt_id INTEGER,
+      mssql_detail_id INTEGER,
       receipt_date TEXT NOT NULL,
       memo TEXT,
-      reservation_status TEXT DEFAULT 'none',
-      reservation_date TEXT,
-      is_completed INTEGER DEFAULT 0,
+      item_name TEXT,
+      item_type TEXT,
+      created_by TEXT,
+      memo_type_id INTEGER,
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     )
   `);
 
-  // is_completed 컬럼이 없으면 추가 (기존 테이블 마이그레이션)
-  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS is_completed INTEGER DEFAULT 0`).catch(() => {});
-  // herbal_package_id 컬럼 추가 (한약 선결제 패키지 연결)
-  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS herbal_package_id INTEGER`).catch(() => {});
-  // mssql_detail_id 컬럼 추가 (비급여 항목 연결)
+  // 기존 테이블 마이그레이션: 커스텀 메모용 컬럼 추가
   await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {});
-  // herbal_pickup_id 컬럼 추가 (한약 차감 기록 연결)
-  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS herbal_pickup_id INTEGER`).catch(() => {});
-  // nokryong_package_id 컬럼 추가 (녹용 패키지 연결)
-  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS nokryong_package_id INTEGER`).catch(() => {});
-  // 커스텀 메모용 컬럼 추가
   await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS item_name TEXT`).catch(() => {});
   await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS item_type TEXT`).catch(() => {});
   await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS created_by TEXT`).catch(() => {});
   await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS memo_type_id INTEGER`).catch(() => {});
+
+  // 수납 상태 테이블 (완료/예약 상태 전용)
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_receipt_status (
+      id SERIAL PRIMARY KEY,
+      receipt_id INTEGER NOT NULL UNIQUE,
+      patient_id INTEGER NOT NULL,
+      receipt_date TEXT NOT NULL,
+      is_completed INTEGER DEFAULT 0,
+      reservation_status TEXT DEFAULT 'none',
+      reservation_date TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // 마이그레이션: 기존 cs_receipt_memos에서 상태 데이터를 cs_receipt_status로 복사 (컬럼이 아직 존재할 때만)
+  const migrationCols = await query(`
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'cs_receipt_memos' AND column_name = 'is_completed'
+  `).catch(() => []);
+
+  if (migrationCols.length > 0) {
+    await execute(`
+      INSERT INTO cs_receipt_status (receipt_id, patient_id, receipt_date, is_completed, reservation_status, reservation_date)
+      SELECT mssql_receipt_id, patient_id, receipt_date, is_completed, reservation_status, reservation_date
+      FROM cs_receipt_memos
+      WHERE mssql_receipt_id IS NOT NULL AND (is_completed = 1 OR reservation_status IS NOT NULL AND reservation_status != 'none')
+      ON CONFLICT (receipt_id) DO NOTHING
+    `).catch(() => {});
+
+    // 마이그레이션 완료 후 cs_receipt_memos에서 상태/패키지 컬럼 제거
+    await execute(`ALTER TABLE cs_receipt_memos DROP COLUMN IF EXISTS is_completed`).catch(() => {});
+    await execute(`ALTER TABLE cs_receipt_memos DROP COLUMN IF EXISTS reservation_status`).catch(() => {});
+    await execute(`ALTER TABLE cs_receipt_memos DROP COLUMN IF EXISTS reservation_date`).catch(() => {});
+    await execute(`ALTER TABLE cs_receipt_memos DROP COLUMN IF EXISTS herbal_package_id`).catch(() => {});
+    await execute(`ALTER TABLE cs_receipt_memos DROP COLUMN IF EXISTS herbal_pickup_id`).catch(() => {});
+    await execute(`ALTER TABLE cs_receipt_memos DROP COLUMN IF EXISTS nokryong_package_id`).catch(() => {});
+  }
 
   // 상비약 사용내역 테이블
   await execute(`
@@ -699,8 +822,59 @@ export async function ensureReceiptTables(): Promise<void> {
     WHERE NOT EXISTS (SELECT 1 FROM cs_memo_types WHERE name = '특이사항')
   `).catch(() => {});
 
-  // cs_receipt_memos 테이블에 memo_type_id 컬럼 추가
-  await execute(`ALTER TABLE cs_receipt_memos ADD COLUMN IF NOT EXISTS memo_type_id INTEGER`).catch(() => {});
+  // memo_type_id 컬럼은 이미 cs_receipt_memos CREATE TABLE에 포함
+
+  // 한약 기록 (Draft)
+    await execute(`
+      CREATE TABLE IF NOT EXISTS cs_herbal_drafts (
+        id SERIAL PRIMARY KEY,
+        patient_id INTEGER NOT NULL,
+        chart_number TEXT,
+        patient_name TEXT,
+        herbal_name TEXT,
+        consultation_type TEXT,
+        payment_type TEXT,
+        nokryong_type TEXT,
+        visit_pattern TEXT,
+        treatment_months TEXT,
+        consultation_method TEXT,
+        sub_type TEXT,
+        nokryong_grade TEXT,
+        nokryong_count INTEGER,
+        delivery_method TEXT DEFAULT 'pickup',
+        decoction_date TEXT,
+        memo TEXT,
+        status TEXT DEFAULT 'draft',
+        created_by TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // 한약 기록 마이그레이션 - 컬럼 추가
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS consultation_type TEXT`).catch(() => {});
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS payment_type TEXT`).catch(() => {});
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS nokryong_type TEXT`).catch(() => {});
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS visit_pattern TEXT`).catch(() => {});
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS treatment_months TEXT`).catch(() => {});
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS consultation_method TEXT`).catch(() => {});
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS sub_type TEXT`).catch(() => {});
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS nokryong_grade TEXT`).catch(() => {});
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS nokryong_count INTEGER`).catch(() => {});
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS medicine_items TEXT`).catch(() => {});
+
+    // 탕전 인력 스케줄
+    await execute(`
+      CREATE TABLE IF NOT EXISTS cs_decoction_staff_schedule (
+        id SERIAL PRIMARY KEY,
+        schedule_date TEXT NOT NULL UNIQUE,
+        staff_count INTEGER NOT NULL DEFAULT 1,
+        is_holiday BOOLEAN DEFAULT false,
+        memo TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
 
   // 초기화 완료 표시
   markTableInitialized('cs_receipt_tables');
@@ -825,12 +999,16 @@ export async function createHerbalPackage(pkg: Omit<HerbalPackage, 'id' | 'creat
   const id = await insert(`
     INSERT INTO cs_herbal_packages (
       patient_id, chart_number, patient_name, herbal_name, package_type, total_count, used_count, remaining_count,
-      start_date, next_delivery_date, memo, status, created_at, updated_at
+      start_date, next_delivery_date, memo, status,
+      decoction_date, delivery_method, doctor_name, mssql_detail_id,
+      created_at, updated_at
     ) VALUES (
       ${pkg.patient_id}, ${toSqlValue(pkg.chart_number)}, ${toSqlValue(pkg.patient_name)},
       ${toSqlValue(pkg.herbal_name)}, ${escapeString(pkg.package_type)}, ${pkg.total_count}, ${pkg.used_count}, ${pkg.remaining_count},
       ${escapeString(pkg.start_date)}, ${toSqlValue(pkg.next_delivery_date)},
-      ${toSqlValue(pkg.memo)}, ${escapeString(pkg.status)}, ${escapeString(now)}, ${escapeString(now)}
+      ${toSqlValue(pkg.memo)}, ${escapeString(pkg.status)},
+      ${toSqlValue(pkg.decoction_date)}, ${toSqlValue(pkg.delivery_method)}, ${toSqlValue(pkg.doctor_name)}, ${pkg.mssql_detail_id || 'NULL'},
+      ${escapeString(now)}, ${escapeString(now)}
     )
   `);
 
@@ -888,6 +1066,7 @@ export async function updateHerbalPackage(id: number, updates: Partial<HerbalPac
   if (updates.prescription_due_date !== undefined) parts.push(`prescription_due_date = ${toSqlValue(updates.prescription_due_date)}`);
   if (updates.delivery_method !== undefined) parts.push(`delivery_method = ${toSqlValue(updates.delivery_method)}`);
   if (updates.delivery_status !== undefined) parts.push(`delivery_status = ${toSqlValue(updates.delivery_status)}`);
+  if (updates.mssql_detail_id !== undefined) parts.push(`mssql_detail_id = ${updates.mssql_detail_id === null ? 'NULL' : updates.mssql_detail_id}`);
   parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
 
   await execute(`UPDATE cs_herbal_packages SET ${parts.join(', ')} WHERE id = ${id}`);
@@ -913,6 +1092,44 @@ export async function getAllHerbalPackages(includeCompleted: boolean = false): P
   }
   sql += ' ORDER BY status ASC, next_delivery_date ASC, created_at DESC';
   return query<HerbalPackage>(sql);
+}
+
+// 미연결 한약패키지 조회 (수납 연결 전 선등록 패키지)
+export async function getUnlinkedHerbalPackages(patientId: number): Promise<HerbalPackage[]> {
+  return query<HerbalPackage>(
+    `SELECT * FROM cs_herbal_packages
+     WHERE patient_id = ${patientId} AND status = 'active' AND mssql_detail_id IS NULL
+     ORDER BY created_at DESC`
+  );
+}
+
+// 한약 패키지를 수납 비급여 항목에 연결
+export async function linkPackageToReceipt(packageId: number, mssqlDetailId: number): Promise<void> {
+  const now = getCurrentTimestamp();
+  await execute(`
+    UPDATE cs_herbal_packages
+    SET mssql_detail_id = ${mssqlDetailId}, updated_at = ${escapeString(now)}
+    WHERE id = ${packageId}
+  `);
+}
+
+// 녹용 미연결 패키지 조회
+export async function getUnlinkedNokryongPackages(patientId: number): Promise<NokryongPackage[]> {
+  return query<NokryongPackage>(
+    `SELECT * FROM cs_nokryong_packages
+     WHERE patient_id = ${patientId} AND status = 'active' AND mssql_detail_id IS NULL
+     ORDER BY created_at DESC`
+  );
+}
+
+// 녹용 패키지를 수납 비급여 항목에 연결
+export async function linkNokryongToReceipt(packageId: number, mssqlDetailId: number): Promise<void> {
+  const now = getCurrentTimestamp();
+  await execute(`
+    UPDATE cs_nokryong_packages
+    SET mssql_detail_id = ${mssqlDetailId}, updated_at = ${escapeString(now)}
+    WHERE id = ${packageId}
+  `);
 }
 
 // ============================================
@@ -1313,58 +1530,8 @@ export async function getReceiptMemosByReceiptId(receiptId: number): Promise<Rec
   );
 }
 
-export async function upsertReceiptMemo(data: {
-  patient_id: number;
-  chart_number?: string;
-  patient_name?: string;
-  mssql_receipt_id?: number;
-  receipt_date: string;
-  memo?: string;
-  reservation_status?: ReservationStatus;
-  reservation_date?: string;
-  is_completed?: boolean;
-}): Promise<number> {
-  const now = getCurrentTimestamp();
-
-  // mssql_receipt_id가 있으면 해당 수납건 기준으로 조회, 없으면 환자+날짜 기준
-  let existing: ReceiptMemo | null = null;
-  if (data.mssql_receipt_id) {
-    existing = await getReceiptMemoByReceiptId(data.mssql_receipt_id);
-  } else {
-    existing = await getReceiptMemo(data.patient_id, data.receipt_date);
-  }
-
-  if (existing) {
-    // 업데이트
-    const parts: string[] = [];
-    if (data.memo !== undefined) parts.push(`memo = ${toSqlValue(data.memo)}`);
-    if (data.reservation_status !== undefined) parts.push(`reservation_status = ${escapeString(data.reservation_status)}`);
-    if (data.reservation_date !== undefined) parts.push(`reservation_date = ${toSqlValue(data.reservation_date)}`);
-    if (data.mssql_receipt_id !== undefined) parts.push(`mssql_receipt_id = ${data.mssql_receipt_id}`);
-    if (data.is_completed !== undefined) parts.push(`is_completed = ${data.is_completed ? 1 : 0}`);
-    parts.push(`updated_at = ${escapeString(now)}`);
-
-    await execute(`UPDATE cs_receipt_memos SET ${parts.join(', ')} WHERE id = ${existing.id}`);
-    return existing.id!;
-  } else {
-    // 신규 생성
-    return insert(`
-      INSERT INTO cs_receipt_memos (
-        patient_id, chart_number, patient_name, mssql_receipt_id, receipt_date,
-        memo, reservation_status, reservation_date, is_completed, created_at, updated_at
-      ) VALUES (
-        ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
-        ${data.mssql_receipt_id || 'NULL'}, ${escapeString(data.receipt_date)},
-        ${toSqlValue(data.memo)}, ${escapeString(data.reservation_status || 'none')},
-        ${toSqlValue(data.reservation_date)}, ${data.is_completed ? 1 : 0},
-        ${escapeString(now)}, ${escapeString(now)}
-      )
-    `);
-  }
-}
-
 /**
- * 수납 메모 추가 (항상 INSERT - 덮어쓰지 않음)
+ * 수납 메모 추가 (항상 INSERT - 순수 메모 전용)
  */
 export async function addReceiptMemo(data: {
   patient_id: number;
@@ -1379,20 +1546,16 @@ export async function addReceiptMemo(data: {
   item_type?: string;
   created_by?: string;
   memo_type_id?: number;
-  herbal_package_id?: number;
-  herbal_pickup_id?: number;
-  nokryong_package_id?: number;
 }): Promise<number> {
   const now = getCurrentTimestamp();
   return insert(`
     INSERT INTO cs_receipt_memos (
       patient_id, chart_number, patient_name, mssql_receipt_id, mssql_detail_id, receipt_date,
-      memo, item_name, item_type, created_by, memo_type_id, reservation_status, is_completed, herbal_package_id, herbal_pickup_id, nokryong_package_id, created_at, updated_at
+      memo, item_name, item_type, created_by, memo_type_id, created_at, updated_at
     ) VALUES (
       ${data.patient_id}, ${toSqlValue(data.chart_number)}, ${toSqlValue(data.patient_name)},
       ${data.mssql_receipt_id || 'NULL'}, ${data.mssql_detail_id || 'NULL'}, ${escapeString(data.receipt_date)},
       ${toSqlValue(data.memo)}, ${toSqlValue(data.item_name)}, ${toSqlValue(data.item_type)}, ${toSqlValue(data.created_by)}, ${data.memo_type_id || 'NULL'},
-      'none', 0, ${data.herbal_package_id || 'NULL'}, ${data.herbal_pickup_id || 'NULL'}, ${data.nokryong_package_id || 'NULL'},
       ${escapeString(now)}, ${escapeString(now)}
     )
   `);
@@ -1417,24 +1580,51 @@ export async function deleteReceiptMemoById(id: number): Promise<void> {
   await execute(`DELETE FROM cs_receipt_memos WHERE id = ${id}`);
 }
 
+// ============================================
+// 수납 상태 API (cs_receipt_status)
+// ============================================
+
 /**
- * 수납 기록 완료 처리
+ * 수납 상태 조회
  */
-export async function markReceiptCompleted(
-  patientId: number,
-  receiptDate: string,
-  chartNumber?: string,
-  patientName?: string,
-  mssqlReceiptId?: number
-): Promise<void> {
-  await upsertReceiptMemo({
-    patient_id: patientId,
-    chart_number: chartNumber,
-    patient_name: patientName,
-    mssql_receipt_id: mssqlReceiptId,
-    receipt_date: receiptDate,
-    is_completed: true,
-  });
+export async function getReceiptStatus(receiptId: number): Promise<ReceiptStatus | null> {
+  const results = await query<ReceiptStatus>(
+    `SELECT * FROM cs_receipt_status WHERE receipt_id = ${receiptId}`
+  );
+  return results.length > 0 ? results[0] : null;
+}
+
+/**
+ * 수납 상태 UPSERT (완료/예약 상태)
+ */
+export async function upsertReceiptStatus(data: {
+  receipt_id: number;
+  patient_id: number;
+  receipt_date: string;
+  is_completed?: boolean;
+  reservation_status?: ReservationStatus;
+  reservation_date?: string;
+}): Promise<void> {
+  const now = getCurrentTimestamp();
+  const existing = await getReceiptStatus(data.receipt_id);
+
+  if (existing) {
+    const parts: string[] = [];
+    if (data.is_completed !== undefined) parts.push(`is_completed = ${data.is_completed ? 1 : 0}`);
+    if (data.reservation_status !== undefined) parts.push(`reservation_status = ${escapeString(data.reservation_status)}`);
+    if (data.reservation_date !== undefined) parts.push(`reservation_date = ${toSqlValue(data.reservation_date)}`);
+    parts.push(`updated_at = ${escapeString(now)}`);
+    await execute(`UPDATE cs_receipt_status SET ${parts.join(', ')} WHERE receipt_id = ${data.receipt_id}`);
+  } else {
+    await execute(`
+      INSERT INTO cs_receipt_status (receipt_id, patient_id, receipt_date, is_completed, reservation_status, reservation_date, created_at, updated_at)
+      VALUES (
+        ${data.receipt_id}, ${data.patient_id}, ${escapeString(data.receipt_date)},
+        ${data.is_completed ? 1 : 0}, ${escapeString(data.reservation_status || 'none')},
+        ${toSqlValue(data.reservation_date)}, ${escapeString(now)}, ${escapeString(now)}
+      )
+    `);
+  }
 }
 
 /**
@@ -1448,33 +1638,38 @@ export async function toggleReceiptCompleted(
   patientName?: string,
   mssqlReceiptId?: number
 ): Promise<void> {
-  await upsertReceiptMemo({
+  if (!mssqlReceiptId) return;
+  await upsertReceiptStatus({
+    receipt_id: mssqlReceiptId,
     patient_id: patientId,
-    chart_number: chartNumber,
-    patient_name: patientName,
-    mssql_receipt_id: mssqlReceiptId,
     receipt_date: receiptDate,
     is_completed: isCompleted,
   });
 }
 
 /**
- * 날짜별 완료된 수납 메모 ID 목록 조회
+ * 날짜별 완료된 수납 ID 목록 조회
  */
 export async function getCompletedReceiptIds(date: string): Promise<Set<number>> {
-  const memos = await query<ReceiptMemo>(
-    `SELECT mssql_receipt_id FROM cs_receipt_memos WHERE receipt_date = ${escapeString(date)} AND is_completed = 1`
+  const statuses = await query<ReceiptStatus>(
+    `SELECT receipt_id FROM cs_receipt_status WHERE receipt_date = ${escapeString(date)} AND is_completed = 1`
   );
-  return new Set(memos.filter(m => m.mssql_receipt_id).map(m => m.mssql_receipt_id!));
+  return new Set(statuses.map(s => s.receipt_id));
 }
 
+/**
+ * 예약 상태 변경
+ */
 export async function updateReservationStatus(
   patientId: number,
   date: string,
   status: ReservationStatus,
-  reservationDate?: string
+  reservationDate?: string,
+  mssqlReceiptId?: number
 ): Promise<void> {
-  await upsertReceiptMemo({
+  if (!mssqlReceiptId) return;
+  await upsertReceiptStatus({
+    receipt_id: mssqlReceiptId,
     patient_id: patientId,
     receipt_date: date,
     reservation_status: status,
@@ -3865,9 +4060,9 @@ export async function getPatientTimeline(
     });
   });
 
-  // 커스텀 메모 이벤트 (herbal_pickup_id가 있는 메모는 제외 - 한약 차감 이벤트에서 이미 표시됨)
+  // 커스텀 메모 이벤트
   receiptMemos.forEach(memo => {
-    if (memo.memo && memo.memo.trim() && !memo.herbal_pickup_id) {
+    if (memo.memo && memo.memo.trim()) {
       events.push({
         id: `custom_memo_${memo.id}`,
         type: 'custom_memo',
@@ -3879,7 +4074,7 @@ export async function getPatientTimeline(
         sourceTable: 'cs_receipt_memos',
         sourceId: memo.id!,
         isEditable: memo.receipt_date === today,
-        isCompleted: memo.is_completed === true,
+        isCompleted: false,
         originalData: memo,
       });
     }
@@ -4250,4 +4445,545 @@ export async function updateMemoType(id: number, data: {
  */
 export async function deleteMemoType(id: number): Promise<void> {
   await execute(`DELETE FROM cs_memo_types WHERE id = ${id}`);
+}
+
+// === 일별 비급여 처리 현황 ===
+
+export type UncoveredRecordType = 'yakchim' | 'medicine' | 'herbal' | 'package' | 'membership' | 'memo';
+
+export interface DailyUncoveredRecord {
+  id: number;
+  recordType: UncoveredRecordType;
+  patientId: number;
+  patientName: string;
+  chartNumber: string;
+  itemName: string;
+  detail: string;
+  createdAt: string;
+  sourceTable: string;
+  sourceData?: Record<string, any>;
+}
+
+export async function getDailyUncoveredSummary(date: string): Promise<DailyUncoveredRecord[]> {
+  const escaped = escapeString(date);
+
+  const [yakchimRows, medicineRows, herbalRows, packageRows, membershipRows, memoRows] = await Promise.all([
+    // 약침 사용 기록
+    query<any>(`SELECT id, patient_id, COALESCE((SELECT name FROM patients WHERE id = cs_yakchim_usage_records.patient_id), '') as patient_name, COALESCE((SELECT chart_number FROM patients WHERE id = cs_yakchim_usage_records.patient_id), '') as chart_number, item_name, source_type, source_name, quantity, deduction_points, created_at FROM cs_yakchim_usage_records WHERE usage_date = ${escaped} ORDER BY created_at DESC`),
+    // 상비약 사용 기록
+    query<any>(`SELECT id, patient_id, patient_name, chart_number, medicine_name, quantity, purpose, inventory_id, created_at FROM cs_medicine_usage WHERE usage_date = ${escaped} ORDER BY created_at DESC`),
+    // 한약 픽업 기록
+    query<any>(`SELECT hp.id, hp.patient_id, hp.patient_name, hp.chart_number, hp.round_number, hp.delivery_method, hp.with_nokryong, hp.nokryong_package_id, hp.package_id, hp.created_at, COALESCE(pkg.herbal_name, '한약') as herbal_name FROM cs_herbal_pickups hp LEFT JOIN cs_herbal_packages pkg ON hp.package_id = pkg.id WHERE hp.pickup_date = ${escaped} ORDER BY hp.created_at DESC`),
+    // 패키지 등록 기록
+    query<any>(`SELECT id, patient_id, patient_name, chart_number, package_name, total_count, memo, mssql_detail_id, created_at FROM cs_treatment_packages WHERE DATE(created_at) = ${escaped} ORDER BY created_at DESC`),
+    // 멤버십 등록 기록
+    query<any>(`SELECT id, patient_id, patient_name, chart_number, membership_type, quantity, start_date, expire_date, memo, mssql_detail_id, created_at FROM cs_memberships WHERE DATE(created_at) = ${escaped} ORDER BY created_at DESC`),
+    // 메모 기록 (detail_id가 있는 비급여 항목 메모만)
+    query<any>(`SELECT id, patient_id, patient_name, chart_number, memo, mssql_detail_id, mssql_receipt_id, created_at FROM cs_receipt_memos WHERE receipt_date = ${escaped} AND mssql_detail_id IS NOT NULL ORDER BY created_at DESC`),
+  ]);
+
+  const records: DailyUncoveredRecord[] = [];
+
+  // 약침
+  for (const r of yakchimRows) {
+    const sourceLabel = r.source_type === 'package' ? '패키지차감' : r.source_type === 'membership' ? '멤버십' : '일회성';
+    records.push({
+      id: r.id,
+      recordType: 'yakchim',
+      patientId: r.patient_id,
+      patientName: r.patient_name,
+      chartNumber: r.chart_number,
+      itemName: r.item_name || '약침',
+      detail: `${sourceLabel}${r.source_name ? ' · ' + r.source_name : ''}${r.quantity ? ' · ' + r.quantity + '개' : ''}${r.deduction_points ? ' · ' + r.deduction_points + 'p' : ''}`,
+      createdAt: r.created_at,
+      sourceTable: 'cs_yakchim_usage_records',
+      sourceData: { source_type: r.source_type, source_id: r.source_id, deduction_points: r.deduction_points },
+    });
+  }
+
+  // 상비약
+  for (const r of medicineRows) {
+    records.push({
+      id: r.id,
+      recordType: 'medicine',
+      patientId: r.patient_id,
+      patientName: r.patient_name,
+      chartNumber: r.chart_number,
+      itemName: r.medicine_name,
+      detail: `${r.purpose || ''} · ${r.quantity}개`,
+      createdAt: r.created_at,
+      sourceTable: 'cs_medicine_usage',
+      sourceData: { inventory_id: r.inventory_id, quantity: r.quantity },
+    });
+  }
+
+  // 한약
+  for (const r of herbalRows) {
+    const deliveryLabel = r.delivery_method === 'pickup' ? '직접수령' : r.delivery_method === 'delivery' ? '택배' : r.delivery_method === 'quick' ? '퀵' : r.delivery_method;
+    records.push({
+      id: r.id,
+      recordType: 'herbal',
+      patientId: r.patient_id,
+      patientName: r.patient_name,
+      chartNumber: r.chart_number,
+      itemName: r.herbal_name,
+      detail: `${r.round_number}회차 · ${deliveryLabel}${r.with_nokryong ? ' · +녹용' : ''}`,
+      createdAt: r.created_at,
+      sourceTable: 'cs_herbal_pickups',
+      sourceData: { package_id: r.package_id, with_nokryong: r.with_nokryong, nokryong_package_id: r.nokryong_package_id },
+    });
+  }
+
+  // 패키지
+  for (const r of packageRows) {
+    records.push({
+      id: r.id,
+      recordType: 'package',
+      patientId: r.patient_id,
+      patientName: r.patient_name,
+      chartNumber: r.chart_number,
+      itemName: r.package_name,
+      detail: `총 ${r.total_count}회${r.memo ? ' · ' + r.memo : ''}`,
+      createdAt: r.created_at,
+      sourceTable: 'cs_treatment_packages',
+    });
+  }
+
+  // 멤버십
+  for (const r of membershipRows) {
+    records.push({
+      id: r.id,
+      recordType: 'membership',
+      patientId: r.patient_id,
+      patientName: r.patient_name,
+      chartNumber: r.chart_number,
+      itemName: r.membership_type,
+      detail: `${r.quantity}개월 · ${r.start_date}~${r.expire_date}`,
+      createdAt: r.created_at,
+      sourceTable: 'cs_memberships',
+    });
+  }
+
+  // 메모
+  for (const r of memoRows) {
+    records.push({
+      id: r.id,
+      recordType: 'memo',
+      patientId: r.patient_id,
+      patientName: r.patient_name,
+      chartNumber: r.chart_number,
+      itemName: '메모',
+      detail: r.memo || '',
+      createdAt: r.created_at,
+      sourceTable: 'cs_receipt_memos',
+    });
+  }
+
+  // 시간순 정렬 (최신 먼저)
+  records.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  return records;
+}
+
+/**
+ * 비급여 처리 기록 삭제 (되돌리기)
+ */
+export async function deleteUncoveredRecord(record: DailyUncoveredRecord): Promise<void> {
+  switch (record.sourceTable) {
+    case 'cs_yakchim_usage_records': {
+      // 패키지 차감이었으면 복원
+      if (record.sourceData?.source_type === 'package' && record.sourceData?.source_id) {
+        const points = record.sourceData.deduction_points || 0;
+        await execute(`UPDATE cs_treatment_packages SET remaining_count = remaining_count + ${points}, used_count = used_count - ${points}, status = 'active' WHERE id = ${record.sourceData.source_id}`);
+      }
+      await execute(`DELETE FROM cs_yakchim_usage_records WHERE id = ${record.id}`);
+      break;
+    }
+    case 'cs_medicine_usage': {
+      // 재고 복원
+      if (record.sourceData?.inventory_id && record.sourceData?.quantity) {
+        await execute(`UPDATE cs_medicine_inventory SET current_stock = current_stock + ${record.sourceData.quantity} WHERE id = ${record.sourceData.inventory_id}`);
+      }
+      await execute(`DELETE FROM cs_medicine_usage WHERE id = ${record.id}`);
+      break;
+    }
+    case 'cs_herbal_pickups': {
+      // 한약 패키지 복원
+      if (record.sourceData?.package_id) {
+        await execute(`UPDATE cs_herbal_packages SET used_count = used_count - 1, remaining_count = remaining_count + 1, status = 'active' WHERE id = ${record.sourceData.package_id}`);
+      }
+      // 녹용 복원
+      if (record.sourceData?.with_nokryong && record.sourceData?.nokryong_package_id) {
+        await execute(`UPDATE cs_nokryong_packages SET used_months = used_months - 1, remaining_months = remaining_months + 1, status = 'active' WHERE id = ${record.sourceData.nokryong_package_id}`);
+      }
+      await execute(`DELETE FROM cs_herbal_pickups WHERE id = ${record.id}`);
+      break;
+    }
+    case 'cs_treatment_packages': {
+      await execute(`DELETE FROM cs_treatment_packages WHERE id = ${record.id}`);
+      break;
+    }
+    case 'cs_memberships': {
+      await execute(`DELETE FROM cs_memberships WHERE id = ${record.id}`);
+      break;
+    }
+    case 'cs_receipt_memos': {
+      await execute(`DELETE FROM cs_receipt_memos WHERE id = ${record.id}`);
+      break;
+    }
+  }
+}
+
+// ─── 패키지 관리 알림 ───────────────────────────────────────
+
+export type PackageAlertType = 'expire-soon' | 'unused-1month' | 'herbal-3month' | 'membership-expire' | 'low-remaining';
+
+export interface PackageAlertItem {
+  id: number;
+  alertType: PackageAlertType;
+  packageType: 'treatment' | 'herbal' | 'nokryong' | 'membership';
+  patientId: number;
+  patientName: string;
+  chartNumber: string;
+  packageName: string;
+  detail: string;
+  expireDate?: string;
+  remainingCount?: number;
+  lastUsageDate?: string;
+  createdAt: string;
+}
+
+export interface PackageAlertSummary {
+  alerts: PackageAlertItem[];
+  counts: Record<PackageAlertType, number>;
+}
+
+export async function getPackageAlerts(): Promise<PackageAlertSummary> {
+  const now = getCurrentDate();
+
+  const [
+    expireSoonRows,
+    unused1monthTreatment,
+    unused1monthHerbal,
+    herbal3monthRows,
+    membershipExpireRows,
+    lowRemainingTreatment,
+    lowRemainingHerbal,
+  ] = await Promise.all([
+    // 1. 유효기간 7일 이내 (treatment + nokryong)
+    query<any>(`
+      SELECT id, patient_id, patient_name, chart_number, package_name,
+        remaining_count, expire_date, created_at, 'treatment' as pkg_type
+      FROM cs_treatment_packages
+      WHERE status = 'active' AND expire_date IS NOT NULL
+        AND expire_date <= (DATE ${escapeString(now)} + INTERVAL '7 days')::text
+        AND expire_date >= ${escapeString(now)}
+      UNION ALL
+      SELECT id, patient_id, patient_name, chart_number, package_name,
+        remaining_months as remaining_count, expire_date, created_at, 'nokryong' as pkg_type
+      FROM cs_nokryong_packages
+      WHERE expire_date IS NOT NULL AND remaining_months > 0
+        AND expire_date <= (DATE ${escapeString(now)} + INTERVAL '7 days')::text
+        AND expire_date >= ${escapeString(now)}
+      ORDER BY expire_date ASC
+    `),
+
+    // 2a. 미사용 1개월 - treatment (LEFT JOIN usage)
+    query<any>(`
+      SELECT p.id, p.patient_id, p.patient_name, p.chart_number, p.package_name,
+        p.remaining_count, p.expire_date, p.created_at,
+        MAX(u.usage_date) as last_usage
+      FROM cs_treatment_packages p
+      LEFT JOIN cs_yakchim_usage_records u
+        ON u.source_type = 'package' AND u.source_id = p.id
+      WHERE p.status = 'active' AND p.remaining_count > 0
+      GROUP BY p.id, p.patient_id, p.patient_name, p.chart_number,
+        p.package_name, p.remaining_count, p.expire_date, p.created_at
+      HAVING MAX(u.usage_date) IS NULL
+        OR MAX(u.usage_date) <= (DATE ${escapeString(now)} - INTERVAL '30 days')::text
+    `),
+
+    // 2b. 미사용 1개월 - herbal (LEFT JOIN pickups)
+    query<any>(`
+      SELECT p.id, p.patient_id, p.patient_name, p.chart_number, p.herbal_name as package_name,
+        p.remaining_count, p.created_at,
+        MAX(pk.pickup_date) as last_usage
+      FROM cs_herbal_packages p
+      LEFT JOIN cs_herbal_pickups pk ON pk.package_id = p.id
+      WHERE p.status = 'active' AND p.remaining_count > 0
+      GROUP BY p.id, p.patient_id, p.patient_name, p.chart_number,
+        p.herbal_name, p.remaining_count, p.created_at
+      HAVING MAX(pk.pickup_date) IS NULL
+        OR MAX(pk.pickup_date) <= (DATE ${escapeString(now)} - INTERVAL '30 days')::text
+    `),
+
+    // 3. 한약 선결제 3개월 경과
+    query<any>(`
+      SELECT id, patient_id, patient_name, chart_number, herbal_name as package_name,
+        remaining_count, total_count, created_at
+      FROM cs_herbal_packages
+      WHERE status = 'active' AND remaining_count > 0
+        AND created_at <= NOW() - INTERVAL '3 months'
+    `),
+
+    // 4. 멤버십 만료 14일 이내
+    query<any>(`
+      SELECT id, patient_id, patient_name, chart_number, membership_type as package_name,
+        expire_date, created_at
+      FROM cs_memberships
+      WHERE status = 'active'
+        AND expire_date <= (DATE ${escapeString(now)} + INTERVAL '14 days')::text
+        AND expire_date >= ${escapeString(now)}
+    `),
+
+    // 5a. 잔여 1회 이하 - treatment
+    query<any>(`
+      SELECT id, patient_id, patient_name, chart_number, package_name,
+        remaining_count, total_count, expire_date, created_at
+      FROM cs_treatment_packages
+      WHERE status = 'active' AND remaining_count <= 1
+    `),
+
+    // 5b. 잔여 1회 이하 - herbal
+    query<any>(`
+      SELECT id, patient_id, patient_name, chart_number, herbal_name as package_name,
+        remaining_count, total_count, created_at
+      FROM cs_herbal_packages
+      WHERE status = 'active' AND remaining_count <= 1
+    `),
+  ]);
+
+  const alerts: PackageAlertItem[] = [];
+
+  // 1. 만료 임박
+  for (const r of expireSoonRows) {
+    alerts.push({
+      id: r.id,
+      alertType: 'expire-soon',
+      packageType: r.pkg_type,
+      patientId: r.patient_id,
+      patientName: r.patient_name || '',
+      chartNumber: r.chart_number || '',
+      packageName: r.package_name || '',
+      detail: `만료 ${r.expire_date} / 잔여 ${r.remaining_count}회`,
+      expireDate: r.expire_date,
+      remainingCount: r.remaining_count,
+      createdAt: r.created_at,
+    });
+  }
+
+  // 2. 미사용 1개월
+  for (const r of [...unused1monthTreatment, ...unused1monthHerbal]) {
+    const pkgType = r.herbal_name !== undefined ? 'herbal' : 'treatment';
+    alerts.push({
+      id: r.id,
+      alertType: 'unused-1month',
+      packageType: pkgType as any,
+      patientId: r.patient_id,
+      patientName: r.patient_name || '',
+      chartNumber: r.chart_number || '',
+      packageName: r.package_name || '',
+      detail: r.last_usage ? `최근사용 ${r.last_usage}` : '사용 기록 없음',
+      lastUsageDate: r.last_usage,
+      remainingCount: r.remaining_count,
+      createdAt: r.created_at,
+    });
+  }
+
+  // 3. 한약 3개월 경과
+  for (const r of herbal3monthRows) {
+    alerts.push({
+      id: r.id,
+      alertType: 'herbal-3month',
+      packageType: 'herbal',
+      patientId: r.patient_id,
+      patientName: r.patient_name || '',
+      chartNumber: r.chart_number || '',
+      packageName: r.package_name || '',
+      detail: `등록 ${(r.created_at || '').slice(0, 10)} / 잔여 ${r.remaining_count}/${r.total_count}회`,
+      remainingCount: r.remaining_count,
+      createdAt: r.created_at,
+    });
+  }
+
+  // 4. 멤버십 만료
+  for (const r of membershipExpireRows) {
+    alerts.push({
+      id: r.id,
+      alertType: 'membership-expire',
+      packageType: 'membership',
+      patientId: r.patient_id,
+      patientName: r.patient_name || '',
+      chartNumber: r.chart_number || '',
+      packageName: r.package_name || '',
+      detail: `만료 ${r.expire_date}`,
+      expireDate: r.expire_date,
+      createdAt: r.created_at,
+    });
+  }
+
+  // 5. 잔여 부족
+  for (const r of [...lowRemainingTreatment, ...lowRemainingHerbal]) {
+    alerts.push({
+      id: r.id,
+      alertType: 'low-remaining',
+      packageType: r.herbal_name !== undefined ? 'herbal' : 'treatment',
+      patientId: r.patient_id,
+      patientName: r.patient_name || '',
+      chartNumber: r.chart_number || '',
+      packageName: r.package_name || '',
+      detail: `잔여 ${r.remaining_count}/${r.total_count}회`,
+      remainingCount: r.remaining_count,
+      expireDate: r.expire_date,
+      createdAt: r.created_at,
+    });
+  }
+
+  // 건수 집계
+  const counts: Record<PackageAlertType, number> = {
+    'expire-soon': 0,
+    'unused-1month': 0,
+    'herbal-3month': 0,
+    'membership-expire': 0,
+    'low-remaining': 0,
+  };
+  for (const a of alerts) {
+    counts[a.alertType]++;
+  }
+
+  return { alerts, counts };
+}
+
+// ============================================================
+// 한약 Draft (기록) CRUD
+// ============================================================
+
+export async function getHerbalDrafts(patientId: number): Promise<HerbalDraft[]> {
+  await ensureReceiptTables();
+  return query<HerbalDraft>(
+    `SELECT * FROM cs_herbal_drafts WHERE patient_id = ${patientId} ORDER BY created_at DESC`
+  );
+}
+
+let _herbalMedicineColAdded = false;
+export async function createHerbalDraft(draft: Omit<HerbalDraft, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
+  await ensureReceiptTables();
+  if (!_herbalMedicineColAdded) {
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS medicine_items TEXT`).catch(() => {});
+    _herbalMedicineColAdded = true;
+  }
+  const now = getCurrentTimestamp();
+  return insert(`
+    INSERT INTO cs_herbal_drafts (patient_id, chart_number, patient_name, herbal_name, consultation_type, payment_type, nokryong_type, visit_pattern, treatment_months, consultation_method, sub_type, nokryong_grade, nokryong_count, delivery_method, decoction_date, memo, medicine_items, status, created_by, created_at, updated_at)
+    VALUES (${draft.patient_id}, ${escapeString(draft.chart_number)}, ${escapeString(draft.patient_name)}, ${escapeString(draft.herbal_name)}, ${escapeString(draft.consultation_type)}, ${escapeString(draft.payment_type)}, ${escapeString(draft.nokryong_type)}, ${escapeString(draft.visit_pattern)}, ${escapeString(draft.treatment_months)}, ${escapeString(draft.consultation_method)}, ${escapeString(draft.sub_type)}, ${escapeString(draft.nokryong_grade)}, ${draft.nokryong_count ?? 'NULL'}, ${escapeString(draft.delivery_method)}, ${escapeString(draft.decoction_date)}, ${escapeString(draft.memo)}, ${escapeString(draft.medicine_items)}, ${escapeString(draft.status)}, ${escapeString(draft.created_by)}, ${escapeString(now)}, ${escapeString(now)})
+  `);
+}
+
+export async function updateHerbalDraft(id: number, updates: Partial<HerbalDraft>): Promise<void> {
+  await ensureReceiptTables();
+  const setClauses: string[] = [];
+  if (updates.herbal_name !== undefined) setClauses.push(`herbal_name = ${escapeString(updates.herbal_name)}`);
+  if (updates.consultation_type !== undefined) setClauses.push(`consultation_type = ${escapeString(updates.consultation_type)}`);
+  if (updates.payment_type !== undefined) setClauses.push(`payment_type = ${escapeString(updates.payment_type)}`);
+  if (updates.nokryong_type !== undefined) setClauses.push(`nokryong_type = ${escapeString(updates.nokryong_type)}`);
+  if (updates.visit_pattern !== undefined) setClauses.push(`visit_pattern = ${escapeString(updates.visit_pattern)}`);
+  if (updates.treatment_months !== undefined) setClauses.push(`treatment_months = ${escapeString(updates.treatment_months)}`);
+  if (updates.consultation_method !== undefined) setClauses.push(`consultation_method = ${escapeString(updates.consultation_method)}`);
+  if (updates.sub_type !== undefined) setClauses.push(`sub_type = ${escapeString(updates.sub_type)}`);
+  if (updates.nokryong_grade !== undefined) setClauses.push(`nokryong_grade = ${escapeString(updates.nokryong_grade)}`);
+  if (updates.nokryong_count !== undefined) setClauses.push(`nokryong_count = ${updates.nokryong_count}`);
+  if (updates.delivery_method !== undefined) setClauses.push(`delivery_method = ${escapeString(updates.delivery_method)}`);
+  if (updates.decoction_date !== undefined) setClauses.push(`decoction_date = ${escapeString(updates.decoction_date)}`);
+  if (updates.memo !== undefined) setClauses.push(`memo = ${escapeString(updates.memo)}`);
+  if (updates.status !== undefined) setClauses.push(`status = ${escapeString(updates.status)}`);
+  setClauses.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
+  await execute(`UPDATE cs_herbal_drafts SET ${setClauses.join(', ')} WHERE id = ${id}`);
+}
+
+export async function deleteHerbalDraft(id: number): Promise<void> {
+  await ensureReceiptTables();
+  await execute(`DELETE FROM cs_herbal_drafts WHERE id = ${id}`);
+}
+
+// ============================================================
+// 탕전 인력 스케줄
+// ============================================================
+
+export async function getStaffSchedule(startDate: string, endDate: string): Promise<StaffScheduleEntry[]> {
+  await ensureReceiptTables();
+  return query<StaffScheduleEntry>(
+    `SELECT * FROM cs_decoction_staff_schedule WHERE schedule_date >= ${escapeString(startDate)} AND schedule_date <= ${escapeString(endDate)} ORDER BY schedule_date`
+  );
+}
+
+export async function upsertStaffSchedule(date: string, staffCount: number, isHoliday: boolean, memo?: string): Promise<void> {
+  await ensureReceiptTables();
+  const now = getCurrentTimestamp();
+  await execute(`
+    INSERT INTO cs_decoction_staff_schedule (schedule_date, staff_count, is_holiday, memo, created_at, updated_at)
+    VALUES (${escapeString(date)}, ${staffCount}, ${isHoliday}, ${escapeString(memo)}, ${escapeString(now)}, ${escapeString(now)})
+    ON CONFLICT (schedule_date) DO UPDATE SET staff_count = ${staffCount}, is_holiday = ${isHoliday}, memo = ${escapeString(memo)}, updated_at = ${escapeString(now)}
+  `);
+}
+
+// ============================================================
+// 탕전 용량 계산
+// ============================================================
+
+function calculateMaxCapacity(staffCount: number, isWeekendOrHoliday: boolean): number {
+  if (isWeekendOrHoliday) {
+    return staffCount >= 2 ? 14 : 6;
+  }
+  return staffCount >= 2 ? 22 : 8;
+}
+
+export async function getDecoctionCapacity(startDate: string, endDate: string): Promise<DecoctionDayCapacity[]> {
+  await ensureReceiptTables();
+
+  // 1. 인력 스케줄 조회
+  const schedules = await getStaffSchedule(startDate, endDate);
+  const scheduleMap = new Map<string, StaffScheduleEntry>();
+  for (const s of schedules) {
+    scheduleMap.set(s.schedule_date, s);
+  }
+
+  // 2. 해당 기간 draft 건수 집계
+  const draftCounts = await query<{ decoction_date: string; cnt: string }>(
+    `SELECT decoction_date, COUNT(*)::text as cnt FROM cs_herbal_drafts WHERE decoction_date >= ${escapeString(startDate)} AND decoction_date <= ${escapeString(endDate)} AND decoction_date IS NOT NULL GROUP BY decoction_date`
+  );
+  const countMap = new Map<string, number>();
+  for (const row of draftCounts) {
+    countMap.set(row.decoction_date, parseInt(row.cnt, 10));
+  }
+
+  // 3. 날짜별 용량 계산
+  const result: DecoctionDayCapacity[] = [];
+  const current = new Date(startDate);
+  const end = new Date(endDate);
+
+  while (current <= end) {
+    const dateStr = current.toISOString().slice(0, 10);
+    const dayOfWeek = current.getDay(); // 0=일, 6=토
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const schedule = scheduleMap.get(dateStr);
+    const staffCount = schedule?.staff_count ?? 1;
+    const isHoliday = schedule?.is_holiday ?? false;
+    const isWeekendOrHoliday = isWeekend || isHoliday;
+    const maxCapacity = calculateMaxCapacity(staffCount, isWeekendOrHoliday);
+    const usedCapacity = countMap.get(dateStr) ?? 0;
+
+    result.push({
+      date: dateStr,
+      staffCount,
+      isHoliday,
+      isWeekend,
+      maxCapacity,
+      usedCapacity,
+      remainingCapacity: Math.max(0, maxCapacity - usedCapacity),
+    });
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return result;
 }

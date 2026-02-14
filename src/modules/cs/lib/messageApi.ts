@@ -76,7 +76,7 @@ export async function createTemplate(
       ${escapeString(data.channel)},
       ${escapeString(data.category || null)},
       ${escapeString(data.content)},
-      '${variables}'::jsonb,
+      ${escapeString(variables)}::jsonb,
       ${escapeString(now)},
       ${escapeString(now)}
     ) RETURNING id
@@ -112,7 +112,7 @@ export async function updateTemplate(
     updates.push(`content = ${escapeString(data.content)}`);
   }
   if (data.variables !== undefined) {
-    updates.push(`variables = '${JSON.stringify(data.variables)}'::jsonb`);
+    updates.push(`variables = ${escapeString(JSON.stringify(data.variables))}::jsonb`);
   }
   if (data.is_active !== undefined) {
     updates.push(`is_active = ${data.is_active}`);
@@ -168,7 +168,7 @@ export async function sendMessage(data: SendMessageRequest): Promise<MessageLog>
     : data.content;
 
   const variablesJson = data.variables
-    ? `'${JSON.stringify(data.variables)}'::jsonb`
+    ? `${escapeString(JSON.stringify(data.variables))}::jsonb`
     : 'NULL';
 
   // 발송 기록 생성
@@ -328,7 +328,7 @@ export async function getMessageStats(): Promise<MessageStats> {
   const stats = await query<{ channel: string; status: string; count: number }>(`
     SELECT channel, status, COUNT(*) as count
     FROM message_logs
-    WHERE DATE(created_at) = '${today}'
+    WHERE DATE(created_at) = ${escapeString(today)}
     GROUP BY channel, status
   `);
 

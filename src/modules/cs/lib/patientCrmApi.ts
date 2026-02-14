@@ -1,6 +1,9 @@
 // 환자 CRM API 함수
 
 import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp, getCurrentDate, isTableInitialized, markTableInitialized } from '@shared/lib/postgres';
+
+// 통마 패키지 매칭 조건 (package_name 기준)
+const TONGMA_MATCH_CONDITION = `(package_name LIKE '%통증마일리지%' OR package_name LIKE '%통마%')`;
 import type {
   PatientNote,
   CreatePatientNoteRequest,
@@ -242,7 +245,7 @@ export async function getPatientPackageStatus(patientId: number): Promise<Packag
   const tongmaPackage = await queryOne<TreatmentPackage>(`
     SELECT * FROM cs_treatment_packages
     WHERE patient_id = ${patientId}
-    AND (package_name LIKE '%통증마일리지%' OR package_name LIKE '%통마%')
+    AND ${TONGMA_MATCH_CONDITION}
     AND status = 'active'
     ORDER BY created_at DESC
     LIMIT 1
@@ -316,7 +319,7 @@ export async function getPatientPackageStatusByChartNumber(chartNumber: string):
   const tongmaPackage = await queryOne<TreatmentPackage>(`
     SELECT * FROM cs_treatment_packages
     WHERE chart_number = ${escapeString(chartNumber)}
-    AND (package_name LIKE '%통증마일리지%' OR package_name LIKE '%통마%')
+    AND ${TONGMA_MATCH_CONDITION}
     AND status = 'active'
     ORDER BY created_at DESC
     LIMIT 1

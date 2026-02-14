@@ -6,7 +6,7 @@
 
 import { useEffect, useCallback, useState, useRef } from 'react';
 
-const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
+const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
 
 export interface SSEMessage {
   table: string;

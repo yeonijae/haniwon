@@ -11,6 +11,7 @@ import type {
   MedicineUsage,
   YakchimUsageRecord,
   ReceiptMemo,
+  ReceiptStatus,
   MemoSummaryItem,
 } from '../types';
 import type { Reservation } from '../../reservation/types';
@@ -63,6 +64,7 @@ export interface ExpandedReceiptItem extends ReceiptHistoryItem {
   medicineUsages: MedicineUsage[];
   yakchimUsageRecords: YakchimUsageRecord[];
   receiptMemos: ReceiptMemo[];
+  receiptStatus?: ReceiptStatus;     // 수납 상태 (완료/예약)
   uncoveredItems?: UncoveredItem[];  // 비급여 항목 배열 (메모 연결용)
   // 다음 예약 정보
   nextReservation: Reservation | null;

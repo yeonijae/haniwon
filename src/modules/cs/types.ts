@@ -14,7 +14,7 @@ export interface DecoctionSlot {
 
 export type InquiryChannel = 'phone' | 'kakao' | 'visit' | 'naver';
 export type InquiryType = 'new_patient' | 'reservation' | 'general' | 'other';
-export type InquiryStatus = 'pending' | 'completed' | 'converted';
+export type InquiryStatus = 'pending' | 'in_progress' | 'completed' | 'converted';
 
 export interface Inquiry {
   id: number;
@@ -26,6 +26,12 @@ export interface Inquiry {
   response?: string;
   status: InquiryStatus;
   staff_name?: string;
+  patient_id?: number | null;
+  completed_at?: string | null;
+  handler_name?: string | null;
+  // 환자 매칭 시 JOIN으로 가져오는 필드
+  matched_patient_name?: string | null;
+  matched_chart_number?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -38,6 +44,7 @@ export interface CreateInquiryRequest {
   content: string;
   response?: string;
   staff_name?: string;
+  handler_name?: string;
 }
 
 export interface UpdateInquiryRequest {
@@ -49,6 +56,8 @@ export interface UpdateInquiryRequest {
   response?: string;
   status?: InquiryStatus;
   staff_name?: string;
+  patient_id?: number | null;
+  handler_name?: string | null;
 }
 
 // 채널 라벨
@@ -78,6 +87,7 @@ export const INQUIRY_TYPE_LABELS: Record<InquiryType, string> = {
 // 상태 라벨
 export const STATUS_LABELS: Record<InquiryStatus, string> = {
   pending: '대기',
+  in_progress: '응대중',
   completed: '완료',
   converted: '예약전환',
 };
@@ -85,9 +95,13 @@ export const STATUS_LABELS: Record<InquiryStatus, string> = {
 // 상태 색상
 export const STATUS_COLORS: Record<InquiryStatus, string> = {
   pending: '#f59e0b',
+  in_progress: '#667eea',
   completed: '#10b981',
   converted: '#3b82f6',
 };
+
+// CS 담당자 타입 (api.ts에서 export)
+export type { CsHandler } from './lib/api';
 
 // ============================================
 // 수납관리 관련 타입
@@ -564,7 +578,7 @@ export const MEDICINE_PRESETS = [
   '기타',
 ] as const;
 
-// 수납 메모 (기존 확장)
+// 수납 메모 (순수 메모 전용)
 export interface ReceiptMemo {
   id?: number;
   patient_id: number;
@@ -574,12 +588,23 @@ export interface ReceiptMemo {
   mssql_detail_id?: number;  // 연결된 비급여 항목 Detail_PK
   receipt_date: string;
   memo?: string;             // 특이사항 메모
+  item_name?: string;        // 메모 항목명
+  item_type?: string;        // 메모 유형
+  created_by?: string;       // 작성자
+  memo_type_id?: number;     // 메모 유형 ID
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 수납 상태 (완료/예약 상태 전용)
+export interface ReceiptStatus {
+  id?: number;
+  receipt_id: number;        // mssql_receipt_id
+  patient_id: number;
+  receipt_date: string;
+  is_completed: boolean;
   reservation_status: ReservationStatus;
-  reservation_date?: string; // 예약 확정 시 날짜
-  is_completed?: boolean;    // 기록 완료 여부
-  herbal_package_id?: number; // 연결된 한약 선결제 패키지 ID
-  herbal_pickup_id?: number;  // 연결된 한약 차감 기록 ID
-  nokryong_package_id?: number; // 연결된 녹용 패키지 ID
+  reservation_date?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -1141,3 +1166,147 @@ export interface TimelineResult {
 
 export type { StaffRole, PatientNote, PatientNoteType, NoteChannel, NoteStatus } from './types/crm';
 export { STAFF_ROLE_LABELS, NOTE_TYPE_LABELS, NOTE_TYPE_ICONS, NOTE_TYPE_COLORS, NOTE_CHANNEL_LABELS, NOTE_CHANNEL_ICONS, NOTE_STATUS_LABELS } from './types/crm';
+
+// === 한약 기록 (Draft) + 탕전 일정 ===
+
+export type DraftStatus = 'draft' | 'scheduled';
+export type DraftDeliveryMethod = 'pickup' | 'express' | 'quick' | 'other';
+
+// 4개 분기 (top-level branch)
+export type DraftBranchType = '약초진' | '약재진_N차' | '약재진_재결제' | '기타상담';
+export const DRAFT_BRANCH_TYPES: { value: DraftBranchType; label: string }[] = [
+  { value: '약초진', label: '약초진' },
+  { value: '약재진_N차', label: '약재진 (N차상담)' },
+  { value: '약재진_재결제', label: '약재진 (재결제)' },
+  { value: '기타상담', label: '기타상담' },
+];
+
+// 치료 기간 (약초진 - 다중 선택)
+export type TreatmentMonth = '1개월' | '3개월' | '6개월' | '1년' | '1년이상';
+export const TREATMENT_MONTHS: TreatmentMonth[] = ['1개월', '3개월', '6개월', '1년', '1년이상'];
+
+// 상담 방법 (약재진/기타)
+export type ConsultationMethod = '내원' | '전화' | '카톡';
+export const CONSULTATION_METHODS: ConsultationMethod[] = ['내원', '전화', '카톡'];
+
+// 녹용 권유 (약초진 - 담당의 권유 상태)
+export type NokryongRecommendation = '녹용필수' | '녹용권유' | '녹용배제' | '언급없음';
+export const NOKRYONG_RECOMMENDATIONS: NokryongRecommendation[] = ['녹용필수', '녹용권유', '녹용배제', '언급없음'];
+
+// 결제 개월수
+export type PaymentMonth = '15일분' | '1개월분' | '2개월분' | '3개월분' | '6개월분' | '결제실패';
+export const PAYMENT_MONTHS: PaymentMonth[] = ['15일분', '1개월분', '2개월분', '3개월분', '6개월분', '결제실패'];
+
+// 녹용 등급
+export type NokryongGrade = '베이직' | '스탠다드' | '프리미엄' | '스페셜';
+export const NOKRYONG_GRADES: NokryongGrade[] = ['베이직', '스탠다드', '프리미엄', '스페셜'];
+
+// 기타상담 세부 유형
+export type OtherSubType = '재처방' | '보완처방' | '상비약' | '마무리' | '중간점검' | '단순문의';
+export const OTHER_SUB_TYPES: OtherSubType[] = ['재처방', '보완처방', '상비약', '마무리', '중간점검', '단순문의'];
+
+// 내원 패턴
+export type DraftVisitPattern = '15일' | '30일';
+export const DRAFT_VISIT_PATTERNS: DraftVisitPattern[] = ['15일', '30일'];
+
+// 발송 방법
+export const DRAFT_DELIVERY_LABELS: Record<DraftDeliveryMethod, string> = {
+  pickup: '내원수령',
+  express: '택배',
+  quick: '퀵',
+  other: '기타',
+};
+
+export const DRAFT_STATUS_LABELS: Record<DraftStatus, string> = {
+  draft: '초안',
+  scheduled: '탕전배정',
+};
+
+// 폼 상태 인터페이스
+export interface HerbalDraftFormData {
+  branch: DraftBranchType | '';
+  // 약초진 전용
+  treatmentMonths: TreatmentMonth[];
+  visitPattern: DraftVisitPattern | '';
+  nokryongRecommendation: NokryongRecommendation | '';
+  // 약재진/기타 전용
+  consultationMethod: ConsultationMethod | '';
+  subType: OtherSubType | '';
+  // 결제 관련 (약초진 + 약재진_재결제)
+  paymentMonth: PaymentMonth | '';
+  nokryongGrade: NokryongGrade | '';
+  nokryongCount: number;
+  // 공통
+  deliveryMethod: DraftDeliveryMethod | '';
+  decoctionDate: string | undefined;
+  memo: string;
+  // 상비약/보완처방 전용
+  medicines: Array<{ inventoryId: number; name: string; quantity: number; currentStock: number; unit: string }>;
+}
+
+export const INITIAL_DRAFT_FORM_DATA: HerbalDraftFormData = {
+  branch: '',
+  treatmentMonths: [],
+  visitPattern: '',
+  nokryongRecommendation: '',
+  consultationMethod: '',
+  subType: '',
+  paymentMonth: '',
+  nokryongGrade: '',
+  nokryongCount: 1,
+  deliveryMethod: '',
+  decoctionDate: undefined,
+  memo: '',
+  medicines: [],
+};
+
+// DB 레코드 인터페이스
+export interface HerbalDraft {
+  id?: number;
+  patient_id: number;
+  chart_number?: string;
+  patient_name?: string;
+  herbal_name?: string;
+  // 분기 타입
+  consultation_type?: string;
+  // 약초진 전용
+  treatment_months?: string;
+  visit_pattern?: string;
+  nokryong_type?: string;
+  // 약재진/기타 전용
+  consultation_method?: string;
+  sub_type?: string;
+  // 결제 관련
+  payment_type?: string;
+  nokryong_grade?: string;
+  nokryong_count?: number;
+  // 공통
+  delivery_method?: string;
+  decoction_date?: string;
+  memo?: string;
+  medicine_items?: string;
+  status: DraftStatus;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface StaffScheduleEntry {
+  id?: number;
+  schedule_date: string;
+  staff_count: number;
+  is_holiday: boolean;
+  memo?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DecoctionDayCapacity {
+  date: string;
+  staffCount: number;
+  isHoliday: boolean;
+  isWeekend: boolean;
+  maxCapacity: number;
+  usedCapacity: number;
+  remainingCapacity: number;
+}

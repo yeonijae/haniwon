@@ -14,17 +14,60 @@ import type {
 
 /**
  * 응대 기록 목록 조회 (환자별)
+ * patient_contact_logs + cs_inquiries(매칭된 문의)를 병합하여 반환
  */
 export async function getContactLogsByPatient(
   patientId: number,
   limit: number = 50
 ): Promise<ContactLog[]> {
-  return query<ContactLog>(`
-    SELECT * FROM patient_contact_logs
-    WHERE patient_id = ${patientId}
-    ORDER BY created_at DESC
-    LIMIT ${limit}
-  `);
+  const INQUIRY_TYPE_MAP: Record<string, ContactType> = {
+    new_patient: 'inquiry',
+    reservation: 'reservation',
+    general: 'inquiry',
+    other: 'other',
+  };
+
+  const pid = Number(patientId);
+
+  const [logs, inquiries] = await Promise.all([
+    query<ContactLog>(`
+      SELECT * FROM patient_contact_logs
+      WHERE patient_id = ${pid}
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `),
+    query<{
+      id: number; patient_id: number; channel: ContactChannel;
+      inquiry_type: string; content: string; response: string | null;
+      staff_name: string | null; created_at: string;
+    }>(`
+      SELECT id, patient_id, channel, inquiry_type, content, response, staff_name, created_at
+      FROM cs_inquiries
+      WHERE patient_id = ${pid}
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `),
+  ]);
+
+  // 문의를 ContactLog 형식으로 변환
+  const inquiryLogs: ContactLog[] = inquiries.map(inq => ({
+    id: -(inq.id),
+    patient_id: inq.patient_id,
+    direction: 'inbound' as ContactDirection,
+    channel: inq.channel as ContactChannel,
+    contact_type: INQUIRY_TYPE_MAP[inq.inquiry_type] || 'other',
+    content: inq.content,
+    result: inq.response,
+    related_type: 'inquiry',
+    related_id: inq.id,
+    created_by: inq.staff_name,
+    created_at: inq.created_at,
+  }));
+
+  // 병합 후 날짜순 정렬
+  return [...logs, ...inquiryLogs]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, limit);
 }
 
 /**
@@ -36,7 +79,7 @@ export async function getContactLogsByDateRange(
   direction?: ContactDirection,
   contactType?: ContactType
 ): Promise<ContactLog[]> {
-  let whereClause = `created_at >= '${startDate}' AND created_at < '${endDate}'::date + interval '1 day'`;
+  let whereClause = `created_at >= ${escapeString(startDate)} AND created_at < ${escapeString(endDate)}::date + interval '1 day'`;
 
   if (direction) {
     whereClause += ` AND direction = ${escapeString(direction)}`;
@@ -177,7 +220,7 @@ export async function getTodayContactStats(): Promise<{
   const stats = await query<{ direction: string; contact_type: string; count: number }>(`
     SELECT direction, contact_type, COUNT(*) as count
     FROM patient_contact_logs
-    WHERE DATE(created_at) = '${today}'
+    WHERE DATE(created_at) = ${escapeString(today)}
     GROUP BY direction, contact_type
   `);
 

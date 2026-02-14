@@ -287,13 +287,16 @@ export interface CreateContactLogRequest {
 // ============================================
 
 export type CallType =
-  | 'delivery_call'   // 배송콜
-  | 'visit_call'      // 내원콜
-  | 'after_call'      // 애프터콜
-  | 'unconsumed'      // 미복용
-  | 'vip_care'        // VIP관리
-  | 'churn_risk_1'    // 이탈위험(1회)
-  | 'churn_risk_3';   // 재방문유도
+  | 'delivery_call'      // 배송콜 (수령 3일차)
+  | 'visit_call'         // 내원콜 (수령 12일차)
+  | 'after_call'         // 애프터콜
+  | 'unconsumed'         // 미복용
+  | 'vip_care'           // VIP관리
+  | 'churn_risk_1'       // 이탈위험(1회)
+  | 'churn_risk_3'       // 재방문유도
+  | 'repayment_consult'  // 재결제 상담 (선결제 소진)
+  | 'remind_3month'      // 리마인드콜 (복약완료 3개월 후)
+  | 'expiry_warning';    // 유효기간 임박
 
 export const CALL_TYPE_LABELS: Record<CallType, string> = {
   delivery_call: '배송콜',
@@ -303,6 +306,9 @@ export const CALL_TYPE_LABELS: Record<CallType, string> = {
   vip_care: 'VIP관리',
   churn_risk_1: '이탈위험(1회)',
   churn_risk_3: '재방문유도',
+  repayment_consult: '재결제상담',
+  remind_3month: '리마인드',
+  expiry_warning: '유효기간임박',
 };
 
 export type CallStatus =

@@ -12,7 +12,7 @@ import type {
   ExamDateGroup,
 } from '../types';
 
-const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
+const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
 const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
 // SQL 문자열 이스케이프

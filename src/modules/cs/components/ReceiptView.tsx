@@ -6,7 +6,6 @@ import {
   getPatientMemoData,
   getPatientsMemoDataBatch,
   getReceiptMemosByReceiptId,
-  upsertReceiptMemo,
   addReceiptMemo,
   updateReceiptMemoById,
   deleteReceiptMemoById,
@@ -15,6 +14,8 @@ import {
   usePoints,
   toggleReceiptCompleted,
   getCompletedReceiptIds,
+  updateReservationStatus,
+  upsertReceiptStatus,
   fetchReceiptDetails,
   fetchPatientPreviousMemos,
   getHerbalPackageById,
@@ -78,7 +79,6 @@ import {
 import { MemoTagList } from './MemoTag';
 import { ReservationStep1Modal, type ReservationDraft, type InitialPatient } from '../../reservation/components/ReservationStep1Modal';
 import { QuickReservationModal } from './QuickReservationModal';
-import { PatientReceiptHistoryModal } from './PatientReceiptHistoryModal';
 import { PackageAddModal } from './PackageAddModal';
 import { MembershipAddModal } from './MembershipAddModal';
 import { DispensingAddModal } from './DispensingAddModal';
@@ -90,11 +90,15 @@ import YakchimModal from './YakchimModal';
 import { MedicineModal } from './MedicineModal';
 import MemoInputPanel from './MemoInputPanel';
 import RegisterModal from './RegisterModal';
+import UncoveredItemModal from './uncovered-modal/UncoveredItemModal';
+import type { UncoveredItemType } from './uncovered-modal/UncoveredItemModal';
 import PackageManageModal from './PackageManageModal';
 import PackageQuickAddModal from './PackageQuickAddModal';
 import { PackageTimeline } from './PackageTimeline';
-import PatientCRMView from './PatientCRMView';
-import LocalPatientRegisterModal from './LocalPatientRegisterModal';
+import InlineReceiptHistory from './InlineReceiptHistory';
+import PatientDashboard from './PatientDashboard';
+import { getLocalPatientByMssqlId, syncPatientById } from '../lib/patientSync';
+import type { LocalPatient } from '../lib/patientSync';
 import type { TimelineEvent } from '../types';
 // 분리된 컴포넌트 및 헬퍼 import
 import {
@@ -108,11 +112,9 @@ import {
   InlineYakchimEdit,
 } from './InlineEditComponents';
 import {
-  type PatientSearchResult,
   type OnsiteReservationStats,
   type ExpandedReceiptItem,
   type TreatmentSummary,
-  searchPatients,
   fetchOnsiteReservationRate,
   formatMoney,
   formatTime,
@@ -189,35 +191,14 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
     memo?: string;
   } | null>(null);
 
-  // 환자 수납이력 모달 상태
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [historyPatient, setHistoryPatient] = useState<{
-    patientId: number;
-    patientName: string;
-    chartNo: string;
-  } | null>(null);
 
-  // 환자 CRM 모달 상태
-  const [showCRMModal, setShowCRMModal] = useState(false);
-  const [crmPatient, setCRMPatient] = useState<{
-    patientId: number;
-    patientName: string;
-    chartNo: string;
-    gender?: 'M' | 'F';
-    age?: number;
-  } | null>(null);
+  // 환자 대시보드 모달 상태
+  const [showDashboardModal, setShowDashboardModal] = useState(false);
+  const [dashboardPatient, setDashboardPatient] = useState<LocalPatient | null>(null);
 
   // 날짜 이동 후 선택할 환자 ID (수납이력에서 클릭 시)
   const pendingPatientSelectRef = useRef<number | null>(null);
 
-  // 환자 검색 상태
-  const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState<PatientSearchResult[]>([]);
-  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
-
-  // 로컬 환자 등록 모달 상태
-  const [showLocalPatientModal, setShowLocalPatientModal] = useState(false);
 
   // 약침 모달 상태
   const [showYakchimModal, setShowYakchimModal] = useState(false);
@@ -259,6 +240,15 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
     itemName?: string;
     amount?: number;
     memoDate?: string;  // 커스텀 메모 추가 시 날짜
+  } | null>(null);
+
+  // 비급여 항목 통합 모달 상태
+  const [uncoveredModal, setUncoveredModal] = useState<{
+    itemName: string;
+    itemType: UncoveredItemType;
+    amount: number;
+    detailId?: number;
+    isEditMode?: boolean;
   } | null>(null);
 
   // 커스텀 메모 입력 상태
@@ -419,37 +409,6 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
       document.body.style.userSelect = '';
     };
   }, [isResizing]);
-
-  // 디바운스 검색
-  useEffect(() => {
-    if (searchTerm.length < 2) {
-      setSearchResults([]);
-      setShowSearchDropdown(false);
-      return;
-    }
-
-    setIsSearching(true);
-    const timer = setTimeout(async () => {
-      const results = await searchPatients(searchTerm);
-      setSearchResults(results);
-      setShowSearchDropdown(true);
-      setIsSearching(false);
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
-
-  // 검색 결과 클릭 → 수납이력 모달 열기
-  const handleSearchResultClick = (patient: PatientSearchResult) => {
-    setHistoryPatient({
-      patientId: patient.id,
-      patientName: patient.name,
-      chartNo: patient.chart_no,
-    });
-    setShowHistoryModal(true);
-    setShowSearchDropdown(false);
-    setSearchTerm('');
-  };
 
   // 수납 행 클릭 시 환자 선택 및 이력 로드
   const handleReceiptRowClick = async (receipt: ExpandedReceiptItem) => {
@@ -797,27 +756,17 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
     }
   };
 
-  // 검색 드롭다운 외부 클릭 시 닫기
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.receipt-search-container')) {
-        setShowSearchDropdown(false);
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
-
-  // 환자 클릭 시 이력 모달 열기
-  const handlePatientClick = (receipt: ExpandedReceiptItem, e: React.MouseEvent) => {
+  // 환자 클릭 시 대시보드 모달 열기
+  const handlePatientClick = async (receipt: ExpandedReceiptItem, e: React.MouseEvent) => {
     e.stopPropagation();
-    setHistoryPatient({
-      patientId: receipt.patient_id,
-      patientName: receipt.patient_name,
-      chartNo: receipt.chart_no,
-    });
-    setShowHistoryModal(true);
+    let localPatient = await getLocalPatientByMssqlId(receipt.patient_id);
+    if (!localPatient) {
+      localPatient = await syncPatientById(receipt.patient_id);
+    }
+    if (localPatient) {
+      setDashboardPatient(localPatient);
+      setShowDashboardModal(true);
+    }
   };
 
   // 테이블 초기화
@@ -1028,8 +977,8 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
           patient_id: item.patient_id,
           memoItems,
           memo: data.memo,  // 전체 메모 객체 저장
-          reservationStatus: data.memo?.reservation_status || 'none',
-          reservationDate: data.memo?.reservation_date,
+          reservationStatus: 'none' as ReservationStatus,
+          reservationDate: undefined,
           nextReservation,
           hasYakchimMemo,
           hasHerbalMemo,
@@ -1078,11 +1027,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
           ...item,
           memoItems: update.memoItems,
           nextReservation: update.nextReservation,
-          receiptMemos: update.memo ? [{
-            ...update.memo,
-            reservation_status: update.reservationStatus as ReservationStatus,
-            reservation_date: update.reservationDate,
-          } as ReceiptMemo] : (item.receiptMemos || []),
+          receiptMemos: update.memo ? [update.memo] : (item.receiptMemos || []),
           hasYakchimMemo: update.hasYakchimMemo,
           hasHerbalMemo: update.hasHerbalMemo,
           hasMedicineMemo: update.hasMedicineMemo,
@@ -1209,54 +1154,51 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
   // 메모 입력 제외 항목 (미입력 뱃지도 표시 안함)
   const isExcludedFromMemo = (itemName: string) => itemName.includes('부항술혈명');
 
-  // 클릭 시 패널 열지 않는 항목 (미입력 뱃지는 표시)
-  // 녹용은 약침이 포함되지 않은 경우에만 비활성화 (녹용약침은 약침 패널 열림)
+  // 클릭 시 모달 열지 않는 항목 (미입력 뱃지는 표시)
   const isClickDisabled = (itemName: string) =>
-    itemName.includes('부항술혈명') || (itemName.includes('녹용') && !itemName.includes('약침'));
+    itemName.includes('부항술혈명');
 
-  // 비급여 항목 클릭 시 사이드패널 메모 입력 모드 활성화
+  // 비급여 항목 클릭 시 통합 모달 열기
   const handleUncoveredItemClick = (itemName: string, amount: number, detailId?: number) => {
     // 클릭 비활성화 항목
     if (isClickDisabled(itemName)) {
       return;
     }
 
-    // 이미 연관 메모가 있으면 패널 열지 않음 (비급여 항목당 메모 1개)
-    if (detailId && hasMemoForDetail(detailId)) {
-      return;
-    }
+    // 이미 처리된 항목이면 수정 모드로 모달 열기
+    const isEdit = !!(detailId && hasMemoForDetail(detailId));
 
     // 약침포인트 → 패키지(통증마일리지) 등록
     if (itemName.includes('약침포인트')) {
-      setMemoInputMode({ itemName: '통증마일리지', itemType: 'package-register', amount, detailId });
+      setUncoveredModal({ itemName: '통증마일리지', itemType: 'package', amount, detailId, isEditMode: isEdit });
       return;
     }
 
     // 멤버십 → 멤버십 등록
     if (itemName.includes('멤버십')) {
-      setMemoInputMode({ itemName, itemType: 'membership-register', amount, detailId });
+      setUncoveredModal({ itemName, itemType: 'membership', amount, detailId, isEditMode: isEdit });
       return;
     }
 
-    // 약침/요법 → 타임라인에 인라인 약침 패널 표시
+    // 약침/요법 → 약침 모달
     if (itemName.includes('약침') || itemName.includes('요법')) {
-      setShowInlinePanel({ type: 'yakchim', detailId, itemName, amount });
+      setUncoveredModal({ itemName, itemType: 'yakchim', amount, detailId, isEditMode: isEdit });
       return;
     }
 
-    // 한약 → 타임라인에 인라인 차감 패널 표시
+    // 한약 → 한약 차감 모달
     if (itemName.includes('한약')) {
-      setShowInlinePanel({ type: 'herbal', detailId });
+      setUncoveredModal({ itemName, itemType: 'herbal', amount, detailId, isEditMode: isEdit });
       return;
     }
 
-    // 녹용 → 녹용 차감 패널
+    // 녹용 → 녹용 차감 모달 (활성화!)
     if (itemName.includes('녹용')) {
-      setMemoInputMode({ itemName, itemType: 'herbal', amount, detailId, herbalMode: 'deduct-nokryong' });
+      setUncoveredModal({ itemName, itemType: 'nokryong', amount, detailId, isEditMode: isEdit });
       return;
     }
 
-    // 공진단/경옥고/상비약/감기약/치료약/보완처방/증정 → 상비약 입력
+    // 공진단/경옥고/상비약/감기약/치료약/보완처방/증정 → 상비약 모달
     if (itemName.includes('공진단') ||
         itemName.includes('경옥고') ||
         itemName.includes('상비약') ||
@@ -1264,12 +1206,12 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
         itemName.includes('치료약') ||
         itemName.includes('보완처방') ||
         itemName.includes('증정')) {
-      setMemoInputMode({ itemName, itemType: 'medicine', amount, detailId });
+      setUncoveredModal({ itemName, itemType: 'medicine', amount, detailId, isEditMode: isEdit });
       return;
     }
 
-    // 기본값: 일반 메모 입력
-    setMemoInputMode({ itemName, itemType: 'other', amount, detailId });
+    // 기본값: 일반 메모 모달
+    setUncoveredModal({ itemName, itemType: 'other', amount, detailId, isEditMode: isEdit });
   };
 
   // 메모 입력 모드 닫기
@@ -1297,9 +1239,10 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
   const handleStartEditMemo = async (memo: ReceiptMemo) => {
     if (!memo.id) return;
 
-    // "선결제" 포함 메모이고 herbal_package_id가 있으면 패키지 수정 모달 열기
-    if (memo.memo?.includes('선결제') && memo.herbal_package_id) {
-      const pkg = await getHerbalPackageById(memo.herbal_package_id);
+    // "선결제" 포함 메모면 패키지 수정 모달 열기 (환자의 활성 한약 패키지에서 매칭)
+    if (memo.memo?.includes('선결제') && selectedReceipt) {
+      const packages = await getActiveHerbalPackages(selectedReceipt.patient_id);
+      const pkg = packages.find(p => memo.memo?.includes(p.herbal_name)) || packages[0] || null;
       if (pkg) {
         setRegisterModal({
           type: 'herbal',
@@ -1312,12 +1255,9 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
 
     // "선결(" 포함 메모면 차감 수정 패널 열기
     if (memo.memo?.includes('선결(') && selectedReceipt) {
-      // herbal_pickup_id가 있으면 직접 조회, 없으면 receipt_id로 검색
+      // receipt_id로 pickup 검색
       let pickup: HerbalPickup | null = null;
-      if (memo.herbal_pickup_id) {
-        pickup = await getHerbalPickupById(memo.herbal_pickup_id);
-      } else if (memo.mssql_receipt_id) {
-        // receipt_id로 pickup 찾기 (레거시 데이터 지원)
+      if (memo.mssql_receipt_id) {
         pickup = await getHerbalPickupByReceiptId(memo.mssql_receipt_id);
       }
 
@@ -1344,15 +1284,9 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
     if (memo.memo?.includes('녹용') && selectedReceipt) {
       let pkg: NokryongPackage | null = null;
 
-      // nokryong_package_id가 있으면 직접 조회
-      if (memo.nokryong_package_id) {
-        pkg = await getNokryongPackageById(memo.nokryong_package_id);
-      } else {
-        // 레거시 메모: 환자의 녹용 패키지 중 메모 텍스트와 매칭되는 것 찾기
-        const packages = await getNokryongPackages(selectedReceipt.patient_id);
-        // 메모 텍스트와 package_name이 일치하는 패키지 찾기
-        pkg = packages.find(p => memo.memo?.includes(p.package_name)) || packages[0] || null;
-      }
+      // 환자의 녹용 패키지 중 메모 텍스트와 매칭되는 것 찾기
+      const packages = await getNokryongPackages(selectedReceipt.patient_id);
+      pkg = packages.find(p => memo.memo?.includes(p.package_name)) || packages[0] || null;
 
       if (pkg) {
         setRegisterModal({
@@ -1672,29 +1606,26 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
     reservationDate?: string
   ) => {
     try {
-      await upsertReceiptMemo({
-        patient_id: receipt.patient_id,
-        chart_number: receipt.chart_no,
-        patient_name: receipt.patient_name,
-        mssql_receipt_id: receipt.id,
-        receipt_date: selectedDate,
-        reservation_status: status,
-        reservation_date: reservationDate,
-      });
+      await updateReservationStatus(
+        receipt.patient_id,
+        selectedDate,
+        status,
+        reservationDate,
+        receipt.id
+      );
 
       setReceipts(prev => prev.map(r =>
         r.id === receipt.id ? {
           ...r,
-          receiptMemos: r.receiptMemos.length > 0
-            ? [{
-                ...r.receiptMemos[0],
-                reservation_status: status,
-                reservation_date: reservationDate,
-              }, ...r.receiptMemos.slice(1)]
-            : [{
-                reservation_status: status,
-                reservation_date: reservationDate,
-              } as ReceiptMemo],
+          receiptStatus: {
+            ...r.receiptStatus,
+            receipt_id: receipt.id,
+            patient_id: receipt.patient_id,
+            receipt_date: selectedDate,
+            is_completed: r.receiptStatus?.is_completed ?? false,
+            reservation_status: status,
+            reservation_date: reservationDate,
+          },
         } : r
       ));
     } catch (err) {
@@ -1837,6 +1768,21 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
   // 기록 완료 토글
   const handleToggleCompleted = async (receipt: ExpandedReceiptItem) => {
     const newStatus = !receipt.isCompleted;
+
+    // 완료로 전환 시: 미처리 비급여 항목 경고
+    if (newStatus && receipt.treatments) {
+      const uncoveredItems = receipt.treatments.filter(t => !t.is_covered);
+      const unprocessed = uncoveredItems.filter(
+        item => !isExcludedFromMemo(item.name) && !hasMemoForDetail(item.id)
+      );
+      if (unprocessed.length > 0) {
+        const names = unprocessed.map(item => item.name).join(', ');
+        if (!confirm(`${names} 항목이 완료되지 않았습니다.\n이대로 완료처리 하시겠습니까?`)) {
+          return;
+        }
+      }
+    }
+
     try {
       await toggleReceiptCompleted(
         receipt.patient_id,
@@ -1948,78 +1894,6 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
             </div>
           </div>
         )}
-
-        {/* 환자 검색 */}
-        <div className="receipt-search-container">
-          <div className="receipt-search-input-wrapper">
-            <i className="fa-solid fa-magnifying-glass"></i>
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="환자검색"
-              className="receipt-search-input"
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  setSearchTerm('');
-                  setShowSearchDropdown(false);
-                }
-              }}
-            />
-            {isSearching && <i className="fa-solid fa-spinner fa-spin search-loading"></i>}
-            {searchTerm && !isSearching && (
-              <button
-                className="search-clear-btn"
-                onClick={() => {
-                  setSearchTerm('');
-                  setShowSearchDropdown(false);
-                }}
-              >
-                <i className="fa-solid fa-xmark"></i>
-              </button>
-            )}
-          </div>
-          {showSearchDropdown && searchResults.length > 0 && (
-            <div className="receipt-search-dropdown">
-              {searchResults.map((patient) => (
-                <div
-                  key={patient.id}
-                  className="receipt-search-result-item"
-                  onClick={() => handleSearchResultClick(patient)}
-                >
-                  <div className="search-result-main">
-                    <span className="search-result-name">{patient.name}</span>
-                    <span className="search-result-chart">({patient.chart_no.replace(/^0+/, '')})</span>
-                  </div>
-                  <div className="search-result-meta">
-                    {patient.birth && <span>{patient.birth.slice(2, 10).replace(/-/g, '.')}</span>}
-                    <span>{patient.sex === 'M' ? '남' : '여'}</span>
-                    {patient.last_visit && <span>최근 {patient.last_visit.slice(5).replace('-', '/')}</span>}
-                  </div>
-                </div>
-              ))}
-              <div className="search-result-footer">
-                {searchResults.length}건 검색됨
-              </div>
-            </div>
-          )}
-          {showSearchDropdown && searchTerm.length >= 2 && searchResults.length === 0 && !isSearching && (
-            <div className="receipt-search-dropdown">
-              <div className="search-no-results">
-                <i className="fa-solid fa-user-slash"></i>
-                <span>검색 결과 없음</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <button
-          onClick={() => setShowLocalPatientModal(true)}
-          className="local-patient-btn"
-          title="로컬 환자 등록 (EMR 연동 없이)"
-        >
-          <i className="fa-solid fa-user-plus"></i> 환자등록
-        </button>
 
         <button onClick={loadReceipts} className="refresh-btn">
           <i className="fa-solid fa-rotate-right"></i> 새로고침
@@ -2172,37 +2046,21 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
               {/* 환자 정보 헤더 (한 줄) */}
               <div className="side-panel-header">
                 <div className="patient-info">
-                  <span className="patient-name">{selectedReceipt.patient_name}</span>
+                  <span
+                    className="patient-name clickable"
+                    onClick={async () => {
+                      let localPatient = await getLocalPatientByMssqlId(selectedReceipt.patient_id);
+                      if (!localPatient) {
+                        localPatient = await syncPatientById(selectedReceipt.patient_id);
+                      }
+                      if (localPatient) {
+                        setDashboardPatient(localPatient);
+                        setShowDashboardModal(true);
+                      }
+                    }}
+                    title="환자 통합 대시보드"
+                  >{selectedReceipt.patient_name}</span>
                   <span className="chart-no">({selectedReceipt.chart_no.replace(/^0+/, '')})</span>
-                  <button
-                    className="timeline-btn"
-                    onClick={() => {
-                      setHistoryPatient({
-                        patientId: selectedReceipt.patient_id,
-                        patientName: selectedReceipt.patient_name,
-                        chartNo: selectedReceipt.chart_no,
-                      });
-                      setShowHistoryModal(true);
-                    }}
-                    title="전체 수납이력"
-                  >
-                    <i className="fa-solid fa-clock-rotate-left"></i>
-                  </button>
-                  <button
-                    className="crm-btn"
-                    onClick={() => {
-                      setCRMPatient({
-                        patientId: selectedReceipt.patient_id,
-                        patientName: selectedReceipt.patient_name,
-                        chartNo: selectedReceipt.chart_no,
-                        age: selectedReceipt.age ?? undefined,
-                      });
-                      setShowCRMModal(true);
-                    }}
-                    title="환자 CRM"
-                  >
-                    <i className="fa-solid fa-address-card"></i>
-                  </button>
                 </div>
                 <div className="header-status">
                   <div className="status-badge reservation">
@@ -2393,9 +2251,9 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
                               {selectedReceipt.treatments.filter(t => !t.is_covered).map((item, idx) => (
                                 <tr
                                   key={idx}
-                                  className={`${isClickDisabled(item.name) ? '' : 'clickable-row'} ${memoInputMode?.itemName === item.name ? 'active' : ''}`}
+                                  className={`${isClickDisabled(item.name) ? '' : 'clickable-row'} ${uncoveredModal?.itemName === item.name ? 'active' : ''}`}
                                   onClick={() => handleUncoveredItemClick(item.name, item.amount || 0, item.id)}
-                                  title={isClickDisabled(item.name) ? undefined : '클릭하여 메모 추가'}
+                                  title={isClickDisabled(item.name) ? undefined : hasMemoForDetail(item.id) ? '클릭하여 수정/삭제' : '클릭하여 메모 추가'}
                                 >
                                   <td className="col-name">
                                     {item.name}
@@ -2427,104 +2285,42 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
                       </div>
                     </div>
                   )}
-                </div>
 
-                {/* 오른쪽 단: 메모 + 상태 */}
-                <div className="info-column">
-                  {/* 1. CS 타임라인 섹션 */}
-                  <PackageTimeline
-                    patientId={selectedReceipt.patient_id}
-                    patientName={selectedReceipt.patient_name}
-                    chartNumber={selectedReceipt.chart_no}
-                    currentUser={user?.name || '직원'}
-                    onRefresh={refreshSelectedPatientHistory}
-                    renderEditPanel={renderTimelineEditPanel}
-                    refreshTrigger={timelineRefreshTrigger}
-                    onAddMemo={(date) => {
-                      setCustomMemoText('');
-                      setShowInlinePanel({ type: 'customMemo', memoDate: date });
-                    }}
-                    externalPanel={showInlinePanel ? (
-                      showInlinePanel.type === 'herbal' ? (
-                        <InlineHerbalDeductPanel
-                          patientId={selectedReceipt.patient_id}
-                          chartNumber={selectedReceipt.chart_no}
-                          patientName={selectedReceipt.patient_name}
-                          receiptId={selectedReceipt.id}
-                          receiptDate={selectedDate}
-                          detailId={showInlinePanel.detailId}
-                          onSuccess={async () => {
-                            setShowInlinePanel(null);
-                            setTimelineRefreshTrigger(prev => prev + 1);
-                            await refreshSelectedPatientHistory();
-                          }}
-                          onClose={() => setShowInlinePanel(null)}
-                        />
-                      ) : showInlinePanel.type === 'customMemo' ? (
-                        <div className="custom-memo-add-panel">
-                          <div className="custom-memo-add-header">
-                            <span className="custom-memo-add-title">
-                              <i className="fa-solid fa-comment-dots"></i>
-                              {showInlinePanel.memoDate} 메모 추가
-                            </span>
-                            <button
-                              className="custom-memo-close-btn"
-                              onClick={() => setShowInlinePanel(null)}
-                            >
-                              <i className="fa-solid fa-xmark"></i>
-                            </button>
-                          </div>
-                          <div className="custom-memo-add-body">
-                            <select
-                              className="custom-memo-type-select"
-                              value={selectedMemoTypeId || ''}
-                              onChange={(e) => setSelectedMemoTypeId(Number(e.target.value))}
-                            >
-                              {memoTypes.map(mt => (
-                                <option key={mt.id} value={mt.id} style={{ color: mt.color }}>
-                                  {mt.name}
-                                </option>
-                              ))}
-                            </select>
-                            <input
-                              type="text"
-                              className="custom-memo-input"
-                              placeholder="메모 내용을 입력하세요"
-                              value={customMemoText}
-                              onChange={(e) => setCustomMemoText(e.target.value)}
-                              onKeyDown={async (e) => {
-                                if (e.key === 'Enter' && customMemoText.trim()) {
-                                  const selectedType = memoTypes.find(t => t.id === selectedMemoTypeId);
-                                  try {
-                                    await addReceiptMemo({
-                                      patient_id: selectedReceipt.patient_id,
-                                      receipt_id: selectedReceipt.id,
-                                      receipt_date: showInlinePanel.memoDate || selectedDate,
-                                      memo: customMemoText.trim(),
-                                      item_name: selectedType?.name || '일반',
-                                      item_type: 'custom',
-                                      created_by: user?.name || '직원',
-                                      memo_type_id: selectedMemoTypeId || undefined,
-                                    });
-                                    setShowInlinePanel(null);
-                                    setCustomMemoText('');
-                                    setTimelineRefreshTrigger(prev => prev + 1);
-                                    await refreshSelectedPatientHistory();
-                                  } catch (err) {
-                                    console.error('메모 추가 실패:', err);
-                                    alert('메모 추가에 실패했습니다.');
-                                  }
-                                } else if (e.key === 'Escape') {
-                                  setShowInlinePanel(null);
-                                }
-                              }}
-                              autoFocus
-                            />
-                            <button
-                              className="custom-memo-submit-btn"
-                              disabled={!customMemoText.trim()}
-                              onClick={async () => {
-                                if (!customMemoText.trim()) return;
+                  {/* 인라인 입력 패널 (커스텀 메모 추가) */}
+                  {showInlinePanel && showInlinePanel.type === 'customMemo' && (
+                      <div className="custom-memo-add-panel">
+                        <div className="custom-memo-add-header">
+                          <span className="custom-memo-add-title">
+                            <i className="fa-solid fa-comment-dots"></i>
+                            {showInlinePanel.memoDate} 메모 추가
+                          </span>
+                          <button
+                            className="custom-memo-close-btn"
+                            onClick={() => setShowInlinePanel(null)}
+                          >
+                            <i className="fa-solid fa-xmark"></i>
+                          </button>
+                        </div>
+                        <div className="custom-memo-add-body">
+                          <select
+                            className="custom-memo-type-select"
+                            value={selectedMemoTypeId || ''}
+                            onChange={(e) => setSelectedMemoTypeId(Number(e.target.value))}
+                          >
+                            {memoTypes.map(mt => (
+                              <option key={mt.id} value={mt.id} style={{ color: mt.color }}>
+                                {mt.name}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            className="custom-memo-input"
+                            placeholder="메모 내용을 입력하세요"
+                            value={customMemoText}
+                            onChange={(e) => setCustomMemoText(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Enter' && customMemoText.trim()) {
                                 const selectedType = memoTypes.find(t => t.id === selectedMemoTypeId);
                                 try {
                                   await addReceiptMemo({
@@ -2545,76 +2341,46 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
                                   console.error('메모 추가 실패:', err);
                                   alert('메모 추가에 실패했습니다.');
                                 }
-                              }}
-                            >
-                              추가
-                            </button>
-                          </div>
+                              } else if (e.key === 'Escape') {
+                                setShowInlinePanel(null);
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <button
+                            className="custom-memo-submit-btn"
+                            disabled={!customMemoText.trim()}
+                            onClick={async () => {
+                              if (!customMemoText.trim()) return;
+                              const selectedType = memoTypes.find(t => t.id === selectedMemoTypeId);
+                              try {
+                                await addReceiptMemo({
+                                  patient_id: selectedReceipt.patient_id,
+                                  receipt_id: selectedReceipt.id,
+                                  receipt_date: showInlinePanel.memoDate || selectedDate,
+                                  memo: customMemoText.trim(),
+                                  item_name: selectedType?.name || '일반',
+                                  item_type: 'custom',
+                                  created_by: user?.name || '직원',
+                                  memo_type_id: selectedMemoTypeId || undefined,
+                                });
+                                setShowInlinePanel(null);
+                                setCustomMemoText('');
+                                setTimelineRefreshTrigger(prev => prev + 1);
+                                await refreshSelectedPatientHistory();
+                              } catch (err) {
+                                console.error('메모 추가 실패:', err);
+                                alert('메모 추가에 실패했습니다.');
+                              }
+                            }}
+                          >
+                            추가
+                          </button>
                         </div>
-                      ) : (
-                        <MemoInputPanel
-                          patientId={selectedReceipt.patient_id}
-                          patientName={selectedReceipt.patient_name}
-                          chartNumber={selectedReceipt.chart_no}
-                          receiptId={selectedReceipt.id}
-                          receiptDate={selectedDate}
-                          itemName={showInlinePanel.itemName || ''}
-                          itemType="yakchim"
-                          amount={showInlinePanel.amount}
-                          detailId={showInlinePanel.detailId}
-                          onClose={() => setShowInlinePanel(null)}
-                          onSuccess={async () => {
-                            setShowInlinePanel(null);
-                            setTimelineRefreshTrigger(prev => prev + 1);
-                            await refreshSelectedPatientHistory();
-                          }}
-                        />
-                      )
-                    ) : undefined}
-                    externalPanelDate={showInlinePanel ? (
-                      showInlinePanel.type === 'customMemo'
-                        ? showInlinePanel.memoDate
-                        : (selectedReceipt?.receipt_date || selectedDate)
-                    ) : undefined}
-                  />
-
-                  {/* 메모 편집 영역 */}
-                  {editingMemo && (
-                    <div className="today-memo-add-section">
-                      <div className="custom-memo editing">
-                        <input
-                          type="text"
-                          className="memo-edit-input"
-                          value={editingMemo.text}
-                          onChange={(e) => setEditingMemo({ ...editingMemo, text: e.target.value })}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveEditMemo();
-                            if (e.key === 'Escape') handleCancelEditMemo();
-                          }}
-                          onBlur={(e) => {
-                            if (e.relatedTarget?.classList.contains('memo-delete-btn')) return;
-                            handleSaveEditMemo();
-                          }}
-                          autoFocus
-                        />
-                        <button
-                          className="memo-delete-btn"
-                          onClick={async () => {
-                            if (confirm('이 메모를 삭제하시겠습니까?')) {
-                              await deleteReceiptMemoById(editingMemo.id);
-                              setEditingMemo(null);
-                              await refreshSelectedPatientHistory();
-                            }
-                          }}
-                          title="메모 삭제"
-                        >
-                          <i className="fa-solid fa-trash"></i>
-                        </button>
                       </div>
-                    </div>
                   )}
 
-                  {/* 2. 메모 입력 패널 (비급여 항목 클릭 시) */}
+                  {/* 타임라인 기록 수정용 MemoInputPanel (메모태그 클릭 시) */}
                   {memoInputMode && (
                     <div className="memo-input-section">
                       <MemoInputPanel
@@ -2642,7 +2408,17 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
                       />
                     </div>
                   )}
+                </div>
 
+                {/* 오른쪽 단: 수납이력 */}
+                <div className="info-column">
+                  <InlineReceiptHistory
+                    patientId={selectedReceipt.patient_id}
+                    patientName={selectedReceipt.patient_name}
+                    chartNo={selectedReceipt.chart_no}
+                    currentDate={selectedDate}
+                    onNavigateToDate={(date) => setSelectedDate(date)}
+                  />
                 </div>
               </div>
             </>
@@ -2657,18 +2433,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
         </div>
       </div>
 
-      {/* 로컬 환자 등록 모달 */}
-      {showLocalPatientModal && (
-        <LocalPatientRegisterModal
-          onClose={() => setShowLocalPatientModal(false)}
-          onSuccess={(patientId, chartNumber, patientName) => {
-            console.log('로컬 환자 등록 완료:', { patientId, chartNumber, patientName });
-            // 등록 후 해당 환자로 검색
-            setSearchTerm(chartNumber);
-            setShowLocalPatientModal(false);
-          }}
-        />
-      )}
+
 
       {/* 예약 모달 */}
       <ReservationStep1Modal
@@ -2700,40 +2465,16 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
         />
       )}
 
-      {/* 환자 수납이력 모달 */}
-      {historyPatient && (
-        <PatientReceiptHistoryModal
-          isOpen={showHistoryModal}
-          onClose={() => {
-            setShowHistoryModal(false);
-            setHistoryPatient(null);
-          }}
-          patientId={historyPatient.patientId}
-          patientName={historyPatient.patientName}
-          chartNo={historyPatient.chartNo}
-          onNavigateToDate={(date, patientId) => {
-            setSelectedDate(date);
-            pendingPatientSelectRef.current = patientId;
-            setShowHistoryModal(false);
-            setHistoryPatient(null);
-          }}
-        />
-      )}
-
-      {/* 환자 CRM 모달 */}
-      {crmPatient && (
-        <PatientCRMView
-          isOpen={showCRMModal}
-          onClose={() => {
-            setShowCRMModal(false);
-            setCRMPatient(null);
-          }}
-          patientId={crmPatient.patientId}
-          chartNumber={crmPatient.chartNo}
-          patientName={crmPatient.patientName}
-          gender={crmPatient.gender}
-          age={crmPatient.age}
+      {/* 환자 대시보드 모달 */}
+      {dashboardPatient && (
+        <PatientDashboard
+          isOpen={showDashboardModal}
+          patient={dashboardPatient}
           user={user}
+          onClose={() => {
+            setShowDashboardModal(false);
+            setDashboardPatient(null);
+          }}
         />
       )}
 
@@ -2774,6 +2515,29 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
           onSuccess={() => {
             loadReceipts();
           }}
+        />
+      )}
+
+      {/* 비급여 항목 통합 모달 */}
+      {uncoveredModal && selectedReceipt && (
+        <UncoveredItemModal
+          isOpen={true}
+          itemName={uncoveredModal.itemName}
+          itemType={uncoveredModal.itemType}
+          amount={uncoveredModal.amount}
+          detailId={uncoveredModal.detailId}
+          isEditMode={uncoveredModal.isEditMode}
+          patientId={selectedReceipt.patient_id}
+          patientName={selectedReceipt.patient_name}
+          chartNumber={selectedReceipt.chart_no}
+          receiptId={selectedReceipt.id}
+          receiptDate={selectedDate}
+          onSuccess={async () => {
+            setUncoveredModal(null);
+            setTimelineRefreshTrigger(prev => prev + 1);
+            await refreshSelectedPatientHistory();
+          }}
+          onClose={() => setUncoveredModal(null)}
         />
       )}
 
@@ -3205,7 +2969,7 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
   // 메모 저장
   const handleSaveMemo = async () => {
     try {
-      await upsertReceiptMemo({
+      await addReceiptMemo({
         patient_id: receipt.patient_id,
         chart_number: receipt.chart_no,
         patient_name: receipt.patient_name,
@@ -3425,7 +3189,7 @@ function ReceiptDetailPanel({ receipt, selectedDate, onDataChange, onReservation
             {(['none', 'pending_call', 'pending_kakao', 'pending_naver'] as ReservationStatus[]).map(status => (
               <button
                 key={status}
-                className={`res-btn ${receipt.receiptMemos[0]?.reservation_status === status ? 'active' : ''}`}
+                className={`res-btn ${(receipt.receiptStatus?.reservation_status || 'none') === status ? 'active' : ''}`}
                 onClick={() => onReservationStatusChange(receipt, status)}
               >
                 {status === 'none' ? '없음' : RESERVATION_STATUS_LABELS[status]}

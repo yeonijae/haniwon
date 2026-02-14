@@ -62,8 +62,8 @@ function LocalPatientRegisterModal({ onClose, onSuccess }: LocalPatientRegisterM
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body" style={{ padding: '20px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1 }}>
+          <div className="modal-body" style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
             <div style={{
               background: '#f0f9ff',
               border: '1px solid #bae6fd',

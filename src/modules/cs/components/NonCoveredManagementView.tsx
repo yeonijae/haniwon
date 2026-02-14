@@ -2,10 +2,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { useEscapeKey } from '@shared/hooks/useEscapeKey';
 import type { PortalUser } from '@shared/types';
 import { query, execute, escapeString, getCurrentDate } from '@shared/lib/postgres';
+import DailyUncoveredStatus from './DailyUncoveredStatus';
+import PackageAlertView from './PackageAlertView';
+import PrepaidManagementView from './PrepaidManagementView';
 
 interface NonCoveredManagementViewProps {
   user: PortalUser;
 }
+
+type NonCoveredTab = 'timeline' | 'daily-uncovered' | 'package-alert' | 'prepaid';
 
 // 이벤트 타입 정의
 export const EVENT_TYPES = [
@@ -64,6 +69,7 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<EventTypeCode | 'all'>('all');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<NonCoveredTab>('daily-uncovered');
 
   // 이벤트 목록 조회
   const loadEvents = useCallback(async () => {
@@ -143,6 +149,46 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
 
   return (
     <div className="noncovered-management">
+      {/* 서브탭 */}
+      <div className="noncovered-tabs">
+        <button
+          className={`noncovered-tab ${activeTab === 'daily-uncovered' ? 'active' : ''}`}
+          onClick={() => setActiveTab('daily-uncovered')}
+        >
+          <i className="fa-solid fa-clipboard-list"></i>
+          비급여 처리 현황
+        </button>
+        <button
+          className={`noncovered-tab ${activeTab === 'timeline' ? 'active' : ''}`}
+          onClick={() => setActiveTab('timeline')}
+        >
+          <i className="fa-solid fa-timeline"></i>
+          CS 타임라인
+        </button>
+        <button
+          className={`noncovered-tab ${activeTab === 'package-alert' ? 'active' : ''}`}
+          onClick={() => setActiveTab('package-alert')}
+        >
+          <i className="fa-solid fa-box"></i>
+          패키지 관리
+        </button>
+        <button
+          className={`noncovered-tab ${activeTab === 'prepaid' ? 'active' : ''}`}
+          onClick={() => setActiveTab('prepaid')}
+        >
+          <i className="fa-solid fa-pills"></i>
+          선결제 관리
+        </button>
+      </div>
+
+      {activeTab === 'daily-uncovered' ? (
+        <DailyUncoveredStatus />
+      ) : activeTab === 'package-alert' ? (
+        <PackageAlertView user={user} />
+      ) : activeTab === 'prepaid' ? (
+        <PrepaidManagementView user={user} />
+      ) : (
+        <>
       {/* 헤더 */}
       <div className="noncovered-header">
         <div className="noncovered-header-left">
@@ -262,6 +308,8 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
             loadEvents();
           }}
         />
+      )}
+        </>
       )}
     </div>
   );

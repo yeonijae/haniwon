@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { format, subDays, addDays, startOfMonth } from 'date-fns';
 import { diarizeTranscript, updateDiarizedTranscript } from '../../pad/services/transcriptionService';
 
-const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
+const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
 
 interface MedicalTranscript {
   id: number;

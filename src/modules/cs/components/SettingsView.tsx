@@ -4,12 +4,14 @@ import PackageTypeAdmin from './PackageTypeAdmin';
 import MedicinePurposeAdmin from './MedicinePurposeAdmin';
 import HerbalSettingsAdmin from './HerbalSettingsAdmin';
 import MemoTypeAdmin from './MemoTypeAdmin';
+import CsHandlerAdmin from './CsHandlerAdmin';
+import DecoctionStaffScheduleAdmin from './DecoctionStaffScheduleAdmin';
 
 interface SettingsViewProps {
   user?: any;
 }
 
-type SettingsTab = 'treatment' | 'package' | 'medicine' | 'herbal' | 'memo';
+type SettingsTab = 'treatment' | 'package' | 'medicine' | 'herbal' | 'memo' | 'handler' | 'decoction';
 
 function SettingsView({ user }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('package');
@@ -53,6 +55,19 @@ function SettingsView({ user }: SettingsViewProps) {
           <i className="fa-solid fa-comment-dots"></i>
           메모 종류
         </button>
+        <button
+          className={`settings-tab ${activeTab === 'handler' ? 'active' : ''}`}
+          onClick={() => setActiveTab('handler')}
+        >
+          <i className="fa-solid fa-user-gear"></i>
+          CS 담당자
+        </button>
+        <button
+          className={`settings-tab ${activeTab === 'decoction' ? 'active' : ''}`}
+          onClick={() => setActiveTab('decoction')}
+        >
+          <i className="fa-solid fa-fire"></i> 탕전 인력
+        </button>
       </div>
 
       {/* 탭 내용 */}
@@ -62,6 +77,8 @@ function SettingsView({ user }: SettingsViewProps) {
         {activeTab === 'medicine' && <MedicinePurposeAdmin />}
         {activeTab === 'herbal' && <HerbalSettingsAdmin />}
         {activeTab === 'memo' && <MemoTypeAdmin />}
+        {activeTab === 'handler' && <CsHandlerAdmin />}
+        {activeTab === 'decoction' && <DecoctionStaffScheduleAdmin />}
       </div>
 
       <style>{`

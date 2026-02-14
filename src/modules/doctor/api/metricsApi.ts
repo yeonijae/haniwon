@@ -184,7 +184,7 @@ export interface CumulativeResponse {
 }
 
 // API 함수들
-const POSTGRES_API = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
+const POSTGRES_API = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
 
 /**
  * 초진 환자 목록 조회
@@ -312,6 +312,24 @@ export interface CumulativeStatsAllResponse {
  */
 export async function getCumulativeStatsAll(): Promise<CumulativeStatsAllResponse> {
   const response = await fetch(`${POSTGRES_API}/api/metrics/cumulative-stats`);
+  return response.json();
+}
+
+/**
+ * 원장간 비교 배치 조회 (12주 데이터를 1회 요청)
+ */
+export async function getCompareBatch(weeks: {
+  start_date: string;
+  end_date: string;
+  year: number;
+  week: number;
+  label: string;
+}[]): Promise<{ success: boolean; data: { week: { year: number; week: number; label: string; startDate: string; endDate: string }; byDoctor: Record<string, any> }[] }> {
+  const response = await fetch(`${POSTGRES_API}/api/metrics/compare-batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ weeks }),
+  });
   return response.json();
 }
 

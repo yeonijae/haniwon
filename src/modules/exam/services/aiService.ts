@@ -4,7 +4,7 @@
 
 import type { ExamResult, ExamType, ExamValue } from '../types';
 
-const AI_API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
+const AI_API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
 
 export interface AnalysisResult {
   success: boolean;

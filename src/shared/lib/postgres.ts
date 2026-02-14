@@ -1,9 +1,9 @@
 /**
  * PostgreSQL API 클라이언트
- * 내부 PostgreSQL 서버 (192.168.0.173:3200)와 통신
+ * 내부 PostgreSQL 서버 (192.168.0.173:5200)와 통신
  */
 
-const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
+const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
 
 // 테이블 초기화 캐시 (세션당 한 번만 실행)
 const initializedTables = new Set<string>();

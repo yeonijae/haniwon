@@ -266,6 +266,21 @@
   color: #856404;
 }
 
+.call-type-badge.repayment_consult {
+  background: #d1ecf1;
+  color: #0c5460;
+}
+
+.call-type-badge.remind_3month {
+  background: #e0cffc;
+  color: #3d1f91;
+}
+
+.call-type-badge.expiry_warning {
+  background: #f8d7da;
+  color: #842029;
+}
+
 .patient-info {
   cursor: pointer;
   display: flex;

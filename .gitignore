@@ -31,3 +31,125 @@ Thumbs.db
 # Cache
 .cache/
 .parcel-cache/
+.TemporaryItems
+*_token=*
+.netlify/
+*.db
+# ============================================
+.DocumentRevisions-V100
+# Backups
+.tscache/
+*.tsbuildinfo
+*.secret.*
+*.backup/
+.Spotlight-V100
+.claude/settings.local.json
+# FIXED: Issue #237 - Replaced overly broad *key* and *secret* patterns
+.claude/skills/*/*/*secret*
+.mypy_cache/
+.env.*
+.claude/skills/*/.env*
+.moai-backups/
+!.env.example
+# ===========================================
+*-secret-key.*
+.#*
+.VolumeIcon.icns
+venv/
+*.jks
+.LSOverride
+secret-key-*
+# Version: 0.33.0
+.claude/.env.local*
+*.egg-info/
+secret-*.*
+*.sw?
+# Linux
+*.sublime-project
+# MoAI-ADK Package Distribution .gitignore
+*.p12
+*.backup
+*_backup_*/
+.ruff_cache/
+*.pyd
+.claude/settings.local.*.json
+*.pyo
+*.rdb
+# Logs & Temporary Files
+*.sqlite3
+*.sln
+logs/
+*.pfx
+__pycache__/
+*_secret.*
+# Deployment & CI/CD
+# Build Artifacts & Distribution
+*.suo
+.uv_cache/
+htmlcov/
+*.pem
+.turbo/
+# Private keys (specific patterns to avoid false positives)
+# Credential patterns in environment files
+.claude/local/
+# Virtual Environments
+api-key-*
+.vercel/
+*.temp
+.firebase/
+env/
+.nuxt/
+*.dbm
+*.sqlite
+out/
+.next/
+*.egg
+*.pyc
+.coverage
+*-secret.*
+.venv/
+.cursor/
+# Mac
+*.njsproj
+# Purpose: Essential patterns for user projects
+# IDE & Editors
+.Trashes
+# Node.js (for docs/Nextra)
+*.key.*
+.pytest_cache/
+ehthumbs.db
+.directory
+*.bak
+*.tmp
+*_secret=*
+dist-ssr/
+# Secrets and Credentials (CRITICAL)
+# Updated: 2026-01-10
+# Cloud provider credentials
+.claude/plans/
+.uv-cache/
+*_key.*
+# Python Cache & Bytecode
+*-key.*
+*-api-key.*
+# Claude Code Configuration
+# Skill-specific credentials
+private-key*
+*.sublime-workspace
+*.log
+[Dd]esktop.ini
+# Certificate files
+.fseventsd
+.claude/skills/*/secrets/
+*-backup/
+.aws/credentials
+# Windows
+coverage.json
+.claude/skills/*/*/*token*
+.AppleDouble
+# OS Files
+.env/
+# Test Coverage
+.aws/config
+# Build Tools & Frameworks
+.claude/skills/*/*/*key*

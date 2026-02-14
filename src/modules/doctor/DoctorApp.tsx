@@ -16,6 +16,7 @@ import MedicalTranscripts from './pages/MedicalTranscripts';
 import Settings from './pages/Settings';
 import TreatmentHistory from './pages/TreatmentHistory';
 import Metrics from './pages/Metrics';
+import MyMetrics from './pages/MyMetrics';
 
 interface ChartAppProps {
   user: PortalUser;
@@ -27,6 +28,7 @@ const menuItems = [
   { path: '/treatment-records', label: '진료내역', icon: 'fa-history' },
   { path: '/transcripts', label: '진료녹취', icon: 'fa-microphone' },
   { path: '/patients', label: '환자차트', icon: 'fa-users' },
+  { path: '/my-metrics', label: '나의 지표', icon: 'fa-chart-column' },
   { path: '/metrics', label: '지표관리', icon: 'fa-chart-pie' },
   { path: '/prescriptions', label: '처방관리', icon: 'fa-prescription' },
   { path: '/prescription-definitions', label: '처방정의', icon: 'fa-book-medical' },
@@ -176,6 +178,7 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
           <Route path="/transcripts" element={<MedicalTranscripts />} />
           <Route path="/patients" element={<PatientList />} />
           <Route path="/patients/:id" element={<PatientDetail />} />
+          <Route path="/my-metrics" element={<MyMetrics />} />
           <Route path="/metrics" element={<Metrics />} />
           <Route path="/prescriptions" element={<PrescriptionManagement />} />
           <Route path="/prescription-definitions" element={<PrescriptionDefinitions />} />

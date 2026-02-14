@@ -88,7 +88,7 @@ export function DoctorDashboard({ doctorId, doctorName }: Props) {
   const loadStats = async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
-      const apiUrl = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
+      const apiUrl = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
 
       // 여러 API 병렬 호출
       const [reservationRes, actingRes] = await Promise.all([

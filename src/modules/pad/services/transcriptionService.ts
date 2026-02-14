@@ -6,7 +6,7 @@
  * - PostgreSQL에 진료녹취 저장
  */
 
-const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
+const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
 
 interface TranscriptionResult {
   success: boolean;

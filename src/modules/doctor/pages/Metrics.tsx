@@ -3,12 +3,13 @@
  * 초진수, 재진율, 삼진율, 이탈율, 객단가 지표 관리
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   getChoojinList,
   getRevisitRate,
   getRevenuePerPatient,
-  getCumulativeStatsAll,
+  getCompareBatch,
+
   formatNumber,
   formatPercent,
   getISOWeek,
@@ -17,8 +18,10 @@ import {
   type RevisitRateResponse,
   type RevenuePerPatientResponse,
 } from '../api/metricsApi';
+import WeeklyStats from './WeeklyStats';
+import MonthlyStats from './MonthlyStats';
 
-type TabType = 'overview' | 'choojin' | 'revisit' | 'revenue' | 'weekly' | 'compare';
+type TabType = 'overview' | 'choojin' | 'revisit' | 'revenue' | 'weekly' | 'compare' | 'weekly-stats' | 'monthly-stats';
 
 // 주차 선택용 유틸
 function getWeekOptions() {
@@ -870,102 +873,207 @@ function WeeklyTrendTab() {
   async function loadAllWeeksData() {
     setLoading(true);
     try {
-      // 16주 데이터를 병렬로 가져오기
-      const promises = weeks16.map(async (week) => {
-        const [choojinRes, revisitRes, revenueRes] = await Promise.all([
-          getChoojinList({ start_date: week.startDate, end_date: week.endDate }),
-          getRevisitRate({ start_date: week.startDate, end_date: week.endDate }),
-          getRevenuePerPatient({ start_date: week.startDate, end_date: week.endDate }),
-        ]);
+      // batch API로 16주 데이터를 1회 요청
+      const batchWeeks = weeks16.map(w => ({
+        start_date: w.startDate,
+        end_date: w.endDate,
+        year: w.year,
+        week: w.week,
+        label: w.label,
+      }));
 
-        // 원장별 데이터 추출
-        const byDoctor: Record<string, DoctorWeeklyData> = {};
-        const choojinByDoctor = choojinRes.data?.summary?.by_doctor || {};
-        const revisitByDoctor = revisitRes.data?.by_doctor || {};
-        const revenueByDoctor = revenueRes.data?.by_doctor || {};
+      let results: typeof weeklyData = [];
+      try {
+        const batchRes = await getCompareBatch(batchWeeks);
+        if (batchRes.success && batchRes.data) {
+          results = batchRes.data.map((item: any) => {
+            const byDoctor: Record<string, DoctorWeeklyData> = {};
+            Object.entries(item.byDoctor || {}).forEach(([doctorName, doc]: [string, any]) => {
+              byDoctor[doctorName] = {
+                choojin: {
+                  total: doc.choojin?.total || 0,
+                  chim_new: doc.choojin?.chim_new || 0,
+                  chim_re: doc.choojin?.chim_re || 0,
+                  jabo_new: doc.choojin?.jabo_new || 0,
+                  jabo_re: doc.choojin?.jabo_re || 0,
+                  yak_new: doc.choojin?.yak_new || 0,
+                  yak_re: doc.choojin?.yak_re || 0,
+                },
+                revisit: {
+                  total_choojin: doc.revisit?.total_choojin || 0,
+                  rejin_rate: doc.revisit?.rejin_rate || 0,
+                  samjin_rate: doc.revisit?.samjin_rate || 0,
+                  ital_rate: doc.revisit?.ital_rate || 0,
+                },
+                revenue: {
+                  total: doc.revenue?.total || 0,
+                  avg_per_patient: doc.revenue?.total ? Math.round(doc.revenue.total / Math.max(doc.revenue?.daily_visit_count || 1, 1)) : 0,
+                  insurance: doc.revenue?.insurance || 0,
+                  insurance_pain_uncovered: 0,
+                  insurance_daily_count: 0,
+                  insurance_avg: doc.revenue?.insurance_avg || 0,
+                  jabo: doc.revenue?.jabo || 0,
+                  jabo_daily_count: 0,
+                  jabo_avg: doc.revenue?.jabo_avg || 0,
+                  uncovered: doc.revenue?.uncovered || 0,
+                  insurance_patients: doc.revenue?.insurance_patients || 0,
+                  jabo_patients: doc.revenue?.jabo_patients || 0,
+                  total_patients: (doc.revenue?.insurance_patients || 0) + (doc.revenue?.jabo_patients || 0),
+                  work_days: doc.revenue?.work_days || 0,
+                  daily_visit_count: doc.revenue?.daily_visit_count || 0,
+                },
+              };
+            });
 
-        // 모든 원장 목록 수집
-        const allDoctors = new Set([
-          ...Object.keys(choojinByDoctor),
-          ...Object.keys(revisitByDoctor),
-          ...Object.keys(revenueByDoctor),
-        ]);
+            // 전체 합산 계산
+            const allChoojin = Object.values(byDoctor).reduce((acc: any, d: any) => ({
+              total: acc.total + d.choojin.total,
+              chim_new: acc.chim_new + d.choojin.chim_new,
+              chim_re: acc.chim_re + d.choojin.chim_re,
+              jabo_new: acc.jabo_new + d.choojin.jabo_new,
+              jabo_re: acc.jabo_re + d.choojin.jabo_re,
+              yak_new: acc.yak_new + d.choojin.yak_new,
+              yak_re: acc.yak_re + d.choojin.yak_re,
+            }), { total: 0, chim_new: 0, chim_re: 0, jabo_new: 0, jabo_re: 0, yak_new: 0, yak_re: 0 });
 
-        allDoctors.forEach((doctorName) => {
-          const choojinDoc = choojinByDoctor[doctorName];
-          const revisitDoc = revisitByDoctor[doctorName];
-          const revenueDoc = revenueByDoctor[doctorName];
+            const allRevenue = Object.values(byDoctor).reduce((acc: any, d: any) => ({
+              total: acc.total + d.revenue.total,
+              insurance: acc.insurance + d.revenue.insurance,
+              jabo: acc.jabo + d.revenue.jabo,
+              uncovered: acc.uncovered + d.revenue.uncovered,
+              insurance_patients: acc.insurance_patients + d.revenue.insurance_patients,
+              jabo_patients: acc.jabo_patients + d.revenue.jabo_patients,
+              total_patients: acc.total_patients + d.revenue.total_patients,
+            }), { total: 0, insurance: 0, jabo: 0, uncovered: 0, insurance_patients: 0, jabo_patients: 0, total_patients: 0 });
 
-          byDoctor[doctorName] = {
+            // 전체 재진율은 원장별 total_choojin 기반 가중평균
+            const totalChoojinAll = Object.values(byDoctor).reduce((s: number, d: any) => s + d.revisit.total_choojin, 0);
+
+            return {
+              week: {
+                year: item.week.year,
+                week: item.week.week,
+                label: item.week.label,
+                startDate: item.week.startDate,
+                endDate: item.week.endDate,
+              },
+              choojin: allChoojin,
+              revisit: {
+                total_choojin: totalChoojinAll,
+                rejin_rate: totalChoojinAll > 0 ? Object.values(byDoctor).reduce((s: number, d: any) => s + d.revisit.rejin_rate * d.revisit.total_choojin, 0) / totalChoojinAll : 0,
+                samjin_rate: totalChoojinAll > 0 ? Object.values(byDoctor).reduce((s: number, d: any) => s + d.revisit.samjin_rate * d.revisit.total_choojin, 0) / totalChoojinAll : 0,
+                ital_rate: totalChoojinAll > 0 ? Object.values(byDoctor).reduce((s: number, d: any) => s + d.revisit.ital_rate * d.revisit.total_choojin, 0) / totalChoojinAll : 0,
+              },
+              revenue: {
+                ...allRevenue,
+                avg_per_patient: allRevenue.total_patients > 0 ? Math.round(allRevenue.total / allRevenue.total_patients) : 0,
+                work_days: 0,
+                daily_visit_count: 0,
+              },
+              byDoctor,
+            };
+          });
+        }
+      } catch {
+        // batch API 실패 시 개별 API fallback
+      }
+
+      // batch 결과가 없으면 개별 API 호출
+      if (results.length === 0) {
+        const promises = weeks16.map(async (week) => {
+          const [choojinRes, revisitRes, revenueRes] = await Promise.all([
+            getChoojinList({ start_date: week.startDate, end_date: week.endDate }),
+            getRevisitRate({ start_date: week.startDate, end_date: week.endDate }),
+            getRevenuePerPatient({ start_date: week.startDate, end_date: week.endDate }),
+          ]);
+
+          const byDoctor: Record<string, DoctorWeeklyData> = {};
+          const choojinByDoctor = choojinRes.data?.summary?.by_doctor || {};
+          const revisitByDoctor = revisitRes.data?.by_doctor || {};
+          const revenueByDoctor = revenueRes.data?.by_doctor || {};
+
+          const allDoctors = new Set([
+            ...Object.keys(choojinByDoctor),
+            ...Object.keys(revisitByDoctor),
+            ...Object.keys(revenueByDoctor),
+          ]);
+
+          allDoctors.forEach((doctorName) => {
+            const choojinDoc = choojinByDoctor[doctorName];
+            const revisitDoc = revisitByDoctor[doctorName];
+            const revenueDoc = revenueByDoctor[doctorName];
+
+            byDoctor[doctorName] = {
+              choojin: {
+                total: choojinDoc?.total || 0,
+                chim_new: choojinDoc?.chim_new || 0,
+                chim_re: choojinDoc?.chim_re || 0,
+                jabo_new: choojinDoc?.jabo_new || 0,
+                jabo_re: choojinDoc?.jabo_re || 0,
+                yak_new: choojinDoc?.yak_new || 0,
+                yak_re: choojinDoc?.yak_re || 0,
+              },
+              revisit: {
+                total_choojin: revisitDoc?.total_choojin || 0,
+                rejin_rate: revisitDoc?.rejin_rate || 0,
+                samjin_rate: revisitDoc?.samjin_rate || 0,
+                ital_rate: revisitDoc?.ital_rate || 0,
+              },
+              revenue: {
+                total: revenueDoc?.total?.total_revenue || 0,
+                avg_per_patient: revenueDoc?.total?.avg_per_patient || 0,
+                insurance: revenueDoc?.insurance?.total_revenue || 0,
+                insurance_pain_uncovered: revenueDoc?.insurance?.pain_uncovered || 0,
+                insurance_daily_count: revenueDoc?.insurance?.daily_count || 0,
+                insurance_avg: revenueDoc?.insurance?.avg_per_patient || 0,
+                jabo: revenueDoc?.jabo?.total_revenue || 0,
+                jabo_daily_count: revenueDoc?.jabo?.daily_count || 0,
+                jabo_avg: revenueDoc?.jabo?.avg_per_patient || 0,
+                uncovered: revenueDoc?.uncovered?.total_revenue || 0,
+                insurance_patients: revenueDoc?.insurance?.patient_count || 0,
+                jabo_patients: revenueDoc?.jabo?.patient_count || 0,
+                total_patients: revenueDoc?.total?.patient_count || 0,
+                work_days: revenueDoc?.work_days || 0,
+                daily_visit_count: revenueDoc?.daily_visit_count || 0,
+              },
+            };
+          });
+
+          return {
+            week,
             choojin: {
-              total: choojinDoc?.total || 0,
-              chim_new: choojinDoc?.chim_new || 0,
-              chim_re: choojinDoc?.chim_re || 0,
-              jabo_new: choojinDoc?.jabo_new || 0,
-              jabo_re: choojinDoc?.jabo_re || 0,
-              yak_new: choojinDoc?.yak_new || 0,
-              yak_re: choojinDoc?.yak_re || 0,
+              total: choojinRes.data?.summary?.total || 0,
+              chim_new: choojinRes.data?.summary?.by_type?.chim_new || 0,
+              chim_re: choojinRes.data?.summary?.by_type?.chim_re || 0,
+              jabo_new: choojinRes.data?.summary?.by_type?.jabo_new || 0,
+              jabo_re: choojinRes.data?.summary?.by_type?.jabo_re || 0,
+              yak_new: choojinRes.data?.summary?.by_type?.yak_new || 0,
+              yak_re: choojinRes.data?.summary?.by_type?.yak_re || 0,
             },
             revisit: {
-              total_choojin: revisitDoc?.total_choojin || 0,
-              rejin_rate: revisitDoc?.rejin_rate || 0,
-              samjin_rate: revisitDoc?.samjin_rate || 0,
-              ital_rate: revisitDoc?.ital_rate || 0,
+              total_choojin: revisitRes.data?.overall?.total_choojin || 0,
+              rejin_rate: revisitRes.data?.overall?.rejin_rate || 0,
+              samjin_rate: revisitRes.data?.overall?.samjin_rate || 0,
+              ital_rate: revisitRes.data?.overall?.ital_rate || 0,
             },
             revenue: {
-              total: revenueDoc?.total?.total_revenue || 0,
-              avg_per_patient: revenueDoc?.total?.avg_per_patient || 0,
-              insurance: revenueDoc?.insurance?.total_revenue || 0,
-              insurance_pain_uncovered: revenueDoc?.insurance?.pain_uncovered || 0,
-              insurance_daily_count: revenueDoc?.insurance?.daily_count || 0,
-              insurance_avg: revenueDoc?.insurance?.avg_per_patient || 0,
-              jabo: revenueDoc?.jabo?.total_revenue || 0,
-              jabo_daily_count: revenueDoc?.jabo?.daily_count || 0,
-              jabo_avg: revenueDoc?.jabo?.avg_per_patient || 0,
-              uncovered: revenueDoc?.uncovered?.total_revenue || 0,
-              insurance_patients: revenueDoc?.insurance?.patient_count || 0,
-              jabo_patients: revenueDoc?.jabo?.patient_count || 0,
-              total_patients: revenueDoc?.total?.patient_count || 0,
-              work_days: revenueDoc?.work_days || 0,
-              daily_visit_count: revenueDoc?.daily_visit_count || 0,
+              total: revenueRes.data?.overall?.total?.total_revenue || 0,
+              avg_per_patient: revenueRes.data?.overall?.total?.avg_per_patient || 0,
+              insurance: revenueRes.data?.overall?.insurance?.total_revenue || 0,
+              jabo: revenueRes.data?.overall?.jabo?.total_revenue || 0,
+              uncovered: revenueRes.data?.overall?.uncovered?.total_revenue || 0,
+              insurance_patients: revenueRes.data?.overall?.insurance?.patient_count || 0,
+              jabo_patients: revenueRes.data?.overall?.jabo?.patient_count || 0,
+              total_patients: revenueRes.data?.overall?.total?.patient_count || 0,
+              work_days: 0,
+              daily_visit_count: 0,
             },
+            byDoctor,
           };
         });
+        results = await Promise.all(promises);
+      }
 
-        return {
-          week,
-          choojin: {
-            total: choojinRes.data?.summary?.total || 0,
-            chim_new: choojinRes.data?.summary?.by_type?.chim_new || 0,
-            chim_re: choojinRes.data?.summary?.by_type?.chim_re || 0,
-            jabo_new: choojinRes.data?.summary?.by_type?.jabo_new || 0,
-            jabo_re: choojinRes.data?.summary?.by_type?.jabo_re || 0,
-            yak_new: choojinRes.data?.summary?.by_type?.yak_new || 0,
-            yak_re: choojinRes.data?.summary?.by_type?.yak_re || 0,
-          },
-          revisit: {
-            total_choojin: revisitRes.data?.overall?.total_choojin || 0,
-            rejin_rate: revisitRes.data?.overall?.rejin_rate || 0,
-            samjin_rate: revisitRes.data?.overall?.samjin_rate || 0,
-            ital_rate: revisitRes.data?.overall?.ital_rate || 0,
-          },
-          revenue: {
-            total: revenueRes.data?.overall?.total?.total_revenue || 0,
-            avg_per_patient: revenueRes.data?.overall?.total?.avg_per_patient || 0,
-            insurance: revenueRes.data?.overall?.insurance?.total_revenue || 0,
-            jabo: revenueRes.data?.overall?.jabo?.total_revenue || 0,
-            uncovered: revenueRes.data?.overall?.uncovered?.total_revenue || 0,
-            insurance_patients: revenueRes.data?.overall?.insurance?.patient_count || 0,
-            jabo_patients: revenueRes.data?.overall?.jabo?.patient_count || 0,
-            total_patients: revenueRes.data?.overall?.total?.patient_count || 0,
-            work_days: 0, // overall에서는 사용하지 않음
-            daily_visit_count: 0, // overall에서는 사용하지 않음
-          },
-          byDoctor,
-        };
-      });
-
-      const results = await Promise.all(promises);
       setWeeklyData(results);
     } catch (error) {
       console.error('주차별 데이터 로드 실패:', error);
@@ -1165,36 +1273,18 @@ const COMPARE_ITEMS = [
 const COMPARE_CATEGORIES = ['초진수', '평환', '재진율', '매출'];
 
 // 원장간 비교 탭
+type WeekDataItem = {
+  week: { year: number; week: number; label: string; startDate: string; endDate: string };
+  byDoctor: Record<string, DoctorWeeklyData>;
+};
+
 function DoctorCompareTab({ checkedItems, weekOffset }: { checkedItems: Set<string>; weekOffset: number }) {
   const [loading, setLoading] = useState(true);
+  const [weeklyData, setWeeklyData] = useState<WeekDataItem[]>([]);
 
-  const [weeklyData, setWeeklyData] = useState<{
-    week: { year: number; week: number; label: string; startDate: string; endDate: string };
-    byDoctor: Record<string, DoctorWeeklyData>;
-  }[]>([]);
+  // 주차별 데이터 캐시 (컴포넌트 생명주기 동안 유지)
+  const weekCacheRef = useRef<Map<string, WeekDataItem>>(new Map());
 
-  // 누적 통계 데이터
-  const [cumulativeData, setCumulativeData] = useState<Record<string, {
-    start_date: string;
-    total_work_days: number;
-    choojin: { total: number; chim: number; jabo: number };
-    revisit: {
-      total_choojin: number;
-      rejin_rate: number;
-      samjin_rate: number;
-      ital_rate: number;
-    };
-    revenue: {
-      total: number;
-      insurance: number;
-      jabo: number;
-      uncovered: number;
-      insurance_patients: number;
-      jabo_patients: number;
-      insurance_avg: number;
-      jabo_avg: number;
-    };
-  }>>({});
 
   // 원장 목록 (김대현 제외)
   const doctorList = useMemo(() => {
@@ -1248,82 +1338,116 @@ function DoctorCompareTab({ checkedItems, weekOffset }: { checkedItems: Set<stri
   }, [weeks12]);
 
   async function loadAllWeeksData() {
+    const cache = weekCacheRef.current;
+
+    // 캐시에 없는 주차만 식별
+    const uncachedWeeks = weeks12.filter(w => !cache.has(`${w.year}-${w.week}`));
+
+    // 모든 주차가 캐시에 있으면 즉시 반환
+    if (uncachedWeeks.length === 0) {
+      setWeeklyData(weeks12.map(w => cache.get(`${w.year}-${w.week}`)!));
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const promises = weeks12.map(async (week) => {
-        const [choojinRes, revisitRes, revenueRes] = await Promise.all([
-          getChoojinList({ start_date: week.startDate, end_date: week.endDate }),
-          getRevisitRate({ start_date: week.startDate, end_date: week.endDate }),
-          getRevenuePerPatient({ start_date: week.startDate, end_date: week.endDate }),
-        ]);
+      let newResults: WeekDataItem[];
 
-        const byDoctor: Record<string, DoctorWeeklyData> = {};
-        const choojinByDoctor = choojinRes.data?.summary?.by_doctor || {};
-        const revisitByDoctor = revisitRes.data?.by_doctor || {};
-        const revenueByDoctor = revenueRes.data?.by_doctor || {};
+      try {
+        // 배치 API 시도 (36건 → 1건)
+        const batchRes = await getCompareBatch(
+          uncachedWeeks.map(w => ({
+            start_date: w.startDate,
+            end_date: w.endDate,
+            year: w.year,
+            week: w.week,
+            label: w.label,
+          }))
+        );
 
-        const allDoctors = new Set([
-          ...Object.keys(choojinByDoctor),
-          ...Object.keys(revisitByDoctor),
-          ...Object.keys(revenueByDoctor),
-        ]);
+        if (!batchRes.success) throw new Error('batch failed');
 
-        allDoctors.forEach((doctorName) => {
-          const choojinDoc = choojinByDoctor[doctorName];
-          const revisitDoc = revisitByDoctor[doctorName];
-          const revenueDoc = revenueByDoctor[doctorName];
+        newResults = batchRes.data.map(item => ({
+          week: item.week,
+          byDoctor: item.byDoctor as Record<string, DoctorWeeklyData>,
+        }));
+      } catch {
+        // 폴백: 개별 API 호출
+        console.warn('배치 API 실패, 개별 호출로 폴백');
+        const promises = uncachedWeeks.map(async (week) => {
+          const [choojinRes, revisitRes, revenueRes] = await Promise.all([
+            getChoojinList({ start_date: week.startDate, end_date: week.endDate }),
+            getRevisitRate({ start_date: week.startDate, end_date: week.endDate }),
+            getRevenuePerPatient({ start_date: week.startDate, end_date: week.endDate }),
+          ]);
 
-          byDoctor[doctorName] = {
-            choojin: {
-              total: choojinDoc?.total || 0,
-              chim_new: choojinDoc?.chim_new || 0,
-              chim_re: choojinDoc?.chim_re || 0,
-              jabo_new: choojinDoc?.jabo_new || 0,
-              jabo_re: choojinDoc?.jabo_re || 0,
-              yak_new: choojinDoc?.yak_new || 0,
-              yak_re: choojinDoc?.yak_re || 0,
-            },
-            revisit: {
-              total_choojin: revisitDoc?.total_choojin || 0,
-              rejin_rate: revisitDoc?.rejin_rate || 0,
-              samjin_rate: revisitDoc?.samjin_rate || 0,
-              ital_rate: revisitDoc?.ital_rate || 0,
-            },
-            revenue: {
-              total: revenueDoc?.total?.total_revenue || 0,
-              avg_per_patient: revenueDoc?.total?.avg_per_patient || 0,
-              insurance: revenueDoc?.insurance?.total_revenue || 0,
-              insurance_pain_uncovered: revenueDoc?.insurance?.pain_uncovered || 0,
-              insurance_daily_count: revenueDoc?.insurance?.daily_count || 0,
-              insurance_avg: revenueDoc?.insurance?.avg_per_patient || 0,
-              jabo: revenueDoc?.jabo?.total_revenue || 0,
-              jabo_daily_count: revenueDoc?.jabo?.daily_count || 0,
-              jabo_avg: revenueDoc?.jabo?.avg_per_patient || 0,
-              uncovered: revenueDoc?.uncovered?.total_revenue || 0,
-              insurance_patients: revenueDoc?.insurance?.patient_count || 0,
-              jabo_patients: revenueDoc?.jabo?.patient_count || 0,
-              total_patients: revenueDoc?.total?.patient_count || 0,
-              work_days: revenueDoc?.work_days || 0,
-              daily_visit_count: revenueDoc?.daily_visit_count || 0,
-            },
-          };
+          const byDoctor: Record<string, DoctorWeeklyData> = {};
+          const choojinByDoctor = choojinRes.data?.summary?.by_doctor || {};
+          const revisitByDoctor = revisitRes.data?.by_doctor || {};
+          const revenueByDoctor = revenueRes.data?.by_doctor || {};
+
+          const allDoctors = new Set([
+            ...Object.keys(choojinByDoctor),
+            ...Object.keys(revisitByDoctor),
+            ...Object.keys(revenueByDoctor),
+          ]);
+
+          allDoctors.forEach((doctorName) => {
+            const choojinDoc = choojinByDoctor[doctorName];
+            const revisitDoc = revisitByDoctor[doctorName];
+            const revenueDoc = revenueByDoctor[doctorName];
+
+            byDoctor[doctorName] = {
+              choojin: {
+                total: choojinDoc?.total || 0,
+                chim_new: choojinDoc?.chim_new || 0,
+                chim_re: choojinDoc?.chim_re || 0,
+                jabo_new: choojinDoc?.jabo_new || 0,
+                jabo_re: choojinDoc?.jabo_re || 0,
+                yak_new: choojinDoc?.yak_new || 0,
+                yak_re: choojinDoc?.yak_re || 0,
+              },
+              revisit: {
+                total_choojin: revisitDoc?.total_choojin || 0,
+                rejin_rate: revisitDoc?.rejin_rate || 0,
+                samjin_rate: revisitDoc?.samjin_rate || 0,
+                ital_rate: revisitDoc?.ital_rate || 0,
+              },
+              revenue: {
+                total: revenueDoc?.total?.total_revenue || 0,
+                avg_per_patient: revenueDoc?.total?.avg_per_patient || 0,
+                insurance: revenueDoc?.insurance?.total_revenue || 0,
+                insurance_pain_uncovered: revenueDoc?.insurance?.pain_uncovered || 0,
+                insurance_daily_count: revenueDoc?.insurance?.daily_count || 0,
+                insurance_avg: revenueDoc?.insurance?.avg_per_patient || 0,
+                jabo: revenueDoc?.jabo?.total_revenue || 0,
+                jabo_daily_count: revenueDoc?.jabo?.daily_count || 0,
+                jabo_avg: revenueDoc?.jabo?.avg_per_patient || 0,
+                uncovered: revenueDoc?.uncovered?.total_revenue || 0,
+                insurance_patients: revenueDoc?.insurance?.patient_count || 0,
+                jabo_patients: revenueDoc?.jabo?.patient_count || 0,
+                total_patients: revenueDoc?.total?.patient_count || 0,
+                work_days: revenueDoc?.work_days || 0,
+                daily_visit_count: revenueDoc?.daily_visit_count || 0,
+              },
+            };
+          });
+
+          return { week, byDoctor };
         });
 
-        return { week, byDoctor };
+        newResults = await Promise.all(promises);
+      }
+
+      // 새 결과를 캐시에 저장
+      newResults.forEach(r => {
+        cache.set(`${r.week.year}-${r.week.week}`, r);
       });
 
-      const results = await Promise.all(promises);
-      setWeeklyData(results);
+      // 캐시에서 전체 12주 데이터 조합
+      setWeeklyData(weeks12.map(w => cache.get(`${w.year}-${w.week}`)!));
 
-      // 누적 통계 로드
-      try {
-        const cumulativeRes = await getCumulativeStatsAll();
-        if (cumulativeRes.success && cumulativeRes.data?.by_doctor) {
-          setCumulativeData(cumulativeRes.data.by_doctor);
-        }
-      } catch (cumErr) {
-        console.error('누적 통계 로드 실패:', cumErr);
-      }
     } catch (error) {
       console.error('원장별 데이터 로드 실패:', error);
     } finally {
@@ -1369,44 +1493,6 @@ function DoctorCompareTab({ checkedItems, weekOffset }: { checkedItems: Set<stri
     }
   };
 
-  // 누적 데이터 값 추출 함수
-  const getCumulativeValue = (doctorName: string, key: string): string | number => {
-    const data = cumulativeData[doctorName];
-    if (!data) return '-';
-
-    switch (key) {
-      case 'choojin_total': return data.choojin.total;
-      case 'choojin_chim': return data.choojin.chim;
-      case 'choojin_jabo': return data.choojin.jabo;
-      case 'choojin_yak': return '-'; // 누적에는 약초진 없음
-      case 'revisit_choojin': return data.revisit?.total_choojin || '-';
-      case 'revisit_rejin': return data.revisit ? formatPercent(data.revisit.rejin_rate) : '-';
-      case 'revisit_samjin': return data.revisit ? formatPercent(data.revisit.samjin_rate) : '-';
-      case 'revisit_ital': return data.revisit ? formatPercent(data.revisit.ital_rate) : '-';
-      case 'revenue_total': return `${formatNumber(Math.round(data.revenue.total / 10000))}만`;
-      case 'revenue_insurance': return `${formatNumber(Math.round(data.revenue.insurance / 10000))}만`;
-      case 'revenue_jabo': return `${formatNumber(Math.round(data.revenue.jabo / 10000))}만`;
-      case 'revenue_uncovered': return `${formatNumber(Math.round(data.revenue.uncovered / 10000))}만`;
-      case 'avg_insurance': {
-        const avg = data.revenue.insurance_avg || 0;
-        if (avg === 0) return '-';
-        return `${formatNumber(avg)}원`;
-      }
-      case 'avg_jabo': {
-        const avg = data.revenue.jabo_avg || 0;
-        if (avg === 0) return '-';
-        return `${formatNumber(avg)}원`;
-      }
-      case 'pyunghwan': {
-        // 누적 평환 = 누적연인원 / 누적근무일수
-        const totalPatients = (data.revenue.insurance_patients || 0) + (data.revenue.jabo_patients || 0);
-        const workDays = data.total_work_days || 0;
-        if (workDays === 0) return '-';
-        return (totalPatients / workDays).toFixed(1);
-      }
-      default: return '-';
-    }
-  };
 
   // 셀 스타일
   const getCellStyle = (key: string): string => {
@@ -1471,11 +1557,6 @@ function DoctorCompareTab({ checkedItems, weekOffset }: { checkedItems: Set<stri
                       )}
                     </th>
                   ))}
-                  {/* 누적 헤더 */}
-                  <th className="px-2 py-2 text-center text-white font-medium whitespace-nowrap min-w-[55px] bg-indigo-500">
-                    누적
-                    <span className="block text-[10px] text-indigo-200">입사~현재</span>
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1530,10 +1611,6 @@ function DoctorCompareTab({ checkedItems, weekOffset }: { checkedItems: Set<stri
                           {getValue(getDoctorData(w), item.key)}
                         </td>
                       ))}
-                      {/* 누적 데이터 */}
-                      <td className={`px-2 py-1.5 text-center whitespace-nowrap bg-indigo-50 ${getCellStyle(item.key)}`}>
-                        {getCumulativeValue(doctorName, item.key)}
-                      </td>
                     </tr>
                   ));
                 })}
@@ -1554,6 +1631,8 @@ const MENU_ITEMS: { id: TabType; label: string; icon: string }[] = [
   { id: 'revenue', label: '객단가', icon: 'fa-won-sign' },
   { id: 'weekly', label: '주차별 추이', icon: 'fa-calendar-alt' },
   { id: 'compare', label: '원장간 비교', icon: 'fa-users' },
+  { id: 'weekly-stats', label: '주간통계', icon: 'fa-calendar-week' },
+  { id: 'monthly-stats', label: '월간통계', icon: 'fa-calendar' },
 ];
 
 // 메인 컴포넌트
@@ -1578,6 +1657,42 @@ function Metrics() {
 
   // 원장간 비교 탭용 - 주차 오프셋 (0: 현재~12주전, 3: 3주전~15주전, ...)
   const [weekOffset, setWeekOffset] = useState(0);
+
+  // 통계 탭 날짜 관리
+  const [statsDate, setStatsDate] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const [statsYear, setStatsYear] = useState<number>(new Date().getFullYear());
+  const [statsMonth, setStatsMonth] = useState<number>(new Date().getMonth() + 1);
+
+  const moveStatsWeek = (direction: -1 | 1) => {
+    const d = new Date(statsDate);
+    d.setDate(d.getDate() + 7 * direction);
+    setStatsDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+  };
+
+  const moveStatsMonth = (direction: -1 | 1) => {
+    let m = statsMonth + direction;
+    let y = statsYear;
+    if (m < 1) { m = 12; y -= 1; }
+    else if (m > 12) { m = 1; y += 1; }
+    setStatsYear(y);
+    setStatsMonth(m);
+  };
+
+  const statsYearOptions = Array.from({ length: 7 }, (_, i) => new Date().getFullYear() - 5 + i);
+
+  // 무거운 탭 lazy mount + keep alive (탭 전환시 데이터 유지)
+  const [mountedTabs, setMountedTabs] = useState<Set<TabType>>(new Set());
+  useEffect(() => {
+    if (['overview', 'choojin', 'revisit', 'revenue', 'weekly', 'compare', 'weekly-stats', 'monthly-stats'].includes(selectedTab)) {
+      setMountedTabs(prev => {
+        if (prev.has(selectedTab)) return prev;
+        return new Set([...prev, selectedTab]);
+      });
+    }
+  }, [selectedTab]);
 
   // 체크박스 토글
   const toggleItem = (key: string) => {
@@ -1655,8 +1770,74 @@ function Metrics() {
               {MENU_ITEMS.find(m => m.id === selectedTab)?.label}
             </h2>
 
-            {/* 기간 선택 (주차별 추이, 원장간 비교 제외) */}
-            {selectedTab !== 'weekly' && selectedTab !== 'compare' && (
+            {/* 주간통계 - 날짜 네비게이션 */}
+            {selectedTab === 'weekly-stats' && (
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">기준일:</label>
+                <button
+                  onClick={() => moveStatsWeek(-1)}
+                  className="p-1.5 text-gray-500 hover:text-clinic-primary hover:bg-clinic-background rounded-lg transition-colors"
+                  title="이전 주"
+                >
+                  <i className="fas fa-chevron-left text-xs"></i>
+                </button>
+                <input
+                  type="date"
+                  value={statsDate}
+                  onChange={(e) => setStatsDate(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-primary"
+                />
+                <button
+                  onClick={() => moveStatsWeek(1)}
+                  className="p-1.5 text-gray-500 hover:text-clinic-primary hover:bg-clinic-background rounded-lg transition-colors"
+                  title="다음 주"
+                >
+                  <i className="fas fa-chevron-right text-xs"></i>
+                </button>
+              </div>
+            )}
+
+            {/* 월간통계 - 연/월 선택 */}
+            {selectedTab === 'monthly-stats' && (
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">기간:</label>
+                <button
+                  onClick={() => moveStatsMonth(-1)}
+                  className="p-1.5 text-gray-500 hover:text-clinic-primary hover:bg-clinic-background rounded-lg transition-colors"
+                  title="이전 달"
+                >
+                  <i className="fas fa-chevron-left text-xs"></i>
+                </button>
+                <select
+                  value={statsYear}
+                  onChange={(e) => setStatsYear(Number(e.target.value))}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-primary"
+                >
+                  {statsYearOptions.map((y) => (
+                    <option key={y} value={y}>{y}년</option>
+                  ))}
+                </select>
+                <select
+                  value={statsMonth}
+                  onChange={(e) => setStatsMonth(Number(e.target.value))}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-clinic-primary"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    <option key={m} value={m}>{m}월</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => moveStatsMonth(1)}
+                  className="p-1.5 text-gray-500 hover:text-clinic-primary hover:bg-clinic-background rounded-lg transition-colors"
+                  title="다음 달"
+                >
+                  <i className="fas fa-chevron-right text-xs"></i>
+                </button>
+              </div>
+            )}
+
+            {/* 기간 선택 (주차별 추이, 원장간 비교, 통계 탭 제외) */}
+            {selectedTab !== 'weekly' && selectedTab !== 'compare' && selectedTab !== 'weekly-stats' && selectedTab !== 'monthly-stats' && (
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <label className="text-sm text-gray-600">
@@ -1776,13 +1957,48 @@ function Metrics() {
         </div>
 
         {/* 콘텐츠 본문 */}
-        <div className="flex-1 overflow-auto p-6">
-          {selectedTab === 'overview' && <OverviewTab selectedWeek={selectedWeek} />}
-          {selectedTab === 'choojin' && <ChoojinTab selectedWeek={selectedWeek} />}
-          {selectedTab === 'revisit' && <RevisitTab selectedWeek={revisitWeek} />}
-          {selectedTab === 'revenue' && <RevenueTab selectedWeek={selectedWeek} />}
-          {selectedTab === 'weekly' && <WeeklyTrendTab />}
-          {selectedTab === 'compare' && <DoctorCompareTab checkedItems={checkedItems} weekOffset={weekOffset} />}
+        <div className="flex-1 overflow-auto">
+          {/* 전체 탭 - lazy mount + keep alive (탭 전환시 데이터 유지) */}
+          {mountedTabs.has('overview') && (
+            <div className={`p-6 ${selectedTab === 'overview' ? '' : 'hidden'}`}>
+              <OverviewTab selectedWeek={selectedWeek} />
+            </div>
+          )}
+          {mountedTabs.has('choojin') && (
+            <div className={`p-6 ${selectedTab === 'choojin' ? '' : 'hidden'}`}>
+              <ChoojinTab selectedWeek={selectedWeek} />
+            </div>
+          )}
+          {mountedTabs.has('revisit') && (
+            <div className={`p-6 ${selectedTab === 'revisit' ? '' : 'hidden'}`}>
+              <RevisitTab selectedWeek={revisitWeek} />
+            </div>
+          )}
+          {mountedTabs.has('revenue') && (
+            <div className={`p-6 ${selectedTab === 'revenue' ? '' : 'hidden'}`}>
+              <RevenueTab selectedWeek={selectedWeek} />
+            </div>
+          )}
+          {mountedTabs.has('weekly') && (
+            <div className={`p-6 ${selectedTab === 'weekly' ? '' : 'hidden'}`}>
+              <WeeklyTrendTab />
+            </div>
+          )}
+          {mountedTabs.has('compare') && (
+            <div className={`p-6 ${selectedTab === 'compare' ? '' : 'hidden'}`}>
+              <DoctorCompareTab checkedItems={checkedItems} weekOffset={weekOffset} />
+            </div>
+          )}
+          {mountedTabs.has('weekly-stats') && (
+            <div className={`h-full ${selectedTab === 'weekly-stats' ? '' : 'hidden'}`}>
+              <WeeklyStats selectedDate={statsDate} />
+            </div>
+          )}
+          {mountedTabs.has('monthly-stats') && (
+            <div className={`h-full ${selectedTab === 'monthly-stats' ? '' : 'hidden'}`}>
+              <MonthlyStats selectedYear={statsYear} selectedMonth={statsMonth} />
+            </div>
+          )}
         </div>
       </div>
     </div>

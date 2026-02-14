@@ -4,7 +4,7 @@
 
 import type { UploadResult, ExamType } from '../types';
 
-const FILE_API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:3200';
+const FILE_API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
 
 /**
  * 로컬 서버에 파일 업로드
