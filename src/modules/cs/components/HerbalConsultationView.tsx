@@ -56,11 +56,25 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
     loadDrafts();
   }, [loadDrafts]);
 
+  // 날짜 문자열에서 YYYY-MM-DD 추출
+  const extractDate = (dateStr?: string): string => {
+    if (!dateStr) return '알수없음';
+    // YYYY-MM-DD 패턴이면 그대로
+    const isoMatch = dateStr.match(/(\d{4}-\d{2}-\d{2})/);
+    if (isoMatch) return isoMatch[1];
+    // 그 외 Date로 파싱 시도
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    return '알수없음';
+  };
+
   // 날짜별 그룹핑
   const groupedDrafts: GroupedDrafts[] = drafts.reduce((acc: GroupedDrafts[], draft) => {
     const dateKey = sortField === 'decoction_date'
-      ? (draft.decoction_date || '미정')
-      : (draft.created_at?.split('T')[0] || draft.created_at?.split(' ')[0] || '알수없음');
+      ? (draft.decoction_date ? extractDate(draft.decoction_date) : '미정')
+      : extractDate(draft.created_at);
     const existing = acc.find(g => g.date === dateKey);
     if (existing) {
       existing.drafts.push(draft);
@@ -72,14 +86,15 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
 
   const formatDate = (dateStr: string) => {
     if (dateStr === '미정' || dateStr === '알수없음') return dateStr;
-    const date = new Date(dateStr);
+    // dateStr is already YYYY-MM-DD from extractDate
     const today = getCurrentDate();
-    const d = dateStr.split('T')[0] || dateStr.split(' ')[0];
-    if (d === today) return '오늘';
+    if (dateStr === today) return '오늘';
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-    if (d === yStr) return '어제';
+    if (dateStr === yStr) return '어제';
+    const parts = dateStr.split('-');
+    const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
     return `${date.getMonth() + 1}/${date.getDate()} (${weekdays[date.getDay()]})`;
   };
