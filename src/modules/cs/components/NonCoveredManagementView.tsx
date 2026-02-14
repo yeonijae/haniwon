@@ -70,7 +70,7 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<EventTypeCode | 'all'>('all');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<NonCoveredTab>('daily-uncovered');
+  const [activeTab, setActiveTab] = useState<NonCoveredTab>('herbal-consultation');
 
   // 이벤트 목록 조회
   const loadEvents = useCallback(async () => {
@@ -153,6 +153,13 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
       {/* 서브탭 */}
       <div className="noncovered-tabs">
         <button
+          className={`noncovered-tab ${activeTab === 'herbal-consultation' ? 'active' : ''}`}
+          onClick={() => setActiveTab('herbal-consultation')}
+        >
+          <i className="fa-solid fa-mortar-pestle"></i>
+          약상담
+        </button>
+        <button
           className={`noncovered-tab ${activeTab === 'daily-uncovered' ? 'active' : ''}`}
           onClick={() => setActiveTab('daily-uncovered')}
         >
@@ -179,13 +186,6 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
         >
           <i className="fa-solid fa-pills"></i>
           선결제 관리
-        </button>
-        <button
-          className={`noncovered-tab ${activeTab === 'herbal-consultation' ? 'active' : ''}`}
-          onClick={() => setActiveTab('herbal-consultation')}
-        >
-          <i className="fa-solid fa-mortar-pestle"></i>
-          약상담
         </button>
       </div>
 

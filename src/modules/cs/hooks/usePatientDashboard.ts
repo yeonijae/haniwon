@@ -55,7 +55,7 @@ export function usePatientDashboard(patient: LocalPatient): PatientDashboardData
           : Promise.resolve(null),
         // 수납 이력
         patient.mssql_id
-          ? fetchPatientReceiptHistory({ patientId: patient.mssql_id, limit: 10 })
+          ? fetchPatientReceiptHistory({ patientId: patient.mssql_id, limit: 9999 })
           : Promise.resolve(null),
         // 예약 목록 (서버 엔드포인트 미구현 시 빈 배열 반환)
         patient.mssql_id
