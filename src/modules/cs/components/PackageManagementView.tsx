@@ -14,8 +14,6 @@ const FILTER_CONFIG: Record<PackageFilter, { label: string; icon: string; color:
 
 const PACKAGE_TYPE_LABEL: Record<string, string> = {
   treatment: '통마/약침',
-  herbal: '한약',
-  nokryong: '녹용',
   membership: '멤버십',
 };
 
@@ -40,7 +38,10 @@ function PackageManagementView() {
     loadData();
   }, [loadData]);
 
-  const filteredAlerts = alerts.filter(a => {
+  // 한약/녹용 제외 (약상담 탭에서 관리)
+  const baseAlerts = alerts.filter(a => a.packageType !== 'herbal' && a.packageType !== 'nokryong');
+
+  const filteredAlerts = baseAlerts.filter(a => {
     if (filter === 'all') return true;
     if (filter === 'treatment') return a.packageType === 'treatment';
     if (filter === 'membership') return a.packageType === 'membership';
@@ -53,7 +54,6 @@ function PackageManagementView() {
     switch (alertType) {
       case 'expire-soon': case 'membership-expire': return '#ef4444';
       case 'unused-1month': return '#f97316';
-      case 'herbal-3month': return '#3b82f6';
       case 'low-remaining': return '#eab308';
       default: return '#64748b';
     }
@@ -64,18 +64,14 @@ function PackageManagementView() {
       case 'expire-soon': return '만료임박';
       case 'membership-expire': return '멤버십만료';
       case 'unused-1month': return '미사용';
-      case 'herbal-3month': return '한약3개월';
       case 'low-remaining': return '잔여부족';
       default: return alertType;
     }
   };
 
-  // 타입별 건수
   const typeCounts = {
-    treatment: alerts.filter(a => a.packageType === 'treatment').length,
-    membership: alerts.filter(a => a.packageType === 'membership').length,
-    herbal: alerts.filter(a => a.packageType === 'herbal').length,
-    nokryong: alerts.filter(a => a.packageType === 'nokryong').length,
+    treatment: filteredAlerts.filter(a => a.packageType === 'treatment').length,
+    membership: filteredAlerts.filter(a => a.packageType === 'membership').length,
   };
 
   return (
@@ -84,7 +80,7 @@ function PackageManagementView() {
       <div className="noncovered-header">
         <div className="noncovered-header-left">
           <h2>📦 패키지</h2>
-          <span className="noncovered-count">총 {alerts.length}건</span>
+          <span className="noncovered-count">총 {filteredAlerts.length}건</span>
         </div>
         <div className="noncovered-header-right">
           <button className="noncovered-refresh-btn" onClick={loadData} disabled={loading}>
@@ -117,8 +113,8 @@ function PackageManagementView() {
               <span className="pkg-filter-count">
                 {key === 'treatment' ? typeCounts.treatment
                   : key === 'membership' ? typeCounts.membership
-                  : key === 'low-remaining' ? alerts.filter(a => a.alertType === 'low-remaining').length
-                  : alerts.filter(a => a.alertType === 'expire-soon' || a.alertType === 'membership-expire').length}
+                  : key === 'low-remaining' ? filteredAlerts.filter(a => a.alertType === 'low-remaining').length
+                  : filteredAlerts.filter(a => a.alertType === 'expire-soon' || a.alertType === 'membership-expire').length}
               </span>
             )}
           </button>
