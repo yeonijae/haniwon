@@ -201,113 +201,100 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
           <div className="timeline-loading">
             <i className="fas fa-spinner fa-spin"></i> 로딩 중...
           </div>
-        ) : drafts.length === 0 ? (
+        ) : groupedDrafts.length === 0 ? (
           <div className="timeline-empty">
             <i className="fas fa-mortar-pestle"></i>
             <p>약상담 기록이 없습니다</p>
           </div>
         ) : (
-          <div className="herbal-card-grid">
-            {drafts.map((draft) => {
-              const medicines = parseMedicines(draft.medicine_items);
-              const isExpanded = expandedId === draft.id;
-              const dateLabel = formatDate(extractDate(draft.created_at));
+          groupedDrafts.map((group) => (
+            <div key={group.date} className="hc-date-section">
+              <div className="hc-date-divider">
+                <span className="hc-date-label">{formatDate(group.date)}</span>
+                <span className="hc-date-full">{group.date}</span>
+                <span className="hc-date-count">{group.drafts.length}건</span>
+                <div className="hc-date-line" />
+              </div>
+              <div className="herbal-card-grid">
+                {group.drafts.map((draft) => {
+                  const medicines = parseMedicines(draft.medicine_items);
+                  const isExpanded = expandedId === draft.id;
 
-              return (
-                <div
-                  key={draft.id}
-                  className={`hc-card ${isExpanded ? 'expanded' : ''}`}
-                  onClick={() => setExpandedId(isExpanded ? null : (draft.id ?? null))}
-                >
-                  {/* 상단: 분기 컬러바 */}
-                  <div
-                    className="hc-card-accent"
-                    style={{ backgroundColor: getBranchColor(draft.consultation_type) }}
-                  />
-
-                  <div className="hc-card-body">
-                    {/* 환자 + 상태 */}
-                    <div className="hc-card-top">
-                      <div className="hc-card-patient">
-                        <span className="hc-patient-name">{draft.patient_name}</span>
-                        <span className="hc-patient-chart">{draft.chart_number}</span>
-                      </div>
-                      {getStatusBadge(draft.status)}
-                    </div>
-
-                    {/* 분기 */}
-                    <div className="hc-card-branch" style={{ color: getBranchColor(draft.consultation_type) }}>
-                      {getBranchLabel(draft.consultation_type)}
-                    </div>
-
-                    {/* 태그들 */}
-                    <div className="hc-card-tags">
-                      {draft.payment_type && (
-                        <span className="hc-tag">{draft.payment_type}</span>
-                      )}
-                      {draft.nokryong_grade && (
-                        <span className="hc-tag">🦌 {draft.nokryong_grade}{draft.nokryong_count && draft.nokryong_count > 1 ? ` ×${draft.nokryong_count}` : ''}</span>
-                      )}
-                      {draft.delivery_method && (
-                        <span className="hc-tag">{DRAFT_DELIVERY_LABELS[draft.delivery_method as DraftDeliveryMethod] || draft.delivery_method}</span>
-                      )}
-                      {draft.sub_type && (
-                        <span className="hc-tag">{draft.sub_type}</span>
-                      )}
-                    </div>
-
-                    {/* 탕전일 */}
-                    {draft.decoction_date && (
-                      <div className="hc-card-decoction">
-                        <i className="fas fa-fire"></i> 탕전: {draft.decoction_date}
-                      </div>
-                    )}
-
-                    {/* 메모 미리보기 */}
-                    {draft.memo && (
-                      <div className="hc-card-memo">{draft.memo}</div>
-                    )}
-
-                    {/* 하단: 날짜 + 담당 */}
-                    <div className="hc-card-footer">
-                      <span className="hc-card-date">{dateLabel}</span>
-                      {draft.created_by && (
-                        <span className="hc-card-author"><i className="fas fa-user"></i> {draft.created_by}</span>
-                      )}
-                    </div>
-
-                    {/* 확장 상세 */}
-                    {isExpanded && (
-                      <div className="hc-card-detail" onClick={e => e.stopPropagation()}>
-                        {draft.treatment_months && (
-                          <div className="hc-detail-row"><span className="hc-detail-label">치료기간</span><span>{draft.treatment_months}</span></div>
+                  return (
+                    <div
+                      key={draft.id}
+                      className={`hc-card ${isExpanded ? 'expanded' : ''}`}
+                      onClick={() => setExpandedId(isExpanded ? null : (draft.id ?? null))}
+                    >
+                      <div
+                        className="hc-card-accent"
+                        style={{ backgroundColor: getBranchColor(draft.consultation_type) }}
+                      />
+                      <div className="hc-card-body">
+                        <div className="hc-card-top">
+                          <div className="hc-card-patient">
+                            <span className="hc-patient-name">{draft.patient_name}</span>
+                            <span className="hc-patient-chart">{draft.chart_number}</span>
+                          </div>
+                          {getStatusBadge(draft.status)}
+                        </div>
+                        <div className="hc-card-branch" style={{ color: getBranchColor(draft.consultation_type) }}>
+                          {getBranchLabel(draft.consultation_type)}
+                        </div>
+                        <div className="hc-card-tags">
+                          {draft.payment_type && <span className="hc-tag">{draft.payment_type}</span>}
+                          {draft.nokryong_grade && (
+                            <span className="hc-tag">🦌 {draft.nokryong_grade}{draft.nokryong_count && draft.nokryong_count > 1 ? ` ×${draft.nokryong_count}` : ''}</span>
+                          )}
+                          {draft.delivery_method && (
+                            <span className="hc-tag">{DRAFT_DELIVERY_LABELS[draft.delivery_method as DraftDeliveryMethod] || draft.delivery_method}</span>
+                          )}
+                          {draft.sub_type && <span className="hc-tag">{draft.sub_type}</span>}
+                        </div>
+                        {draft.decoction_date && (
+                          <div className="hc-card-decoction">
+                            <i className="fas fa-fire"></i> 탕전: {draft.decoction_date}
+                          </div>
                         )}
-                        {draft.visit_pattern && (
-                          <div className="hc-detail-row"><span className="hc-detail-label">내원패턴</span><span>{draft.visit_pattern}</span></div>
-                        )}
-                        {draft.nokryong_type && (
-                          <div className="hc-detail-row"><span className="hc-detail-label">녹용권유</span><span>{draft.nokryong_type}</span></div>
-                        )}
-                        {draft.consultation_method && (
-                          <div className="hc-detail-row"><span className="hc-detail-label">상담방법</span><span>{draft.consultation_method}</span></div>
-                        )}
-                        {medicines.length > 0 && (
-                          <div className="hc-detail-medicines">
-                            <span className="hc-detail-label">약재</span>
-                            <div className="herbal-medicine-chips">
-                              {medicines.map((m, i) => (
-                                <span key={i} className="herbal-medicine-chip">{m.name} ×{m.quantity}</span>
-                              ))}
-                            </div>
+                        {draft.memo && <div className="hc-card-memo">{draft.memo}</div>}
+                        <div className="hc-card-footer">
+                          {draft.created_by && (
+                            <span className="hc-card-author"><i className="fas fa-user"></i> {draft.created_by}</span>
+                          )}
+                        </div>
+                        {isExpanded && (
+                          <div className="hc-card-detail" onClick={e => e.stopPropagation()}>
+                            {draft.treatment_months && (
+                              <div className="hc-detail-row"><span className="hc-detail-label">치료기간</span><span>{draft.treatment_months}</span></div>
+                            )}
+                            {draft.visit_pattern && (
+                              <div className="hc-detail-row"><span className="hc-detail-label">내원패턴</span><span>{draft.visit_pattern}</span></div>
+                            )}
+                            {draft.nokryong_type && (
+                              <div className="hc-detail-row"><span className="hc-detail-label">녹용권유</span><span>{draft.nokryong_type}</span></div>
+                            )}
+                            {draft.consultation_method && (
+                              <div className="hc-detail-row"><span className="hc-detail-label">상담방법</span><span>{draft.consultation_method}</span></div>
+                            )}
+                            {medicines.length > 0 && (
+                              <div className="hc-detail-medicines">
+                                <span className="hc-detail-label">약재</span>
+                                <div className="herbal-medicine-chips">
+                                  {medicines.map((m, i) => (
+                                    <span key={i} className="herbal-medicine-chip">{m.name} ×{m.quantity}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))
         )}
       </div>
 
@@ -316,6 +303,12 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
           display: flex;
           flex-direction: column;
           gap: 12px;
+        }
+
+        .herbal-grid-container {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
         }
 
         .herbal-summary-cards {
@@ -342,6 +335,44 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
           font-size: 11px;
           color: var(--text-muted, #94a3b8);
           margin-top: 2px;
+        }
+
+        /* 날짜 구분 */
+        .hc-date-section {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .hc-date-divider {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .hc-date-label {
+          font-size: 14px;
+          font-weight: 700;
+          color: var(--text-primary, #1e293b);
+          white-space: nowrap;
+        }
+
+        .hc-date-full {
+          font-size: 12px;
+          color: var(--text-muted, #94a3b8);
+          white-space: nowrap;
+        }
+
+        .hc-date-count {
+          font-size: 12px;
+          color: var(--text-muted, #94a3b8);
+          white-space: nowrap;
+        }
+
+        .hc-date-line {
+          flex: 1;
+          height: 1px;
+          background: var(--border-color, #e2e8f0);
         }
 
         /* 그리드 레이아웃 */
