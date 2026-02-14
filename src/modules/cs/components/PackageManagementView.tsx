@@ -89,16 +89,6 @@ function PackageManagementView() {
         </div>
       </div>
 
-      {/* 요약 카드 */}
-      <div className="herbal-summary-cards">
-        {Object.entries(typeCounts).map(([type, count]) => (
-          <div key={type} className="herbal-summary-card">
-            <div className="herbal-summary-value">{count}</div>
-            <div className="herbal-summary-label">{PACKAGE_TYPE_LABEL[type] || type}</div>
-          </div>
-        ))}
-      </div>
-
       {/* 필터 */}
       <div className="pkg-filter-bar">
         {(Object.entries(FILTER_CONFIG) as [PackageFilter, typeof FILTER_CONFIG[PackageFilter]][]).map(([key, cfg]) => (
