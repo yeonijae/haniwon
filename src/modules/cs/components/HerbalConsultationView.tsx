@@ -204,31 +204,32 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
                         style={{ backgroundColor: getBranchColor(draft.consultation_type) }}
                       />
                       <div className="hc-card-body">
-                        <div className="hc-card-top">
-                          <div className="hc-card-patient">
-                            <span className="hc-patient-name">{draft.patient_name}</span>
-                            <span className="hc-patient-chart">{draft.chart_number}</span>
-                          </div>
-                          {getStatusBadge(draft.status)}
-                        </div>
-                        <div className="hc-card-branch" style={{ color: getBranchColor(draft.consultation_type) }}>
-                          {getBranchLabel(draft.consultation_type)}
-                        </div>
-                        <div className="hc-card-tags">
+                        {/* 1줄: 환자 / 담당의 / 분기 / 결제 / 녹용 / 상태 */}
+                        <div className="hc-card-info-line">
+                          <span className="hc-patient-name">{draft.patient_name}</span>
+                          <span className="hc-patient-chart">({draft.chart_number})</span>
+                          {draft.doctor && <span className="hc-info-doctor"><i className="fas fa-user-md"></i> {draft.doctor}</span>}
+                          <span className="hc-info-branch" style={{ color: getBranchColor(draft.consultation_type) }}>{getBranchLabel(draft.consultation_type)}</span>
                           {draft.payment_type && <span className="hc-tag">{draft.payment_type}</span>}
                           {draft.nokryong_grade && (
                             <span className="hc-tag">🦌 {draft.nokryong_grade}{draft.nokryong_count && draft.nokryong_count > 1 ? ` ×${draft.nokryong_count}` : ''}</span>
                           )}
-                          {/* 배송방식 - 인라인 칩 토글 */}
+                          {draft.sub_type && <span className="hc-tag">{draft.sub_type}</span>}
+                          <span style={{ marginLeft: 'auto' }}>{getStatusBadge(draft.status)}</span>
+                        </div>
+
+                        {/* 2줄: 배송 */}
+                        <div className="hc-card-row" onClick={e => e.stopPropagation()}>
+                          <span className="hc-row-label">배송</span>
                           <span 
                             className="hc-tag hc-tag-editable"
-                            onClick={(e) => { e.stopPropagation(); setEditingDeliveryId(editingDeliveryId === draft.id ? null : (draft.id ?? null)); setEditingDecoctionId(null); }}
+                            onClick={() => { setEditingDeliveryId(editingDeliveryId === draft.id ? null : (draft.id ?? null)); setEditingDecoctionId(null); }}
                           >
-                            {DRAFT_DELIVERY_LABELS[draft.delivery_method as DraftDeliveryMethod] || draft.delivery_method || '배송미정'}
+                            {DRAFT_DELIVERY_LABELS[draft.delivery_method as DraftDeliveryMethod] || draft.delivery_method || '미정'}
                             <i className="fas fa-chevron-right" style={{ fontSize: 8, marginLeft: 4 }} />
                           </span>
                           {editingDeliveryId === draft.id && (
-                            <div className="hc-delivery-chips" onClick={e => e.stopPropagation()}>
+                            <div className="hc-delivery-chips">
                               {(Object.entries(DRAFT_DELIVERY_LABELS) as [DraftDeliveryMethod, string][]).map(([key, label]) => (
                                 <button
                                   key={key}
@@ -248,10 +249,11 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
                               ))}
                             </div>
                           )}
-                          {draft.sub_type && <span className="hc-tag">{draft.sub_type}</span>}
                         </div>
-                        <div className="hc-card-decoction" onClick={e => e.stopPropagation()}>
-                          <i className="fas fa-fire"></i>
+
+                        {/* 3줄: 탕전 */}
+                        <div className="hc-card-row" onClick={e => e.stopPropagation()}>
+                          <span className="hc-row-label">탕전</span>
                           {editingDecoctionId === draft.id ? (
                             <input
                               type="date"
@@ -276,12 +278,12 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
                               className="hc-decoction-value"
                               onClick={() => { setEditingDecoctionId(draft.id ?? null); setEditingDeliveryId(null); }}
                             >
-                              탕전: {draft.decoction_date || '미정'} <i className="fas fa-pen" style={{ fontSize: 9, marginLeft: 4, opacity: 0.5 }} />
+                              {draft.decoction_date || '미정'} <i className="fas fa-pen" style={{ fontSize: 9, marginLeft: 4, opacity: 0.5 }} />
                             </span>
                           )}
                         </div>
-                        {draft.memo && <div className="hc-card-memo">{draft.memo}</div>}
-                        {/* 한약 여정 파이프라인 */}
+
+                        {/* 4줄: 여정 파이프라인 */}
                         <div className="hc-journey" onClick={e => e.stopPropagation()}>
                           {(() => {
                             const visibleSteps = getVisibleSteps(draft);
@@ -304,14 +306,6 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
                               );
                             });
                           })()}
-                        </div>
-                        <div className="hc-card-footer">
-                          {draft.doctor && (
-                            <span className="hc-card-doctor"><i className="fas fa-user-md"></i> {draft.doctor}</span>
-                          )}
-                          {draft.created_by && (
-                            <span className="hc-card-author"><i className="fas fa-user"></i> {draft.created_by}</span>
-                          )}
                         </div>
                         {isExpanded && (
                           <div className="hc-card-detail" onClick={e => e.stopPropagation()}>
@@ -434,38 +428,55 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
         }
 
         .hc-card-body {
-          padding: 14px 16px 12px;
+          padding: 12px 14px 10px;
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          gap: 6px;
           flex: 1;
         }
 
-        .hc-card-top {
+        /* 1줄: 환자정보 한 줄 */
+        .hc-card-info-line {
           display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-        }
-
-        .hc-card-patient {
-          display: flex;
-          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
         }
 
         .hc-patient-name {
           font-weight: 700;
-          font-size: 15px;
-          line-height: 1.2;
+          font-size: 14px;
+          white-space: nowrap;
         }
 
         .hc-patient-chart {
-          font-size: 12px;
+          font-size: 11px;
           color: var(--text-muted, #94a3b8);
+          white-space: nowrap;
+        }
+
+        .hc-info-doctor {
+          font-size: 11px;
+          color: #3b82f6;
+          display: flex;
+          align-items: center;
+          gap: 3px;
+          white-space: nowrap;
+        }
+
+        .hc-info-doctor i {
+          font-size: 10px;
+        }
+
+        .hc-info-branch {
+          font-size: 12px;
+          font-weight: 700;
+          white-space: nowrap;
         }
 
         .herbal-status-badge {
-          font-size: 11px;
-          padding: 2px 8px;
+          font-size: 10px;
+          padding: 1px 7px;
           border-radius: 10px;
           color: #fff;
           font-weight: 600;
@@ -473,15 +484,20 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
           flex-shrink: 0;
         }
 
-        .hc-card-branch {
-          font-size: 13px;
-          font-weight: 700;
+        /* 행 (배송/탕전) */
+        .hc-card-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
         }
 
-        .hc-card-tags {
-          display: flex;
-          gap: 4px;
-          flex-wrap: wrap;
+        .hc-row-label {
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--text-muted, #94a3b8);
+          white-space: nowrap;
+          min-width: 28px;
         }
 
         .hc-tag {
@@ -490,27 +506,6 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
           background: var(--bg-secondary, #f1f5f9);
           border-radius: 4px;
           color: var(--text-secondary, #64748b);
-          white-space: nowrap;
-        }
-
-        .hc-card-decoction {
-          font-size: 12px;
-          color: var(--text-secondary, #64748b);
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .hc-card-decoction i {
-          color: #ef4444;
-          font-size: 11px;
-        }
-
-        .hc-card-memo {
-          font-size: 12px;
-          color: var(--text-muted, #94a3b8);
-          overflow: hidden;
-          text-overflow: ellipsis;
           white-space: nowrap;
         }
 
@@ -571,39 +566,6 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
 
         .hc-journey-line.done {
           background: #10b981;
-        }
-
-        .hc-card-doctor {
-          font-size: 11px;
-          color: #3b82f6;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .hc-card-doctor i {
-          font-size: 10px;
-        }
-
-        .hc-card-footer {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-top: auto;
-          padding-top: 8px;
-          border-top: 1px solid var(--border-color, #f1f5f9);
-        }
-
-        .hc-card-author {
-          font-size: 11px;
-          color: var(--text-muted, #94a3b8);
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .hc-card-author i {
-          font-size: 10px;
         }
 
         .hc-card-detail {
