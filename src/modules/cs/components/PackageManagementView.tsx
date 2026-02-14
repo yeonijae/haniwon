@@ -21,6 +21,8 @@ function PackageManagementView() {
   const [alerts, setAlerts] = useState<PackageAlertItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<PackageFilter>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -38,8 +40,19 @@ function PackageManagementView() {
     loadData();
   }, [loadData]);
 
-  // 한약/녹용 제외 (약상담 탭에서 관리)
-  const baseAlerts = alerts.filter(a => a.packageType !== 'herbal' && a.packageType !== 'nokryong');
+  // 한약/녹용 제외 + 날짜 필터
+  const baseAlerts = alerts.filter(a => {
+    if (a.packageType === 'herbal' || a.packageType === 'nokryong') return false;
+    if (dateFrom) {
+      const d = (a.createdAt || '').slice(0, 10);
+      if (d < dateFrom) return false;
+    }
+    if (dateTo) {
+      const d = (a.createdAt || '').slice(0, 10);
+      if (d > dateTo) return false;
+    }
+    return true;
+  });
 
   const filteredAlerts = baseAlerts.filter(a => {
     if (filter === 'all') return true;
@@ -102,6 +115,14 @@ function PackageManagementView() {
           </div>
         </div>
         <div className="noncovered-header-right">
+          <div className="date-range-filter">
+            <input type="date" className="date-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <span className="date-separator">~</span>
+            <input type="date" className="date-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            {(dateFrom || dateTo) && (
+              <button className="date-clear-btn" onClick={() => { setDateFrom(''); setDateTo(''); }}>✕</button>
+            )}
+          </div>
           <button className="noncovered-refresh-btn" onClick={loadData} disabled={loading}>
             <i className={`fas fa-sync-alt ${loading ? 'fa-spin' : ''}`}></i>
           </button>
@@ -164,6 +185,39 @@ function PackageManagementView() {
           display: flex;
           flex-direction: column;
           gap: 12px;
+        }
+
+        .package-mgmt-view .date-range-filter {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .package-mgmt-view .date-input {
+          padding: 4px 6px;
+          border: 1px solid var(--border-color, #e2e8f0);
+          border-radius: 6px;
+          font-size: 12px;
+          background: var(--bg-primary, #fff);
+          color: var(--text-primary, #1e293b);
+        }
+
+        .package-mgmt-view .date-separator {
+          font-size: 12px;
+          color: var(--text-muted, #94a3b8);
+        }
+
+        .package-mgmt-view .date-clear-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          font-size: 12px;
+          color: var(--text-muted, #94a3b8);
+          padding: 2px 4px;
+        }
+
+        .package-mgmt-view .date-clear-btn:hover {
+          color: #ef4444;
         }
 
         .package-mgmt-view .herbal-grid-container {
