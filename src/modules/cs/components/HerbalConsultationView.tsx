@@ -40,13 +40,14 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
         sql += ` AND status = '${filterStatus}'`;
       }
       if (dateFrom) {
-        sql += ` AND created_at >= '${dateFrom}'`;
+        sql += ` AND receipt_date >= '${dateFrom}'`;
       }
       if (dateTo) {
-        sql += ` AND created_at < '${dateTo}T23:59:59'`;
+        sql += ` AND receipt_date <= '${dateTo}'`;
       }
 
-      sql += ` ORDER BY ${sortField} DESC NULLS LAST LIMIT 200`;
+      const orderField = sortField === 'created_at' ? 'receipt_date' : sortField;
+      sql += ` ORDER BY ${orderField} DESC NULLS LAST LIMIT 200`;
 
       const data = await query<HerbalDraft>(sql);
       setDrafts(data);
@@ -75,7 +76,7 @@ function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBran
   const groupedDrafts: GroupedDrafts[] = drafts.reduce((acc: GroupedDrafts[], draft) => {
     const dateKey = sortField === 'decoction_date'
       ? (draft.decoction_date ? extractDate(draft.decoction_date) : '미정')
-      : extractDate(draft.created_at);
+      : (draft.receipt_date || extractDate(draft.created_at));
     const existing = acc.find(g => g.date === dateKey);
     if (existing) {
       existing.drafts.push(draft);

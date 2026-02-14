@@ -1285,6 +1285,7 @@ export interface HerbalDraft {
   decoction_date?: string;
   memo?: string;
   medicine_items?: string;
+  receipt_date?: string;
   status: DraftStatus;
   created_by?: string;
   created_at?: string;

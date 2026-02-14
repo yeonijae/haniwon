@@ -862,6 +862,9 @@ export async function ensureReceiptTables(): Promise<void> {
     await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS nokryong_grade TEXT`).catch(() => {});
     await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS nokryong_count INTEGER`).catch(() => {});
     await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS medicine_items TEXT`).catch(() => {});
+    // 진료일 컬럼 추가 + 기존 데이터 마이그레이션 (created_at 날짜 부분으로)
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS receipt_date TEXT`).catch(() => {});
+    await execute(`UPDATE cs_herbal_drafts SET receipt_date = TO_CHAR(created_at, 'YYYY-MM-DD') WHERE receipt_date IS NULL`).catch(() => {});
 
     // 탕전 인력 스케줄
     await execute(`
@@ -4874,8 +4877,8 @@ export async function createHerbalDraft(draft: Omit<HerbalDraft, 'id' | 'created
   }
   const now = getCurrentTimestamp();
   return insert(`
-    INSERT INTO cs_herbal_drafts (patient_id, chart_number, patient_name, herbal_name, consultation_type, payment_type, nokryong_type, visit_pattern, treatment_months, consultation_method, sub_type, nokryong_grade, nokryong_count, delivery_method, decoction_date, memo, medicine_items, status, created_by, created_at, updated_at)
-    VALUES (${draft.patient_id}, ${escapeString(draft.chart_number)}, ${escapeString(draft.patient_name)}, ${escapeString(draft.herbal_name)}, ${escapeString(draft.consultation_type)}, ${escapeString(draft.payment_type)}, ${escapeString(draft.nokryong_type)}, ${escapeString(draft.visit_pattern)}, ${escapeString(draft.treatment_months)}, ${escapeString(draft.consultation_method)}, ${escapeString(draft.sub_type)}, ${escapeString(draft.nokryong_grade)}, ${draft.nokryong_count ?? 'NULL'}, ${escapeString(draft.delivery_method)}, ${escapeString(draft.decoction_date)}, ${escapeString(draft.memo)}, ${escapeString(draft.medicine_items)}, ${escapeString(draft.status)}, ${escapeString(draft.created_by)}, ${escapeString(now)}, ${escapeString(now)})
+    INSERT INTO cs_herbal_drafts (patient_id, chart_number, patient_name, herbal_name, consultation_type, payment_type, nokryong_type, visit_pattern, treatment_months, consultation_method, sub_type, nokryong_grade, nokryong_count, delivery_method, decoction_date, memo, medicine_items, receipt_date, status, created_by, created_at, updated_at)
+    VALUES (${draft.patient_id}, ${escapeString(draft.chart_number)}, ${escapeString(draft.patient_name)}, ${escapeString(draft.herbal_name)}, ${escapeString(draft.consultation_type)}, ${escapeString(draft.payment_type)}, ${escapeString(draft.nokryong_type)}, ${escapeString(draft.visit_pattern)}, ${escapeString(draft.treatment_months)}, ${escapeString(draft.consultation_method)}, ${escapeString(draft.sub_type)}, ${escapeString(draft.nokryong_grade)}, ${draft.nokryong_count ?? 'NULL'}, ${escapeString(draft.delivery_method)}, ${escapeString(draft.decoction_date)}, ${escapeString(draft.memo)}, ${escapeString(draft.medicine_items)}, ${escapeString(draft.receipt_date || getCurrentDate())}, ${escapeString(draft.status)}, ${escapeString(draft.created_by)}, ${escapeString(now)}, ${escapeString(now)})
   `);
 }
 

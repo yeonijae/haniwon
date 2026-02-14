@@ -38,6 +38,7 @@ function formDataToRecord(form: HerbalDraftFormData, patient: LocalPatient, user
     medicine_items: form.medicines.length > 0
       ? JSON.stringify(form.medicines.map(m => ({ id: m.inventoryId, name: m.name, qty: m.quantity })))
       : undefined,
+    receipt_date: undefined,  // api.ts에서 getCurrentDate()로 자동 설정
     status: form.decoctionDate ? 'scheduled' as const : 'draft' as const,
     created_by: user.name,
   };
