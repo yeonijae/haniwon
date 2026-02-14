@@ -2,27 +2,22 @@ import { useState, useEffect, useCallback } from 'react';
 import { getPackageAlerts } from '../lib/api';
 import type { PackageAlertItem } from '../lib/api';
 
-type PackageFilter = 'all' | 'treatment' | 'membership' | 'low-remaining' | 'expire-soon';
-
-const FILTER_CONFIG: Record<PackageFilter, { label: string; icon: string; color: string }> = {
-  'all': { label: '전체', icon: 'fa-th-large', color: '#64748b' },
-  'treatment': { label: '통마', icon: 'fa-syringe', color: '#3b82f6' },
-  'membership': { label: '멤버십', icon: 'fa-id-card', color: '#8b5cf6' },
-  'low-remaining': { label: '잔여알림', icon: 'fa-battery-quarter', color: '#eab308' },
-  'expire-soon': { label: '만료알림', icon: 'fa-clock', color: '#ef4444' },
-};
-
 const PACKAGE_TYPE_LABEL: Record<string, string> = {
   treatment: '통마/약침',
   membership: '멤버십',
 };
 
-function PackageManagementView() {
+interface PackageManagementViewProps {
+  searchTerm: string;
+  dateFrom: string;
+  dateTo: string;
+  packageFilter: string;
+  refreshKey: number;
+}
+
+function PackageManagementView({ searchTerm, dateFrom, dateTo, packageFilter, refreshKey }: PackageManagementViewProps) {
   const [alerts, setAlerts] = useState<PackageAlertItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<PackageFilter>('all');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -34,13 +29,13 @@ function PackageManagementView() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // 한약/녹용 제외 + 날짜 필터
+  // 한약/녹용 제외 + 날짜 필터 + 검색
   const baseAlerts = alerts.filter(a => {
     if (a.packageType === 'herbal' || a.packageType === 'nokryong') return false;
     if (dateFrom) {
@@ -51,15 +46,19 @@ function PackageManagementView() {
       const d = (a.createdAt || '').slice(0, 10);
       if (d > dateTo) return false;
     }
+    if (searchTerm) {
+      const s = searchTerm.toLowerCase();
+      if (!a.patientName?.toLowerCase().includes(s) && !a.chartNumber?.toLowerCase().includes(s)) return false;
+    }
     return true;
   });
 
   const filteredAlerts = baseAlerts.filter(a => {
-    if (filter === 'all') return true;
-    if (filter === 'treatment') return a.packageType === 'treatment';
-    if (filter === 'membership') return a.packageType === 'membership';
-    if (filter === 'low-remaining') return a.alertType === 'low-remaining';
-    if (filter === 'expire-soon') return a.alertType === 'expire-soon' || a.alertType === 'membership-expire';
+    if (packageFilter === 'all') return true;
+    if (packageFilter === 'treatment') return a.packageType === 'treatment';
+    if (packageFilter === 'membership') return a.packageType === 'membership';
+    if (packageFilter === 'low-remaining') return a.alertType === 'low-remaining';
+    if (packageFilter === 'expire-soon') return a.alertType === 'expire-soon' || a.alertType === 'membership-expire';
     return true;
   });
 
@@ -82,53 +81,8 @@ function PackageManagementView() {
     }
   };
 
-  const typeCounts = {
-    treatment: filteredAlerts.filter(a => a.packageType === 'treatment').length,
-    membership: filteredAlerts.filter(a => a.packageType === 'membership').length,
-  };
-
   return (
     <div className="package-mgmt-view">
-      {/* 헤더 */}
-      <div className="noncovered-header">
-        <div className="noncovered-header-left">
-          <h2>📦 패키지</h2>
-          <span className="noncovered-count">총 {filteredAlerts.length}건</span>
-          <div className="header-badges">
-            {(Object.entries(FILTER_CONFIG) as [PackageFilter, typeof FILTER_CONFIG[PackageFilter]][]).map(([key, cfg]) => {
-              const cnt = key === 'all' ? baseAlerts.length
-                : key === 'treatment' ? typeCounts.treatment
-                : key === 'membership' ? typeCounts.membership
-                : key === 'low-remaining' ? baseAlerts.filter(a => a.alertType === 'low-remaining').length
-                : baseAlerts.filter(a => a.alertType === 'expire-soon' || a.alertType === 'membership-expire').length;
-              return (
-                <span
-                  key={key}
-                  className={`header-badge clickable ${filter === key ? 'active' : ''}`}
-                  style={{ '--badge-color': cfg.color } as React.CSSProperties}
-                  onClick={() => setFilter(key)}
-                >
-                  {cfg.label}{key !== 'all' ? ` ${cnt}` : ''}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-        <div className="noncovered-header-right">
-          <div className="date-range-filter">
-            <input type="date" className="date-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-            <span className="date-separator">~</span>
-            <input type="date" className="date-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-            {(dateFrom || dateTo) && (
-              <button className="date-clear-btn" onClick={() => { setDateFrom(''); setDateTo(''); }}>✕</button>
-            )}
-          </div>
-          <button className="noncovered-refresh-btn" onClick={loadData} disabled={loading}>
-            <i className={`fas fa-sync-alt ${loading ? 'fa-spin' : ''}`}></i>
-          </button>
-        </div>
-      </div>
-
       {/* 그리드 */}
       <div className="herbal-grid-container">
         {loading ? (
@@ -187,74 +141,10 @@ function PackageManagementView() {
           gap: 12px;
         }
 
-        .package-mgmt-view .date-range-filter {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .package-mgmt-view .date-input {
-          padding: 4px 6px;
-          border: 1px solid var(--border-color, #e2e8f0);
-          border-radius: 6px;
-          font-size: 12px;
-          background: var(--bg-primary, #fff);
-          color: var(--text-primary, #1e293b);
-        }
-
-        .package-mgmt-view .date-separator {
-          font-size: 12px;
-          color: var(--text-muted, #94a3b8);
-        }
-
-        .package-mgmt-view .date-clear-btn {
-          background: none;
-          border: none;
-          cursor: pointer;
-          font-size: 12px;
-          color: var(--text-muted, #94a3b8);
-          padding: 2px 4px;
-        }
-
-        .package-mgmt-view .date-clear-btn:hover {
-          color: #ef4444;
-        }
-
         .package-mgmt-view .herbal-grid-container {
           display: flex;
           flex-direction: column;
           gap: 20px;
-        }
-
-        .header-badges {
-          display: flex;
-          gap: 4px;
-          flex-wrap: wrap;
-          align-items: center;
-        }
-
-        .header-badge {
-          font-size: 11px;
-          padding: 2px 8px;
-          border-radius: 10px;
-          background: color-mix(in srgb, var(--badge-color) 15%, transparent);
-          color: var(--badge-color);
-          font-weight: 600;
-          white-space: nowrap;
-        }
-
-        .header-badge.clickable {
-          cursor: pointer;
-          transition: all 0.15s;
-        }
-
-        .header-badge.clickable:hover {
-          background: color-mix(in srgb, var(--badge-color) 25%, transparent);
-        }
-
-        .header-badge.clickable.active {
-          background: var(--badge-color);
-          color: #fff;
         }
 
         .package-mgmt-view .herbal-card-grid {

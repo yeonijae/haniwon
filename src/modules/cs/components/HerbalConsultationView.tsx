@@ -6,26 +6,23 @@ import { DRAFT_BRANCH_TYPES, DRAFT_STATUS_LABELS, DRAFT_DELIVERY_LABELS } from '
 
 interface HerbalConsultationViewProps {
   user: PortalUser;
+  searchTerm: string;
+  dateFrom: string;
+  dateTo: string;
+  filterBranch: string;
+  filterStatus: string;
+  sortField: string;
+  refreshKey: number;
 }
-
-type FilterBranch = DraftBranchType | 'all';
-type FilterStatus = DraftStatus | 'all';
-type SortField = 'created_at' | 'decoction_date' | 'patient_name';
 
 interface GroupedDrafts {
   date: string;
   drafts: HerbalDraft[];
 }
 
-function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
+function HerbalConsultationView({ user, searchTerm, dateFrom, dateTo, filterBranch, filterStatus, sortField, refreshKey }: HerbalConsultationViewProps) {
   const [drafts, setDrafts] = useState<HerbalDraft[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterBranch, setFilterBranch] = useState<FilterBranch>('all');
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
-  const [sortField, setSortField] = useState<SortField>('created_at');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const loadDrafts = useCallback(async () => {
@@ -58,19 +55,16 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, filterBranch, filterStatus, sortField, dateFrom, dateTo]);
+  }, [searchTerm, filterBranch, filterStatus, sortField, dateFrom, dateTo, refreshKey]);
 
   useEffect(() => {
     loadDrafts();
   }, [loadDrafts]);
 
-  // 날짜 문자열에서 YYYY-MM-DD 추출
   const extractDate = (dateStr?: string): string => {
     if (!dateStr) return '알수없음';
-    // YYYY-MM-DD 패턴이면 그대로
     const isoMatch = dateStr.match(/(\d{4}-\d{2}-\d{2})/);
     if (isoMatch) return isoMatch[1];
-    // 그 외 Date로 파싱 시도
     const d = new Date(dateStr);
     if (!isNaN(d.getTime())) {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -78,7 +72,6 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
     return '알수없음';
   };
 
-  // 날짜별 그룹핑
   const groupedDrafts: GroupedDrafts[] = drafts.reduce((acc: GroupedDrafts[], draft) => {
     const dateKey = sortField === 'decoction_date'
       ? (draft.decoction_date ? extractDate(draft.decoction_date) : '미정')
@@ -94,7 +87,6 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
 
   const formatDate = (dateStr: string) => {
     if (dateStr === '미정' || dateStr === '알수없음') return dateStr;
-    // dateStr is already YYYY-MM-DD from extractDate
     const today = getCurrentDate();
     if (dateStr === today) return '오늘';
     const yesterday = new Date();
@@ -135,72 +127,6 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
 
   return (
     <div className="herbal-consultation-view">
-      {/* 헤더 */}
-      <div className="noncovered-header">
-        <div className="noncovered-header-left">
-          <h2>💊 약상담</h2>
-          <span className="noncovered-count">총 {drafts.length}건</span>
-          <div className="header-badges">
-            <span className="header-badge" style={{ '--badge-color': '#f59e0b' } as React.CSSProperties}>초안 {drafts.filter(d => d.status === 'draft').length}</span>
-            <span className="header-badge" style={{ '--badge-color': '#10b981' } as React.CSSProperties}>탕전배정 {drafts.filter(d => d.status === 'scheduled').length}</span>
-            {DRAFT_BRANCH_TYPES.map(b => {
-              const cnt = drafts.filter(d => d.consultation_type === b.value).length;
-              return cnt > 0 ? (
-                <span key={b.value} className="header-badge" style={{ '--badge-color': getBranchColor(b.value) } as React.CSSProperties}>{b.label} {cnt}</span>
-              ) : null;
-            })}
-          </div>
-        </div>
-        <div className="noncovered-header-right">
-          <input
-            type="text"
-            className="noncovered-search"
-            placeholder="환자명/차트번호 검색..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <select
-            className="noncovered-filter"
-            value={filterBranch}
-            onChange={(e) => setFilterBranch(e.target.value as FilterBranch)}
-          >
-            <option value="all">전체 분기</option>
-            {DRAFT_BRANCH_TYPES.map(b => (
-              <option key={b.value} value={b.value}>{b.label}</option>
-            ))}
-          </select>
-          <select
-            className="noncovered-filter"
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as FilterStatus)}
-          >
-            <option value="all">전체 상태</option>
-            <option value="draft">초안</option>
-            <option value="scheduled">탕전배정</option>
-          </select>
-          <select
-            className="noncovered-filter"
-            value={sortField}
-            onChange={(e) => setSortField(e.target.value as SortField)}
-          >
-            <option value="created_at">작성일순</option>
-            <option value="decoction_date">탕전일순</option>
-            <option value="patient_name">환자명순</option>
-          </select>
-          <div className="date-range-filter">
-            <input type="date" className="date-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-            <span className="date-separator">~</span>
-            <input type="date" className="date-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-            {(dateFrom || dateTo) && (
-              <button className="date-clear-btn" onClick={() => { setDateFrom(''); setDateTo(''); }}>✕</button>
-            )}
-          </div>
-          <button className="noncovered-refresh-btn" onClick={loadDrafts} disabled={loading}>
-            <i className={`fas fa-sync-alt ${loading ? 'fa-spin' : ''}`}></i>
-          </button>
-        </div>
-      </div>
-
       {/* 그리드 */}
       <div className="herbal-grid-container">
         {loading ? (
@@ -311,89 +237,12 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
           gap: 12px;
         }
 
-        .header-badges {
-          display: flex;
-          gap: 4px;
-          flex-wrap: wrap;
-          align-items: center;
-        }
-
-        .header-badge {
-          font-size: 11px;
-          padding: 2px 8px;
-          border-radius: 10px;
-          background: color-mix(in srgb, var(--badge-color) 15%, transparent);
-          color: var(--badge-color);
-          font-weight: 600;
-          white-space: nowrap;
-        }
-
-        .date-range-filter {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .date-input {
-          padding: 4px 6px;
-          border: 1px solid var(--border-color, #e2e8f0);
-          border-radius: 6px;
-          font-size: 12px;
-          background: var(--bg-primary, #fff);
-          color: var(--text-primary, #1e293b);
-        }
-
-        .date-separator {
-          font-size: 12px;
-          color: var(--text-muted, #94a3b8);
-        }
-
-        .date-clear-btn {
-          background: none;
-          border: none;
-          cursor: pointer;
-          font-size: 12px;
-          color: var(--text-muted, #94a3b8);
-          padding: 2px 4px;
-        }
-
-        .date-clear-btn:hover {
-          color: #ef4444;
-        }
-
         .herbal-grid-container {
           display: flex;
           flex-direction: column;
           gap: 20px;
         }
 
-        .herbal-summary-cards {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .herbal-summary-card {
-          background: var(--bg-secondary, #f8f9fa);
-          border: 1px solid var(--border-color, #e2e8f0);
-          border-radius: 8px;
-          padding: 10px 16px;
-          text-align: center;
-          min-width: 70px;
-        }
-
-        .herbal-summary-value {
-          font-size: 20px;
-          font-weight: 700;
-        }
-
-        .herbal-summary-label {
-          font-size: 11px;
-          color: var(--text-muted, #94a3b8);
-          margin-top: 2px;
-        }
-
-        /* 날짜 구분 */
         .hc-date-section {
           display: flex;
           flex-direction: column;
@@ -431,14 +280,12 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
           background: var(--border-color, #e2e8f0);
         }
 
-        /* 그리드 레이아웃 */
         .herbal-card-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
           gap: 12px;
         }
 
-        /* 카드 */
         .hc-card {
           background: var(--bg-primary, #fff);
           border: 1px solid var(--border-color, #e2e8f0);
@@ -557,11 +404,6 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
           border-top: 1px solid var(--border-color, #f1f5f9);
         }
 
-        .hc-card-date {
-          font-size: 11px;
-          color: var(--text-muted, #94a3b8);
-        }
-
         .hc-card-author {
           font-size: 11px;
           color: var(--text-muted, #94a3b8);
@@ -574,7 +416,6 @@ function HerbalConsultationView({ user }: HerbalConsultationViewProps) {
           font-size: 10px;
         }
 
-        /* 확장 상세 */
         .hc-card-detail {
           margin-top: 8px;
           padding-top: 8px;

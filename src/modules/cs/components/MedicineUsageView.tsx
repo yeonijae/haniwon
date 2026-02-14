@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { query, getCurrentDate } from '@shared/lib/postgres';
 import { MEDICINE_CATEGORIES } from '../lib/api';
-import type { MedicineCategory } from '../lib/api';
 
 interface MedicineUsageRow {
   id: number;
@@ -22,15 +21,17 @@ interface GroupedUsages {
   items: MedicineUsageRow[];
 }
 
-type FilterCategory = MedicineCategory | 'all';
+interface MedicineUsageViewProps {
+  searchTerm: string;
+  dateFrom: string;
+  dateTo: string;
+  filterCategory: string;
+  refreshKey: number;
+}
 
-function MedicineUsageView() {
+function MedicineUsageView({ searchTerm, dateFrom, dateTo, filterCategory, refreshKey }: MedicineUsageViewProps) {
   const [usages, setUsages] = useState<MedicineUsageRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState<FilterCategory>('all');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
 
   const loadUsages = useCallback(async () => {
     setLoading(true);
@@ -62,7 +63,7 @@ function MedicineUsageView() {
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, filterCategory, dateFrom, dateTo]);
+  }, [searchTerm, filterCategory, dateFrom, dateTo, refreshKey]);
 
   useEffect(() => {
     loadUsages();
@@ -117,52 +118,6 @@ function MedicineUsageView() {
 
   return (
     <div className="medicine-usage-view">
-      {/* 헤더 */}
-      <div className="noncovered-header">
-        <div className="noncovered-header-left">
-          <h2>💊 상비약</h2>
-          <span className="noncovered-count">총 {usages.length}건</span>
-          <div className="header-badges">
-            {MEDICINE_CATEGORIES.map(cat => {
-              const cnt = usages.filter(u => u.category === cat).length;
-              return cnt > 0 ? (
-                <span key={cat} className="header-badge" style={{ '--badge-color': getCategoryColor(cat) } as React.CSSProperties}>{cat} {cnt}</span>
-              ) : null;
-            })}
-          </div>
-        </div>
-        <div className="noncovered-header-right">
-          <input
-            type="text"
-            className="noncovered-search"
-            placeholder="환자명/약품명 검색..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <select
-            className="noncovered-filter"
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value as FilterCategory)}
-          >
-            <option value="all">전체 카테고리</option>
-            {MEDICINE_CATEGORIES.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
-          <div className="date-range-filter">
-            <input type="date" className="date-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-            <span className="date-separator">~</span>
-            <input type="date" className="date-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-            {(dateFrom || dateTo) && (
-              <button className="date-clear-btn" onClick={() => { setDateFrom(''); setDateTo(''); }}>✕</button>
-            )}
-          </div>
-          <button className="noncovered-refresh-btn" onClick={loadUsages} disabled={loading}>
-            <i className={`fas fa-sync-alt ${loading ? 'fa-spin' : ''}`}></i>
-          </button>
-        </div>
-      </div>
-
       {/* 그리드 */}
       <div className="herbal-grid-container">
         {loading ? (
@@ -219,56 +174,6 @@ function MedicineUsageView() {
       </div>
 
       <style>{`
-        .medicine-usage-view .header-badges {
-          display: flex;
-          gap: 4px;
-          flex-wrap: wrap;
-          align-items: center;
-        }
-
-        .medicine-usage-view .header-badge {
-          font-size: 11px;
-          padding: 2px 8px;
-          border-radius: 10px;
-          background: color-mix(in srgb, var(--badge-color) 15%, transparent);
-          color: var(--badge-color);
-          font-weight: 600;
-          white-space: nowrap;
-        }
-
-        .medicine-usage-view .date-range-filter {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .medicine-usage-view .date-input {
-          padding: 4px 6px;
-          border: 1px solid var(--border-color, #e2e8f0);
-          border-radius: 6px;
-          font-size: 12px;
-          background: var(--bg-primary, #fff);
-          color: var(--text-primary, #1e293b);
-        }
-
-        .medicine-usage-view .date-separator {
-          font-size: 12px;
-          color: var(--text-muted, #94a3b8);
-        }
-
-        .medicine-usage-view .date-clear-btn {
-          background: none;
-          border: none;
-          cursor: pointer;
-          font-size: 12px;
-          color: var(--text-muted, #94a3b8);
-          padding: 2px 4px;
-        }
-
-        .medicine-usage-view .date-clear-btn:hover {
-          color: #ef4444;
-        }
-
         .medicine-usage-view {
           display: flex;
           flex-direction: column;
@@ -279,32 +184,6 @@ function MedicineUsageView() {
           display: flex;
           flex-direction: column;
           gap: 20px;
-        }
-
-        .medicine-usage-view .herbal-summary-cards {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .medicine-usage-view .herbal-summary-card {
-          background: var(--bg-secondary, #f8f9fa);
-          border: 1px solid var(--border-color, #e2e8f0);
-          border-radius: 8px;
-          padding: 10px 16px;
-          text-align: center;
-          min-width: 70px;
-        }
-
-        .medicine-usage-view .herbal-summary-value {
-          font-size: 20px;
-          font-weight: 700;
-        }
-
-        .medicine-usage-view .herbal-summary-label {
-          font-size: 11px;
-          color: var(--text-muted, #94a3b8);
-          margin-top: 2px;
         }
 
         .medicine-usage-view .hc-date-section {
