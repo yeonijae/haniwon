@@ -249,6 +249,7 @@ function CSApp({ user }: CSAppProps) {
         doctor_memo: null,
         nurse_memo: null,
         referral_type: null,
+        consultation_memo: null,
       };
       setSelectedHeaderPatient(localPatient);
     }

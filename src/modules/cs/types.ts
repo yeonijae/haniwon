@@ -1245,7 +1245,7 @@ export interface HerbalDraftFormData {
 }
 
 export const INITIAL_DRAFT_FORM_DATA: HerbalDraftFormData = {
-  branch: '',
+  branch: '약재진_N차',
   treatmentMonths: [],
   visitPattern: '',
   nokryongRecommendation: '',
@@ -1330,4 +1330,46 @@ export interface DecoctionDayCapacity {
   maxCapacity: number;
   usedCapacity: number;
   remainingCapacity: number;
+}
+
+// ============================================
+// 탕전 주문 관리 타입
+// ============================================
+
+export type DecoctionOrderStatus = 'pending' | 'compounding' | 'decocting' | 'packaging' | 'done' | 'cancelled';
+
+export const DECOCTION_ORDER_STATUS_LABELS: Record<DecoctionOrderStatus, string> = {
+  pending: '대기',
+  compounding: '조제중',
+  decocting: '탕전중',
+  packaging: '포장중',
+  done: '완료',
+  cancelled: '취소',
+};
+
+export const DECOCTION_ORDER_STATUS_COLORS: Record<DecoctionOrderStatus, string> = {
+  pending: '#eab308',
+  compounding: '#3b82f6',
+  decocting: '#ec4899',
+  packaging: '#8b5cf6',
+  done: '#10b981',
+  cancelled: '#9ca3af',
+};
+
+export interface DecoctionOrder {
+  id?: string;
+  herbal_draft_id?: string | null;
+  patient_id: string;
+  patient_name: string;
+  status: DecoctionOrderStatus;
+  scheduled_date: string;       // YYYY-MM-DD
+  scheduled_slot: string;       // e.g. '09:00'
+  recipe_name?: string;
+  delivery_method?: string;
+  assigned_to?: string;
+  notes?: string;
+  color?: string | null;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
 }

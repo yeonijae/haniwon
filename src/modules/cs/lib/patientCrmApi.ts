@@ -358,7 +358,9 @@ export async function getPatientPackageStatusByChartNumber(chartNumber: string):
       totalCount: tongmaPackage.total_count,
       usedCount: tongmaPackage.used_count,
       remainingCount: tongmaPackage.remaining_count,
+      startDate: tongmaPackage.start_date,
       expireDate: tongmaPackage.expire_date,
+      packageName: tongmaPackage.package_name,
     } : null,
 
     herbal: herbalPackage ? {
@@ -380,6 +382,7 @@ export async function getPatientPackageStatusByChartNumber(chartNumber: string):
       active: true,
       membershipType: membership.membership_type,
       quantity: membership.quantity,
+      startDate: membership.start_date,
       expireDate: membership.expire_date,
     } : null,
   };

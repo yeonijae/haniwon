@@ -37,6 +37,7 @@ export interface LocalPatient {
   doctor_memo: string | null;
   nurse_memo: string | null;
   referral_type: string | null;
+  consultation_memo: string | null;
 }
 
 // MSSQL 환자 타입 (unified-server API 응답)

@@ -138,7 +138,9 @@ export interface PackageStatusSummary {
     totalCount: number;
     usedCount: number;
     remainingCount: number;
+    startDate?: string;
     expireDate?: string;
+    packageName?: string;
   } | null;
 
   // 한약 선결
@@ -163,6 +165,7 @@ export interface PackageStatusSummary {
     active: boolean;
     membershipType: string;
     quantity: number;
+    startDate?: string;
     expireDate: string;
   } | null;
 }

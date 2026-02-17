@@ -5,6 +5,7 @@ import { MEDICINE_CATEGORIES } from '../lib/api';
 import HerbalConsultationView from './HerbalConsultationView';
 import MedicineUsageView from './MedicineUsageView';
 import PackageManagementView from './PackageManagementView';
+import DecoectionCalendarView from './DecoectionCalendarView';
 
 // Legacy exports - used by PatientTimelineModal
 export const EVENT_TYPES = [
@@ -24,7 +25,7 @@ interface NonCoveredManagementViewProps {
   user: PortalUser;
 }
 
-type NonCoveredTab = 'all' | 'herbal-consultation' | 'medicine' | 'package';
+type NonCoveredTab = 'all' | 'herbal-consultation' | 'medicine' | 'package' | 'decoction';
 
 const PACKAGE_FILTER_CONFIG = [
   { key: 'all', label: '전체', color: '#64748b' },
@@ -115,6 +116,13 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
           >
             <i className="fa-solid fa-box"></i>
             패키지
+          </button>
+          <button
+            className={`noncovered-tab ${activeTab === 'decoction' ? 'active' : ''}`}
+            onClick={() => setActiveTab('decoction')}
+          >
+            <i className="fa-solid fa-fire"></i>
+            탕전
           </button>
         </div>
 
@@ -234,6 +242,8 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
         <HerbalConsultationView {...herbalProps} />
       ) : activeTab === 'medicine' ? (
         <MedicineUsageView {...medicineProps} />
+      ) : activeTab === 'decoction' ? (
+        <DecoectionCalendarView refreshKey={refreshKey} />
       ) : (
         <PackageManagementView {...packageProps} />
       )}

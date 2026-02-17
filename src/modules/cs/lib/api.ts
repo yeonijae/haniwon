@@ -32,6 +32,7 @@ import type {
   JourneyStatus,
   StaffScheduleEntry,
   DecoctionDayCapacity,
+  DecoctionOrder,
 } from '../types';
 import {
   TIMELINE_EVENT_ICONS,
@@ -867,6 +868,12 @@ export async function ensureReceiptTables(): Promise<void> {
     await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS receipt_date TEXT`).catch(() => {});
     await execute(`UPDATE cs_herbal_drafts SET receipt_date = TO_CHAR(created_at, 'YYYY-MM-DD') WHERE receipt_date IS NULL`).catch(() => {});
     await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS doctor TEXT`).catch(() => {});
+    // 빈 doctor 필드를 local_patients.main_doctor로 채우기 (cs_local_patients가 있을 때만)
+    const lpExists = await query<{ exists: boolean }>(`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cs_local_patients') as exists`);
+    if (lpExists[0]?.exists) {
+      await execute(`UPDATE cs_herbal_drafts d SET doctor = p.main_doctor FROM cs_local_patients p WHERE d.chart_number = p.chart_no AND (d.doctor IS NULL OR d.doctor = '') AND p.main_doctor IS NOT NULL AND p.main_doctor != ''`).catch(() => {});
+      await execute(`ALTER TABLE cs_local_patients ADD COLUMN IF NOT EXISTS consultation_memo TEXT`).catch(() => {});
+    }
     await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS journey_status JSONB DEFAULT '{}'`).catch(() => {});
 
     // 탕전 인력 스케줄
@@ -5000,4 +5007,284 @@ export async function getDecoctionCapacity(startDate: string, endDate: string): 
   }
 
   return result;
+}
+
+// ============================================================
+// 탕전 주문 (Decoction Orders) API
+// ============================================================
+
+export async function ensureDecoctionOrdersTable(): Promise<void> {
+  if (isTableInitialized('cs_decoction_orders')) return;
+
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_decoction_orders (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      herbal_draft_id TEXT,
+      patient_id TEXT NOT NULL,
+      patient_name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      scheduled_date TEXT NOT NULL,
+      scheduled_slot TEXT NOT NULL,
+      recipe_name TEXT,
+      delivery_method TEXT,
+      assigned_to TEXT,
+      notes TEXT,
+      color TEXT,
+      created_by TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  // 기존 UUID 컬럼을 TEXT로 마이그레이션
+  await execute(`ALTER TABLE cs_decoction_orders ALTER COLUMN herbal_draft_id TYPE TEXT`).catch(() => {});
+  await execute(`CREATE INDEX IF NOT EXISTS idx_decoction_orders_date ON cs_decoction_orders(scheduled_date)`).catch(() => {});
+  await execute(`CREATE INDEX IF NOT EXISTS idx_decoction_orders_patient ON cs_decoction_orders(patient_id)`).catch(() => {});
+
+  markTableInitialized('cs_decoction_orders');
+}
+
+export async function createDecoctionOrder(order: Omit<DecoctionOrder, 'id' | 'created_at' | 'updated_at'>): Promise<string> {
+  await ensureDecoctionOrdersTable();
+  const now = getCurrentTimestamp();
+  const result = await query<{ id: string }>(`
+    INSERT INTO cs_decoction_orders (
+      herbal_draft_id, patient_id, patient_name, status, scheduled_date, scheduled_slot,
+      recipe_name, delivery_method, assigned_to, notes, color, created_by, created_at, updated_at
+    ) VALUES (
+      ${order.herbal_draft_id ? escapeString(order.herbal_draft_id) : 'NULL'},
+      ${escapeString(order.patient_id)}, ${escapeString(order.patient_name)},
+      ${escapeString(order.status || 'pending')}, ${escapeString(order.scheduled_date)}, ${escapeString(order.scheduled_slot)},
+      ${toSqlValue(order.recipe_name)}, ${toSqlValue(order.delivery_method)},
+      ${toSqlValue(order.assigned_to)}, ${toSqlValue(order.notes)}, ${toSqlValue(order.color)},
+      ${toSqlValue(order.created_by)}, ${escapeString(now)}, ${escapeString(now)}
+    ) RETURNING id
+  `);
+  return result[0]?.id || '';
+}
+
+export async function updateDecoctionOrder(id: string, updates: Partial<DecoctionOrder>): Promise<void> {
+  await ensureDecoctionOrdersTable();
+  const parts: string[] = [];
+  if (updates.herbal_draft_id !== undefined) parts.push(`herbal_draft_id = ${updates.herbal_draft_id ? escapeString(updates.herbal_draft_id) : 'NULL'}`);
+  if (updates.patient_id !== undefined) parts.push(`patient_id = ${escapeString(updates.patient_id)}`);
+  if (updates.patient_name !== undefined) parts.push(`patient_name = ${escapeString(updates.patient_name)}`);
+  if (updates.status !== undefined) parts.push(`status = ${escapeString(updates.status)}`);
+  if (updates.scheduled_date !== undefined) parts.push(`scheduled_date = ${escapeString(updates.scheduled_date)}`);
+  if (updates.scheduled_slot !== undefined) parts.push(`scheduled_slot = ${escapeString(updates.scheduled_slot)}`);
+  if (updates.recipe_name !== undefined) parts.push(`recipe_name = ${toSqlValue(updates.recipe_name)}`);
+  if (updates.delivery_method !== undefined) parts.push(`delivery_method = ${toSqlValue(updates.delivery_method)}`);
+  if (updates.assigned_to !== undefined) parts.push(`assigned_to = ${toSqlValue(updates.assigned_to)}`);
+  if (updates.notes !== undefined) parts.push(`notes = ${toSqlValue(updates.notes)}`);
+  if (updates.color !== undefined) parts.push(`color = ${toSqlValue(updates.color)}`);
+  parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
+  if (parts.length === 0) return;
+  await execute(`UPDATE cs_decoction_orders SET ${parts.join(', ')} WHERE id = ${escapeString(id)}`);
+}
+
+export async function deleteDecoctionOrder(id: string): Promise<void> {
+  await ensureDecoctionOrdersTable();
+  await execute(`DELETE FROM cs_decoction_orders WHERE id = ${escapeString(id)}`);
+}
+
+export async function getDecoctionOrders(filters?: {
+  patientId?: string;
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<DecoctionOrder[]> {
+  await ensureDecoctionOrdersTable();
+  let sql = 'SELECT * FROM cs_decoction_orders WHERE 1=1';
+  if (filters?.patientId) sql += ` AND patient_id = ${escapeString(filters.patientId)}`;
+  if (filters?.status) sql += ` AND status = ${escapeString(filters.status)}`;
+  if (filters?.dateFrom) sql += ` AND scheduled_date >= ${escapeString(filters.dateFrom)}`;
+  if (filters?.dateTo) sql += ` AND scheduled_date <= ${escapeString(filters.dateTo)}`;
+  sql += ' ORDER BY scheduled_date, scheduled_slot';
+  return query<DecoctionOrder>(sql);
+}
+
+export async function getDecoctionOrdersByWeek(startDate: string): Promise<DecoctionOrder[]> {
+  await ensureDecoctionOrdersTable();
+  const start = new Date(startDate);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  const endY = end.getFullYear();
+  const endM = String(end.getMonth() + 1).padStart(2, '0');
+  const endD = String(end.getDate()).padStart(2, '0');
+  const endDate = `${endY}-${endM}-${endD}`;
+  return query<DecoctionOrder>(
+    `SELECT * FROM cs_decoction_orders WHERE scheduled_date >= ${escapeString(startDate)} AND scheduled_date <= ${escapeString(endDate)} ORDER BY scheduled_date, scheduled_slot`
+  );
+}
+
+// ============================================================
+// 상담 메모 (cs_consultation_memos 테이블)
+// ============================================================
+
+export interface ConsultationMemo {
+  id: number;
+  patient_id: number;
+  memo: string;
+  created_by: string;
+  created_at: string;
+}
+
+export async function ensureConsultationMemosTable(): Promise<void> {
+  if (isTableInitialized('cs_consultation_memos')) return;
+  try {
+    await execute(`
+      CREATE TABLE IF NOT EXISTS cs_consultation_memos (
+        id SERIAL PRIMARY KEY,
+        patient_id INTEGER NOT NULL,
+        memo TEXT NOT NULL,
+        created_by TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await execute(`CREATE INDEX IF NOT EXISTS idx_consult_memos_patient ON cs_consultation_memos(patient_id)`).catch(() => {});
+    markTableInitialized('cs_consultation_memos');
+  } catch (err) {
+    console.error('ensureConsultationMemosTable error:', err);
+  }
+}
+
+export async function getConsultationMemos(patientId: number): Promise<ConsultationMemo[]> {
+  await ensureConsultationMemosTable();
+  return query<ConsultationMemo>(
+    `SELECT * FROM cs_consultation_memos WHERE patient_id = ${patientId} ORDER BY created_at DESC`
+  );
+}
+
+export async function addConsultationMemo(patientId: number, memo: string, createdBy?: string): Promise<number> {
+  await ensureConsultationMemosTable();
+  return insert(
+    `INSERT INTO cs_consultation_memos (patient_id, memo, created_by) VALUES (${patientId}, ${escapeString(memo)}, ${escapeString(createdBy || '')})`
+  );
+}
+
+export async function deleteConsultationMemo(id: number): Promise<void> {
+  await ensureConsultationMemosTable();
+  await execute(`DELETE FROM cs_consultation_memos WHERE id = ${id}`);
+}
+
+// =====================================================
+// 약상담 기록 (cs_herbal_consultations)
+// =====================================================
+
+export interface HerbalConsultation {
+  id?: number;
+  patient_id: number;
+  chart_number: string;
+  patient_name: string;
+  // 상담 정보
+  consult_date: string;          // 진료일
+  doctor: string;                // 담당의
+  consult_type: string;          // 약초진/연복/재초진/점검/마무리
+  purpose: string;               // 치료목적
+  disease_tags: string;          // 질환명 (JSON array)
+  treatment_period: string;      // 치료기간 (15일~6개월 등)
+  visit_pattern: string;         // 내원패턴 15일/30일
+  nokryong_recommendation: string; // 녹용필수/권유/배제/언급없음
+  // 후상담 및 결제
+  follow_up_staff?: string;      // 후상담 담당자
+  herbal_payment?: string;       // 맞춤한약 결제 결과
+  nokryong_type?: string;        // 녹용 종류
+  nokryong_payment?: string;     // 녹용 횟수(매번결제/함께결제)
+  follow_up_memo?: string;       // 후상담 메모
+  // 메타
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+async function ensureHerbalConsultationsTable() {
+  if (isTableInitialized('cs_herbal_consultations')) return;
+  await execute(`
+    CREATE TABLE IF NOT EXISTS cs_herbal_consultations (
+      id SERIAL PRIMARY KEY,
+      patient_id INTEGER NOT NULL,
+      chart_number TEXT,
+      patient_name TEXT,
+      consult_date TEXT NOT NULL,
+      doctor TEXT,
+      consult_type TEXT,
+      purpose TEXT,
+      disease_tags TEXT DEFAULT '[]',
+      treatment_period TEXT,
+      visit_pattern TEXT,
+      nokryong_recommendation TEXT DEFAULT '언급없음',
+      follow_up_staff TEXT,
+      herbal_payment TEXT,
+      nokryong_type TEXT,
+      nokryong_payment TEXT,
+      follow_up_memo TEXT,
+      created_by TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await execute(`CREATE INDEX IF NOT EXISTS idx_herbal_consult_patient ON cs_herbal_consultations(patient_id)`).catch(() => {});
+  await execute(`CREATE INDEX IF NOT EXISTS idx_herbal_consult_date ON cs_herbal_consultations(consult_date)`).catch(() => {});
+  markTableInitialized('cs_herbal_consultations');
+}
+
+export async function getHerbalConsultations(patientId: number): Promise<HerbalConsultation[]> {
+  await ensureHerbalConsultationsTable();
+  return query<HerbalConsultation>(
+    `SELECT * FROM cs_herbal_consultations WHERE patient_id = ${patientId} ORDER BY consult_date DESC, created_at DESC`
+  );
+}
+
+export async function getAllHerbalConsultations(dateFrom?: string, dateTo?: string): Promise<HerbalConsultation[]> {
+  await ensureHerbalConsultationsTable();
+  let sql = `SELECT * FROM cs_herbal_consultations WHERE 1=1`;
+  if (dateFrom) sql += ` AND consult_date >= ${escapeString(dateFrom)}`;
+  if (dateTo) sql += ` AND consult_date <= ${escapeString(dateTo)}`;
+  sql += ` ORDER BY consult_date DESC, created_at DESC`;
+  return query<HerbalConsultation>(sql);
+}
+
+export async function addHerbalConsultation(data: Omit<HerbalConsultation, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
+  await ensureHerbalConsultationsTable();
+  const result = await query<{ id: number }>(`
+    INSERT INTO cs_herbal_consultations (
+      patient_id, chart_number, patient_name, consult_date, doctor, consult_type,
+      purpose, disease_tags, treatment_period, visit_pattern, nokryong_recommendation,
+      follow_up_staff, herbal_payment, nokryong_type, nokryong_payment, follow_up_memo, created_by
+    ) VALUES (
+      ${data.patient_id}, ${escapeString(data.chart_number)}, ${escapeString(data.patient_name)},
+      ${escapeString(data.consult_date)}, ${escapeString(data.doctor || '')}, ${escapeString(data.consult_type || '')},
+      ${escapeString(data.purpose || '')}, ${escapeString(data.disease_tags || '[]')},
+      ${escapeString(data.treatment_period || '')}, ${escapeString(data.visit_pattern || '')},
+      ${escapeString(data.nokryong_recommendation || '언급없음')},
+      ${escapeString(data.follow_up_staff || '')}, ${escapeString(data.herbal_payment || '')},
+      ${escapeString(data.nokryong_type || '')}, ${escapeString(data.nokryong_payment || '')},
+      ${escapeString(data.follow_up_memo || '')}, ${escapeString(data.created_by || '')}
+    ) RETURNING id
+  `);
+  return result[0]?.id;
+}
+
+export async function updateHerbalConsultation(id: number, data: Partial<HerbalConsultation>): Promise<void> {
+  await ensureHerbalConsultationsTable();
+  const sets: string[] = [];
+  if (data.consult_date !== undefined) sets.push(`consult_date = ${escapeString(data.consult_date)}`);
+  if (data.doctor !== undefined) sets.push(`doctor = ${escapeString(data.doctor)}`);
+  if (data.consult_type !== undefined) sets.push(`consult_type = ${escapeString(data.consult_type)}`);
+  if (data.purpose !== undefined) sets.push(`purpose = ${escapeString(data.purpose)}`);
+  if (data.disease_tags !== undefined) sets.push(`disease_tags = ${escapeString(data.disease_tags)}`);
+  if (data.treatment_period !== undefined) sets.push(`treatment_period = ${escapeString(data.treatment_period)}`);
+  if (data.visit_pattern !== undefined) sets.push(`visit_pattern = ${escapeString(data.visit_pattern)}`);
+  if (data.nokryong_recommendation !== undefined) sets.push(`nokryong_recommendation = ${escapeString(data.nokryong_recommendation)}`);
+  if (data.follow_up_staff !== undefined) sets.push(`follow_up_staff = ${escapeString(data.follow_up_staff)}`);
+  if (data.herbal_payment !== undefined) sets.push(`herbal_payment = ${escapeString(data.herbal_payment)}`);
+  if (data.nokryong_type !== undefined) sets.push(`nokryong_type = ${escapeString(data.nokryong_type)}`);
+  if (data.nokryong_payment !== undefined) sets.push(`nokryong_payment = ${escapeString(data.nokryong_payment)}`);
+  if (data.follow_up_memo !== undefined) sets.push(`follow_up_memo = ${escapeString(data.follow_up_memo)}`);
+  sets.push(`updated_at = NOW()`);
+  await execute(`UPDATE cs_herbal_consultations SET ${sets.join(', ')} WHERE id = ${id}`);
+}
+
+export async function deleteHerbalConsultation(id: number): Promise<void> {
+  await ensureHerbalConsultationsTable();
+  await execute(`DELETE FROM cs_herbal_consultations WHERE id = ${id}`);
 }

@@ -36,7 +36,9 @@ export default function DeliveryTimeEstimate({ deliveryMethod, decoctionDate }: 
 }
 
 function formatDateShort(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
+  const [datePart, timePart] = dateStr.split(' ');
+  const d = new Date(datePart + 'T00:00:00');
+  if (isNaN(d.getTime())) return dateStr;
   const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-  return `${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]})`;
+  return `${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]})${timePart ? ' ' + timePart : ''}`;
 }

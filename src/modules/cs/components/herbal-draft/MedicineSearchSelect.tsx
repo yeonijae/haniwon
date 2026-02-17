@@ -13,9 +13,10 @@ export interface SelectedMedicine {
 interface MedicineSearchSelectProps {
   medicines: SelectedMedicine[];
   onChange: (medicines: SelectedMedicine[]) => void;
+  hideLabel?: boolean;
 }
 
-export default function MedicineSearchSelect({ medicines, onChange }: MedicineSearchSelectProps) {
+export default function MedicineSearchSelect({ medicines, onChange, hideLabel }: MedicineSearchSelectProps) {
   const [keyword, setKeyword] = useState('');
   const [results, setResults] = useState<MedicineInventory[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -92,7 +93,7 @@ export default function MedicineSearchSelect({ medicines, onChange }: MedicineSe
 
   return (
     <div className="herbal-draft-section" ref={wrapperRef}>
-      <span className="herbal-draft-section-label">상비약 선택</span>
+      {!hideLabel && <span className="herbal-draft-section-label">상비약 선택</span>}
 
       {/* 선택된 약 목록 */}
       {medicines.length > 0 && (

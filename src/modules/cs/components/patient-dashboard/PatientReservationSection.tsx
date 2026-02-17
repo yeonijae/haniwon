@@ -31,8 +31,7 @@ const PatientReservationSection: React.FC<PatientReservationSectionProps> = ({
         <table className="dashboard-table">
             <thead>
               <tr>
-                <th>날짜</th>
-                <th>시간</th>
+                <th>날짜/시간</th>
                 <th>원장</th>
                 <th>항목</th>
                 <th>상태</th>
@@ -47,9 +46,12 @@ const PatientReservationSection: React.FC<PatientReservationSectionProps> = ({
                     key={r.id}
                     className={isUpcoming ? 'upcoming' : r.canceled ? 'canceled' : isNoShow ? 'noshow' : ''}
                   >
-                    <td>{r.date}</td>
-                    <td>{r.time}</td>
-                    <td>{r.doctor}</td>
+                    <td>{(() => {
+                      const parts = (r.date || '').split('-');
+                      const short = parts.length === 3 ? `${parts[0].slice(2)}/${+parts[1]}/${+parts[2]}` : r.date;
+                      return <>{short}<span style={{ margin: '0 6px', color: '#cbd5e1' }}>·</span>{r.time || ''}</>;
+                    })()}</td>
+                    <td>{r.doctor ? r.doctor.replace(/원장$/g, '').charAt(0) : '-'}</td>
                     <td>{r.item}</td>
                     <td>
                       {isUpcoming ? '' : r.canceled ? '취소' : r.visited ? '방문' : <span className="status-noshow">노쇼</span>}

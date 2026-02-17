@@ -4,7 +4,7 @@ import { CONSULTATION_METHODS, OTHER_SUB_TYPES, DRAFT_DELIVERY_LABELS } from '..
 import SharedChipSelector from './SharedChipSelector';
 import DeliveryTimeEstimate from './DeliveryTimeEstimate';
 import MedicineSearchSelect from './MedicineSearchSelect';
-import DecoctionCalendarPreview from '../DecoctionCalendarPreview';
+// DecoctionCalendarPreview removed — calendar modal managed by HerbalDraftModal
 
 interface BranchOtherConsultationProps {
   formData: HerbalDraftFormData;
@@ -83,15 +83,20 @@ export default function BranchOtherConsultation({ formData, onUpdate }: BranchOt
       {sections.decoction && (
         <>
           <hr className="herbal-draft-divider" />
-          <DecoctionCalendarPreview
-            selectedDate={formData.decoctionDate}
-            onDateSelect={d => onUpdate({ decoctionDate: d })}
-          />
-          {formData.decoctionDate && (
-            <div className="herbal-draft-selected-info">
-              탕전 예정: {formatDateLabel(formData.decoctionDate)}
-            </div>
-          )}
+          <div className="herbal-draft-field-group">
+            <label className="herbal-draft-field-label">탕전 일정</label>
+            <button
+              type="button"
+              className="herbal-draft-decoction-btn"
+              onClick={() => onUpdate({ _openCalendar: true } as any)}
+            >
+              {formData.decoctionDate ? (
+                <><i className="fas fa-calendar-check" style={{ marginRight: 6, color: '#10b981' }} />{formatDateLabel(formData.decoctionDate)}</>
+              ) : (
+                <><i className="fas fa-calendar-plus" style={{ marginRight: 6 }} />탕전 일정 선택</>
+              )}
+            </button>
+          </div>
         </>
       )}
 
@@ -132,7 +137,9 @@ export default function BranchOtherConsultation({ formData, onUpdate }: BranchOt
 }
 
 function formatDateLabel(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
+  const [datePart, timePart] = dateStr.split(' ');
+  const d = new Date(datePart + 'T00:00:00');
+  if (isNaN(d.getTime())) return dateStr;
   const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-  return `${d.getMonth() + 1}/${d.getDate()} (${dayNames[d.getDay()]})`;
+  return `${d.getMonth() + 1}/${d.getDate()} (${dayNames[d.getDay()]})${timePart ? ' ' + timePart : ''}`;
 }

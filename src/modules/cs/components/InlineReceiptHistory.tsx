@@ -100,9 +100,10 @@ const formatDateShort = (dateStr: string): string => {
   const datePart = dateStr.split(/[\sT]/)[0];
   const parts = datePart.split('-');
   if (parts.length >= 3 && parts[0] && parts[1] && parts[2]) {
+    const year = parts[0].slice(-2);
     const month = parts[1].padStart(2, '0');
     const day = parts[2].substring(0, 2).padStart(2, '0');
-    return `${month}/${day}`;
+    return `${year}/${month}/${day}`;
   }
   return '-';
 };
@@ -378,6 +379,12 @@ const InlineReceiptHistory: React.FC<InlineReceiptHistoryProps> = ({
                   {/* 첫줄: 날짜 + 금액 + 결제방식 */}
                   <div className="irh-item-main">
                     <span className="irh-date">{receipt.receipt_date ? formatDateShort(receipt.receipt_date) : '-'}</span>
+                    {(() => {
+                      const doc = receipt.treatments?.[0]?.doctor;
+                      if (!doc || doc === 'DOCTOR') return null;
+                      const short = doc.replace(/원장$/g, '').charAt(0);
+                      return <span className="irh-doctor">{short}</span>;
+                    })()}
                     <span className="irh-amount">{formatMoney(receipt.total_amount)}</span>
                     <span className="irh-methods">
                       {receipt.card > 0 && <i className="fa-solid fa-credit-card" title="카드"></i>}

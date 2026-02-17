@@ -54,7 +54,7 @@ const YakchimContent: React.FC<ContentComponentProps> = ({
   onClose,
   onMemoRefresh,
 }) => {
-  const [yakchimTab, setYakchimTab] = useState<'onetime' | 'package' | 'membership'>('onetime');
+  const [yakchimTab, setYakchimTab] = useState<'onetime' | 'package' | 'membership'>('package');
   const [yakchimTypeOptions, setYakchimTypeOptions] = useState<Array<{ id: number; name: string; type: string; deduction_count?: number }>>([]);
   const [selectedYakchims, setSelectedYakchims] = useState<SelectedYakchim[]>([]);
   const [memberships, setMemberships] = useState<MembershipRow[]>([]);
@@ -329,7 +329,6 @@ const YakchimContent: React.FC<ContentComponentProps> = ({
       {/* 탭 버튼 */}
       <div style={{ display: 'flex', borderBottom: '1px solid #E5E7EB', marginBottom: '12px' }}>
         {([
-          { key: 'onetime' as const, label: '일회성' },
           { key: 'package' as const, label: '패키지차감' },
           { key: 'membership' as const, label: '멤버십' },
         ]).map(tab => (

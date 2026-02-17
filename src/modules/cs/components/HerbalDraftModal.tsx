@@ -3,7 +3,9 @@ import type { PortalUser } from '@shared/types';
 import type { LocalPatient } from '../lib/patientSync';
 import type { HerbalDraftFormData, DraftBranchType, HerbalDraft, TreatmentMonth, DraftVisitPattern, NokryongRecommendation, ConsultationMethod, OtherSubType, PaymentMonth, NokryongGrade, DraftDeliveryMethod } from '../types';
 import { DRAFT_BRANCH_TYPES, INITIAL_DRAFT_FORM_DATA } from '../types';
-import { createHerbalDraft, updateHerbalDraft, useMedicineStock } from '../lib/api';
+import { createHerbalDraft, updateHerbalDraft, useMedicineStock, getDecoctionOrders } from '../lib/api';
+import type { DecoctionOrder } from '../types';
+import { DECOCTION_ORDER_STATUS_COLORS } from '../types';
 import BranchInitialHerbal from './herbal-draft/BranchInitialHerbal';
 import BranchFollowUpDeduct from './herbal-draft/BranchFollowUpDeduct';
 import BranchFollowUpPayment from './herbal-draft/BranchFollowUpPayment';
@@ -66,6 +68,7 @@ function formDataToRecord(form: HerbalDraftFormData, patient: LocalPatient, user
     medicine_items: form.medicines.length > 0
       ? JSON.stringify(form.medicines.map(m => ({ id: m.inventoryId, name: m.name, qty: m.quantity })))
       : undefined,
+    doctor: undefined as string | undefined,  // handleSave에서 설정
     receipt_date: undefined as string | undefined,  // handleSave에서 설정
     status: form.decoctionDate ? 'scheduled' as const : 'draft' as const,
     created_by: user.name,
@@ -80,11 +83,146 @@ function isDirty(form: HerbalDraftFormData): boolean {
     form.memo.trim() !== '';
 }
 
+/* ─── 탕전 캘린더 그리드 (시간표 방식) ─── */
+function CalendarGrid({ selectedDate, onDateSelect }: { selectedDate?: string; onDateSelect: (d: string) => void }) {
+  const [viewStart, setViewStart] = useState(() => {
+    const d = new Date(); d.setHours(0,0,0,0); return d;
+  });
+  const [orders, setOrders] = useState<DecoctionOrder[]>([]);
+  const [pendingSlot, setPendingSlot] = useState<{ date: string; slot: string } | null>(null);
+
+  const HOURS = Array.from({ length: 10 }, (_, i) => 9 + i); // 9~18
+  const DAY_NAMES = ['일','월','화','수','목','금','토'];
+
+  const viewDates = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(viewStart); d.setDate(d.getDate() + i); return d;
+  });
+
+  const fmtDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const todayStr = fmtDate(new Date());
+
+  useEffect(() => {
+    (async () => {
+      const from = fmtDate(viewDates[0]);
+      const to = fmtDate(viewDates[6]);
+      try {
+        const data = await getDecoctionOrders({ dateFrom: from, dateTo: to });
+        setOrders(data);
+      } catch {}
+    })();
+  }, [viewStart]);
+
+  const goPrev = () => { const d = new Date(viewStart); d.setDate(d.getDate() - 7); setViewStart(d); };
+  const goNext = () => { const d = new Date(viewStart); d.setDate(d.getDate() + 7); setViewStart(d); };
+  const goToday = () => { const d = new Date(); d.setHours(0,0,0,0); setViewStart(d); };
+
+  const handleCellClick = (dateStr: string, slot: string) => {
+    setPendingSlot(prev => prev?.date === dateStr && prev?.slot === slot ? null : { date: dateStr, slot });
+  };
+
+  const confirmSlot = () => {
+    if (!pendingSlot) return;
+    onDateSelect(`${pendingSlot.date} ${pendingSlot.slot}`);
+    setPendingSlot(null);
+  };
+
+  const weekLabel = (() => {
+    const s = viewDates[0], e = viewDates[6];
+    return `${s.getMonth()+1}/${s.getDate()} (${DAY_NAMES[s.getDay()]}) ~ ${e.getMonth()+1}/${e.getDate()} (${DAY_NAMES[e.getDay()]})`;
+  })();
+
+  // 기존 선택 날짜 파싱
+  const selectedDatePart = selectedDate?.split(' ')[0];
+  const selectedTimePart = selectedDate?.split(' ')[1];
+
+  return (
+    <div className="hcg-container">
+      <div className="hcg-nav">
+        <button type="button" onClick={goPrev}><i className="fas fa-chevron-left" /></button>
+        <button type="button" className="hcg-today" onClick={goToday}>오늘</button>
+        <button type="button" onClick={goNext}><i className="fas fa-chevron-right" /></button>
+        <span className="hcg-label">{weekLabel}</span>
+      </div>
+      <div className="hcg-grid-wrapper">
+        <div className="hcg-grid" style={{ gridTemplateColumns: `55px repeat(7, 1fr)` }}>
+          {/* 헤더 */}
+          <div className="hcg-corner">시간</div>
+          {viewDates.map((d, i) => {
+            const ds = fmtDate(d);
+            const isToday = ds === todayStr;
+            return (
+              <div key={i} className={`hcg-day-header ${isToday ? 'today' : ''}`}>
+                <span>{DAY_NAMES[d.getDay()]}</span>
+                <span className="hcg-day-num">{d.getDate()}</span>
+              </div>
+            );
+          })}
+          {/* 시간 슬롯 */}
+          {HOURS.map(hour => {
+            const slotStr = `${String(hour).padStart(2,'0')}:00`;
+            const isAlt = (hour - 9) % 2 === 1;
+            return (
+              <React.Fragment key={hour}>
+                <div className={`hcg-time ${isAlt ? 'alt' : ''}`}>{slotStr}</div>
+                {viewDates.map((d, dayIdx) => {
+                  const dateStr = fmtDate(d);
+                  const cellOrders = orders.filter(o => o.scheduled_date === dateStr && o.scheduled_slot === slotStr);
+                  const isSelected = selectedDatePart === dateStr && selectedTimePart === slotStr;
+                  const isPending = pendingSlot?.date === dateStr && pendingSlot?.slot === slotStr;
+                  return (
+                    <div
+                      key={dayIdx}
+                      className={`hcg-cell ${isAlt ? 'alt' : ''} ${isSelected ? 'selected' : ''} ${isPending ? 'pending' : ''}`}
+                      onClick={() => handleCellClick(dateStr, slotStr)}
+                    >
+                      {cellOrders.map(o => (
+                        <div
+                          key={o.id}
+                          className="hcg-order"
+                          style={{ backgroundColor: DECOCTION_ORDER_STATUS_COLORS[o.status] + '30', borderLeft: `3px solid ${DECOCTION_ORDER_STATUS_COLORS[o.status]}` }}
+                        >
+                          <span className="hcg-order-name">{o.patient_name}</span>
+                          <span className="hcg-order-meta">{o.patient_id}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+      {/* 확인 바 */}
+      {pendingSlot && (
+        <div className="hcg-confirm-bar">
+          <div className="hcg-confirm-info">
+            {selectedDate && (
+              <>
+                <span className="hcg-from">{(() => { const [dp, tp] = selectedDate.split(' '); const [,m,d] = dp.split('-'); const dt = new Date(dp+'T00:00:00'); return `${Number(m)}/${Number(d)}(${DAY_NAMES[dt.getDay()]}) ${tp || ''}`; })()}</span>
+                <span style={{ margin: '0 6px', color: '#94a3b8' }}>→</span>
+              </>
+            )}
+            <span className="hcg-to">{(() => { const [,m,d] = pendingSlot.date.split('-'); const dt = new Date(pendingSlot.date+'T00:00:00'); return `${Number(m)}/${Number(d)}(${DAY_NAMES[dt.getDay()]}) ${pendingSlot.slot}`; })()}</span>
+            <span className="hcg-change-label">{selectedDate ? '으로 변경' : '에 배정'}</span>
+          </div>
+          <div className="hcg-confirm-actions">
+            <button type="button" onClick={() => setPendingSlot(null)}>취소</button>
+            <button type="button" className="confirm" onClick={confirmSlot}>{selectedDate ? '변경 확정' : '배정 확정'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuccess, editDraft, defaultReceiptDate }: HerbalDraftModalProps) {
   const [formData, setFormData] = useState<HerbalDraftFormData>({ ...INITIAL_DRAFT_FORM_DATA });
   const [receiptDate, setReceiptDate] = useState(defaultReceiptDate || '');
+  const DOCTOR_LIST = ['강희종', '김대현', '임세열', '전인태'];
   const [doctor, setDoctor] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
 
   // 드래그 상태
   const containerRef = useRef<HTMLDivElement>(null);
@@ -102,7 +240,7 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
       } else {
         setFormData({ ...INITIAL_DRAFT_FORM_DATA });
         setReceiptDate(defaultReceiptDate || '');
-        setDoctor('');
+        setDoctor(patient?.main_doctor || '');
       }
     }
   }, [isOpen, editDraft, defaultReceiptDate]);
@@ -138,6 +276,10 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
   }, []);
 
   const handleUpdate = useCallback((updates: Partial<HerbalDraftFormData>) => {
+    if ((updates as any)._openCalendar) {
+      setShowCalendarModal(true);
+      return;
+    }
     setFormData(prev => ({ ...prev, ...updates }));
   }, []);
 
@@ -248,49 +390,21 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
                   style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
                 />
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap', marginLeft: 12 }}>담당의</label>
-                <input
-                  type="text"
+                <select
                   value={doctor}
                   onChange={(e) => setDoctor(e.target.value)}
-                  placeholder="담당의"
-                  style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, width: 80 }}
-                />
+                  style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, width: 90, background: '#fff' }}
+                >
+                  <option value="">선택</option>
+                  {DOCTOR_LIST.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
               </div>
 
-              {/* 분기 선택 */}
-              <div className="herbal-draft-branch-selector">
-                {DRAFT_BRANCH_TYPES.map(({ value, label }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={`herbal-draft-branch-chip${formData.branch === value ? ' active' : ''}`}
-                    onClick={() => handleBranchChange(value)}
-                  >
-                    {label.includes('(') ? (
-                      <>
-                        {label.replace(/\s*\(.*/, '')}
-                        <span className="herbal-draft-branch-sub">({label.split('(')[1]}</span>
-                      </>
-                    ) : label}
-                  </button>
-                ))}
-              </div>
-
-              {/* 분기별 컴포넌트 */}
-              {formData.branch && <hr className="herbal-draft-divider" />}
-
-              {formData.branch === '약초진' && (
-                <BranchInitialHerbal formData={formData} onUpdate={handleUpdate} />
-              )}
-              {formData.branch === '약재진_N차' && (
-                <BranchFollowUpDeduct formData={formData} onUpdate={handleUpdate} />
-              )}
-              {formData.branch === '약재진_재결제' && (
-                <BranchFollowUpPayment formData={formData} onUpdate={handleUpdate} />
-              )}
-              {formData.branch === '기타상담' && (
-                <BranchOtherConsultation formData={formData} onUpdate={handleUpdate} />
-              )}
+              {/* 한약 기록 (N차 상담) */}
+              <hr className="herbal-draft-divider" />
+              <BranchFollowUpDeduct formData={formData} onUpdate={handleUpdate} />
 
               {/* 저장 버튼 */}
               {formData.branch && (
@@ -311,6 +425,26 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
           </div>
         </div>
       </div>
+      {/* 탕전 캘린더 모달 */}
+      {showCalendarModal && (
+        <div className="herbal-cal-modal-overlay" onClick={() => setShowCalendarModal(false)}>
+          <div className="herbal-cal-modal" onClick={e => e.stopPropagation()}>
+            <div className="herbal-cal-modal-header">
+              <h3>탕전 일정 선택 — {patient?.name}</h3>
+              <button className="herbal-cal-modal-close" onClick={() => setShowCalendarModal(false)}>
+                <i className="fas fa-times" />
+              </button>
+            </div>
+            <CalendarGrid
+              selectedDate={formData.decoctionDate}
+              onDateSelect={(date) => {
+                setFormData(prev => ({ ...prev, decoctionDate: date }));
+                setShowCalendarModal(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -509,4 +643,101 @@ const MODAL_STYLES = `
     background: #9ca3af;
     cursor: not-allowed;
   }
+
+  /* 탕전 일정 선택 버튼 */
+  .herbal-draft-decoction-btn {
+    display: flex;
+    align-items: center;
+    padding: 8px 14px;
+    border: 1px dashed #d1d5db;
+    border-radius: 8px;
+    background: #f9fafb;
+    font-size: 13px;
+    color: #374151;
+    cursor: pointer;
+    transition: all 0.15s;
+    width: 100%;
+  }
+  .herbal-draft-decoction-btn:hover {
+    border-color: #3b82f6;
+    background: #eff6ff;
+    color: #1d4ed8;
+  }
+
+  /* 캘린더 모달 */
+  .herbal-cal-modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+  }
+  .herbal-cal-modal {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    width: 95vw;
+    max-width: 1000px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .herbal-cal-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .herbal-cal-modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .herbal-cal-modal-close {
+    border: none;
+    background: none;
+    font-size: 18px;
+    color: #9ca3af;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+  .herbal-cal-modal-close:hover { background: #f3f4f6; color: #374151; }
+
+  /* CalendarGrid */
+  .hcg-container { padding: 12px 16px; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .hcg-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .hcg-nav button { border: 1px solid #e5e7eb; background: white; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+  .hcg-nav button:hover { background: #f3f4f6; }
+  .hcg-today { font-weight: 600; color: #2563eb; }
+  .hcg-label { font-weight: 600; font-size: 14px; color: #334155; margin-left: 8px; }
+  .hcg-grid-wrapper { flex: 1; overflow: auto; min-height: 0; border-radius: 8px; }
+  .hcg-grid { display: grid; border: 1px solid #e2e8f0; border-radius: 8px; background: white; min-width: 760px; }
+  .hcg-corner { padding: 6px 4px; font-size: 11px; color: #94a3b8; text-align: center; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e5e7eb; background: #f8fafc; }
+  .hcg-day-header { padding: 6px 4px; text-align: center; font-size: 12px; font-weight: 600; color: #374151; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #f0f0f0; background: #f8fafc; }
+  .hcg-day-header.today { background: #eff6ff; color: #2563eb; }
+  .hcg-day-num { display: block; font-size: 16px; font-weight: 700; }
+  .hcg-time { padding: 4px 6px; font-size: 11px; color: #94a3b8; text-align: right; border-bottom: 1px solid #f0f0f0; border-right: 1px solid #e5e7eb; min-height: 50px; display: flex; align-items: flex-start; justify-content: flex-end; }
+  .hcg-time.alt { background: #f8fafc; }
+  .hcg-cell { border-bottom: 1px solid #f0f0f0; border-right: 1px solid #f0f0f0; min-height: 50px; padding: 2px; cursor: pointer; transition: background 0.15s; display: flex; flex-direction: column; gap: 2px; }
+  .hcg-cell.alt { background: #f8fafc; }
+  .hcg-cell:hover { background: #eff6ff; }
+  .hcg-cell.selected { background: #dbeafe; }
+  .hcg-cell.pending { background: #e0f2fe; box-shadow: inset 0 0 0 2px #38bdf8; }
+  .hcg-order { padding: 3px 5px; border-radius: 4px; font-size: 12px; line-height: 1.3; overflow: hidden; }
+  .hcg-order-name { font-weight: 600; display: block; font-size: 13px; }
+  .hcg-order-meta { font-size: 11px; opacity: 0.7; }
+  .hcg-confirm-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: #f0f9ff; border-top: 1px solid #bae6fd; }
+  .hcg-confirm-info { display: flex; align-items: center; gap: 4px; font-size: 13px; }
+  .hcg-from { text-decoration: line-through; color: #94a3b8; }
+  .hcg-to { font-weight: 700; color: #2563eb; }
+  .hcg-change-label { margin-left: 6px; font-size: 12px; color: #64748b; }
+  .hcg-confirm-actions { display: flex; gap: 8px; }
+  .hcg-confirm-actions button { padding: 6px 14px; border: 1px solid #e5e7eb; border-radius: 6px; background: white; cursor: pointer; font-size: 13px; }
+  .hcg-confirm-actions button.confirm { background: #2563eb; color: white; border-color: #2563eb; font-weight: 600; }
+  .hcg-confirm-actions button.confirm:hover { background: #1d4ed8; }
 `;

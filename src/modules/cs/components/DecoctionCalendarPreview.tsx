@@ -22,7 +22,10 @@ function getWeekStart(offset: number): Date {
 }
 
 function formatDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 }
 
 function getUsageClass(day: DecoctionDayCapacity): string {
@@ -50,6 +53,7 @@ export default function DecoctionCalendarPreview({
   const [capacity, setCapacity] = useState<DecoctionDayCapacity[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingDate, setPendingDate] = useState<string | null>(null);
 
   const todayStr = useMemo(() => formatDate(new Date()), []);
 
@@ -109,14 +113,25 @@ export default function DecoctionCalendarPreview({
     return result;
   }, [weekStart, capacity]);
 
+  const TIME_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
+
   const handleDayClick = useCallback(
     (day: DecoctionDayCapacity) => {
       if (readonly || !onDateSelect) return;
       if (day.remainingCapacity <= 0 && day.maxCapacity > 0) return;
       if (day.maxCapacity === 0) return;
-      onDateSelect(day.date);
+      setPendingDate(prev => prev === day.date ? null : day.date);
     },
     [readonly, onDateSelect]
+  );
+
+  const handleTimeSelect = useCallback(
+    (time: string) => {
+      if (!pendingDate || !onDateSelect) return;
+      onDateSelect(`${pendingDate} ${time}`);
+      setPendingDate(null);
+    },
+    [pendingDate, onDateSelect]
   );
 
   return (
@@ -160,7 +175,8 @@ export default function DecoctionCalendarPreview({
         <div className="decoction-calendar-grid">
           {days.map((day, idx) => {
             const isToday = day.date === todayStr;
-            const isSelected = day.date === selectedDate;
+            const isSelected = day.date === selectedDate || (selectedDate?.startsWith(day.date) ?? false);
+            const isPending = day.date === pendingDate;
             const usageClass = getUsageClass(day);
             const isWeekend = idx >= 5;
             const isClickable =
@@ -184,6 +200,7 @@ export default function DecoctionCalendarPreview({
                   usageClass,
                   isWeekend ? 'weekend' : '',
                   isSelected ? 'selected' : '',
+                  isPending ? 'pending' : '',
                   isToday ? 'today' : '',
                   isClickable ? 'clickable' : '',
                 ].filter(Boolean).join(' ')}
@@ -219,6 +236,30 @@ export default function DecoctionCalendarPreview({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* 시간 슬롯 선택 */}
+      {pendingDate && !readonly && (
+        <div className="decoction-time-picker">
+          <div className="decoction-time-label">
+            탕전 예정: {(() => { const [,m,d] = pendingDate.split('-'); return `${Number(m)}/${Number(d)}`; })()} ({DAY_NAMES[(() => { const d = new Date(pendingDate + 'T00:00:00'); const day = d.getDay(); return day === 0 ? 6 : day - 1; })()]})
+          </div>
+          <div className="decoction-time-slots">
+            {TIME_SLOTS.map(t => {
+              const isSelected = selectedDate === `${pendingDate} ${t}`;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  className={`decoction-time-slot ${isSelected ? 'selected' : ''}`}
+                  onClick={() => handleTimeSelect(t)}
+                >
+                  {t}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -346,6 +387,12 @@ export default function DecoctionCalendarPreview({
           box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
         }
 
+        .decoction-day-cell.pending {
+          border-color: #0ea5e9;
+          background: #e0f2fe !important;
+          box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.3);
+        }
+
         .decoction-day-cell.today {
           border-color: #6366f1;
         }
@@ -408,6 +455,46 @@ export default function DecoctionCalendarPreview({
         .decoction-day-cell.holiday .decoction-day-remaining {
           color: #94a3b8;
           font-weight: 400;
+        }
+
+        .decoction-time-picker {
+          margin-top: 10px;
+          padding: 10px 12px;
+          background: #f0f9ff;
+          border: 1px solid #bae6fd;
+          border-radius: 8px;
+        }
+        .decoction-time-label {
+          font-size: 13px;
+          font-weight: 600;
+          color: #0369a1;
+          margin-bottom: 8px;
+        }
+        .decoction-time-slots {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .decoction-time-slot {
+          padding: 5px 12px;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          background: #fff;
+          font-size: 12px;
+          font-weight: 500;
+          color: #374151;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .decoction-time-slot:hover {
+          background: #eff6ff;
+          border-color: #93c5fd;
+          color: #2563eb;
+        }
+        .decoction-time-slot.selected {
+          background: #3b82f6;
+          color: #fff;
+          border-color: #3b82f6;
         }
       `}</style>
     </div>

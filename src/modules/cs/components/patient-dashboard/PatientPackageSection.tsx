@@ -3,12 +3,13 @@
  */
 import React from 'react';
 import type { PackageStatusSummary } from '../../types/crm';
-import type { HerbalDraft } from '../../types';
-import { DRAFT_DELIVERY_LABELS, DRAFT_STATUS_LABELS } from '../../types';
+import type { HerbalDraft, DecoctionOrder } from '../../types';
+import { DRAFT_DELIVERY_LABELS, DRAFT_STATUS_LABELS, DECOCTION_ORDER_STATUS_LABELS, DECOCTION_ORDER_STATUS_COLORS } from '../../types';
 
 interface PatientPackageSectionProps {
   packages: PackageStatusSummary | null;
   herbalDrafts: HerbalDraft[];
+  decoctionOrders?: DecoctionOrder[];
   isLoading: boolean;
   onEditDraft?: (draft: HerbalDraft) => void;
   onDeleteDraft?: (draft: HerbalDraft) => void;
@@ -27,7 +28,7 @@ function formatDate(dateStr?: string): string {
   if (!dateStr) return '';
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return dateStr;
-  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  return `${String(d.getFullYear()).slice(2)}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // medicine_items JSON → 표시 텍스트
@@ -44,6 +45,7 @@ function parseMedicineItems(json?: string): string {
 const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
   packages,
   herbalDrafts,
+  decoctionOrders = [],
   isLoading,
   onEditDraft,
   onDeleteDraft,
@@ -52,113 +54,127 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
     return <div className="section-loading">로딩 중...</div>;
   }
 
-  const hasPackage = packages && (packages.tongma || packages.herbal || packages.nokryong || packages.membership);
-  const hasDrafts = herbalDrafts.length > 0;
+  // 모든 항목을 통합 리스트로 만들기
+  type UnifiedItem = { type: 'pkg'; kind: string; date: string; node: React.ReactNode }
+    | { type: 'draft'; date: string; draft: HerbalDraft }
+    | { type: 'decoction'; date: string; order: DecoctionOrder };
 
-  if (!hasPackage && !hasDrafts) {
+  const allItems: UnifiedItem[] = [];
+
+  // 패키지 → 통합 리스트에 추가
+  if (packages?.tongma) {
+    allItems.push({
+      type: 'pkg', kind: 'tongma', date: packages.tongma.startDate || '9999',
+      node: (
+        <div className="herbal-draft-history-row">
+          <span className="pkg-badge tongma">통마</span>
+          <span className="herbal-draft-history-date">{formatDate(packages.tongma.startDate)}</span>
+          <span className="pkg-info">통마{packages.tongma.totalCount}회 결제</span>
+        </div>
+      ),
+    });
+  }
+  if (packages?.membership) {
+    allItems.push({
+      type: 'pkg', kind: 'membership', date: packages.membership.startDate || '9999',
+      node: (
+        <div className="herbal-draft-history-row">
+          <span className="pkg-badge membership">멤버</span>
+          <span className="herbal-draft-history-date">{formatDate(packages.membership.startDate)}</span>
+          <span className="pkg-info">{packages.membership.membershipType} ~{formatDate(packages.membership.expireDate)}</span>
+        </div>
+      ),
+    });
+  }
+  if (packages?.herbal) {
+    allItems.push({
+      type: 'pkg', kind: 'herbal', date: '9999',
+      node: (
+        <div className="herbal-draft-history-row">
+          <span className="pkg-badge herbal">선결</span>
+          <span className="pkg-info">{packages.herbal.herbalName || '한약'} {packages.herbal.remainingCount}/{packages.herbal.totalCount}회</span>
+        </div>
+      ),
+    });
+  }
+  if (packages?.nokryong) {
+    allItems.push({
+      type: 'pkg', kind: 'nokryong', date: '9999',
+      node: (
+        <div className="herbal-draft-history-row">
+          <span className="pkg-badge nokryong">녹용</span>
+          <span className="pkg-info">{packages.nokryong.packageName || '녹용'} {packages.nokryong.remainingMonths}/{packages.nokryong.totalMonths}개월</span>
+        </div>
+      ),
+    });
+  }
+
+  // 한약 기록
+  herbalDrafts.forEach(draft => {
+    allItems.push({ type: 'draft', date: draft.receipt_date || draft.created_at || '', draft });
+  });
+
+  // 탕전
+  decoctionOrders.forEach(order => {
+    allItems.push({ type: 'decoction', date: order.scheduled_date || '', order });
+  });
+
+  // 날짜 내림차순 정렬
+  allItems.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  if (allItems.length === 0) {
     return <div className="section-empty">패키지/한약 기록이 없습니다.</div>;
   }
 
   return (
     <div className="dashboard-section-content">
-      {/* 패키지 현황 */}
-      {hasPackage && packages && (
-        <div className="package-grid">
-          {/* 통마 */}
-          {packages.tongma && (
-            <div className="package-card">
-              <div className="package-label">통증마일리지</div>
-              <div className="package-detail">
-                <span className="package-count">
-                  잔여 <strong>{packages.tongma.remainingCount}</strong>/{packages.tongma.totalCount}회
-                </span>
-                {packages.tongma.expireDate && (
-                  <span className="package-expire">~{packages.tongma.expireDate}</span>
-                )}
-              </div>
-              <div className="package-progress">
-                <div
-                  className="package-progress-bar"
-                  style={{
-                    width: `${(packages.tongma.remainingCount / packages.tongma.totalCount) * 100}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
+      <div className="herbal-draft-history">
+        <div className="herbal-draft-history-list">
+          {allItems.map((item, idx) => {
+            if (item.type === 'pkg') {
+              return (
+                <div key={`pkg-${item.kind}`} className="herbal-draft-history-item">
+                  {item.node}
+                </div>
+              );
+            }
 
-          {/* 한약 */}
-          {packages.herbal && (
-            <div className="package-card">
-              <div className="package-label">한약 선결 {packages.herbal.herbalName && `(${packages.herbal.herbalName})`}</div>
-              <div className="package-detail">
-                <span className="package-count">
-                  잔여 <strong>{packages.herbal.remainingCount}</strong>/{packages.herbal.totalCount}회
-                </span>
-              </div>
-              <div className="package-progress">
-                <div
-                  className="package-progress-bar herbal"
-                  style={{
-                    width: `${(packages.herbal.remainingCount / packages.herbal.totalCount) * 100}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
+            if (item.type === 'draft') {
+              const draft = item.draft;
+              const branchLabel = BRANCH_LABELS[draft.consultation_type || ''] || draft.consultation_type || '';
+              const statusLabel = DRAFT_STATUS_LABELS[draft.status] || draft.status;
+              const deliveryLabel = draft.delivery_method
+                ? DRAFT_DELIVERY_LABELS[draft.delivery_method as keyof typeof DRAFT_DELIVERY_LABELS] || draft.delivery_method
+                : '';
 
-          {/* 녹용 */}
-          {packages.nokryong && (
-            <div className="package-card">
-              <div className="package-label">녹용 선결 {packages.nokryong.packageName && `(${packages.nokryong.packageName})`}</div>
-              <div className="package-detail">
-                <span className="package-count">
-                  잔여 <strong>{packages.nokryong.remainingMonths}</strong>/{packages.nokryong.totalMonths}개월
-                </span>
-              </div>
-              <div className="package-progress">
-                <div
-                  className="package-progress-bar nokryong"
-                  style={{
-                    width: `${(packages.nokryong.remainingMonths / packages.nokryong.totalMonths) * 100}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* 멤버십 */}
-          {packages.membership && (
-            <div className="package-card">
-              <div className="package-label">멤버십 ({packages.membership.membershipType})</div>
-              <div className="package-detail">
-                <span className="package-count">
-                  잔여 <strong>{packages.membership.quantity}</strong>회
-                </span>
-                <span className="package-expire">~{packages.membership.expireDate}</span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 한약 기록 이력 */}
-      {hasDrafts && (
-        <>
-          {hasPackage && <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '10px 0' }} />}
-          <div className="herbal-draft-history">
-            <div className="herbal-draft-history-title">한약 기록</div>
-            <div className="herbal-draft-history-list">
-              {herbalDrafts.map(draft => {
-                const medicines = parseMedicineItems(draft.medicine_items);
-                const branchLabel = BRANCH_LABELS[draft.consultation_type || ''] || draft.consultation_type || '';
-                const statusLabel = DRAFT_STATUS_LABELS[draft.status] || draft.status;
-                const deliveryLabel = draft.delivery_method
-                  ? DRAFT_DELIVERY_LABELS[draft.delivery_method as keyof typeof DRAFT_DELIVERY_LABELS] || draft.delivery_method
-                  : '';
-
-                return (
-                  <div key={draft.id} className="herbal-draft-history-item">
+              return (
+                <div key={`draft-${draft.id}`} className="herbal-draft-history-item">
+                  <div className="herbal-draft-history-row">
+                    <span className="herbal-draft-category-badge herbal">한약</span>
+                    <span className="herbal-draft-history-date">
+                      {formatDate(draft.receipt_date || draft.created_at)}
+                    </span>
+                    <span className="herbal-draft-history-branch">{branchLabel}</span>
+                    {draft.sub_type && (
+                      <span className="herbal-draft-history-subtype">{draft.sub_type}</span>
+                    )}
+                    {!draft.decoction_date && (
+                      <span className={`herbal-draft-history-status ${draft.status}`}>
+                        {statusLabel}
+                      </span>
+                    )}
+                    {draft.decoction_date && (
+                      <span className="herbal-draft-history-decoction">{(() => {
+                        const [datePart, timePart] = draft.decoction_date.split(' ');
+                        const [, m, d] = datePart.split('-');
+                        const dt = new Date(datePart + 'T00:00:00');
+                        const dn = ['일','월','화','수','목','금','토'][dt.getDay()];
+                        return `${Number(m)}/${Number(d)}(${dn})${timePart ? ' ' + timePart : ''}`;
+                      })()}</span>
+                    )}
+                    {deliveryLabel && (
+                      <span className="herbal-draft-history-delivery">{deliveryLabel}</span>
+                    )}
                     {(onEditDraft || onDeleteDraft) && (
                       <div className="herbal-draft-item-actions">
                         {onEditDraft && (
@@ -173,46 +189,29 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
                         )}
                       </div>
                     )}
-                    <div className="herbal-draft-history-row">
-                      <span className="herbal-draft-history-branch">{branchLabel}</span>
-                      {draft.sub_type && (
-                        <span className="herbal-draft-history-subtype">{draft.sub_type}</span>
-                      )}
-                      <span className={`herbal-draft-history-status ${draft.status}`}>
-                        {statusLabel}
-                      </span>
-                      <span className="herbal-draft-history-date">
-                        {formatDate(draft.created_at)}
-                      </span>
-                    </div>
-                    <div className="herbal-draft-history-details">
-                      {medicines && (
-                        <span className="herbal-draft-history-medicines">
-                          <i className="fa-solid fa-pills" style={{ marginRight: 4, fontSize: 10 }} />
-                          {medicines}
-                        </span>
-                      )}
-                      {draft.decoction_date && (
-                        <span className="herbal-draft-history-decoction">
-                          탕전: {formatDate(draft.decoction_date)}
-                        </span>
-                      )}
-                      {deliveryLabel && (
-                        <span className="herbal-draft-history-delivery">
-                          발송: {deliveryLabel}
-                        </span>
-                      )}
-                      {draft.memo && (
-                        <span className="herbal-draft-history-memo">{draft.memo}</span>
-                      )}
-                    </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </>
-      )}
+                </div>
+              );
+            }
+
+            // decoction
+            const order = (item as any).order as DecoctionOrder;
+            return (
+              <div key={`dec-${order.id}`} className="herbal-draft-history-item">
+                <div className="herbal-draft-history-row">
+                  <span className="herbal-draft-category-badge" style={{ background: DECOCTION_ORDER_STATUS_COLORS[order.status] + '22', color: DECOCTION_ORDER_STATUS_COLORS[order.status] }}>탕전</span>
+                  <span className="herbal-draft-history-date">{formatDate(order.scheduled_date)}</span>
+                  <span style={{ fontSize: 11, color: '#64748b' }}>{order.scheduled_slot}</span>
+                  {order.recipe_name && <span className="herbal-draft-history-branch">{order.recipe_name}</span>}
+                  <span className="herbal-draft-history-status" style={{ background: DECOCTION_ORDER_STATUS_COLORS[order.status] + '22', color: DECOCTION_ORDER_STATUS_COLORS[order.status] }}>
+                    {DECOCTION_ORDER_STATUS_LABELS[order.status]}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       <style>{DRAFT_HISTORY_STYLES}</style>
     </div>
@@ -240,14 +239,13 @@ const DRAFT_HISTORY_STYLES = `
     background: #f9fafb;
     border: 1px solid #e5e7eb;
     border-radius: 6px;
-    font-size: 12px;
+    font-size: 14px;
+    text-align: left;
   }
   .herbal-draft-item-actions {
-    position: absolute;
-    top: 4px;
-    right: 4px;
     display: flex;
     gap: 2px;
+    margin-left: auto;
     opacity: 0;
     transition: opacity 0.15s;
   }
@@ -278,27 +276,26 @@ const DRAFT_HISTORY_STYLES = `
   .herbal-draft-history-row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
+    gap: 10px;
   }
   .herbal-draft-history-branch {
     font-weight: 700;
     color: #1d4ed8;
-    font-size: 12px;
+    font-size: 14px;
   }
   .herbal-draft-history-subtype {
     padding: 1px 6px;
     background: #ecfdf5;
     border: 1px solid #86efac;
     border-radius: 10px;
-    font-size: 11px;
+    font-size: 13px;
     color: #166534;
     font-weight: 600;
   }
   .herbal-draft-history-status {
     padding: 1px 6px;
     border-radius: 10px;
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
   }
   .herbal-draft-history-status.draft {
@@ -310,9 +307,28 @@ const DRAFT_HISTORY_STYLES = `
     color: #1e40af;
   }
   .herbal-draft-history-date {
-    margin-left: auto;
-    color: #9ca3af;
-    font-size: 11px;
+    color: #6b7280;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .herbal-draft-category-badge {
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .herbal-draft-category-badge.herbal {
+    background: #dcfce7;
+    color: #16a34a;
+  }
+  .herbal-draft-category-badge.otc {
+    background: #fef3c7;
+    color: #92400e;
+  }
+  .herbal-draft-category-badge.package {
+    background: #ede9fe;
+    color: #6d28d9;
   }
   .herbal-draft-history-details {
     display: flex;

@@ -34,6 +34,7 @@ interface PackageQuickAddModalProps {
   receiptId: number;
   receiptDate: string;
   uncoveredItems: UncoveredItem[];
+  defaultDetailId?: number | null;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -60,6 +61,7 @@ function PackageQuickAddModal({
   receiptId,
   receiptDate,
   uncoveredItems,
+  defaultDetailId,
   onClose,
   onSuccess,
 }: PackageQuickAddModalProps) {
@@ -105,13 +107,14 @@ function PackageQuickAddModal({
 
   // 공통 상태
   const [isSaving, setIsSaving] = useState(false);
-  const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
+  const [selectedDetailId, setSelectedDetailId] = useState<number | null>(defaultDetailId ?? null);
   const [memo, setMemo] = useState('');
 
   // 한약 폼 상태
   const [herbalPurposes, setHerbalPurposes] = useState<string[]>([]);
   const [selectedHerbalPurpose, setSelectedHerbalPurpose] = useState('');
   const [herbalPackageType, setHerbalPackageType] = useState<'0.5month' | '1month' | '2month' | '3month' | '6month'>('1month');
+  const [customHerbalCount, setCustomHerbalCount] = useState(HERBAL_PACKAGE_ROUNDS['1month'] || 2);
   const [herbalDiseaseTags, setHerbalDiseaseTags] = useState<{ id?: number; name: string }[]>([]);
   const [availableDiseaseTags, setAvailableDiseaseTags] = useState<{ id: number; name: string }[]>([]);
   const [diseaseInput, setDiseaseInput] = useState('');
@@ -189,16 +192,12 @@ function PackageQuickAddModal({
     try {
       switch (packageType) {
         case 'herbal': {
-          if (!selectedHerbalPurpose) {
-            alert('치료목적을 선택해주세요.');
-            return;
-          }
-          const totalCount = HERBAL_PACKAGE_ROUNDS[herbalPackageType] || 2;
+          const totalCount = customHerbalCount || HERBAL_PACKAGE_ROUNDS[herbalPackageType] || 2;
           const packageId = await createHerbalPackage({
             patient_id: patientId,
             chart_number: chartNumber,
             patient_name: patientName,
-            herbal_name: selectedHerbalPurpose,
+            herbal_name: herbalPackageType.replace('month', 'M') + ' ' + totalCount + '회',
             package_type: herbalPackageType,
             total_count: totalCount,
             used_count: 0,
@@ -402,12 +401,6 @@ function PackageQuickAddModal({
           {packageType === 'herbal' && (
             <>
               <div className="form-group">
-                <label>치료목적</label>
-                <select value={selectedHerbalPurpose} onChange={e => setSelectedHerbalPurpose(e.target.value)}>
-                  {herbalPurposes.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
                 <label>기간</label>
                 <div className="period-buttons">
                   {(['0.5month', '1month', '2month', '3month', '6month'] as const).map(period => (
@@ -415,7 +408,10 @@ function PackageQuickAddModal({
                       key={period}
                       type="button"
                       className={`period-btn ${herbalPackageType === period ? 'active' : ''}`}
-                      onClick={() => setHerbalPackageType(period)}
+                      onClick={() => {
+                        setHerbalPackageType(period);
+                        setCustomHerbalCount(HERBAL_PACKAGE_ROUNDS[period]);
+                      }}
                     >
                       {period.replace('month', 'M')}
                       <span className="period-count">({HERBAL_PACKAGE_ROUNDS[period]}회)</span>
@@ -424,42 +420,15 @@ function PackageQuickAddModal({
                 </div>
               </div>
               <div className="form-group">
-                <label>질환명</label>
-                <div className="disease-tags-input">
-                  {herbalDiseaseTags.length > 0 && (
-                    <div className="selected-tags">
-                      {herbalDiseaseTags.map(tag => (
-                        <span key={tag.name} className="disease-tag">
-                          {tag.name}
-                          <button type="button" onClick={() => handleRemoveDiseaseTag(tag.name)}>
-                            <i className="fa-solid fa-xmark"></i>
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <input
-                    type="text"
-                    value={diseaseInput}
-                    onChange={e => setDiseaseInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && diseaseInput.trim()) {
-                        e.preventDefault();
-                        handleAddDiseaseTag({ name: diseaseInput.trim() });
-                      }
-                    }}
-                    placeholder="질환명 입력 (Enter)"
-                  />
-                  {diseaseInput && filteredDiseaseTags.length > 0 && (
-                    <div className="disease-suggestions">
-                      {filteredDiseaseTags.slice(0, 5).map(tag => (
-                        <div key={tag.id} className="suggestion-item" onClick={() => handleAddDiseaseTag(tag)}>
-                          {tag.name}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <label>회분</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={customHerbalCount}
+                  onChange={e => setCustomHerbalCount(Number(e.target.value) || 1)}
+                  style={{ width: '80px', textAlign: 'center', fontSize: '15px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #d1d5db' }}
+                />
+                <span style={{ marginLeft: '4px', fontSize: '13px', color: '#6b7280' }}>회</span>
               </div>
             </>
           )}
