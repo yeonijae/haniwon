@@ -3,16 +3,126 @@
  */
 import React from 'react';
 import type { PackageStatusSummary } from '../../types/crm';
-import type { HerbalDraft, DecoctionOrder } from '../../types';
-import { DRAFT_DELIVERY_LABELS, DRAFT_STATUS_LABELS, DECOCTION_ORDER_STATUS_LABELS, DECOCTION_ORDER_STATUS_COLORS } from '../../types';
+import type { HerbalDraft, DecoctionOrder, JourneyStatus, MedicineUsage } from '../../types';
+import { DRAFT_DELIVERY_LABELS, DRAFT_STATUS_LABELS, DECOCTION_ORDER_STATUS_LABELS, DECOCTION_ORDER_STATUS_COLORS, JOURNEY_STEPS } from '../../types';
+import { updateHerbalDraftJourney } from '../../lib/api';
+
+/* 한약 여정 바 */
+function HerbalJourneyBar({ journey, draftId, onUpdate }: { journey: JourneyStatus; draftId: number; onUpdate?: () => void }) {
+  const getStepStatus = (key: string): 'done' | 'active' | 'pending' | string => {
+    switch (key) {
+      case 'prescription': return journey.prescription ? 'done' : 'pending';
+      case 'compounding': return journey.compounding ? 'done' : 'pending';
+      case 'decoction': return journey.decoction ? 'done' : 'pending';
+      case 'shipping':
+        if (journey.shipping === 'delivered') return 'done';
+        if (journey.shipping === 'shipping') return 'active';
+        return 'pending';
+      case 'medication': {
+        if (!journey.medication_start) return 'pending';
+        if (journey.medication_paused) return 'paused';
+        const start = new Date(journey.medication_start + 'T00:00:00');
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const elapsed = Math.floor((today.getTime() - start.getTime()) / 86400000);
+        const remaining = (journey.medication_days || 0) - elapsed;
+        if (remaining <= 0) return 'done';
+        return 'active';
+      }
+      default: return 'pending';
+    }
+  };
+
+  const getMedicationLabel = (): string => {
+    if (!journey.medication_start) return '복약';
+    if (journey.medication_paused) return '정지';
+    const start = new Date(journey.medication_start + 'T00:00:00');
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const elapsed = Math.floor((today.getTime() - start.getTime()) / 86400000);
+    const remaining = (journey.medication_days || 0) - elapsed;
+    if (remaining <= 0) return '완료';
+    return `D-${remaining}`;
+  };
+
+  const getShippingLabel = (): string => {
+    if (journey.shipping === 'delivered') return '완료';
+    if (journey.shipping === 'shipping') return '배송중';
+    return '배송';
+  };
+
+  const handleClick = async (key: string) => {
+    const updated = { ...journey };
+    switch (key) {
+      case 'prescription': updated.prescription = !updated.prescription; break;
+      case 'compounding': updated.compounding = !updated.compounding; break;
+      case 'decoction': updated.decoction = !updated.decoction; break;
+      case 'shipping':
+        if (!updated.shipping) updated.shipping = 'shipping';
+        else if (updated.shipping === 'shipping') updated.shipping = 'delivered';
+        else updated.shipping = undefined;
+        break;
+      case 'medication':
+        if (!updated.medication_start) {
+          const today = new Date();
+          updated.medication_start = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+          updated.medication_days = updated.medication_days || 10;
+        } else if (updated.medication_paused) {
+          // 정지 해제: 시작일을 정지한 만큼 뒤로 이동
+          const pausedAt = new Date(updated.medication_paused_at + 'T00:00:00');
+          const today = new Date(); today.setHours(0,0,0,0);
+          const pausedDays = Math.floor((today.getTime() - pausedAt.getTime()) / 86400000);
+          const start = new Date(updated.medication_start + 'T00:00:00');
+          start.setDate(start.getDate() + pausedDays);
+          updated.medication_start = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`;
+          updated.medication_paused = undefined;
+          updated.medication_paused_at = undefined;
+        } else {
+          // 정지
+          const today = new Date();
+          updated.medication_paused = true;
+          updated.medication_paused_at = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+        }
+        break;
+    }
+    try {
+      await updateHerbalDraftJourney(draftId, updated);
+      if (onUpdate) onUpdate();
+    } catch (e) { console.error('여정 업데이트 실패', e); }
+  };
+
+  return (
+    <div className="herbal-journey-bar">
+      {JOURNEY_STEPS.map((step, i) => {
+        const status = getStepStatus(step.key);
+        const label = step.key === 'medication' ? getMedicationLabel()
+                    : step.key === 'shipping' ? getShippingLabel()
+                    : step.label;
+        return (
+          <React.Fragment key={step.key}>
+            {i > 0 && <span className="herbal-journey-connector" />}
+            <button
+              className={`herbal-journey-step ${status}`}
+              onClick={() => handleClick(step.key)}
+              title={`${step.label} 클릭하여 상태 변경`}
+            >
+              {label}
+            </button>
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
 
 interface PatientPackageSectionProps {
   packages: PackageStatusSummary | null;
   herbalDrafts: HerbalDraft[];
   decoctionOrders?: DecoctionOrder[];
+  medicineUsages?: MedicineUsage[];
   isLoading: boolean;
   onEditDraft?: (draft: HerbalDraft) => void;
   onDeleteDraft?: (draft: HerbalDraft) => void;
+  onEditMedicine?: (usage: MedicineUsage) => void;
+  onDeleteMedicine?: (usage: MedicineUsage) => void;
 }
 
 // 분기 타입 → 표시 라벨
@@ -46,9 +156,12 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
   packages,
   herbalDrafts,
   decoctionOrders = [],
+  medicineUsages = [],
   isLoading,
   onEditDraft,
   onDeleteDraft,
+  onEditMedicine,
+  onDeleteMedicine,
 }) => {
   if (isLoading) {
     return <div className="section-loading">로딩 중...</div>;
@@ -57,7 +170,8 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
   // 모든 항목을 통합 리스트로 만들기
   type UnifiedItem = { type: 'pkg'; kind: string; date: string; node: React.ReactNode }
     | { type: 'draft'; date: string; draft: HerbalDraft }
-    | { type: 'decoction'; date: string; order: DecoctionOrder };
+    | { type: 'decoction'; date: string; order: DecoctionOrder }
+    | { type: 'medicine'; date: string; usage: MedicineUsage };
 
   const allItems: UnifiedItem[] = [];
 
@@ -114,6 +228,11 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
     allItems.push({ type: 'draft', date: draft.receipt_date || draft.created_at || '', draft });
   });
 
+  // 상비약
+  medicineUsages.forEach(usage => {
+    allItems.push({ type: 'medicine', date: usage.usage_date || '', usage });
+  });
+
   // 탕전
   decoctionOrders.forEach(order => {
     allItems.push({ type: 'decoction', date: order.scheduled_date || '', order });
@@ -150,11 +269,13 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
               return (
                 <div key={`draft-${draft.id}`} className="herbal-draft-history-item">
                   <div className="herbal-draft-history-row">
-                    <span className="herbal-draft-category-badge herbal">한약</span>
+                    <span className={`herbal-draft-category-badge ${draft.herbal_name === '자보약' ? 'jaboyak' : 'herbal'}`}>
+                      {draft.herbal_name === '자보약' ? '자보' : '탕약'}
+                    </span>
                     <span className="herbal-draft-history-date">
                       {formatDate(draft.receipt_date || draft.created_at)}
                     </span>
-                    <span className="herbal-draft-history-branch">{branchLabel}</span>
+                    {branchLabel && <span className="herbal-draft-history-branch">{branchLabel}</span>}
                     {draft.sub_type && (
                       <span className="herbal-draft-history-subtype">{draft.sub_type}</span>
                     )}
@@ -184,6 +305,37 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
                         )}
                         {onDeleteDraft && (
                           <button className="herbal-draft-action-btn delete" onClick={() => onDeleteDraft(draft)} title="삭제">
+                            <i className="fa-solid fa-trash" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {/* 한약 여정 파이프라인 */}
+                  <HerbalJourneyBar journey={draft.journey_status || {}} draftId={draft.id!} onUpdate={onEditDraft ? () => onEditDraft(draft) : undefined} />
+                </div>
+              );
+            }
+
+            if (item.type === 'medicine') {
+              const usage = (item as any).usage as MedicineUsage;
+              return (
+                <div key={`med-${usage.id}`} className="herbal-draft-history-item">
+                  <div className="herbal-draft-history-row">
+                    <span className="herbal-draft-category-badge medicine">상비</span>
+                    <span className="herbal-draft-history-date">{formatDate(usage.usage_date)}</span>
+                    <span className="herbal-draft-history-branch">{usage.medicine_name}</span>
+                    <span style={{ fontSize: 13, color: '#64748b' }}>×{usage.quantity}</span>
+                    {usage.purpose && <span style={{ fontSize: 11, color: '#9ca3af' }}>{usage.purpose}</span>}
+                    {(onEditMedicine || onDeleteMedicine) && (
+                      <div className="herbal-draft-item-actions">
+                        {onEditMedicine && (
+                          <button className="herbal-draft-action-btn" onClick={() => onEditMedicine(usage)} title="수정">
+                            <i className="fa-solid fa-pen" />
+                          </button>
+                        )}
+                        {onDeleteMedicine && (
+                          <button className="herbal-draft-action-btn delete" onClick={() => onDeleteMedicine(usage)} title="삭제 (재고 반환)">
                             <i className="fa-solid fa-trash" />
                           </button>
                         )}
@@ -319,12 +471,20 @@ const DRAFT_HISTORY_STYLES = `
     flex-shrink: 0;
   }
   .herbal-draft-category-badge.herbal {
-    background: #dcfce7;
-    color: #16a34a;
+    background: #d1fae5;
+    color: #059669;
   }
   .herbal-draft-category-badge.otc {
     background: #fef3c7;
     color: #92400e;
+  }
+  .herbal-draft-category-badge.jaboyak {
+    background: #fef3c7;
+    color: #d97706;
+  }
+  .herbal-draft-category-badge.medicine {
+    background: #e0e7ff;
+    color: #4f46e5;
   }
   .herbal-draft-category-badge.package {
     background: #ede9fe;
@@ -354,5 +514,48 @@ const DRAFT_HISTORY_STYLES = `
   .herbal-draft-history-memo {
     color: #6b7280;
     font-style: italic;
+  }
+
+  /* 한약 여정 바 */
+  .herbal-journey-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 4px 0 2px 28px;
+  }
+  .herbal-journey-connector {
+    width: 12px;
+    height: 1px;
+    background: #d1d5db;
+    flex-shrink: 0;
+  }
+  .herbal-journey-step {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    color: #9ca3af;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    line-height: 1.3;
+  }
+  .herbal-journey-step:hover { border-color: #93c5fd; }
+  .herbal-journey-step.done {
+    background: #dcfce7;
+    color: #16a34a;
+    border-color: #86efac;
+  }
+  .herbal-journey-step.active {
+    background: #dbeafe;
+    color: #2563eb;
+    border-color: #93c5fd;
+    font-weight: 600;
+  }
+  .herbal-journey-step.paused {
+    background: #fef3c7;
+    color: #d97706;
+    border-color: #fbbf24;
   }
 `;

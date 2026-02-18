@@ -108,9 +108,31 @@ export async function getContactLogById(id: number): Promise<ContactLog | null> 
 /**
  * 응대 기록 생성
  */
+let _contactLogTableChecked = false;
+async function ensureContactLogTable() {
+  if (_contactLogTableChecked) return;
+  await execute(`
+    CREATE TABLE IF NOT EXISTS patient_contact_logs (
+      id SERIAL PRIMARY KEY,
+      patient_id INTEGER NOT NULL,
+      direction TEXT NOT NULL DEFAULT 'inbound',
+      channel TEXT NOT NULL DEFAULT 'phone',
+      contact_type TEXT NOT NULL DEFAULT 'inquiry',
+      content TEXT,
+      result TEXT,
+      related_type TEXT,
+      related_id INTEGER,
+      created_by TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `).catch(() => {});
+  _contactLogTableChecked = true;
+}
+
 export async function createContactLog(
   data: CreateContactLogRequest
 ): Promise<ContactLog> {
+  await ensureContactLogTable();
   const now = getCurrentTimestamp();
 
   const result = await query<{ id: number }>(`
@@ -132,6 +154,12 @@ export async function createContactLog(
     ) RETURNING id
   `);
 
+  if (!result || result.length === 0 || !result[0]?.id) {
+    // RETURNING이 지원 안 되는 경우 — 최근 레코드 조회
+    const recent = await query<ContactLog>(`SELECT * FROM patient_contact_logs WHERE patient_id = ${data.patient_id} ORDER BY id DESC LIMIT 1`);
+    if (recent.length > 0) return recent[0];
+    throw new Error('응대 기록 생성 실패');
+  }
   const created = await getContactLogById(result[0].id);
   if (!created) {
     throw new Error('응대 기록 생성 실패');
@@ -168,6 +196,9 @@ export async function updateContactLog(
   }
   if (data.related_id !== undefined) {
     updates.push(`related_id = ${data.related_id}`);
+  }
+  if (data.created_by !== undefined) {
+    updates.push(`created_by = ${escapeString(data.created_by)}`);
   }
 
   if (updates.length === 0) {

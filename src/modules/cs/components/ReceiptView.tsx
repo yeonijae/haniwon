@@ -200,6 +200,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
   // const [showInsuranceDashboard, setShowInsuranceDashboard] = useState(false);
   const [patientEtcMemo, setPatientEtcMemo] = useState<string>('');
   const [dashboardPatient, setDashboardPatient] = useState<LocalPatient | null>(null);
+  const [dashboardDoctor, setDashboardDoctor] = useState('');
 
   // 날짜 이동 후 선택할 환자 ID (수납이력에서 클릭 시)
   const pendingPatientSelectRef = useRef<number | null>(null);
@@ -777,6 +778,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
     }
     if (localPatient) {
       setDashboardPatient(localPatient);
+      setDashboardDoctor(receipt.treatments?.[0]?.doctor || '');
       setShowDashboardModal(true);
     }
   };
@@ -2093,6 +2095,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
                       }
                       if (localPatient) {
                         setDashboardPatient(localPatient);
+                        setDashboardDoctor(selectedReceipt.treatments?.[0]?.doctor || '');
                         setShowDashboardModal(true);
                       }
                     }}
@@ -2503,6 +2506,8 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
           isOpen={showDashboardModal}
           patient={dashboardPatient}
           user={user}
+          selectedDate={selectedDate}
+          selectedDoctor={dashboardDoctor}
           onClose={() => {
             setShowDashboardModal(false);
             setDashboardPatient(null);

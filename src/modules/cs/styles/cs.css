@@ -20182,7 +20182,7 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 14px;
 }
 .hcm-row > label {
   min-width: 70px;
@@ -20219,18 +20219,19 @@
 .hcm-btn {
   padding: 5px 12px;
   border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border-radius: 16px;
   background: white;
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
   color: #374151;
   transition: all 0.15s;
 }
-.hcm-btn:hover { background: #f3f4f6; }
+.hcm-btn:hover { border-color: #9ca3af; background: #f9fafb; }
 .hcm-btn.active {
-  background: #3b82f6;
-  color: white;
+  background: #eff6ff;
+  color: #1d4ed8;
   border-color: #3b82f6;
+  font-weight: 600;
 }
 .hcm-btn.fail.active {
   background: #ef4444;
@@ -20893,6 +20894,39 @@
 
 .patient-dashboard .section-action-btn.herbal-draft:hover {
   background: #10b981;
+  color: white;
+}
+
+.patient-dashboard .section-action-btn.jaboyak-draft {
+  border-color: #d97706;
+  color: #d97706;
+  background: #fffbeb;
+}
+
+.patient-dashboard .section-action-btn.jaboyak-draft:hover {
+  background: #d97706;
+  color: white;
+}
+
+.patient-dashboard .section-action-btn.medicine-draft {
+  border-color: #6366f1;
+  color: #6366f1;
+  background: #eef2ff;
+}
+
+.patient-dashboard .section-action-btn.medicine-draft:hover {
+  background: #6366f1;
+  color: white;
+}
+
+.patient-dashboard .section-action-btn.incall-btn {
+  border-color: #3b82f6;
+  color: #3b82f6;
+  background: #eff6ff;
+}
+
+.patient-dashboard .section-action-btn.incall-btn:hover {
+  background: #3b82f6;
   color: white;
 }
 

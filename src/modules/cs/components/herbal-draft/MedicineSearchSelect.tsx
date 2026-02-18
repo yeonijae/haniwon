@@ -245,6 +245,7 @@ const STYLES = `
     display: flex;
     flex-direction: column;
     gap: 6px;
+    margin-bottom: 8px;
   }
   .med-search-selected-item {
     display: flex;

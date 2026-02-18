@@ -9,8 +9,8 @@ import { getCallQueueByPatient } from '../lib/callQueueApi';
 import { getPatientPackageStatusByChartNumber } from '../lib/patientCrmApi';
 import { fetchPatientReservations } from '../../reservation/lib/api';
 import { fetchPatientReceiptHistory } from '../../manage/lib/api';
-import { getHerbalDrafts } from '../lib/api';
-import type { HerbalDraft } from '../types';
+import { getHerbalDrafts, getMedicineUsages } from '../lib/api';
+import type { HerbalDraft, MedicineUsage } from '../types';
 
 export interface PatientDashboardData {
   mssqlData: MssqlPatient | null;
@@ -21,6 +21,7 @@ export interface PatientDashboardData {
   callQueue: CallQueueItem[];
   packages: PackageStatusSummary | null;
   herbalDrafts: HerbalDraft[];
+  medicineUsages: MedicineUsage[];
   isLoading: boolean;
   error: string | null;
   refresh: () => void;
@@ -35,6 +36,7 @@ export function usePatientDashboard(patient: LocalPatient): PatientDashboardData
   const [callQueue, setCallQueue] = useState<CallQueueItem[]>([]);
   const [packages, setPackages] = useState<PackageStatusSummary | null>(null);
   const [herbalDrafts, setHerbalDrafts] = useState<HerbalDraft[]>([]);
+  const [medicineUsages, setMedicineUsages] = useState<MedicineUsage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,6 +73,10 @@ export function usePatientDashboard(patient: LocalPatient): PatientDashboardData
           : Promise.resolve(null),
         // 한약 기록
         getHerbalDrafts(patient.id).catch(() => [] as HerbalDraft[]),
+        // 상비약 기록
+        patient.mssql_id
+          ? getMedicineUsages(patient.mssql_id).catch(() => [] as MedicineUsage[])
+          : Promise.resolve([] as MedicineUsage[]),
       ]);
 
       // MSSQL 환자 데이터
@@ -109,6 +115,10 @@ export function usePatientDashboard(patient: LocalPatient): PatientDashboardData
       if (results[6].status === 'fulfilled') {
         setHerbalDrafts(results[6].value as HerbalDraft[]);
       }
+      // 상비약 기록
+      if (results[7].status === 'fulfilled') {
+        setMedicineUsages(results[7].value as MedicineUsage[]);
+      }
 
       // 실패한 항목 확인
       const failures = results.filter(r => r.status === 'rejected');
@@ -136,6 +146,7 @@ export function usePatientDashboard(patient: LocalPatient): PatientDashboardData
     callQueue,
     packages,
     herbalDrafts,
+    medicineUsages,
     isLoading,
     error,
     refresh: loadAll,

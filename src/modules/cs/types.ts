@@ -1239,13 +1239,15 @@ export interface HerbalDraftFormData {
   // 공통
   deliveryMethod: DraftDeliveryMethod | '';
   decoctionDate: string | undefined;
+  shippingDate: string;
+  medicationDays: number;
   memo: string;
   // 상비약/보완처방 전용
   medicines: Array<{ inventoryId: number; name: string; quantity: number; currentStock: number; unit: string }>;
 }
 
 export const INITIAL_DRAFT_FORM_DATA: HerbalDraftFormData = {
-  branch: '약재진_N차',
+  branch: '',
   treatmentMonths: [],
   visitPattern: '',
   nokryongRecommendation: '',
@@ -1256,27 +1258,34 @@ export const INITIAL_DRAFT_FORM_DATA: HerbalDraftFormData = {
   nokryongCount: 1,
   deliveryMethod: '',
   decoctionDate: undefined,
+  shippingDate: '',
+  medicationDays: 15,
   memo: '',
   medicines: [],
 };
 
 // DB 레코드 인터페이스
 export interface JourneyStatus {
-  prescription?: boolean;
+  prescription?: boolean;        // 처방전 출력 완료
+  compounding?: boolean;         // 조제 완료
+  decoction?: boolean;           // 탕전 완료
+  shipping?: 'pending' | 'shipping' | 'delivered'; // 배송 상태
+  medication_start?: string;     // 복약 시작일 (YYYY-MM-DD)
+  medication_days?: number;      // 총 복약 일수
+  medication_paused?: boolean;   // 복약 정지
+  medication_paused_at?: string; // 정지 시점
+  // legacy
   dosage?: boolean;
   preparation?: boolean;
-  decoction?: boolean;
-  shipping?: boolean;
   received?: boolean;
 }
 
-export const JOURNEY_STEPS: { key: keyof JourneyStatus; label: string; icon: string }[] = [
-  { key: 'prescription', label: '처방', icon: '📋' },
-  { key: 'dosage', label: '복용법', icon: '📝' },
-  { key: 'preparation', label: '조제', icon: '🧪' },
-  { key: 'decoction', label: '탕전', icon: '🔥' },
-  { key: 'shipping', label: '배송', icon: '🚚' },
-  { key: 'received', label: '수령', icon: '✅' },
+export const JOURNEY_STEPS: { key: string; label: string }[] = [
+  { key: 'prescription', label: '처방' },
+  { key: 'compounding', label: '조제' },
+  { key: 'decoction', label: '탕전' },
+  { key: 'shipping', label: '배송' },
+  { key: 'medication', label: '복약' },
 ];
 
 export interface HerbalDraft {
@@ -1301,11 +1310,14 @@ export interface HerbalDraft {
   // 공통
   delivery_method?: string;
   decoction_date?: string;
+  shipping_date?: string;
   memo?: string;
   medicine_items?: string;
   receipt_date?: string;
   doctor?: string;
   journey_status?: JourneyStatus;
+  herbal_package_id?: number;
+  nokryong_package_id?: number;
   status: DraftStatus;
   created_by?: string;
   created_at?: string;

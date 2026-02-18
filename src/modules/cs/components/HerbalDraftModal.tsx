@@ -3,7 +3,8 @@ import type { PortalUser } from '@shared/types';
 import type { LocalPatient } from '../lib/patientSync';
 import type { HerbalDraftFormData, DraftBranchType, HerbalDraft, TreatmentMonth, DraftVisitPattern, NokryongRecommendation, ConsultationMethod, OtherSubType, PaymentMonth, NokryongGrade, DraftDeliveryMethod } from '../types';
 import { DRAFT_BRANCH_TYPES, INITIAL_DRAFT_FORM_DATA } from '../types';
-import { createHerbalDraft, updateHerbalDraft, useMedicineStock, getDecoctionOrders } from '../lib/api';
+import { createHerbalDraft, updateHerbalDraft, useMedicineStock, getDecoctionOrders, getActiveHerbalPackages, getActiveNokryongPackages } from '../lib/api';
+import type { HerbalPackage, NokryongPackage } from '../types';
 import type { DecoctionOrder } from '../types';
 import { DECOCTION_ORDER_STATUS_COLORS } from '../types';
 import BranchInitialHerbal from './herbal-draft/BranchInitialHerbal';
@@ -18,7 +19,9 @@ interface HerbalDraftModalProps {
   onClose: () => void;
   onSuccess: () => void;
   editDraft?: HerbalDraft | null;
-  defaultReceiptDate?: string;  // 최근 수납일 (진료일)
+  defaultReceiptDate?: string;
+  defaultDoctor?: string;
+  mode?: 'tangya' | 'jaboyak';
 }
 
 function recordToFormData(draft: HerbalDraft): HerbalDraftFormData {
@@ -42,6 +45,8 @@ function recordToFormData(draft: HerbalDraft): HerbalDraftFormData {
     nokryongCount: draft.nokryong_count || 1,
     deliveryMethod: (draft.delivery_method || '') as DraftDeliveryMethod | '',
     decoctionDate: draft.decoction_date || undefined,
+    shippingDate: draft.shipping_date || '',
+    medicationDays: draft.journey_status?.medication_days || 15,
     memo: draft.memo || '',
     medicines,
   };
@@ -54,6 +59,7 @@ function formDataToRecord(form: HerbalDraftFormData, patient: LocalPatient, user
     chart_number: patient.chart_number || undefined,
     patient_name: patient.name,
     consultation_type: form.branch || undefined,
+    herbal_name: undefined as string | undefined,
     treatment_months: form.treatmentMonths.length > 0 ? form.treatmentMonths.join(',') : undefined,
     visit_pattern: form.visitPattern || undefined,
     nokryong_type: form.nokryongRecommendation || undefined,
@@ -64,27 +70,40 @@ function formDataToRecord(form: HerbalDraftFormData, patient: LocalPatient, user
     nokryong_count: form.nokryongGrade ? form.nokryongCount : undefined,
     delivery_method: form.deliveryMethod || undefined,
     decoction_date: form.decoctionDate,
+    shipping_date: form.shippingDate || undefined,
     memo: form.memo.trim() || undefined,
     medicine_items: form.medicines.length > 0
       ? JSON.stringify(form.medicines.map(m => ({ id: m.inventoryId, name: m.name, qty: m.quantity })))
       : undefined,
     doctor: undefined as string | undefined,  // handleSave에서 설정
     receipt_date: undefined as string | undefined,  // handleSave에서 설정
+    journey_status: {
+      medication_days: form.medicationDays || 15,
+      ...(form.shippingDate && form.deliveryMethod ? {
+        medication_start: form.deliveryMethod === 'pickup' || form.deliveryMethod === 'quick'
+          ? form.decoctionDate?.split(' ')[0] || form.shippingDate
+          : (() => { const d = new Date(form.shippingDate + 'T00:00:00'); d.setDate(d.getDate()+1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })()
+      } : {}),
+    },
     status: form.decoctionDate ? 'scheduled' as const : 'draft' as const,
     created_by: user.name,
   };
 }
 
 // 폼이 변경되었는지 확인
-function isDirty(form: HerbalDraftFormData): boolean {
-  return form.branch !== '' ||
+function isDirty(form: HerbalDraftFormData, herbalPkgId?: number | null, nokryongPkgId?: number | null): boolean {
+  return form.consultationMethod !== '' ||
+    (form.decoctionDate != null && form.decoctionDate !== '') ||
+    form.deliveryMethod !== '' ||
     form.treatmentMonths.length > 0 ||
     form.medicines.length > 0 ||
-    form.memo.trim() !== '';
+    form.memo.trim() !== '' ||
+    !!herbalPkgId ||
+    !!nokryongPkgId;
 }
 
 /* ─── 탕전 캘린더 그리드 (시간표 방식) ─── */
-function CalendarGrid({ selectedDate, onDateSelect }: { selectedDate?: string; onDateSelect: (d: string) => void }) {
+function CalendarGrid({ selectedDate, onDateSelect, patientName, chartNumber }: { selectedDate?: string; onDateSelect: (d: string) => void; patientName?: string; chartNumber?: string }) {
   const [viewStart, setViewStart] = useState(() => {
     const d = new Date(); d.setHours(0,0,0,0); return d;
   });
@@ -185,6 +204,12 @@ function CalendarGrid({ selectedDate, onDateSelect }: { selectedDate?: string; o
                           <span className="hcg-order-meta">{o.patient_id}</span>
                         </div>
                       ))}
+                      {isPending && patientName && (
+                        <div className="hcg-order hcg-preview">
+                          <span className="hcg-order-name">{patientName}</span>
+                          {chartNumber && <span className="hcg-order-meta">{chartNumber.replace(/^0+/, '')}</span>}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -216,13 +241,17 @@ function CalendarGrid({ selectedDate, onDateSelect }: { selectedDate?: string; o
   );
 }
 
-export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuccess, editDraft, defaultReceiptDate }: HerbalDraftModalProps) {
+export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuccess, editDraft, defaultReceiptDate, defaultDoctor, mode = 'tangya' }: HerbalDraftModalProps) {
   const [formData, setFormData] = useState<HerbalDraftFormData>({ ...INITIAL_DRAFT_FORM_DATA });
   const [receiptDate, setReceiptDate] = useState(defaultReceiptDate || '');
   const DOCTOR_LIST = ['강희종', '김대현', '임세열', '전인태'];
   const [doctor, setDoctor] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [herbalPackages, setHerbalPackages] = useState<HerbalPackage[]>([]);
+  const [nokryongPackages, setNokryongPackages] = useState<NokryongPackage[]>([]);
+  const [selectedHerbalPkgId, setSelectedHerbalPkgId] = useState<number | null>(null);
+  const [selectedNokryongPkgId, setSelectedNokryongPkgId] = useState<number | null>(null);
 
   // 드래그 상태
   const containerRef = useRef<HTMLDivElement>(null);
@@ -237,10 +266,21 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
         setFormData(recordToFormData(editDraft));
         setReceiptDate(editDraft.receipt_date || '');
         setDoctor(editDraft.doctor || '');
+        setSelectedHerbalPkgId(editDraft.herbal_package_id || null);
+        setSelectedNokryongPkgId(editDraft.nokryong_package_id || null);
       } else {
-        setFormData({ ...INITIAL_DRAFT_FORM_DATA });
-        setReceiptDate(defaultReceiptDate || '');
-        setDoctor(patient?.main_doctor || '');
+        setFormData({ ...INITIAL_DRAFT_FORM_DATA, ...(mode === 'jaboyak' ? { medicationDays: 7 } : {}) });
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+        setReceiptDate(defaultReceiptDate || todayStr);
+        setDoctor(defaultDoctor || patient?.main_doctor || '');
+        setSelectedHerbalPkgId(null);
+        setSelectedNokryongPkgId(null);
+      }
+      // 선결제 패키지 조회
+      if (patient?.mssql_id) {
+        getActiveHerbalPackages(patient.mssql_id).then(setHerbalPackages).catch(() => {});
+        getActiveNokryongPackages(patient.mssql_id).then(setNokryongPackages).catch(() => {});
       }
     }
   }, [isOpen, editDraft, defaultReceiptDate]);
@@ -292,7 +332,7 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
   }, []);
 
   const handleClose = useCallback(() => {
-    if (isDirty(formData)) {
+    if (isDirty(formData, selectedHerbalPkgId, selectedNokryongPkgId)) {
       if (!window.confirm('저장하지 않고 닫으시겠습니까?')) return;
     }
     setFormData({ ...INITIAL_DRAFT_FORM_DATA });
@@ -313,12 +353,14 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
   }, [isOpen, handleClose]);
 
   const handleSave = async () => {
-    if (!formData.branch) return;
     setIsSaving(true);
     try {
       const record = formDataToRecord(formData, patient, user);
       record.receipt_date = receiptDate || undefined;
       record.doctor = doctor || undefined;
+      if (mode === 'jaboyak') record.herbal_name = '자보약';
+      (record as any).herbal_package_id = selectedHerbalPkgId || undefined;
+      (record as any).nokryong_package_id = selectedNokryongPkgId || undefined;
 
       if (editDraft?.id) {
         // 수정 모드
@@ -346,7 +388,7 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
       setFormData({ ...INITIAL_DRAFT_FORM_DATA });
       onSuccess();
     } catch (err: any) {
-      console.error('한약 기록 저장 오류:', err);
+      console.error('탕약 기록 저장 오류:', err);
       alert(err.message || '저장 중 오류가 발생했습니다.');
     } finally {
       setIsSaving(false);
@@ -372,7 +414,7 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
             className="pkg-modal-header herbal-draft-drag-handle"
             onMouseDown={handleMouseDown}
           >
-            <h3>{editDraft ? '한약 기록 수정' : '한약 기록'} — {patient.name}</h3>
+            <h3>{editDraft ? `${mode === 'jaboyak' ? '자보약' : '탕약'} 기록 수정` : `${mode === 'jaboyak' ? '자보약' : '탕약'} 기록`} — {patient.name}</h3>
             <button className="pkg-modal-close-btn" onClick={handleClose}>
               <i className="fa-solid fa-xmark"></i>
             </button>
@@ -380,47 +422,97 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
           <div className="pkg-modal-body">
             <div className="herbal-draft-form">
 
-              {/* 진료일 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap' }}>진료일</label>
+              {/* 진료일 + 담당의 */}
+              <div className="herbal-draft-row" style={{ marginBottom: 6 }}>
+                <label className="herbal-draft-label">진료일</label>
                 <input
                   type="date"
+                  className="herbal-draft-input"
                   value={receiptDate}
                   onChange={(e) => setReceiptDate(e.target.value)}
-                  style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
                 />
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap', marginLeft: 12 }}>담당의</label>
-                <select
-                  value={doctor}
-                  onChange={(e) => setDoctor(e.target.value)}
-                  style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, width: 90, background: '#fff' }}
-                >
-                  <option value="">선택</option>
+              </div>
+              <div className="herbal-draft-section" style={{ marginBottom: 6 }}>
+                <span className="herbal-draft-section-label">담당의</span>
+                <div className="herbal-draft-chips">
                   {DOCTOR_LIST.map(d => (
-                    <option key={d} value={d}>{d}</option>
+                    <button
+                      key={d}
+                      type="button"
+                      className={`herbal-draft-chip${doctor === d ? ' active' : ''}`}
+                      onClick={() => setDoctor(d)}
+                    >{d}</button>
                   ))}
-                </select>
+                </div>
               </div>
 
-              {/* 한약 기록 (N차 상담) */}
-              <hr className="herbal-draft-divider" />
-              <BranchFollowUpDeduct formData={formData} onUpdate={handleUpdate} />
+              {/* 선결제 차감 */}
+              {(herbalPackages.length > 0 || nokryongPackages.length > 0) && (
+                <>
+                  <hr className="herbal-draft-divider" />
+                  {herbalPackages.length > 0 && (
+                    <div className="herbal-draft-row" style={{ marginBottom: 6 }}>
+                      <label className="herbal-draft-label">한약 차감</label>
+                      <div className="herbal-draft-chips">
+                        <button
+                          type="button"
+                          className={`herbal-draft-chip${selectedHerbalPkgId === null ? ' active' : ''}`}
+                          onClick={() => setSelectedHerbalPkgId(null)}
+                        >없음</button>
+                        {herbalPackages.map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className={`herbal-draft-chip${selectedHerbalPkgId === p.id ? ' active' : ''}`}
+                            onClick={() => setSelectedHerbalPkgId(selectedHerbalPkgId === p.id ? null : p.id!)}
+                          >
+                            {p.herbal_name || '한약'} {p.total_count}팩 (잔여 {p.remaining_count}/{p.total_count})
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {nokryongPackages.length > 0 && (
+                    <div className="herbal-draft-row" style={{ marginBottom: 6 }}>
+                      <label className="herbal-draft-label">녹용 차감</label>
+                      <div className="herbal-draft-chips">
+                        <button
+                          type="button"
+                          className={`herbal-draft-chip${selectedNokryongPkgId === null ? ' active' : ''}`}
+                          onClick={() => setSelectedNokryongPkgId(null)}
+                        >없음</button>
+                        {nokryongPackages.map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className={`herbal-draft-chip${selectedNokryongPkgId === p.id ? ' active' : ''}`}
+                            onClick={() => setSelectedNokryongPkgId(selectedNokryongPkgId === p.id ? null : p.id!)}
+                          >
+                            {p.nokryong_type || '녹용'} {p.total_months}회 (잔여 {p.remaining_months}/{p.total_months})
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <hr className="herbal-draft-divider" />
+                </>
+              )}
+
+              <BranchFollowUpDeduct formData={formData} onUpdate={handleUpdate} mode={mode} />
 
               {/* 저장 버튼 */}
-              {formData.branch && (
-                <div className="herbal-draft-actions">
-                  <button className="herbal-draft-btn-cancel" onClick={handleClose}>
-                    취소
-                  </button>
-                  <button
-                    className="herbal-draft-btn-save"
-                    onClick={handleSave}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? '저장 중...' : '등록'}
-                  </button>
-                </div>
-              )}
+              <div className="herbal-draft-actions">
+                <button className="herbal-draft-btn-cancel" onClick={handleClose}>
+                  취소
+                </button>
+                <button
+                  className="herbal-draft-btn-save"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                >
+                  {isSaving ? '저장 중...' : '등록'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -437,6 +529,8 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
             </div>
             <CalendarGrid
               selectedDate={formData.decoctionDate}
+              patientName={patient?.name}
+              chartNumber={patient?.chart_number}
               onDateSelect={(date) => {
                 setFormData(prev => ({ ...prev, decoctionDate: date }));
                 setShowCalendarModal(false);
@@ -457,7 +551,7 @@ const MODAL_STYLES = `
     pointer-events: auto;
   }
   .herbal-draft-modal-wide {
-    max-width: 560px;
+    max-width: 500px;
   }
   .herbal-draft-drag-handle {
     cursor: grab;
@@ -507,14 +601,17 @@ const MODAL_STYLES = `
   }
   .herbal-draft-section {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
   }
   .herbal-draft-section-label {
-    font-size: 12px;
-    font-weight: 700;
-    color: #6b7280;
-    letter-spacing: 0.5px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #4b5563;
+    min-width: 70px;
+    flex-shrink: 0;
   }
   .herbal-draft-chips {
     display: flex;
@@ -563,11 +660,14 @@ const MODAL_STYLES = `
     display: flex;
     gap: 12px;
     align-items: center;
+    margin-bottom: 6px;
   }
   .herbal-draft-label {
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 600;
-    min-width: 60px;
+    color: #4b5563;
+    min-width: 70px;
+    flex-shrink: 0;
   }
   .herbal-draft-input {
     flex: 1;
@@ -728,6 +828,8 @@ const MODAL_STYLES = `
   .hcg-cell:hover { background: #eff6ff; }
   .hcg-cell.selected { background: #dbeafe; }
   .hcg-cell.pending { background: #e0f2fe; box-shadow: inset 0 0 0 2px #38bdf8; }
+  .hcg-order.hcg-preview { opacity: 0.45; background: #dbeafe; border-left: 3px solid #60a5fa; animation: hcg-fade-in 0.2s ease; }
+  @keyframes hcg-fade-in { from { opacity: 0; } to { opacity: 0.45; } }
   .hcg-order { padding: 3px 5px; border-radius: 4px; font-size: 12px; line-height: 1.3; overflow: hidden; }
   .hcg-order-name { font-weight: 600; display: block; font-size: 13px; }
   .hcg-order-meta { font-size: 11px; opacity: 0.7; }

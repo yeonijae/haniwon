@@ -1,42 +1,106 @@
-/**
- * 환자 인콜/응대 이력 섹션 (대시보드용)
- */
-import React from 'react';
+import React, { useState } from 'react';
 import type { ContactLog } from '../../types/crm';
+import { deleteContactLog } from '../../lib/contactLogApi';
 
 interface PatientInquirySectionProps {
   contactLogs: ContactLog[];
+  patientName?: string;
   isLoading: boolean;
+  onRefresh?: () => void;
+  onEditLog?: (log: ContactLog) => void;
 }
 
-// 채널 아이콘
-const CHANNEL_ICONS: Record<string, string> = {
-  phone: '📞',
-  kakao: '💬',
-  visit: '🏥',
-  naver: '🟢',
-  other: '📋',
-};
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  const y = String(d.getFullYear()).slice(2);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${y}/${m}/${day} ${h}:${min}`;
+}
 
-// 상대 시간 포맷
-const formatRelativeDate = (dateStr: string): string => {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+function stripMeta(raw: string | null): string {
+  if (!raw) return '';
+  const lines = raw.split('\n');
+  const body = lines.filter(l => !l.match(/^(발생:|담당:|응답:|응답자:)/)).map(l => l.replace('[처리완료]', '').trim()).filter(Boolean);
+  return body.join('\n');
+}
 
-  if (diffDays === 0) return '오늘';
-  if (diffDays === 1) return '어제';
-  if (diffDays < 7) return `${diffDays}일 전`;
-  return dateStr.slice(0, 10);
-};
+// 대화 메시지를 개별 말풍선으로 분리
+type ChatBubble = { sender: string; time: string; text: string };
+function parseIntoBubbles(raw: string): ChatBubble[] {
+  if (!raw) return [];
+
+  // JSON 배열 형태인지 확인
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    try {
+      const arr = JSON.parse(trimmed) as Array<{ s: string; t: string; m: string }>;
+      if (Array.isArray(arr) && arr.length > 0 && typeof arr[0].m === 'string') {
+        return arr.map(item => ({ sender: item.s || '', time: item.t || '', text: item.m || '' }));
+      }
+    } catch { /* not JSON, fall through */ }
+  }
+
+  // 레거시: "[이름 시간] 내용" 패턴
+  const stripped = stripMeta(raw);
+  if (!stripped) return [];
+
+  const parts = stripped.split(/(?=\[.+?\])/);
+  const bubbles: ChatBubble[] = [];
+
+  for (const part of parts) {
+    const t = part.trim();
+    if (!t) continue;
+    const match = t.match(/^\[(.+?)\s+(오[전후]\s?\d{1,2}:\d{2})\]\s*(.*)$/s);
+    if (match) { bubbles.push({ sender: match[1], time: match[2], text: match[3].trim() }); continue; }
+    const nameOnly = t.match(/^\[(.+?)\]\s*(.*)$/s);
+    if (nameOnly) { bubbles.push({ sender: nameOnly[1], time: '', text: nameOnly[2].trim() }); continue; }
+    if (bubbles.length > 0) { bubbles[bubbles.length - 1].text += '\n' + t; }
+    else { bubbles.push({ sender: '', time: '', text: t }); }
+  }
+
+  // 패턴 없는 일반 텍스트 → 하나의 말풍선
+  if (bubbles.length === 0 && stripped) {
+    bubbles.push({ sender: '', time: '', text: stripped });
+  }
+  return bubbles;
+}
 
 const PatientInquirySection: React.FC<PatientInquirySectionProps> = ({
   contactLogs,
+  patientName,
   isLoading,
+  onRefresh,
+  onEditLog,
 }) => {
-  if (isLoading) {
-    return <div className="section-loading">로딩 중...</div>;
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const handleDelete = async (log: ContactLog) => {
+    if (!confirm('이 인콜 기록을 삭제하시겠습니까?')) return;
+    try {
+      await deleteContactLog(log.id);
+      onRefresh?.();
+    } catch { alert('삭제에 실패했습니다.'); }
+  };
+
+  if (isLoading) return <div className="section-loading">로딩 중...</div>;
+
+  // 환자 vs 직원 구분: 첫 발신자 = 환자
+  function isPatientBubble(bubble: ChatBubble, log: ContactLog, allBubbles: ChatBubble[]): boolean {
+    if (!bubble.sender) return true;
+    // JSON 대화: 첫 번째 발신자 = 환자
+    const firstSender = allBubbles[0]?.sender;
+    if (firstSender && bubble.sender === firstSender) return true;
+    if (firstSender && bubble.sender !== firstSender) return false;
+    // fallback
+    const staff = log.created_by || '';
+    if (staff && bubble.sender.includes(staff)) return false;
+    if (/원장|선생|김대현|강희종|임세열|전인태/.test(bubble.sender)) return false;
+    return true;
   }
 
   return (
@@ -44,20 +108,134 @@ const PatientInquirySection: React.FC<PatientInquirySectionProps> = ({
       {contactLogs.length === 0 ? (
         <div className="section-empty">응대 기록이 없습니다.</div>
       ) : (
-        <div className="contact-log-list">
-          {contactLogs.slice(0, 10).map((log) => (
-            <div key={log.id} className="contact-log-item">
-              <span className="log-channel">
-                {CHANNEL_ICONS[log.channel] || '📋'}
-              </span>
-              <span className="log-type">{log.contact_type}</span>
-              <span className="log-content">{log.content || ''}</span>
-              <span className="log-date">{formatRelativeDate(log.created_at)}</span>
-              <span className="log-staff">{log.created_by || ''}</span>
-            </div>
-          ))}
+        <div className="cl-list">
+          {contactLogs.slice(0, 15).map(log => {
+            const isExpanded = expandedId === log.id;
+            // JSON이면 content에 전체 대화, 아니면 문의+응답 합침
+            const isJson = log.content?.trim().startsWith('[');
+            let allBubbles: ChatBubble[];
+            if (isJson) {
+              allBubbles = parseIntoBubbles(log.content);
+            } else {
+              const contentBubbles = parseIntoBubbles(log.content);
+              // result에서 응답자 이름 추출
+              const resultText = stripMeta(log.result);
+              const responderMatch = (log.result || '').match(/응답자:\s*([^|\n]+)/);
+              const responderName = responderMatch?.[1]?.trim() || '';
+              const responseTimeMatch = (log.result || '').match(/응답:\s*(\d{4}-\d{2}-\d{2}\s*\d{2}:\d{2})/);
+              const responseTime = responseTimeMatch?.[1]?.trim() || '';
+              const resultBubbles = resultText ? [{ sender: responderName || (log.created_by || '담당'), time: responseTime, text: resultText }] : [];
+              // 문의 말풍선에 환자 이름 세팅
+              contentBubbles.forEach(b => { if (!b.sender) b.sender = patientName || '환자'; });
+              allBubbles = [...contentBubbles, ...resultBubbles];
+            }
+            // 말풍선 없으면 스킵
+            if (allBubbles.length === 0) return null;
+            // 접힌 상태: 처음 2개만
+            const visibleBubbles = isExpanded ? allBubbles : allBubbles.slice(0, 2);
+            const hasMore = allBubbles.length > 2;
+
+            return (
+              <div key={log.id} className={`cl-card${isExpanded ? ' expanded' : ''}`}
+                onClick={() => setExpandedId(isExpanded ? null : log.id)}>
+                <div className="cl-card-actions">
+                  {onEditLog && <button className="cl-action-btn" onClick={e => { e.stopPropagation(); onEditLog(log); }} title="수정"><i className="fa-solid fa-pen" /></button>}
+                  <button className="cl-action-btn delete" onClick={e => { e.stopPropagation(); handleDelete(log); }} title="삭제"><i className="fa-solid fa-trash" /></button>
+                </div>
+                <div className="cl-date-line">
+                  <span className={`cl-ch-badge ${log.channel || 'phone'}`}>{({'phone':'📞','kakao':'💬','sms':'✉️','visit':'🏥','naver':'🟢','homepage':'🌐'}[log.channel] || '📞')}</span>
+                  {formatDate(log.created_at)}
+                </div>
+                <div className="cl-chat">
+                  {visibleBubbles.map((b, i) => {
+                    const isPatient = isPatientBubble(b, log, allBubbles);
+                    return (
+                      <div key={i} className={`cl-bubble ${isPatient ? 'question' : 'answer'}`}>
+                        <div className="cl-bubble-meta">{b.sender || (isPatient ? (patientName || '환자') : (log.created_by || '담당'))} {b.time}</div>
+                        <div className={`cl-bubble-text${isExpanded ? ' expanded' : ''}`}>{b.text}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {!isExpanded && hasMore && (
+                  <div className="cl-more">+ {allBubbles.length - 2}개 더보기</div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
+
+      <style>{`
+        .cl-list { display: flex; flex-direction: column; gap: 6px; }
+        .cl-card {
+          padding: 8px 12px;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          position: relative;
+          cursor: pointer;
+          transition: border-color 0.15s;
+        }
+        .cl-card:hover { border-color: #d1d5db; }
+        .cl-card.expanded { border-color: #93c5fd; background: #fafbff; }
+        .cl-date-line {
+          font-size: 10px; color: #9ca3af; margin-bottom: 4px;
+          display: flex; align-items: center; gap: 4px;
+        }
+        .cl-ch-badge {
+          font-size: 12px; line-height: 1;
+        }
+        .cl-card-actions {
+          display: none;
+          position: absolute;
+          top: 6px; right: 6px;
+          gap: 4px;
+          z-index: 1;
+        }
+        .cl-card:hover .cl-card-actions { display: flex; }
+        .cl-action-btn {
+          width: 24px; height: 24px;
+          border: 1px solid #d1d5db; border-radius: 6px;
+          background: #fff; cursor: pointer;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 11px; color: #6b7280;
+        }
+        .cl-action-btn:hover { background: #f3f4f6; }
+        .cl-action-btn.delete:hover { background: #fef2f2; color: #dc2626; border-color: #fca5a5; }
+        .cl-chat { display: flex; flex-direction: column; gap: 4px; }
+        .cl-bubble {
+          display: flex; flex-direction: column;
+          padding: 6px 10px; border-radius: 10px;
+          font-size: 14px; line-height: 1.4;
+          max-width: 85%;
+        }
+        .cl-bubble.question {
+          background: #fff3cd; align-self: flex-start;
+          border-bottom-left-radius: 2px;
+        }
+        .cl-bubble.answer {
+          background: #d1ecf1; align-self: flex-end;
+          border-bottom-right-radius: 2px;
+        }
+        .cl-card.expanded .cl-bubble { max-width: 100%; }
+        .cl-bubble-meta {
+          font-size: 10px; font-weight: 600; color: #6b7280;
+          margin-bottom: 2px;
+        }
+        .cl-bubble-text {
+          overflow: hidden; text-overflow: ellipsis;
+          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+          white-space: pre-wrap;
+        }
+        .cl-bubble-text.expanded {
+          -webkit-line-clamp: unset;
+          display: block;
+        }
+        .cl-more {
+          text-align: center; font-size: 11px; color: #6b7280;
+          margin-top: 4px; padding: 2px 0;
+        }
+      `}</style>
     </div>
   );
 };

@@ -7,9 +7,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { PortalUser } from '@shared/types';
 import type { LocalPatient } from '../lib/patientSync';
 import type { StaffRole } from '../types/crm';
-import type { HerbalDraft } from '../types';
+import type { HerbalDraft, MedicineUsage } from '../types';
+import type { ContactLog } from '../types/crm';
 import { usePatientDashboard } from '../hooks/usePatientDashboard';
-import { deleteHerbalDraft, getConsultationMemos, addConsultationMemo, deleteConsultationMemo, getHerbalConsultations } from '../lib/api';
+import { deleteHerbalDraft, deleteMedicineUsage, getConsultationMemos, addConsultationMemo, deleteConsultationMemo, getHerbalConsultations } from '../lib/api';
 import type { ConsultationMemo, HerbalConsultation } from '../lib/api';
 
 // 연속 줄바꿈을 1회로 축약
@@ -25,6 +26,7 @@ import PatientPackageTab from './patient-dashboard/PatientPackageTab';
 import HerbalDraftModal from './HerbalDraftModal';
 import HerbalConsultationModal from './patient-dashboard/HerbalConsultationModal';
 import MedicineQuickModal from './patient-dashboard/MedicineQuickModal';
+import ContactLogQuickModal from './patient-dashboard/ContactLogQuickModal';
 import { ReservationStep1Modal, type ReservationDraft, type InitialPatient } from '../../reservation/components/ReservationStep1Modal';
 import { QuickReservationModal } from './QuickReservationModal';
 import { fetchDoctors } from '../../reservation/lib/api';
@@ -35,6 +37,8 @@ interface PatientDashboardProps {
   patient: LocalPatient;
   user: PortalUser;
   onClose: () => void;
+  selectedDate?: string;
+  selectedDoctor?: string;
 }
 
 // 사용자 역할을 스태프 역할로 변환
@@ -49,10 +53,16 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
   patient,
   user,
   onClose,
+  selectedDate: propSelectedDate,
+  selectedDoctor: propSelectedDoctor,
 }) => {
   const [showMemoForm, setShowMemoForm] = useState(false);
   const [showPackageModal, setShowPackageModal] = useState(false);
   const [showDraftModal, setShowDraftModal] = useState(false);
+  const [draftMode, setDraftMode] = useState<'tangya' | 'jaboyak'>('tangya');
+  const [showContactLogModal, setShowContactLogModal] = useState(false);
+  const [editingContactLog, setEditingContactLog] = useState<ContactLog | null>(null);
+  const [editingMedicine, setEditingMedicine] = useState<MedicineUsage | null>(null);
   const [editingDraft, setEditingDraft] = useState<HerbalDraft | null>(null);
   const [showStep1Modal, setShowStep1Modal] = useState(false);
   const [showStep2Modal, setShowStep2Modal] = useState(false);
@@ -74,6 +84,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
     callQueue,
     packages,
     herbalDrafts,
+    medicineUsages,
     isLoading,
     error,
     refresh,
@@ -152,6 +163,16 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
     if (!confirm(`한약 기록을 삭제하시겠습니까?\n(${draft.consultation_type} - ${draft.patient_name})`)) return;
     try {
       await deleteHerbalDraft(draft.id!);
+      refresh();
+    } catch (err) {
+      alert('삭제 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleDeleteMedicine = async (usage: MedicineUsage) => {
+    if (!confirm(`상비약 기록을 삭제하시겠습니까?\n(${usage.medicine_name} ×${usage.quantity})\n재고가 반환됩니다.`)) return;
+    try {
+      await deleteMedicineUsage(usage.id!);
       refresh();
     } catch (err) {
       alert('삭제 중 오류가 발생했습니다.');
@@ -413,12 +434,18 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
               <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
                 <button
                   className="section-action-btn herbal-draft"
-                  onClick={() => setShowDraftModal(true)}
+                  onClick={() => { setDraftMode('tangya'); setShowDraftModal(true); }}
                 >
-                  한약+
+                  탕약+
                 </button>
                 <button
-                  className="section-action-btn consult-add memo-btn"
+                  className="section-action-btn jaboyak-draft"
+                  onClick={() => { setDraftMode('jaboyak'); setShowDraftModal(true); }}
+                >
+                  자보약+
+                </button>
+                <button
+                  className="section-action-btn medicine-draft"
                   onClick={() => setShowMedicineModal(true)}
                 >
                   상비약+
@@ -428,9 +455,12 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
             <PatientPackageSection
               packages={packages}
               herbalDrafts={herbalDrafts}
+              medicineUsages={medicineUsages}
               isLoading={isLoading}
               onEditDraft={handleEditDraft}
               onDeleteDraft={handleDeleteDraft}
+              onEditMedicine={(usage) => { setEditingMedicine(usage); setShowMedicineModal(true); }}
+              onDeleteMedicine={handleDeleteMedicine}
               decoctionOrders={decoctionOrders}
             />
           </div>
@@ -441,10 +471,19 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
           <div className="dashboard-section">
             <div className="section-header">
               <h4>인콜/아웃콜</h4>
+              <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
+                <button
+                  className="section-action-btn incall-btn"
+                  onClick={() => { setEditingContactLog(null); setShowContactLogModal(true); }}
+                >인콜+</button>
+              </div>
             </div>
             <PatientInquirySection
               contactLogs={contactLogs || []}
+              patientName={patient.name}
               isLoading={isLoading}
+              onRefresh={refresh}
+              onEditLog={(log) => { setEditingContactLog(log); setShowContactLogModal(true); }}
             />
           </div>
           <div className="dashboard-section">
@@ -526,9 +565,21 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
         patientId={patient.mssql_id || 0}
         chartNumber={patient.chart_number || ''}
         patientName={patient.name}
-        mainDoctor={patient.main_doctor || ''}
-        onClose={() => setShowMedicineModal(false)}
-        onSuccess={() => { refresh(); }}
+        mainDoctor={propSelectedDoctor || mssqlData?.main_doctor || patient.main_doctor || ''}
+        editUsage={editingMedicine}
+        onClose={() => { setShowMedicineModal(false); setEditingMedicine(null); }}
+        onSuccess={() => { refresh(); setEditingMedicine(null); }}
+      />
+    )}
+
+    {showContactLogModal && (
+      <ContactLogQuickModal
+        patientId={patient.id}
+        patientName={patient.name}
+        defaultCreatedBy={user.name}
+        editLog={editingContactLog}
+        onClose={() => { setShowContactLogModal(false); setEditingContactLog(null); }}
+        onSuccess={() => { refresh(); setEditingContactLog(null); }}
       />
     )}
 
@@ -548,9 +599,13 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
       patient={patient}
       user={user}
       editDraft={editingDraft || undefined}
+      defaultReceiptDate={propSelectedDate}
+      defaultDoctor={propSelectedDoctor || mssqlData?.main_doctor || patient?.main_doctor}
+      mode={editingDraft?.herbal_name === '자보약' ? 'jaboyak' : draftMode}
       onClose={() => {
         setShowDraftModal(false);
         setEditingDraft(null);
+        setDraftMode('tangya');
       }}
       onSuccess={async () => {
         await refresh();

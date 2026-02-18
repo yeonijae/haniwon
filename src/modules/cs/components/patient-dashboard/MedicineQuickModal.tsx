@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import MedicineSearchSelect, { type SelectedMedicine } from '../herbal-draft/MedicineSearchSelect';
-import { createMedicineUsage } from '../../lib/api';
+import { createMedicineUsage, updateMedicineUsage } from '../../lib/api';
+import type { MedicineUsage } from '../../types';
 
 const DOCTORS = ['강희종', '김대현', '임세열', '전인태'];
 const CONSULT_METHODS = ['원장실', '침구실', '전화', '카톡'];
@@ -12,6 +13,7 @@ interface Props {
   chartNumber: string;
   patientName: string;
   mainDoctor?: string;
+  editUsage?: MedicineUsage | null;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -21,17 +23,19 @@ function getCurrentDate() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export default function MedicineQuickModal({ patientId, chartNumber, patientName, mainDoctor, onClose, onSuccess }: Props) {
-  const [consultDate, setConsultDate] = useState(getCurrentDate());
+export default function MedicineQuickModal({ patientId, chartNumber, patientName, mainDoctor, editUsage, onClose, onSuccess }: Props) {
+  const [consultDate, setConsultDate] = useState(editUsage?.usage_date || getCurrentDate());
   const [doctor, setDoctor] = useState(mainDoctor || '');
-  const [consultMethod, setConsultMethod] = useState('원장실');
-  const [purpose, setPurpose] = useState('상비약');
-  const [medicines, setMedicines] = useState<SelectedMedicine[]>([]);
-  const [delivery, setDelivery] = useState('내원');
-  const [memo, setMemo] = useState('');
+  const [consultMethod, setConsultMethod] = useState('');
+  const [purpose, setPurpose] = useState(editUsage?.purpose || '');
+  const [medicines, setMedicines] = useState<SelectedMedicine[]>(
+    editUsage ? [{ inventoryId: editUsage.inventory_id || 0, name: editUsage.medicine_name, quantity: editUsage.quantity, currentStock: 0, unit: '' }] : []
+  );
+  const [delivery, setDelivery] = useState('');
+  const [memo, setMemo] = useState(editUsage?.memo || '');
   const [isSaving, setIsSaving] = useState(false);
 
-  const isDirty = medicines.length > 0 || memo.trim() !== '';
+  const isDirty = consultMethod !== '' || purpose !== '' || medicines.length > 0 || delivery !== '' || memo.trim() !== '';
 
   const handleClose = useCallback(() => {
     if (isDirty) {
@@ -58,19 +62,33 @@ export default function MedicineQuickModal({ patientId, chartNumber, patientName
     }
     setIsSaving(true);
     try {
-      const memoFull = [consultMethod, purpose, delivery !== '내원' ? delivery : '', memo].filter(Boolean).join(' ');
-      for (const med of medicines) {
-        await createMedicineUsage({
-          patient_id: patientId,
-          chart_number: chartNumber,
-          patient_name: patientName,
-          receipt_id: undefined as any,
+      const memoParts = [consultMethod, delivery !== '내원' ? delivery : '', memo].filter(Boolean).join(' ');
+      if (editUsage?.id) {
+        const med = medicines[0];
+        const inventoryChanged = med && med.inventoryId && med.inventoryId !== editUsage.inventory_id;
+        const quantityChanged = med && med.quantity !== editUsage.quantity;
+        await updateMedicineUsage(editUsage.id, {
           usage_date: consultDate,
-          medicine_name: med.name,
-          quantity: med.quantity,
-          memo: memoFull || undefined as any,
-          mssql_detail_id: undefined as any,
+          purpose: purpose || undefined,
+          memo: memo.trim() || undefined,
+          ...(inventoryChanged ? { newInventoryId: med.inventoryId, quantity: med.quantity } : {}),
+          ...(!inventoryChanged && quantityChanged ? { quantity: med.quantity } : {}),
         });
+      } else {
+        for (const med of medicines) {
+          await createMedicineUsage({
+            patient_id: patientId,
+            chart_number: chartNumber,
+            patient_name: patientName,
+            receipt_id: undefined as any,
+            usage_date: consultDate,
+            medicine_name: med.name,
+            quantity: med.quantity,
+            purpose: purpose || undefined as any,
+            memo: memoParts || undefined as any,
+            mssql_detail_id: undefined as any,
+          });
+        }
       }
       onSuccess();
       onClose();
@@ -84,11 +102,10 @@ export default function MedicineQuickModal({ patientId, chartNumber, patientName
 
   return (
     <div className="pkg-modal-overlay herbal-draft-overlay">
-      <div className="herbal-consult-modal" style={{ width: '480px' }}>
-        <div className="hcm-header">
-          <h3>상비약 기록</h3>
-          <span className="hcm-patient">{patientName} ({chartNumber.replace(/^0+/, '')})</span>
-          <button className="btn-close" onClick={handleClose}><i className="fa-solid fa-xmark" /></button>
+      <div className="herbal-consult-modal" style={{ width: '500px' }}>
+        <div className="pkg-modal-header">
+          <h3>{editUsage ? '상비약 수정' : '상비약 기록'} — {patientName}</h3>
+          <button className="pkg-modal-close-btn" onClick={handleClose}><i className="fa-solid fa-xmark" /></button>
         </div>
 
         <div className="hcm-body">
