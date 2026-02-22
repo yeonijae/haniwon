@@ -121,6 +121,8 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
 export async function getInquiries(options?: {
   status?: string;
   date?: string;
+  dateFrom?: string;
+  dateTo?: string;
   dateField?: 'created_at' | 'completed_at';
   includeOpen?: boolean;
   limit?: number;
@@ -139,9 +141,14 @@ export async function getInquiries(options?: {
     sql += ` AND i.status = ${escapeString(options.status)}`;
   }
 
-  if (options?.date) {
+  if (options?.dateFrom && options?.dateTo) {
     if (options?.includeOpen) {
-      // 미완료 항목은 항상 표시 + 선택 날짜의 완료 항목
+      sql += ` AND (i.status IN ('pending', 'in_progress') OR (DATE(i.${dateField}) >= ${escapeString(options.dateFrom)} AND DATE(i.${dateField}) <= ${escapeString(options.dateTo)}))`;
+    } else {
+      sql += ` AND DATE(i.${dateField}) >= ${escapeString(options.dateFrom)} AND DATE(i.${dateField}) <= ${escapeString(options.dateTo)}`;
+    }
+  } else if (options?.date) {
+    if (options?.includeOpen) {
       sql += ` AND (i.status IN ('pending', 'in_progress') OR DATE(i.${dateField}) = ${escapeString(options.date)})`;
     } else {
       sql += ` AND DATE(i.${dateField}) = ${escapeString(options.date)}`;

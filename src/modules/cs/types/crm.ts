@@ -315,11 +315,11 @@ export const CALL_TYPE_LABELS: Record<CallType, string> = {
   after_call: '애프터콜',
   unconsumed: '미복용',
   vip_care: 'VIP관리',
-  churn_risk_1: '이탈위험(1회)',
+  churn_risk_1: '이탈관리',
   churn_risk_3: '재방문유도',
   repayment_consult: '재결제상담',
   remind_3month: '리마인드',
-  expiry_warning: '유효기간임박',
+  expiry_warning: '기간임박',
 };
 
 export type CallStatus =
@@ -347,6 +347,7 @@ export interface CallQueueItem {
   priority: number;
   status: CallStatus;
   postponed_to: string | null;
+  original_due_date: string | null;
   completed_at: string | null;
   contact_log_id: number | null;
   created_at: string;

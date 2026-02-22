@@ -104,7 +104,7 @@ function SettingsView({ user }: SettingsViewProps) {
           border-radius: 6px;
           background: transparent;
           color: #6b7280;
-          font-size: 12px;
+          font-size: 14px;
           font-weight: 500;
           cursor: pointer;
           display: flex;

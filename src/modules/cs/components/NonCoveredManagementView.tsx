@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import type { PortalUser } from '@shared/types';
 import { DRAFT_BRANCH_TYPES } from '../types';
 import { MEDICINE_CATEGORIES } from '../lib/api';
+import './call-center/OutboundCallCenter.css';
 import HerbalConsultationView from './HerbalConsultationView';
 import MedicineUsageView from './MedicineUsageView';
 import PackageManagementView from './PackageManagementView';
@@ -36,13 +37,40 @@ const PACKAGE_FILTER_CONFIG = [
 ];
 
 function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
-  const [activeTab, setActiveTab] = useState<NonCoveredTab>('all');
+  const [activeTab, setActiveTab] = useState<NonCoveredTab>('herbal-consultation');
   
   // 공통 필터
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+  });
+  const [rangeMode, setRangeMode] = useState<'day' | '1w' | '1m' | '3m'>('day');
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // 기간 계산
+  const getDateRange = useCallback(() => {
+    const end = selectedDate;
+    if (rangeMode === 'day') return { dateFrom: end, dateTo: end };
+    const d = new Date(selectedDate + 'T00:00:00');
+    if (rangeMode === '1w') d.setDate(d.getDate() - 6);
+    else if (rangeMode === '1m') d.setMonth(d.getMonth() - 1);
+    else if (rangeMode === '3m') d.setMonth(d.getMonth() - 3);
+    const start = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    return { dateFrom: start, dateTo: end };
+  }, [selectedDate, rangeMode]);
+
+  const { dateFrom, dateTo } = getDateRange();
+  
+  // 날짜 이동
+  const moveDate = (dir: number) => {
+    const d = new Date(selectedDate + 'T00:00:00');
+    d.setDate(d.getDate() + dir);
+    setSelectedDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+  };
+  const isToday = selectedDate === (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })();
+
+  // 카드/표 토글 (상비약)
+  const [medicineViewMode, setMedicineViewMode] = useState<'card' | 'table'>('card');
   
   // 약상담 필터
   const [filterBranch, setFilterBranch] = useState('all');
@@ -74,6 +102,7 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
     dateTo,
     filterCategory: activeTab === 'medicine' ? filterCategory : 'all',
     refreshKey,
+    externalViewMode: medicineViewMode as 'card' | 'table',
   };
 
   const packageProps = {
@@ -87,129 +116,67 @@ function NonCoveredManagementView({ user }: NonCoveredManagementViewProps) {
   return (
     <div className="noncovered-management">
       {/* 통합 헤더 */}
-      <div className="nc-unified-header">
-        <div className="nc-header-tabs">
-          <button
-            className={`noncovered-tab ${activeTab === 'all' ? 'active' : ''}`}
-            onClick={() => setActiveTab('all')}
-          >
-            <i className="fa-solid fa-th-large"></i>
-            전체
-          </button>
-          <button
-            className={`noncovered-tab ${activeTab === 'herbal-consultation' ? 'active' : ''}`}
-            onClick={() => setActiveTab('herbal-consultation')}
-          >
-            <i className="fa-solid fa-mortar-pestle"></i>
-            약상담
-          </button>
-          <button
-            className={`noncovered-tab ${activeTab === 'medicine' ? 'active' : ''}`}
-            onClick={() => setActiveTab('medicine')}
-          >
-            <i className="fa-solid fa-pills"></i>
-            상비약
-          </button>
-          <button
-            className={`noncovered-tab ${activeTab === 'package' ? 'active' : ''}`}
-            onClick={() => setActiveTab('package')}
-          >
-            <i className="fa-solid fa-box"></i>
-            패키지
-          </button>
-          <button
-            className={`noncovered-tab ${activeTab === 'decoction' ? 'active' : ''}`}
-            onClick={() => setActiveTab('decoction')}
-          >
-            <i className="fa-solid fa-fire"></i>
-            탕전
-          </button>
-        </div>
-
-        <div className="nc-header-filters">
+      <div className="occ-header-bar">
+        <div className="occ-date-nav">
+          <button onClick={() => moveDate(-1)} className="occ-date-btn">◀</button>
+          <div className="occ-date-wrap">
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="occ-date-hidden"
+              id="nc-date-picker"
+            />
+            <button className="occ-date-display" onClick={() => {
+              const el = document.getElementById('nc-date-picker') as HTMLInputElement;
+              el?.showPicker?.();
+            }}>
+              {(() => {
+                const d = new Date(selectedDate + 'T00:00:00');
+                const days = ['일','월','화','수','목','금','토'];
+                return `${d.getFullYear()}. ${String(d.getMonth()+1).padStart(2,'0')}. ${String(d.getDate()).padStart(2,'0')}. (${days[d.getDay()]})`;
+              })()}
+            </button>
+          </div>
+          <button onClick={() => moveDate(1)} className="occ-date-btn">▶</button>
+          {!isToday && (
+            <button onClick={() => {
+              const n = new Date();
+              setSelectedDate(`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`);
+            }} className="occ-today-btn">오늘</button>
+          )}
+          <div className="occ-filter-group">
+            {([['day', '1일'], ['1w', '1주일'], ['1m', '1개월'], ['3m', '3개월']] as const).map(([key, label]) => (
+              <button key={key} className={`occ-filter-btn ${rangeMode === key ? 'active' : ''}`} onClick={() => setRangeMode(key)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="occ-filter-group occ-filter-calltype">
+            {([['herbal-consultation', '약상담'], ['medicine', '상비약'], ['decoction', '탕전일정']] as const).map(([key, label]) => (
+              <button key={key} className={`occ-filter-btn ${activeTab === key ? 'active' : ''}`} onClick={() => setActiveTab(key as NonCoveredTab)}>
+                {label}
+              </button>
+            ))}
+          </div>
           <input
             type="text"
-            className="noncovered-search"
             placeholder="검색..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 10px', fontSize: 13, width: 120 }}
           />
-
-          {/* 약상담 탭 필터 */}
-          {activeTab === 'herbal-consultation' && <>
-            <select
-              className="noncovered-filter"
-              value={filterBranch}
-              onChange={(e) => setFilterBranch(e.target.value)}
-            >
-              <option value="all">전체 분기</option>
-              {DRAFT_BRANCH_TYPES.map(b => (
-                <option key={b.value} value={b.value}>{b.label}</option>
-              ))}
-            </select>
-            <select
-              className="noncovered-filter"
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-            >
-              <option value="all">전체 상태</option>
-              <option value="draft">초안</option>
-              <option value="scheduled">탕전배정</option>
-            </select>
-            <select
-              className="noncovered-filter"
-              value={sortField}
-              onChange={(e) => setSortField(e.target.value)}
-            >
-              <option value="created_at">작성일순</option>
-              <option value="decoction_date">탕전일순</option>
-              <option value="patient_name">환자명순</option>
-            </select>
-          </>}
-
-          {/* 상비약 탭 필터 */}
-          {activeTab === 'medicine' && (
-            <select
-              className="noncovered-filter"
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-            >
-              <option value="all">전체 카테고리</option>
-              {MEDICINE_CATEGORIES.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          )}
-
-          {/* 패키지 탭 필터 — 뱃지형 */}
-          {activeTab === 'package' && (
-            <div className="header-badges">
-              {PACKAGE_FILTER_CONFIG.map(cfg => (
-                <span
-                  key={cfg.key}
-                  className={`header-badge clickable ${packageFilter === cfg.key ? 'active' : ''}`}
-                  style={{ '--badge-color': cfg.color } as React.CSSProperties}
-                  onClick={() => setPackageFilter(cfg.key)}
-                >
-                  {cfg.label}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* 공통: 날짜 */}
-          <div className="date-range-filter">
-            <input type="date" className="date-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-            <span className="date-separator">~</span>
-            <input type="date" className="date-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-            {(dateFrom || dateTo) && (
-              <button className="date-clear-btn" onClick={() => { setDateFrom(''); setDateTo(''); }}>✕</button>
-            )}
-          </div>
-
-          <button className="noncovered-refresh-btn" onClick={handleRefresh}>
+        </div>
+        <div className="occ-header-actions">
+          <button className="occ-refresh-btn" onClick={handleRefresh}>
             <i className="fas fa-sync-alt"></i>
           </button>
+          {activeTab === 'medicine' && (
+            <div className="occ-filter-group">
+              <button className={`occ-filter-btn ${medicineViewMode === 'card' ? 'active' : ''}`} onClick={() => setMedicineViewMode('card')}>카드</button>
+              <button className={`occ-filter-btn ${medicineViewMode === 'table' ? 'active' : ''}`} onClick={() => setMedicineViewMode('table')}>표</button>
+            </div>
+          )}
         </div>
       </div>
 

@@ -162,7 +162,7 @@ export default function HeaderPatientSearch({ onPatientSelect }: HeaderPatientSe
         ref={inputRef}
         type="text"
         className="cs-header-search-input"
-        placeholder="환자 검색 (이름/차트번호/전화번호)"
+        placeholder="검색(이름/차트번호/연락처)"
         value={query}
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}

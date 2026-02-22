@@ -21,6 +21,7 @@ import {
   deleteCallNote,
   updateCallNote,
   deleteCallQueueItem,
+  undoPostpone,
   type CallTargetPatient,
 } from '../../lib/callQueueApi';
 import { createContactLog } from '../../lib/contactLogApi';
@@ -43,8 +44,6 @@ const CALL_TYPES: CallType[] = [
   'unconsumed',
   'vip_care',
   'churn_risk_1',
-  'churn_risk_3',
-  'repayment_consult',
   'remind_3month',
   'expiry_warning',
 ];
@@ -80,6 +79,7 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
   const [stats, setStats] = useState<CallCenterStats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [baseDate, setBaseDate] = useState<string>(formatLocalDate(new Date()));
+  const [rangeMode, setRangeMode] = useState<'day' | '1w' | '1m' | '3m'>('day');
   const [targetSelected, setTargetSelected] = useState<Set<number>>(new Set());
   const [operator, setOperator] = useState<string>(() => localStorage.getItem('occ_operator') || '');
   const [showOperatorInput, setShowOperatorInput] = useState(false);
@@ -130,9 +130,19 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
   const loadAll = useCallback(async () => {
     setIsLoading(true);
     try {
+      // 기간 계산
+      const calcDateFrom = () => {
+        if (rangeMode === 'day') return undefined;
+        const d = new Date(baseDate + 'T00:00:00');
+        if (rangeMode === '1w') d.setDate(d.getDate() - 6);
+        else if (rangeMode === '1m') d.setMonth(d.getMonth() - 1);
+        else if (rangeMode === '3m') d.setMonth(d.getMonth() - 3);
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      };
+      const dateFrom = calcDateFrom();
       const [incompleteItems, doneItems, targets, st] = await Promise.all([
         getTodayCallQueue(selectedType || undefined, baseDate, 'incomplete'),
-        getTodayCallQueue(selectedType || undefined, baseDate, 'completed'),
+        getTodayCallQueue(selectedType || undefined, baseDate, 'completed', dateFrom),
         getAllCallTargets(selectedType || undefined, baseDate),
         getCallCenterStats(),
       ]);
@@ -154,7 +164,7 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedType, baseDate]);
+  }, [selectedType, baseDate, rangeMode]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -268,17 +278,57 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
     if (!postponeTarget || !postponeDate) return;
     try {
       await postponeCall(postponeTarget.id, postponeDate);
-      // 미루기 사유를 메모로 기록
-      if (postponeReason.trim()) {
-        await addCallNote(postponeTarget.id, `[미루기 → ${fmtDate(postponeDate)}] ${postponeReason.trim()}`, operator);
-      } else {
-        await addCallNote(postponeTarget.id, `[미루기 → ${fmtDate(postponeDate)}]`, operator);
-      }
+      const memoText = `[미루기 → ${fmtDate(postponeDate)}]${postponeReason.trim() ? ' ' + postponeReason.trim() : ''}`;
+      await addCallNote(postponeTarget.id, memoText, operator);
+      // contact_log에도 기록 → 환자대시보드 표시
+      const meta = [
+        `콜종류:${CALL_TYPE_LABELS[postponeTarget.call_type]}`,
+        postponeTarget.herbal_name ? `약종류:${postponeTarget.herbal_name}` : '',
+        postponeTarget.reason ? `사유:${postponeTarget.reason}` : '',
+      ].filter(Boolean).join('|');
+      await createContactLog({
+        patient_id: postponeTarget.patient_id,
+        direction: 'outbound',
+        channel: 'phone',
+        contact_type: postponeTarget.call_type as any,
+        content: memoText,
+        result: meta,
+        related_type: postponeTarget.related_type || undefined,
+        related_id: postponeTarget.related_id || undefined,
+        created_by: operator,
+      });
       setPostponeTarget(null);
       handleRefresh();
     } catch (error) {
       console.error('콜 미루기 오류:', error);
       alert('미루기에 실패했습니다.');
+    }
+  };
+
+  // 미루기 취소
+  const handleUndoPostpone = async (item: CallQueueItem) => {
+    if (!requireOperator()) return;
+    try {
+      await undoPostpone(item.id);
+      // 미루기 메모 삭제
+      const itemNotes = notesMap.get(item.id) || [];
+      const postponeNote = itemNotes.find(n => n.content.startsWith('[미루기 →'));
+      if (postponeNote) await deleteCallNote(postponeNote.id);
+      // 미루기 contact_log 삭제
+      try {
+        const { getContactLogsByPatient, deleteContactLog } = await import('../../lib/contactLogApi');
+        const logs = await getContactLogsByPatient(item.patient_id);
+        const match = logs.find(l =>
+          l.direction === 'outbound' &&
+          l.contact_type === item.call_type &&
+          l.content?.startsWith('[미루기 →')
+        );
+        if (match) await deleteContactLog(match.id).catch(() => {});
+      } catch {}
+      setCtxMenu(null);
+      handleRefresh();
+    } catch (err) {
+      console.error('미루기 취소 실패:', err);
     }
   };
 
@@ -561,9 +611,9 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
     return (
       <div
         key={item.id}
-        className={`qc-card ${isDone ? 'qc-done' : ''} ${isNoAnswer ? 'qc-no-answer' : ''}`}
+        className={`qc-card ${isDone ? 'qc-done' : ''} ${isNoAnswer ? 'qc-no-answer' : ''} ${item.postponed_to && !isDone ? 'qc-postponed' : ''}`}
         draggable={!isDone}
-        onContextMenu={isDone ? (e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item }); }) : undefined}
+        onContextMenu={(isDone || (item.postponed_to && !isDone)) ? (e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item }); }) : undefined}
         onDragStart={e => {
           e.dataTransfer.setData('application/queue-item', String(item.id));
           e.dataTransfer.effectAllowed = 'move';
@@ -668,29 +718,50 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
       <div className="occ-header-bar">
         <div className="occ-date-nav">
           <button onClick={() => moveDate(-1)} className="occ-date-btn">◀</button>
-          <input
-            type="date"
-            value={baseDate}
-            onChange={e => setBaseDate(e.target.value)}
-            className="occ-date-input"
-          />
+          <div className="occ-date-wrap">
+            <input
+              type="date"
+              value={baseDate}
+              onChange={e => setBaseDate(e.target.value)}
+              className="occ-date-hidden"
+              id="occ-date-picker"
+            />
+            <button className="occ-date-display" onClick={() => {
+              const el = document.getElementById('occ-date-picker') as HTMLInputElement;
+              el?.showPicker?.();
+            }}>
+              {(() => {
+                const d = new Date(baseDate + 'T00:00:00');
+                const days = ['일','월','화','수','목','금','토'];
+                return `${d.getFullYear()}. ${String(d.getMonth()+1).padStart(2,'0')}. ${String(d.getDate()).padStart(2,'0')}. (${days[d.getDay()]})`;
+              })()}
+            </button>
+          </div>
           <button onClick={() => moveDate(1)} className="occ-date-btn">▶</button>
           {!isToday && (
             <button onClick={() => setBaseDate(formatLocalDate(new Date()))} className="occ-today-btn">오늘</button>
           )}
+          <div className="occ-filter-group">
+            {([['day', '1일'], ['1w', '1주일'], ['1m', '1개월'], ['3m', '3개월']] as const).map(([key, label]) => (
+              <button key={key} className={`occ-filter-btn ${rangeMode === key ? 'active' : ''}`} onClick={() => setRangeMode(key)}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="occ-type-filters">
-          <button className={`filter-btn ${selectedType === null ? 'active' : ''}`} onClick={() => setSelectedType(null)}>전체</button>
+        <div className="occ-filter-group occ-filter-calltype">
+          <button className={`occ-filter-btn ${selectedType === null ? 'active' : ''}`} onClick={() => setSelectedType(null)}>전체</button>
           {CALL_TYPES.map(type => (
-            <button key={type} className={`filter-btn ${selectedType === type ? 'active' : ''}`} onClick={() => setSelectedType(type)}>
+            <button key={type} className={`occ-filter-btn ${selectedType === type ? 'active' : ''}`} onClick={() => setSelectedType(type)}>
               {CALL_TYPE_LABELS[type]}
-              {stats?.by_type[type] ? <span className="filter-count">{stats.by_type[type]}</span> : null}
             </button>
           ))}
         </div>
-        <button className="btn-refresh" onClick={handleRefresh} disabled={isLoading}>
-          <i className="fa-solid fa-refresh"></i>
-        </button>
+        <div className="occ-header-actions">
+          <button className="occ-refresh-btn" onClick={handleRefresh} disabled={isLoading}>
+            <i className="fa-solid fa-refresh"></i>
+          </button>
+        </div>
       </div>
 
       {/* 3컬럼 레이아웃 */}
@@ -784,7 +855,7 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
         {/* 3. 완료 */}
         <div className="occ-col occ-col-done">
           <div className="occ-col-header">
-            <h3>✅ 완료 <span className="occ-col-count">{completedItems.length}</span></h3>
+            <h3>✅ 완료 <span className="occ-col-count">{completedItems.filter(i => i.status === 'completed').length}</span> <span style={{ marginLeft: 12 }}>미루기</span> <span className="occ-col-count postponed">{completedItems.filter(i => i.postponed_to && i.status !== 'completed').length}</span></h3>
           </div>
           <div className="occ-col-body">
             {completedItems.length === 0 ? (
@@ -802,9 +873,16 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
       {ctxMenu && (
         <div className="occ-ctx-backdrop" onClick={() => setCtxMenu(null)}>
           <div className="occ-ctx-menu" style={{ top: ctxMenu.y, left: ctxMenu.x }} onClick={e => e.stopPropagation()}>
-            <button onClick={() => handleUndoComplete(ctxMenu.item)}>
-              <i className="fa-solid fa-rotate-left"></i> 완료 취소
-            </button>
+            {ctxMenu.item.status === 'completed' && (
+              <button onClick={() => handleUndoComplete(ctxMenu.item)}>
+                <i className="fa-solid fa-rotate-left"></i> 완료 취소
+              </button>
+            )}
+            {ctxMenu.item.postponed_to && ctxMenu.item.status !== 'completed' && (
+              <button onClick={() => handleUndoPostpone(ctxMenu.item)}>
+                <i className="fa-solid fa-rotate-left"></i> 미루기 취소
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -868,19 +946,40 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
                 <span className={`call-type-badge ${postponeTarget.call_type}`}>
                   {CALL_TYPE_LABELS[postponeTarget.call_type]}
                 </span>
+                {postponeTarget.herbal_name && <span className="ct-tag herbal">{postponeTarget.herbal_name}</span>}
                 <span className="patient-name">{postponeTarget.patient?.name}</span>
+                <span className="ct-chart">{postponeTarget.patient?.chart_number}</span>
+              </div>
+              <div className="postpone-info">
+                {fmtDate(postponeTarget.due_date)}{postponeTarget.reason ? ` - ${postponeTarget.reason}` : ''}
               </div>
               <div className="form-group">
                 <label>미루기 날짜</label>
+                <div className="postpone-quick-btns">
+                  {[1, 3, 5, 7, 10].map(d => {
+                    const target = new Date(baseDate + 'T00:00:00');
+                    target.setDate(target.getDate() + d);
+                    const val = formatLocalDate(target);
+                    return (
+                      <button
+                        key={d}
+                        className={`postpone-quick-btn ${postponeDate === val ? 'active' : ''}`}
+                        onClick={() => setPostponeDate(val)}
+                      >
+                        +{d}일
+                      </button>
+                    );
+                  })}
+                </div>
                 <input
                   type="date"
                   value={postponeDate}
                   onChange={e => setPostponeDate(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14 }}
+                  className="postpone-date-input"
                 />
               </div>
               <div className="form-group">
-                <label>사유 (메모로 기록)</label>
+                <label>사유 <span style={{ color: '#ef4444' }}>*</span></label>
                 <textarea
                   value={postponeReason}
                   onChange={e => setPostponeReason(e.target.value)}
@@ -893,8 +992,8 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
             </div>
             <div className="modal-footer">
               <button className="btn-cancel" onClick={() => setPostponeTarget(null)}>취소</button>
-              <button className="btn-submit" onClick={handlePostponeConfirm} disabled={!postponeDate}>
-                <i className="fa-solid fa-clock"></i> 미루기
+              <button className="btn-submit" onClick={handlePostponeConfirm} disabled={!postponeDate || !postponeReason.trim()}>
+                미루기
               </button>
             </div>
           </div>

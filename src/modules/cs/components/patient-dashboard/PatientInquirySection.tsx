@@ -8,6 +8,9 @@ interface PatientInquirySectionProps {
   isLoading: boolean;
   onRefresh?: () => void;
   onEditLog?: (log: ContactLog) => void;
+  onAddInCall?: () => void;
+  dirFilter?: 'all' | 'inbound' | 'outbound';
+  onDirFilterChange?: (f: 'all' | 'inbound' | 'outbound') => void;
 }
 
 function formatDate(dateStr: string): string {
@@ -76,12 +79,21 @@ const PatientInquirySection: React.FC<PatientInquirySectionProps> = ({
   isLoading,
   onRefresh,
   onEditLog,
+  onAddInCall,
+  dirFilter: dirFilterProp,
+  onDirFilterChange,
 }) => {
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [localDirFilter, setLocalDirFilter] = useState<'all' | 'inbound' | 'outbound'>('all');
+  const dirFilter = dirFilterProp ?? localDirFilter;
+  const setDirFilter = onDirFilterChange ?? setLocalDirFilter;
 
   const handleDelete = async (log: ContactLog) => {
-    if (!confirm('이 인콜 기록을 삭제하시겠습니까?')) return;
+    if (!confirm('이 기록을 삭제하시겠습니까?')) return;
     try {
+      // FK 해제: 콜큐에서 이 contact_log를 참조하는 행의 contact_log_id를 null로
+      const { execute } = await import('../../../../shared/lib/postgres');
+      await execute(`UPDATE outbound_call_queue SET contact_log_id = NULL WHERE contact_log_id = ${log.id}`).catch(() => {});
       await deleteContactLog(log.id);
       onRefresh?.();
     } catch { alert('삭제에 실패했습니다.'); }
@@ -162,11 +174,25 @@ const PatientInquirySection: React.FC<PatientInquirySectionProps> = ({
 
   return (
     <div className="dashboard-section-content">
+      {!dirFilterProp && (
+        <div className="cl-dir-filter">
+          {(['all', 'inbound', 'outbound'] as const).map(f => (
+            <button key={f} className={`cl-dir-btn ${dirFilter === f ? 'active' : ''}`} onClick={() => setDirFilter(f)}>
+              {f === 'all' ? '전체' : f === 'inbound' ? '문의' : '해피콜'}
+            </button>
+          ))}
+          {onAddInCall && <button className="cl-dir-btn cl-add-btn" onClick={onAddInCall}>문의+</button>}
+        </div>
+      )}
       {contactLogs.length === 0 ? (
         <div className="section-empty">응대 기록이 없습니다.</div>
       ) : (
         <div className="cl-list">
-          {contactLogs.slice(0, 15).map(log => {
+          {contactLogs.filter(log => {
+            if (dirFilter === 'all') return true;
+            if (dirFilter === 'outbound') return isOutboundLog(log);
+            return !isOutboundLog(log);
+          }).slice(0, 15).map(log => {
             // 아웃콜은 카드 형태
             if (isOutboundLog(log)) return renderOutboundCard(log);
             const isExpanded = expandedId === log.id;
@@ -294,6 +320,37 @@ const PatientInquirySection: React.FC<PatientInquirySectionProps> = ({
           text-align: center; font-size: 11px; color: #6b7280;
           margin-top: 4px; padding: 2px 0;
         }
+        /* 방향 필터 */
+        .cl-dir-filter {
+          display: flex;
+          gap: 4px;
+          margin-bottom: 8px;
+        }
+        .cl-dir-btn {
+          padding: 4px 12px;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          background: #fff;
+          font-size: 12px;
+          cursor: pointer;
+          color: #6b7280;
+        }
+        .cl-dir-btn:hover { background: #f3f4f6; }
+        .cl-dir-btn.active {
+          background: #3b82f6;
+          color: white;
+          border-color: #3b82f6;
+        }
+        .cl-dir-btn.cl-add-btn {
+          margin-left: auto;
+          background: #3b82f6;
+          color: white;
+          border-color: #3b82f6;
+        }
+        .cl-dir-btn.cl-add-btn:hover {
+          background: #2563eb;
+        }
+
         /* 아웃콜 카드 */
         .cl-outbound-card {
           background: #f0f9ff;

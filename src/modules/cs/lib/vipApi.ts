@@ -67,6 +67,9 @@ export interface VipCandidate {
   suggested_grade: 'VVIP' | 'VIP';
   reason: string;
   familyMembers?: VipFamilyMember[];  // 가족합산 시 구성원 상세
+  referral_count: number;      // 소개한 환자 수
+  referral_total_revenue: number;  // 소개 환자들의 총매출
+  referral_noncovered: number;     // 소개 환자들의 비급여매출
 }
 
 export interface VipStats {
@@ -204,6 +207,7 @@ export interface VipCriteriaOptions {
   visits?: boolean;    // 내원횟수
   loyalty?: boolean;   // 충성도 (연차)
   familySum?: boolean; // 가족합산
+  referral?: boolean;  // 소개자 기준 포함 여부
   minScore?: number;
   maxCount?: number;
 }
@@ -319,6 +323,44 @@ export async function generateVipCandidates(year: number, limit: number = 30, op
 
   const patientMap = new Map(patients.map(p => [p.mssql_id, p]));
 
+  // 2b. 소개자 데이터 조회
+  const useReferral = options?.referral === true;
+  const referralMap = new Map<string, { referral_count: number; referral_total_revenue: number; referral_noncovered: number }>();
+  if (useReferral) {
+    const referralRows = await mssqlQuery<{
+      referrer_sn: string; referral_count: number; referral_total_revenue: number; referral_noncovered: number;
+    }>(`
+      SELECT 
+        ref.sn AS referrer_sn,
+        COUNT(DISTINCT c.Customer_PK) AS referral_count,
+        ISNULL(SUM(rev.total_rev), 0) AS referral_total_revenue,
+        ISNULL(SUM(rev.noncovered_rev), 0) AS referral_noncovered
+      FROM Customer c
+      CROSS APPLY (
+        SELECT SUBSTRING(c.suggcustnamesn, CHARINDEX('[', c.suggcustnamesn) + 1, 
+               CHARINDEX(']', c.suggcustnamesn) - CHARINDEX('[', c.suggcustnamesn) - 1) AS ref_sn
+      ) parsed
+      JOIN Customer ref ON ref.sn = parsed.ref_sn
+      LEFT JOIN (
+        SELECT Customer_PK, 
+          SUM(CAST(Bonin_Money AS bigint) + CAST(General_Money AS bigint)) AS total_rev, 
+          SUM(CAST(General_Money AS bigint)) AS noncovered_rev
+        FROM Receipt
+        GROUP BY Customer_PK
+      ) rev ON rev.Customer_PK = c.Customer_PK
+      WHERE c.suggcustnamesn IS NOT NULL AND c.suggcustnamesn != '' 
+        AND c.suggcustnamesn LIKE '%[[]%]%'
+      GROUP BY ref.sn
+    `);
+    for (const r of referralRows) {
+      referralMap.set(String(r.referrer_sn), {
+        referral_count: Number(r.referral_count),
+        referral_total_revenue: Number(r.referral_total_revenue),
+        referral_noncovered: Number(r.referral_noncovered),
+      });
+    }
+  }
+
   // 3. 이미 해당 연도 VIP인 환자 제외
   const existing = await query<{ patient_id: number }>(`SELECT patient_id FROM patient_vip_history WHERE year = ${year}`);
   const existingIds = new Set(existing.map(e => e.patient_id));
@@ -398,7 +440,20 @@ export async function generateVipCandidates(year: number, limit: number = 30, op
     const loyaltyScore = useLoyalty && firstVisitYear ? Math.min(((currentYear - firstVisitYear) / 5) * loyaltyWeight * normalize, loyaltyWeight * normalize) : 0;
     const score = Math.round(revenueScore + visitScore + loyaltyScore);
 
-    if (score <= minScore) continue;
+    // 소개자 데이터 매칭
+    const refData = referralMap.get(p.chart_number) || { referral_count: 0, referral_total_revenue: 0, referral_noncovered: 0 };
+
+    // 소개자 스코어링
+    let referralScore = 0;
+    if (useReferral) {
+      if (refData.referral_count >= 3) referralScore += 15;
+      else if (refData.referral_count >= 1) referralScore += 10;
+      if (refData.referral_total_revenue >= 5_000_000) referralScore += 10;
+      else if (refData.referral_total_revenue >= 1_000_000) referralScore += 5;
+    }
+
+    const finalScore = score + referralScore;
+    if (finalScore <= minScore) continue;
 
     const reasons: string[] = [];
     if (revCriteria.includes('total') && effectiveRevenue > 0) reasons.push(`총진료 ${Math.round(effectiveRevenue / 10000)}만`);
@@ -407,20 +462,24 @@ export async function generateVipCandidates(year: number, limit: number = 30, op
     if (useVisits && effectiveVisits > 0) reasons.push(`내원 ${effectiveVisits}회`);
     if (useLoyalty && firstVisitYear && currentYear - firstVisitYear >= 3) reasons.push(`${currentYear - firstVisitYear}년 충성`);
     if (familyMemberDetails.length > 0) reasons.push(`가족 ${familyMemberDetails.length}명 합산`);
+    if (useReferral && refData.referral_count > 0) reasons.push(`소개 ${refData.referral_count}명`);
 
     candidates.push({
       patient_id: p.id,
       name: p.name + (familyMemberDetails.length > 0 ? ` 외${familyMemberDetails.length}` : ''),
       chart_number: p.chart_number,
       phone: p.phone,
-      score,
+      score: finalScore,
       revenue: effectiveRevenue,
       noncovered: effectiveNoncovered,
       copay: effectiveCopay,
       visit_count: effectiveVisits,
       first_visit_year: firstVisitYear,
-      suggested_grade: score >= 80 ? 'VVIP' : 'VIP',
+      suggested_grade: finalScore >= 80 ? 'VVIP' : 'VIP',
       reason: reasons.join(', '),
+      referral_count: refData.referral_count,
+      referral_total_revenue: refData.referral_total_revenue,
+      referral_noncovered: refData.referral_noncovered,
       familyMembers: familyMemberDetails.length > 0 ? [
         // 본인도 포함
         { name: p.name, chart_number: p.chart_number, revenue: d.total_revenue, noncovered: d.noncovered, copay: d.copay, visit_count: d.visit_count },

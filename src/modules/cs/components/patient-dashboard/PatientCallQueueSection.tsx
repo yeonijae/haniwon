@@ -1,5 +1,5 @@
 /**
- * 환자 아웃콜 대기열 섹션 (대시보드용)
+ * 환자 해피콜 대기열 섹션 (대시보드용)
  */
 import React from 'react';
 import type { CallQueueItem } from '../../types/crm';
@@ -42,7 +42,7 @@ const PatientCallQueueSection: React.FC<PatientCallQueueSectionProps> = ({
   return (
     <div className="dashboard-section-content">
       {callQueue.length === 0 ? (
-        <div className="section-empty">아웃콜 이력이 없습니다.</div>
+        <div className="section-empty">해피콜 이력이 없습니다.</div>
       ) : (
         <>
           {/* 대기 중 */}

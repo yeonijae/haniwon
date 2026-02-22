@@ -570,9 +570,10 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  padding: 14px 20px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  color: #374151;
 }
 
 .call-result-modal .modal-header h3 {
@@ -583,16 +584,14 @@
 .call-result-modal .modal-close {
   background: none;
   border: none;
-  color: white;
+  color: #9ca3af;
   font-size: 1.2em;
   cursor: pointer;
   padding: 4px;
-  opacity: 0.8;
-  transition: opacity 0.2s;
 }
 
 .call-result-modal .modal-close:hover {
-  opacity: 1;
+  color: #374151;
 }
 
 .call-result-modal .modal-body {
@@ -607,6 +606,10 @@
   background: #f8f9fa;
   border-radius: 8px;
   margin-bottom: 20px;
+}
+.call-result-modal .patient-info-bar .ct-tag {
+  font-size: 13px;
+  padding: 3px 10px;
 }
 
 .call-result-modal .form-group {
@@ -665,52 +668,60 @@
 
 .call-result-modal .form-textarea:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #3b82f6;
 }
 
 .call-result-modal .modal-footer {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
-  gap: 10px;
-  padding: 16px 20px;
-  background: #f8f9fa;
-  border-top: 1px solid #e0e0e0;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid #e5e7eb;
 }
 
 .call-result-modal .btn-cancel,
 .call-result-modal .btn-submit {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 10px 20px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 0.9em;
-  transition: all 0.2s;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  height: 40px !important;
+  width: 100px;
+  line-height: 1;
+  box-sizing: border-box;
+  padding: 0 !important;
+  margin: 0 !important;
+  vertical-align: middle;
 }
 
 .call-result-modal .btn-cancel {
-  background: #f0f0f0;
-  color: #555;
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
 }
 
 .call-result-modal .btn-cancel:hover:not(:disabled) {
-  background: #e0e0e0;
+  background: #e5e7eb;
 }
 
 .call-result-modal .btn-submit {
-  background: #667eea;
+  background: #3b82f6;
   color: white;
+  border: 1px solid #3b82f6;
 }
-
 .call-result-modal .btn-submit:hover:not(:disabled) {
-  background: #5a6fd6;
+  background: #2563eb;
 }
-
 .call-result-modal .btn-cancel:disabled,
 .call-result-modal .btn-submit:disabled {
-  opacity: 0.6;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -903,6 +914,98 @@
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 13px;
+}
+.occ-date-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.occ-date-hidden {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+.occ-date-display {
+  padding: 5px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  background: white;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.occ-date-display:hover {
+  border-color: #3b82f6;
+}
+
+/* 필터 그룹 */
+.occ-filter-group {
+  display: flex;
+  gap: 0;
+  margin-left: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.occ-filter-btn {
+  padding: 5px 12px;
+  border: none;
+  border-right: 1px solid #d1d5db;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #6b7280;
+  white-space: nowrap;
+}
+.occ-filter-btn:last-child {
+  border-right: none;
+}
+.occ-filter-btn:hover {
+  background: #f3f4f6;
+}
+.occ-filter-btn.active {
+  background: #3b82f6;
+  color: white;
+}
+.occ-filter-patient .occ-filter-btn.active {
+  background: #6366f1;
+  color: white;
+}
+.occ-filter-channel .occ-filter-btn.active {
+  background: #0d9488;
+  color: white;
+}
+.occ-filter-calltype .occ-filter-btn.active {
+  background: #0d9488;
+  color: white;
+}
+
+/* 헤더 액션 */
+.occ-header-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  align-items: center;
+}
+.occ-refresh-btn {
+  padding: 5px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  font-size: 13px;
+  cursor: pointer;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.occ-refresh-btn:hover {
+  background: #f3f4f6;
 }
 .occ-today-btn {
   border: 1px solid #d1d5db;
@@ -1211,6 +1314,57 @@
   opacity: 0.7;
 }
 
+/* 미루기 정보 */
+.postpone-info {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  font-size: 15px;
+  color: #374151;
+}
+
+/* 미루기 퀵버튼 */
+.postpone-quick-btns {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.postpone-quick-btn {
+  flex: 1;
+  padding: 8px 4px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #f9fafb;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #374151;
+  transition: all 0.15s;
+}
+.postpone-quick-btn:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+.postpone-quick-btn.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+.postpone-date-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.postpone-date-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
 /* 우클릭 컨텍스트 메뉴 */
 .occ-ctx-backdrop {
   position: fixed;
@@ -1467,6 +1621,28 @@
   background: #fee2e2;
   color: #991b1b;
   margin-right: 4px;
+}
+.q-status-badge.postponed {
+  background: #fef3c7;
+  color: #92400e;
+  margin-right: 4px;
+}
+
+/* 미룬 카드 스타일 */
+.qc-card.qc-postponed {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+.qc-card.qc-postponed .patient-name,
+.qc-card.qc-postponed .ct-reason,
+.qc-card.qc-postponed .qc-date {
+  color: #92400e;
+}
+
+/* 완료 헤더 카운트 */
+.occ-col-count.postponed {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 /* 완료 행 */

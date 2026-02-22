@@ -81,10 +81,14 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
   const [showConsultModal, setShowConsultModal] = useState(false);
   const [showMedicineModal, setShowMedicineModal] = useState(false);
   const [expandedSection, setExpandedSection] = useState<'packages' | 'contacts' | 'consults' | null>(null);
+  const [contactDirFilter, setContactDirFilter] = useState<'all' | 'inbound' | 'outbound'>('all');
   const [showPatientEdit, setShowPatientEdit] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [vipYears, setVipYears] = useState<{ year: number; grade: string }[]>([]);
   const [herbalConsultations, setHerbalConsultations] = useState<HerbalConsultation[]>([]);
+  const [showReferralList, setShowReferralList] = useState(false);
+  const [referralList, setReferralList] = useState<{ name: string; chart_no: string; total_revenue: number; reg_date: string | null }[]>([]);
+  const [referralLoading, setReferralLoading] = useState(false);
   const {
     mssqlData,
     receipts,
@@ -124,6 +128,47 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
     if (!isOpen || !patient.id) return;
     getPatientVipYears(patient.id).then(setVipYears).catch(() => {});
   }, [isOpen, patient.id]);
+
+  // 소개자 목록 로드
+  const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
+  const loadReferralList = useCallback(async () => {
+    if (!patient.chart_number) return;
+    setReferralLoading(true);
+    try {
+      const chartNo = patient.chart_number;
+      // suggcustnamesn 필드에 소개자 이름[SN] 형식으로 저장됨
+      const sql = `
+        SELECT c.sn AS chart_no, c.Name AS name, c.reg_date AS reg_date,
+          ISNULL((SELECT SUM(CAST(r.Bonin_Money AS bigint) + CAST(r.General_Money AS bigint)) FROM Receipt r WHERE r.Customer_PK = c.Customer_PK), 0) AS total_revenue
+        FROM Customer c
+        WHERE c.suggcustnamesn LIKE '%${chartNo}%'
+        ORDER BY c.reg_date DESC
+      `;
+      const res = await fetch(`${MSSQL_API_URL}/api/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql }),
+      });
+      if (!res.ok) throw new Error('MSSQL query failed');
+      const data = await res.json();
+      const columns: string[] = data.columns || [];
+      const rows: any[] = data.rows || data.data || [];
+      const parsed = rows.map((row: any) => {
+        if (Array.isArray(row)) {
+          const obj: any = {};
+          columns.forEach((col, i) => obj[col] = row[i]);
+          return obj;
+        }
+        return row;
+      });
+      setReferralList(parsed);
+    } catch (err) {
+      console.error('소개자 목록 로드 실패:', err);
+      setReferralList([]);
+    } finally {
+      setReferralLoading(false);
+    }
+  }, [patient.chart_number]);
 
   const handleAddConsultMemo = async () => {
     if (!newMemoText.trim()) return;
@@ -533,16 +578,22 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
           </div>
         </div>
 
-        {/* 3단: 인콜/아웃콜(1) + 예약(1) — 1:1 */}
+        {/* 3단: 문의/해피콜(1) + 예약(1) — 1:1 */}
         <div className="dashboard-col equal-split">
           <div className="dashboard-section">
             <div className="section-header">
-              <h4 className="section-title-clickable" onClick={() => setExpandedSection('contacts')}>인콜/아웃콜</h4>
-              <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
+              <h4 className="section-title-clickable" onClick={() => setExpandedSection('contacts')}>문의/해피콜</h4>
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginLeft: 'auto' }}>
+                {(['all', 'inbound', 'outbound'] as const).map(f => (
+                  <button key={f} className={`section-filter-btn ${contactDirFilter === f ? 'active' : ''}`}
+                    onClick={() => setContactDirFilter(f)}>
+                    {f === 'all' ? '전체' : f === 'inbound' ? '문의' : '해피콜'}
+                  </button>
+                ))}
                 <button
                   className="section-action-btn incall-btn"
                   onClick={() => { setEditingContactLog(null); setShowContactLogModal(true); }}
-                >인콜+</button>
+                >문의+</button>
               </div>
             </div>
             <PatientInquirySection
@@ -551,6 +602,8 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
               isLoading={isLoading}
               onRefresh={refresh}
               onEditLog={(log) => { setEditingContactLog(log); setShowContactLogModal(true); }}
+              dirFilter={contactDirFilter}
+              onDirFilterChange={setContactDirFilter}
             />
           </div>
           <div className="dashboard-section">
@@ -707,11 +760,66 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
           >
             <i className="fa-solid fa-pen-to-square" style={{ marginRight: 8, color: '#6b7280' }} />환자정보 수정
           </button>
+          <button
+            style={{ display: 'block', width: '100%', padding: '8px 16px', border: 'none', background: 'none', textAlign: 'left', fontSize: 13, cursor: 'pointer' }}
+            onMouseOver={e => (e.currentTarget.style.background = '#f3f4f6')}
+            onMouseOut={e => (e.currentTarget.style.background = 'none')}
+            onClick={() => { setContextMenu(null); setShowReferralList(true); loadReferralList(); }}
+          >
+            <i className="fa-solid fa-people-arrows" style={{ marginRight: 8, color: '#7c3aed' }} />소개자 목록
+          </button>
         </div>
       </div>
     )}
 
     {/* 환자정보 수정 모달 */}
+    {/* 소개자 목록 모달 */}
+    {showReferralList && (
+      <div className="pkg-modal-overlay" onClick={() => setShowReferralList(false)}>
+        <div className="expanded-section-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
+          <div className="expanded-section-header">
+            <h3>{patient.name}({patient.chart_number})님이 소개한 환자</h3>
+            <button className="pkg-modal-close-btn" onClick={() => setShowReferralList(false)}><i className="fa-solid fa-xmark" /></button>
+          </div>
+          <div className="expanded-section-body" style={{ padding: 16 }}>
+            {referralLoading ? (
+              <div style={{ textAlign: 'center', padding: 20, color: '#6b7280' }}>
+                <i className="fa-solid fa-spinner fa-spin" /> 로딩 중...
+              </div>
+            ) : referralList.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: '#9ca3af' }}>
+                소개한 환자가 없습니다
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: 8, fontSize: 15, color: '#6b7280' }}>
+                  총 <b>{referralList.length}</b>명 · 총매출 <b>{referralList.reduce((s, r) => s + (r.total_revenue || 0), 0).toLocaleString()}</b>원
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 15 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left' }}>
+                      <th style={{ padding: '6px 8px' }}>환자명</th>
+                      <th style={{ padding: '6px 8px' }}>등록일</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'right' }}>총매출</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {referralList.map((r, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '6px 8px', fontWeight: 500 }}>{r.name} <span style={{ color: '#9ca3af', fontWeight: 400 }}>{r.chart_no}</span></td>
+                        <td style={{ padding: '6px 8px', color: '#6b7280' }}>{r.reg_date ? new Date(r.reg_date).toLocaleDateString('ko-KR') : '-'}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>{(r.total_revenue || 0).toLocaleString()}원</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+
     {showPatientEdit && (
       <PatientEditModal
         patient={patient}
@@ -725,7 +833,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
       <div className="pkg-modal-overlay" onClick={() => setExpandedSection(null)}>
         <div className="expanded-section-modal" onClick={e => e.stopPropagation()}>
           <div className="expanded-section-header">
-            <h3>{expandedSection === 'packages' ? '한약/비급여' : expandedSection === 'contacts' ? '인콜/아웃콜' : '약상담'}</h3>
+            <h3>{expandedSection === 'packages' ? '한약/비급여' : expandedSection === 'contacts' ? '문의/해피콜' : '약상담'}</h3>
             <button className="pkg-modal-close-btn" onClick={() => setExpandedSection(null)}><i className="fa-solid fa-xmark" /></button>
           </div>
           <div className="expanded-section-body">
@@ -758,6 +866,9 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
                 isLoading={isLoading}
                 onEditLog={(log) => { setEditingContactLog(log); setShowContactLogModal(true); }}
                 onRefresh={refresh}
+                onAddInCall={() => { setEditingContactLog(null); setShowContactLogModal(true); }}
+                dirFilter={contactDirFilter}
+                onDirFilterChange={setContactDirFilter}
               />
             )}
             {expandedSection === 'consults' && (

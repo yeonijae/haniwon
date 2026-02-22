@@ -58,9 +58,10 @@ async function ensureQueueReasonColumn() {
   if (_queueMigrated) return;
   _queueMigrated = true;
   await execute(`ALTER TABLE outbound_call_queue ADD COLUMN IF NOT EXISTS reason TEXT`).catch(() => {});
+  await execute(`ALTER TABLE outbound_call_queue ADD COLUMN IF NOT EXISTS original_due_date DATE`).catch(() => {});
 }
 
-export async function getTodayCallQueue(callType?: CallType, baseDate?: string, statusFilter?: 'all' | 'incomplete' | 'completed'): Promise<CallQueueItem[]> {
+export async function getTodayCallQueue(callType?: CallType, baseDate?: string, statusFilter?: 'all' | 'incomplete' | 'completed', dateFrom?: string): Promise<CallQueueItem[]> {
   await ensureQueueReasonColumn();
   const today = baseDate || new Date().toISOString().split('T')[0];
 
@@ -68,7 +69,9 @@ export async function getTodayCallQueue(callType?: CallType, baseDate?: string, 
 
   // 상태 필터
   if (statusFilter === 'completed') {
-    whereClause += ` AND q.status = 'completed'`;
+    // 완료 + 오늘 미룬 건
+    const from = dateFrom ? escapeString(dateFrom) : escapeString(today);
+    whereClause = `(q.status = 'completed' AND q.due_date >= ${from} AND q.due_date <= ${escapeString(today)}) OR (q.postponed_to IS NOT NULL AND q.due_date > ${escapeString(today)} AND DATE(q.updated_at) >= ${from} AND DATE(q.updated_at) <= ${escapeString(today)})`;
   } else if (statusFilter === 'all') {
     // 전체: 조건 없음
   } else {
@@ -222,16 +225,34 @@ export async function postponeCall(
 ): Promise<CallQueueItem | null> {
   const now = getCurrentTimestamp();
 
-  // 새 날짜로 연기: due_date 변경 + postponed_to 기록, 상태는 pending 유지 (새 날짜에 다시 대기)
+  // original_due_date가 없으면 현재 due_date를 보존
   await execute(`
     UPDATE outbound_call_queue
-    SET status = 'pending',
+    SET original_due_date = COALESCE(original_due_date, due_date),
+        status = 'pending',
         postponed_to = ${escapeString(newDueDate)},
         due_date = ${escapeString(newDueDate)},
         updated_at = ${escapeString(now)}
     WHERE id = ${queueId}
   `);
 
+  return getCallQueueItemById(queueId);
+}
+
+/**
+ * 미루기 취소 → 원래 날짜로 복원
+ */
+export async function undoPostpone(queueId: number): Promise<CallQueueItem | null> {
+  const now = getCurrentTimestamp();
+  await execute(`
+    UPDATE outbound_call_queue
+    SET due_date = COALESCE(original_due_date, due_date),
+        postponed_to = NULL,
+        original_due_date = NULL,
+        status = 'pending',
+        updated_at = ${escapeString(now)}
+    WHERE id = ${queueId}
+  `);
   return getCallQueueItemById(queueId);
 }
 

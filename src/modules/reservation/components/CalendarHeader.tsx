@@ -155,237 +155,121 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
     <div className="bg-white border-b">
       {/* 상단: 월 네비게이션 + 선택일자 + 필터 */}
       <div className="flex items-center justify-between px-6 py-4">
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2 relative">
-            <button
-              onClick={handlePrevMonth}
-              className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 hover:bg-gray-100 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-clinic-secondary"
-              aria-label="이전 달"
-            >
-              &lt;
-            </button>
-            <button
-              onClick={() => setShowDatePicker(!showDatePicker)}
-              className="text-2xl font-bold text-gray-800 hover:text-clinic-primary hover:bg-gray-100 px-3 py-1 rounded-lg transition-colors cursor-pointer"
-            >
-              {`${year}년 ${String(month + 1).padStart(2, '0')}월`}
-            </button>
-            <button
-              onClick={handleNextMonth}
-              className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 hover:bg-gray-100 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-clinic-secondary"
-              aria-label="다음 달"
-            >
-              &gt;
-            </button>
-
-            {/* 날짜 선택 팝업 */}
-            {showDatePicker && (
-              <div
-                ref={pickerRef}
-                className="absolute top-full left-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-200 p-4 z-50 min-w-[280px]"
-              >
-                {pickerMode === 'month' ? (
-                  <>
-                    {/* 년도 선택 헤더 */}
-                    <div className="flex items-center justify-between mb-4">
-                      <button
-                        onClick={() => setPickerYear(pickerYear - 1)}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600"
-                      >
-                        &lt;
-                      </button>
-                      <button
-                        onClick={() => setPickerMode('year')}
-                        className="text-lg font-bold text-gray-800 hover:text-clinic-primary hover:bg-gray-100 px-3 py-1 rounded-lg"
-                      >
-                        {pickerYear}년
-                      </button>
-                      <button
-                        onClick={() => setPickerYear(pickerYear + 1)}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600"
-                      >
-                        &gt;
-                      </button>
-                    </div>
-                    {/* 월 그리드 */}
-                    <div className="grid grid-cols-4 gap-2">
-                      {Array.from({ length: 12 }, (_, i) => i).map((m) => {
-                        const isCurrentMonth = pickerYear === year && m === month;
-                        return (
-                          <button
-                            key={m}
-                            onClick={() => {
-                              onDateChange(getYYYYMMDD(new Date(pickerYear, m, 1)));
-                              setShowDatePicker(false);
-                              setPickerMode('month');
-                            }}
-                            className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors
-                              ${isCurrentMonth
-                                ? 'bg-clinic-primary text-white'
-                                : 'hover:bg-gray-100 text-gray-700'
-                              }`}
-                          >
-                            {m + 1}월
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {/* 년도 범위 선택 헤더 */}
-                    <div className="flex items-center justify-between mb-4">
-                      <button
-                        onClick={() => setPickerYear(pickerYear - 10)}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600"
-                      >
-                        &lt;&lt;
-                      </button>
-                      <span className="text-lg font-bold text-gray-800">
-                        {Math.floor(pickerYear / 10) * 10} - {Math.floor(pickerYear / 10) * 10 + 9}
-                      </span>
-                      <button
-                        onClick={() => setPickerYear(pickerYear + 10)}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600"
-                      >
-                        &gt;&gt;
-                      </button>
-                    </div>
-                    {/* 년도 그리드 */}
-                    <div className="grid grid-cols-4 gap-2">
-                      {Array.from({ length: 12 }, (_, i) => Math.floor(pickerYear / 10) * 10 - 1 + i).map((y) => {
-                        const isCurrentYear = y === year;
-                        const isOutOfRange = y < Math.floor(pickerYear / 10) * 10 || y > Math.floor(pickerYear / 10) * 10 + 9;
-                        return (
-                          <button
-                            key={y}
-                            onClick={() => {
-                              setPickerYear(y);
-                              setPickerMode('month');
-                            }}
-                            className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors
-                              ${isCurrentYear
-                                ? 'bg-clinic-primary text-white'
-                                : isOutOfRange
-                                  ? 'text-gray-300'
-                                  : 'hover:bg-gray-100 text-gray-700'
-                              }`}
-                          >
-                            {y}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-          <button
-            onClick={onToday}
-            className="px-4 py-2 text-sm font-semibold text-clinic-secondary border border-clinic-secondary rounded-lg hover:bg-clinic-secondary hover:text-white transition-colors"
-          >
-            오늘
+        <div className="flex items-center gap-2" style={{ position: 'relative' }}>
+          <button onClick={handlePrevMonth} style={{
+            padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: 'white', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#374151'
+          }}>◀</button>
+          <button onClick={() => { setShowDatePicker(!showDatePicker); setPickerMode('month'); }} style={{
+            padding: '5px 14px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14, fontWeight: 600, color: '#374151', background: 'white', cursor: 'pointer', whiteSpace: 'nowrap'
+          }}>
+            {`${String(year).slice(2)}년 ${month + 1}월`}
           </button>
-        </div>
+          <button onClick={handleNextMonth} style={{
+            padding: '5px 10px', border: '1px solid #d1d5db', borderRadius: 6, background: 'white', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#374151'
+          }}>▶</button>
+          {!isToday && (
+            <button onClick={onToday} style={{
+              padding: '5px 12px', border: '1px solid #d1d5db', borderRadius: 6, background: '#ec4899', color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 600
+            }}>오늘</button>
+          )}
 
-        <div className="flex items-center gap-6">
-          <h3 className="text-xl font-bold text-gray-800">
-            {`${selectedMonth}월 ${String(selectedDay).padStart(2, '0')}일 (${selectedDayOfWeek})`}
-          </h3>
-          {/* 일간 통계 */}
-          {dayStats.total > 0 && (
-            <div className="flex items-center gap-3 text-sm">
-              <span className="text-gray-600">
-                총 <span className="font-bold text-gray-800">{dayStats.total}</span>
-              </span>
-              <span className="text-green-600">
-                내원 <span className="font-bold">{dayStats.visited}</span>
-                <span className="text-xs ml-0.5">
-                  ({dayStats.total > 0 ? Math.round((dayStats.visited / dayStats.total) * 100) : 0}%)
-                </span>
-              </span>
-              <span className="text-orange-500">
-                취소 <span className="font-bold">{dayStats.canceled}</span>
-                <span className="text-xs ml-0.5">
-                  ({dayStats.total > 0 ? Math.round((dayStats.canceled / dayStats.total) * 100) : 0}%)
-                </span>
-              </span>
-              {dayStats.noShow > 0 && (
-                <span className="text-red-500">
-                  노쇼 <span className="font-bold">{dayStats.noShow}</span>
-                  <span className="text-xs ml-0.5">
-                    ({Math.round((dayStats.noShow / dayStats.total) * 100)}%)
-                  </span>
-                </span>
-              )}
-              {/* 대기 중 (오늘/미래) */}
-              {selectedDate >= today && (
-                <span className="text-blue-500">
-                  대기 <span className="font-bold">{dayStats.total - dayStats.visited - dayStats.canceled}</span>
-                </span>
-              )}
-              {/* 현장예약율 (침치료 환자가 있을 때만) */}
-              {dayStats.acuVisited > 0 && (
-                <span className="text-purple-600 border-l border-gray-300 pl-3 ml-1">
-                  <i className="fa-solid fa-calendar-plus mr-1 text-xs"></i>
-                  현장예약 <span className="font-bold">{dayStats.visitedWithNextReservation}</span>/{dayStats.acuVisited}
-                  <span className="text-xs ml-0.5">
-                    ({Math.round((dayStats.visitedWithNextReservation / dayStats.acuVisited) * 100)}%)
-                  </span>
-                </span>
+          {/* 년월 선택 팝업 */}
+          {showDatePicker && (
+            <div
+              ref={pickerRef}
+              className="absolute top-full left-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-200 p-4 z-50 min-w-[280px]"
+            >
+              {pickerMode === 'month' ? (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <button onClick={() => setPickerYear(pickerYear - 1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600">&lt;</button>
+                    <button onClick={() => setPickerMode('year')} className="text-lg font-bold text-gray-800 hover:text-clinic-primary hover:bg-gray-100 px-3 py-1 rounded-lg">{pickerYear}년</button>
+                    <button onClick={() => setPickerYear(pickerYear + 1)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600">&gt;</button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {Array.from({ length: 12 }, (_, i) => i).map((m) => (
+                      <button key={m} onClick={() => { onDateChange(getYYYYMMDD(new Date(pickerYear, m, 1))); setShowDatePicker(false); setPickerMode('month'); }}
+                        className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors ${pickerYear === year && m === month ? 'bg-clinic-primary text-white' : 'hover:bg-gray-100 text-gray-700'}`}
+                      >{m + 1}월</button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <button onClick={() => setPickerYear(pickerYear - 10)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600">&lt;&lt;</button>
+                    <span className="text-lg font-bold text-gray-800">{Math.floor(pickerYear / 10) * 10} - {Math.floor(pickerYear / 10) * 10 + 9}</span>
+                    <button onClick={() => setPickerYear(pickerYear + 10)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600">&gt;&gt;</button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {Array.from({ length: 12 }, (_, i) => Math.floor(pickerYear / 10) * 10 - 1 + i).map((y) => (
+                      <button key={y} onClick={() => { setPickerYear(y); setPickerMode('month'); }}
+                        className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors ${y === year ? 'bg-clinic-primary text-white' : y < Math.floor(pickerYear / 10) * 10 || y > Math.floor(pickerYear / 10) * 10 + 9 ? 'text-gray-300' : 'hover:bg-gray-100 text-gray-700'}`}
+                      >{y}</button>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           )}
         </div>
 
+        <div className="flex items-center gap-2">
+        {/* 선택 날짜 */}
+        <span style={{ fontSize: 15, fontWeight: 700, color: '#374151' }}>
+          {`${selectedMonth}.${String(selectedDay).padStart(2,'0')}(${selectedDayOfWeek})`}
+        </span>
+        {/* 일간 통계 */}
+        {dayStats.total > 0 && (
+          <div style={{ display: 'flex', gap: 0, border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', fontSize: 13, fontWeight: 500 }}>
+            <span style={{ padding: '5px 12px', borderRight: '1px solid #d1d5db', background: '#f9fafb', color: '#374151' }}>
+              총<b>{dayStats.total}</b>
+            </span>
+            <span style={{ padding: '5px 12px', borderRight: '1px solid #d1d5db', background: '#f0fdf4', color: '#16a34a' }}>
+              내원 <b>{dayStats.visited}</b> <span style={{ fontSize: 11 }}>({dayStats.total > 0 ? Math.round((dayStats.visited / dayStats.total) * 100) : 0}%)</span>
+            </span>
+            <span style={{ padding: '5px 12px', borderRight: '1px solid #d1d5db', background: '#fff7ed', color: '#ea580c' }}>
+              취소 <b>{dayStats.canceled}</b> <span style={{ fontSize: 11 }}>({dayStats.total > 0 ? Math.round((dayStats.canceled / dayStats.total) * 100) : 0}%)</span>
+            </span>
+            {dayStats.noShow > 0 && (
+              <span style={{ padding: '5px 12px', borderRight: '1px solid #d1d5db', background: '#fef2f2', color: '#dc2626' }}>
+                노쇼 <b>{dayStats.noShow}</b> <span style={{ fontSize: 11 }}>({Math.round((dayStats.noShow / dayStats.total) * 100)}%)</span>
+              </span>
+            )}
+            {selectedDate >= today && (
+              <span style={{ padding: '5px 12px', borderRight: dayStats.acuVisited > 0 ? '1px solid #d1d5db' : 'none', background: '#eff6ff', color: '#2563eb' }}>
+                대기 <b>{dayStats.total - dayStats.visited - dayStats.canceled}</b>
+              </span>
+            )}
+            {dayStats.acuVisited > 0 && (
+              <span style={{ padding: '5px 12px', background: '#faf5ff', color: '#7c3aed' }}>
+                현장예약 <b>{dayStats.visitedWithNextReservation}</b>/{dayStats.acuVisited} <span style={{ fontSize: 11 }}>({Math.round((dayStats.visitedWithNextReservation / dayStats.acuVisited) * 100)}%)</span>
+              </span>
+            )}
+          </div>
+        )}
+        </div>
+
         <div className="flex items-center gap-4">
           {/* 의사 필터 */}
-          <select
-            value={selectedDoctor || ''}
-            onChange={(e) => onDoctorChange(e.target.value || null)}
-            className="px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-clinic-secondary"
-          >
-            <option value="">전체 의료진</option>
+          <div style={{ display: 'flex', gap: 0, border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden' }}>
+            <button onClick={() => onDoctorChange(null)} style={{
+              padding: '5px 12px', border: 'none', borderRight: '1px solid #d1d5db', background: !selectedDoctor ? '#6366f1' : '#fff', color: !selectedDoctor ? '#fff' : '#6b7280', fontSize: 13, fontWeight: 500, cursor: 'pointer'
+            }}>전체</button>
             {doctors.map((doctor) => (
-              <option key={doctor.id} value={doctor.name}>
-                {doctor.name}
-              </option>
+              <button key={doctor.id} onClick={() => onDoctorChange(doctor.name)} style={{
+                padding: '5px 12px', border: 'none', borderRight: '1px solid #d1d5db', background: selectedDoctor === doctor.name ? '#6366f1' : '#fff', color: selectedDoctor === doctor.name ? '#fff' : '#6b7280', fontSize: 13, fontWeight: 500, cursor: 'pointer'
+              }}>{doctor.name}</button>
             ))}
-          </select>
+          </div>
 
           {/* 뷰 타입 토글 */}
-          <div className="flex bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => onViewTypeChange('day')}
-              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                viewType === 'day'
-                  ? 'bg-white text-clinic-primary shadow-sm'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              일
-            </button>
-            <button
-              onClick={() => onViewTypeChange('week')}
-              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                viewType === 'week'
-                  ? 'bg-white text-clinic-primary shadow-sm'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              주
-            </button>
-            <button
-              onClick={() => onViewTypeChange('month')}
-              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                viewType === 'month'
-                  ? 'bg-white text-clinic-primary shadow-sm'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              월
-            </button>
+          <div style={{ display: 'flex', gap: 0, border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden' }}>
+            {(['day', 'week', 'month'] as const).map((v, i) => (
+              <button key={v} onClick={() => onViewTypeChange(v)} style={{
+                padding: '5px 12px', border: 'none', borderRight: i < 2 ? '1px solid #d1d5db' : 'none', background: viewType === v ? '#0d9488' : '#fff', color: viewType === v ? '#fff' : '#6b7280', fontSize: 13, fontWeight: 500, cursor: 'pointer'
+              }}>{v === 'day' ? '일' : v === 'week' ? '주' : '월'}</button>
+            ))}
           </div>
         </div>
       </div>
@@ -393,7 +277,7 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
       {/* 하단: 가로 날짜 캘린더 (일별 뷰에서만 표시) */}
       {viewType === 'day' && (
         <div className="bg-gray-50 px-4 py-3 border-t">
-          <div className="flex gap-1 overflow-x-auto pb-1">
+          <div className="flex overflow-x-auto pb-1" style={{ gap: '3px' }}>
             {daysInMonth.map((day) => {
               const dayNumber = day.getDate();
               const dayOfWeekIndex = day.getDay();
@@ -416,7 +300,7 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
                 <button
                   key={day.toISOString()}
                   onClick={() => handleDateClick(day)}
-                  className={`flex-shrink-0 w-12 flex flex-col items-center justify-center py-2 rounded-lg border transition-colors duration-150
+                  className={`flex-shrink-0 flex flex-col items-center justify-center py-2 rounded-lg border transition-colors duration-150
                     ${isSelected
                       ? 'bg-blue-600 text-white shadow-md border-blue-600'
                       : isToday
@@ -424,6 +308,7 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
                         : 'bg-white hover:bg-gray-100 border-gray-200'
                     }
                   `}
+                  style={{ width: '44px' }}
                   aria-label={`${month + 1}월 ${dayNumber}일 ${daysOfWeek[dayOfWeekIndex]}요일`}
                   aria-pressed={isSelected}
                 >

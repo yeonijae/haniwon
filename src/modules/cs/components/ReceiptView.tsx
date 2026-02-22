@@ -1881,12 +1881,26 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
         <button onClick={() => changeDate(-1)} className="date-nav-btn">
           <i className="fa-solid fa-chevron-left"></i>
         </button>
-        <input
-          type="date"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          className="date-input"
-        />
+        <div className="date-input-wrap">
+          <input
+            type="date"
+            ref={el => { if (el) (el as any)._dateRef = el; }}
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="date-input-hidden"
+            id="receipt-date-picker"
+          />
+          <button className="date-display" onClick={() => {
+            const el = document.getElementById('receipt-date-picker') as HTMLInputElement;
+            el?.showPicker?.();
+          }}>
+            {(() => {
+              const d = new Date(selectedDate + 'T00:00:00');
+              const days = ['일','월','화','수','목','금','토'];
+              return `${d.getFullYear()}. ${String(d.getMonth()+1).padStart(2,'0')}. ${String(d.getDate()).padStart(2,'0')}. (${days[d.getDay()]})`;
+            })()}
+          </button>
+        </div>
         <button onClick={() => changeDate(1)} className="date-nav-btn">
           <i className="fa-solid fa-chevron-right"></i>
         </button>

@@ -41,6 +41,7 @@ export default function VipManagementView({ user }: Props) {
   const [useVisits, setUseVisits] = useState(true);
   const [useLoyalty, setUseLoyalty] = useState(true);
   const [familySum, setFamilySum] = useState(false);
+  const [useReferral, setUseReferral] = useState(false);
   const [maxCount, setMaxCount] = useState(30);
 
   // 후보 선택
@@ -67,7 +68,7 @@ export default function VipManagementView({ user }: Props) {
     setRevCriteria(prev => prev === c ? null : c);
   };
 
-  const hasAnyCriteria = revCriteria !== null || useVisits || useLoyalty;
+  const hasAnyCriteria = revCriteria !== null || useVisits || useLoyalty || useReferral;
 
   const loadCandidates = useCallback(async () => {
     if (!hasAnyCriteria) {
@@ -81,6 +82,7 @@ export default function VipManagementView({ user }: Props) {
         visits: useVisits,
         loyalty: useLoyalty,
         familySum,
+        referral: useReferral,
         maxCount,
       };
       const c = await generateVipCandidates(year, maxCount, opts);
@@ -91,7 +93,7 @@ export default function VipManagementView({ user }: Props) {
       console.error('VIP 후보 생성 실패:', err);
     }
     setLoading(false);
-  }, [year, revCriteria, useVisits, useLoyalty, maxCount, hasAnyCriteria]);
+  }, [year, revCriteria, useVisits, useLoyalty, useReferral, maxCount, hasAnyCriteria]);
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { setCandidatesLoaded(false); setCandidates([]); }, [tab, year]);
@@ -295,6 +297,9 @@ export default function VipManagementView({ user }: Props) {
                   <span className={`vip-criteria-chip ${familySum ? 'active' : ''}`} onClick={() => setFamilySum(v => !v)}>
                     👨‍👩‍👧 가족합산
                   </span>
+                  <span className={`vip-criteria-chip ${useReferral ? 'active' : ''}`} onClick={() => setUseReferral(v => !v)}>
+                    👥 소개자
+                  </span>
                   <label className="vip-criteria-count">
                     최대
                     <input type="number" value={maxCount} onChange={e => setMaxCount(Math.max(1, parseInt(e.target.value) || 30))} min={1} max={200} />
@@ -323,6 +328,7 @@ export default function VipManagementView({ user }: Props) {
                         useVisits && '내원',
                         useLoyalty && '충성도',
                         familySum && '가족합산',
+                        useReferral && '소개자',
                       ].filter(Boolean).join(' + ')}
                     </span>
                     <button className="vip-btn-text" onClick={() => setCandidatesLoaded(false)}>
@@ -342,6 +348,9 @@ export default function VipManagementView({ user }: Props) {
                       <th>차트</th>
                       {revCriteria && <th>{revCriteria === 'total' ? '총진료비' : revCriteria === 'noncovered' ? '비급여' : '본인부담'}</th>}
                       {useVisits && <th>내원</th>}
+                      {useReferral && <th>소개수</th>}
+                      {useReferral && <th>소개총매출</th>}
+                      {useReferral && <th>소개비급여</th>}
                       <th>점수</th>
                       <th>사유</th>
                     </tr>
@@ -350,7 +359,7 @@ export default function VipManagementView({ user }: Props) {
                     {candidates.map(c => {
                       const hasFamily = c.familyMembers && c.familyMembers.length > 0;
                       const isExpanded = expandedFamily.has(c.patient_id);
-                      const colCount = 4 + (revCriteria ? 1 : 0) + (useVisits ? 1 : 0) + 2;
+                      const colCount = 4 + (revCriteria ? 1 : 0) + (useVisits ? 1 : 0) + (useReferral ? 3 : 0) + 2;
                       const fmtRev = (m: { revenue: number; noncovered: number; copay: number }) =>
                         revCriteria === 'total' ? (m.revenue ? `${Math.round(m.revenue / 10000)}만` : '-') :
                         revCriteria === 'noncovered' ? (m.noncovered ? `${Math.round(m.noncovered / 10000)}만` : '-') :
@@ -384,6 +393,9 @@ export default function VipManagementView({ user }: Props) {
                             <td className="vip-chart">{c.chart_number}</td>
                             {revCriteria && <td className="vip-revenue">{fmtRev(c)}</td>}
                             {useVisits && <td className="vip-visits">{c.visit_count}회</td>}
+                            {useReferral && <td className="vip-visits">{c.referral_count || '-'}</td>}
+                            {useReferral && <td className="vip-revenue">{c.referral_total_revenue ? `${Math.round(c.referral_total_revenue / 10000)}만` : '-'}</td>}
+                            {useReferral && <td className="vip-revenue">{c.referral_noncovered ? `${Math.round(c.referral_noncovered / 10000)}만` : '-'}</td>}
                             <td className="vip-score">{c.score}</td>
                             <td className="vip-reason">{c.reason}</td>
                           </tr>
@@ -395,6 +407,9 @@ export default function VipManagementView({ user }: Props) {
                               <td className="vip-chart">{fm.chart_number}</td>
                               {revCriteria && <td className="vip-revenue vip-family-cell">{fmtRev(fm)}</td>}
                               {useVisits && <td className="vip-visits vip-family-cell">{fm.visit_count}회</td>}
+                              {useReferral && <td></td>}
+                              {useReferral && <td></td>}
+                              {useReferral && <td></td>}
                               <td></td>
                               <td></td>
                             </tr>

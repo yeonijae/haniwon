@@ -72,8 +72,8 @@ const MENU_TITLES: Record<CSMenuType, string> = {
   reservation: '예약관리',
   receipt: '수납관리',
   noncovered: '비급여관리',
-  inbound: '인콜',
-  outbound: '아웃콜',
+  inbound: '문의',
+  outbound: '해피콜',
   vip: 'VIP관리',
   settings: '프로그램설정',
 };
@@ -88,8 +88,8 @@ const MENU_ITEMS: MenuItem[] = [
   { id: 'receipt', icon: '💰', label: '수납' },
   { id: 'reservation', icon: '📅', label: '예약' },
   { id: 'noncovered', icon: '💊', label: '한약' },
-  { id: 'inbound', icon: '📞', label: '인콜' },
-  { id: 'outbound', icon: '📣', label: '아웃콜' },
+  { id: 'inbound', icon: '📞', label: '문의' },
+  { id: 'outbound', icon: '📣', label: '해피콜' },
   { id: 'vip', icon: '👑', label: 'VIP' },
   { id: 'settings', icon: '⚙️', label: '설정' },
 ];
@@ -410,13 +410,6 @@ function CSApp({ user }: CSAppProps) {
         </nav>
         <div className="cs-header-tools">
           <HeaderPatientSearch onPatientSelect={setSelectedHeaderPatient} />
-          <button
-            className={`cs-quick-memo-btn ${showQuickMemo ? 'active' : ''}`}
-            onClick={() => setShowQuickMemo(!showQuickMemo)}
-            title="빠른 기록"
-          >
-            <i className="fa-solid fa-pen-to-square"></i>
-          </button>
         </div>
         <div className="cs-top-header-right">
           <div className="font-scale-controls">
@@ -445,14 +438,7 @@ function CSApp({ user }: CSAppProps) {
       </header>
 
 
-      {/* 빠른 기록 패널 */}
-      {showQuickMemo && (
-        <QuickMemoPanel
-          user={user}
-          onClose={() => setShowQuickMemo(false)}
-          onSaved={() => setShowQuickMemo(false)}
-        />
-      )}
+      {/* 빠른 기록 패널 제거됨 */}
 
       {/* 메인 영역 (대기환자 패널 + 콘텐츠) */}
       <div className="cs-body">

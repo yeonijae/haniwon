@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import './call-center/OutboundCallCenter.css';
 import type { PortalUser } from '@shared/types';
 import { useInquiries } from '../hooks/useInquiries';
 import { searchLocalPatients, type LocalPatient } from '../lib/patientSync';
@@ -36,6 +37,8 @@ function InquiryView({ user }: InquiryViewProps) {
     setSelectedDate,
     dateViewMode,
     setDateViewMode,
+    rangeMode,
+    setRangeMode,
     loadInquiries,
     createInquiry,
     updateInquiry,
@@ -47,6 +50,7 @@ function InquiryView({ user }: InquiryViewProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingInquiry, setEditingInquiry] = useState<Inquiry | null>(null);
   const [channelFilter, setChannelFilter] = useState<InquiryChannel | null>(null);
+  const [patientFilter, setPatientFilter] = useState<'all' | 'existing' | 'unregistered'>('all');
   const [handlers, setHandlers] = useState<CsHandler[]>([]);
 
   useEffect(() => {
@@ -210,16 +214,17 @@ function InquiryView({ user }: InquiryViewProps) {
   };
 
   // 채널 필터 적용
-  const filtered = channelFilter
-    ? inquiries.filter(inq => inq.channel === channelFilter)
-    : inquiries;
+  const filtered = inquiries
+    .filter(inq => patientFilter === 'all' ? true : patientFilter === 'existing' ? !!inq.patient_id : !inq.patient_id);
+  const filterByChannel = (items: Inquiry[]) => channelFilter ? items.filter(i => i.channel === channelFilter) : items;
 
   // 컬럼별 분류
-  const pendingItems = filtered.filter(inq => inq.status === 'pending');
-  const inProgressItems = filtered.filter(inq => inq.status === 'in_progress');
-  const doneItems = filtered.filter(inq => inq.status === 'completed' || inq.status === 'converted');
+  const pendingItems = filterByChannel(filtered.filter(inq => inq.status === 'pending'));
+  const inProgressItems = filterByChannel(filtered.filter(inq => inq.status === 'in_progress'));
+  const doneItems = filterByChannel(filtered.filter(inq => inq.status === 'completed' || inq.status === 'converted'));
 
   const CHANNELS: InquiryChannel[] = ['phone', 'kakao', 'visit', 'naver'];
+  const CHANNEL_SHORT: Record<InquiryChannel, string> = { phone: '전화', kakao: '카톡', visit: '원내', naver: '홈피' };
 
   // 칸반 카드 렌더링
   const renderCard = (inquiry: Inquiry) => (
@@ -367,109 +372,77 @@ function InquiryView({ user }: InquiryViewProps) {
   );
 
   return (
-    <div className="inquiry-view inbound-kanban-layout">
+    <div className="inquiry-view inbound-kanban-layout" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* 헤더 */}
-      <div className="inbound-header">
-        <div className="header-left">
-          <h2>인바운드 문의</h2>
-          <div className="header-stats">
-            <span className="stat-item pending">
-              <i className="fa-solid fa-clock"></i>
-              접수 {pendingItems.length}
-            </span>
-            <span className="stat-item in-progress">
-              <i className="fa-solid fa-headset"></i>
-              응대중 {inProgressItems.length}
-            </span>
-            <span className="stat-item completed">
-              <i className="fa-solid fa-check"></i>
-              완료 {doneItems.length}
-            </span>
-          </div>
-        </div>
-        <div className="header-center">
-          <button
-            className="date-nav-btn"
-            onClick={() => {
-              const d = new Date(selectedDate);
-              d.setDate(d.getDate() - 1);
-              setSelectedDate(d.toISOString().split('T')[0]);
-            }}
-          >
-            <i className="fa-solid fa-chevron-left"></i>
-          </button>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="date-picker"
-          />
-          <button
-            className="date-nav-btn"
-            onClick={() => {
-              const d = new Date(selectedDate);
-              d.setDate(d.getDate() + 1);
-              setSelectedDate(d.toISOString().split('T')[0]);
-            }}
-          >
-            <i className="fa-solid fa-chevron-right"></i>
-          </button>
-          <button
-            className="date-today-btn"
-            onClick={() => {
-              const now = new Date();
-              setSelectedDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
-            }}
-          >
-            오늘
-          </button>
-          <div className="date-view-toggle">
-            <button
-              className={`toggle-btn ${dateViewMode === 'created' ? 'active' : ''}`}
-              onClick={() => setDateViewMode('created')}
-            >
-              발생일
-            </button>
-            <button
-              className={`toggle-btn ${dateViewMode === 'completed' ? 'active' : ''}`}
-              onClick={() => setDateViewMode('completed')}
-            >
-              완료일
+      <div className="occ-header-bar">
+        <div className="occ-date-nav">
+          <button onClick={() => {
+            const d = new Date(selectedDate);
+            d.setDate(d.getDate() - 1);
+            setSelectedDate(d.toISOString().split('T')[0]);
+          }} className="occ-date-btn">◀</button>
+          <div className="occ-date-wrap">
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="occ-date-hidden"
+              id="inbound-date-picker"
+            />
+            <button className="occ-date-display" onClick={() => {
+              const el = document.getElementById('inbound-date-picker') as HTMLInputElement;
+              el?.showPicker?.();
+            }}>
+              {(() => {
+                const d = new Date(selectedDate + 'T00:00:00');
+                const days = ['일','월','화','수','목','금','토'];
+                return `${d.getFullYear()}. ${String(d.getMonth()+1).padStart(2,'0')}. ${String(d.getDate()).padStart(2,'0')}. (${days[d.getDay()]})`;
+              })()}
             </button>
           </div>
+          <button onClick={() => {
+            const d = new Date(selectedDate);
+            d.setDate(d.getDate() + 1);
+            setSelectedDate(d.toISOString().split('T')[0]);
+          }} className="occ-date-btn">▶</button>
+          {(() => {
+            const now = new Date();
+            const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            return selectedDate !== today ? (
+              <button onClick={() => setSelectedDate(today)} className="occ-today-btn">오늘</button>
+            ) : null;
+          })()}
+          <div className="occ-filter-group">
+            {([['day', '1일'], ['1w', '1주일'], ['1m', '1개월'], ['3m', '3개월']] as const).map(([key, label]) => (
+              <button key={key} className={`occ-filter-btn ${rangeMode === key ? 'active' : ''}`} onClick={() => setRangeMode(key)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="occ-filter-group occ-filter-patient">
+            {([['all', '전체'], ['existing', '기존'], ['unregistered', '미등록']] as const).map(([key, label]) => (
+              <button key={key} className={`occ-filter-btn ${patientFilter === key ? 'active' : ''}`} onClick={() => setPatientFilter(key)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="occ-filter-group occ-filter-channel">
+            <button className={`occ-filter-btn ${channelFilter === null ? 'active' : ''}`} onClick={() => setChannelFilter(null)}>전체</button>
+            {CHANNELS.map(ch => (
+              <button key={ch} className={`occ-filter-btn ${channelFilter === ch ? 'active' : ''}`} onClick={() => setChannelFilter(ch)}>
+                {CHANNEL_SHORT[ch]}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="header-right">
-          <button className="btn-refresh" onClick={loadInquiries} disabled={isLoading}>
+        <div className="occ-header-actions">
+          <button onClick={loadInquiries} disabled={isLoading} className="occ-refresh-btn">
             <i className="fa-solid fa-refresh"></i>
-            새로고침
           </button>
-          <button className="btn-add" onClick={() => setShowForm(true)}>
-            <i className="fa-solid fa-plus"></i>
-            문의 등록
+          <button className="occ-refresh-btn" style={{ background: '#3b82f6', color: 'white', borderColor: '#3b82f6' }} onClick={() => setShowForm(true)}>
+            <i className="fa-solid fa-plus"></i> 등록
           </button>
         </div>
-      </div>
-
-      {/* 채널 필터 */}
-      <div className="call-type-filter">
-        <button
-          className={`filter-btn ${channelFilter === null ? 'active' : ''}`}
-          onClick={() => setChannelFilter(null)}
-        >
-          전체
-        </button>
-        {CHANNELS.map(ch => (
-          <button
-            key={ch}
-            className={`filter-btn ${channelFilter === ch ? 'active' : ''}`}
-            onClick={() => setChannelFilter(ch)}
-          >
-            {CHANNEL_ICONS[ch]} {CHANNEL_LABELS[ch]}
-            <span className="filter-count">
-              {inquiries.filter(inq => inq.channel === ch).length}
-            </span>
-          </button>
-        ))}
       </div>
 
       {/* 문의 등록/수정 모달 */}
@@ -573,28 +546,28 @@ function InquiryView({ user }: InquiryViewProps) {
       )}
 
       {/* 칸반 보드 */}
-      <div className="kanban-board">
+      <div className="occ-columns">
         {isLoading ? (
-          <div className="loading-state" style={{ width: '100%' }}>
+          <div className="occ-loading" style={{ gridColumn: '1 / -1' }}>
             <i className="fa-solid fa-spinner fa-spin"></i>
             <span>로딩 중...</span>
           </div>
         ) : error ? (
-          <div className="empty-state" style={{ width: '100%' }}>
+          <div className="occ-empty" style={{ gridColumn: '1 / -1' }}>
             <i className="fa-solid fa-exclamation-triangle"></i>
             <span>{error}</span>
           </div>
         ) : (
           <>
             {/* 접수 컬럼 */}
-            <div className="kanban-column pending">
-              <div className="column-header">
-                <span className="column-title">접수</span>
-                <span className="column-count">{pendingItems.length}</span>
+            <div className="occ-col">
+              <div className="occ-col-header">
+                <h3>접수</h3>
+                <span className="occ-col-count">{pendingItems.length}</span>
               </div>
-              <div className="column-body">
+              <div className="occ-col-body">
                 {pendingItems.length === 0 ? (
-                  <div className="column-empty">대기 중인 문의 없음</div>
+                  <div className="occ-empty">대기 중인 문의 없음</div>
                 ) : (
                   pendingItems.map(renderCard)
                 )}
@@ -602,14 +575,14 @@ function InquiryView({ user }: InquiryViewProps) {
             </div>
 
             {/* 응대중 컬럼 */}
-            <div className="kanban-column in-progress">
-              <div className="column-header">
-                <span className="column-title">응대중</span>
-                <span className="column-count">{inProgressItems.length}</span>
+            <div className="occ-col occ-col-queue">
+              <div className="occ-col-header">
+                <h3>응대중</h3>
+                <span className="occ-col-count">{inProgressItems.length}</span>
               </div>
-              <div className="column-body">
+              <div className="occ-col-body">
                 {inProgressItems.length === 0 ? (
-                  <div className="column-empty">응대 중인 문의 없음</div>
+                  <div className="occ-empty">응대 중인 문의 없음</div>
                 ) : (
                   inProgressItems.map(renderCard)
                 )}
@@ -617,14 +590,14 @@ function InquiryView({ user }: InquiryViewProps) {
             </div>
 
             {/* 완료 컬럼 */}
-            <div className="kanban-column done">
-              <div className="column-header">
-                <span className="column-title">완료</span>
-                <span className="column-count">{doneItems.length}</span>
+            <div className="occ-col occ-col-done">
+              <div className="occ-col-header">
+                <h3>완료</h3>
+                <span className="occ-col-count">{doneItems.length}</span>
               </div>
-              <div className="column-body">
+              <div className="occ-col-body">
                 {doneItems.length === 0 ? (
-                  <div className="column-empty">완료된 문의 없음</div>
+                  <div className="occ-empty">완료된 문의 없음</div>
                 ) : (
                   doneItems.map(renderCard)
                 )}

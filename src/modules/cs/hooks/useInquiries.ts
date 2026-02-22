@@ -13,6 +13,19 @@ export function useInquiries() {
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>(getCurrentDateStr());
   const [dateViewMode, setDateViewMode] = useState<'created' | 'completed'>('created');
+  const [rangeMode, setRangeMode] = useState<'day' | '1w' | '1m' | '3m'>('day');
+
+  // 기간 계산
+  const getDateRange = useCallback(() => {
+    const end = selectedDate;
+    const d = new Date(selectedDate + 'T00:00:00');
+    if (rangeMode === '1w') d.setDate(d.getDate() - 6);
+    else if (rangeMode === '1m') d.setMonth(d.getMonth() - 1);
+    else if (rangeMode === '3m') d.setMonth(d.getMonth() - 3);
+    else return { date: selectedDate };
+    const start = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    return { dateFrom: start, dateTo: end };
+  }, [selectedDate, rangeMode]);
 
   // 문의 목록 로드
   const loadInquiries = useCallback(async () => {
@@ -21,8 +34,9 @@ export function useInquiries() {
     try {
       await api.ensureInquiriesTable();
 
+      const range = getDateRange();
       const data = await api.getInquiries({
-        date: selectedDate,
+        ...range,
         dateField: dateViewMode === 'created' ? 'created_at' : 'completed_at',
         includeOpen: true,
       });
@@ -33,7 +47,7 @@ export function useInquiries() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDate, dateViewMode]);
+  }, [selectedDate, dateViewMode, rangeMode, getDateRange]);
 
   // 초기 로드
   useEffect(() => {
@@ -103,6 +117,8 @@ export function useInquiries() {
     setSelectedDate,
     dateViewMode,
     setDateViewMode,
+    rangeMode,
+    setRangeMode,
     loadInquiries,
     createInquiry,
     updateInquiry,

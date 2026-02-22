@@ -209,7 +209,7 @@ export default function ContactLogQuickModal({ patientId, patientName, defaultCr
       onSuccess();
       onClose();
     } catch (err: any) {
-      console.error('인콜 기록 저장 오류:', err);
+      console.error('문의 기록 저장 오류:', err);
       alert(`저장에 실패했습니다.\n${err?.message || err}`);
     } finally {
       setIsSaving(false);
@@ -218,7 +218,7 @@ export default function ContactLogQuickModal({ patientId, patientName, defaultCr
 
   const handleDelete = async () => {
     if (!editLog) return;
-    if (!confirm('이 인콜 기록을 삭제하시겠습니까?')) return;
+    if (!confirm('이 문의 기록을 삭제하시겠습니까?')) return;
     setIsDeleting(true);
     try {
       await deleteContactLog(editLog.id);
@@ -382,7 +382,7 @@ export default function ContactLogQuickModal({ patientId, patientName, defaultCr
     <div className="pkg-modal-overlay" onKeyDown={handleKeyDown} tabIndex={-1}>
       <div className="herbal-consult-modal" style={{ maxWidth: 520, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
         <div className="pkg-modal-header">
-          <h3>{editLog ? (isReadOnly ? '인콜 상세' : '인콜 수정') : '인콜 기록'}{patientName ? ` — ${patientName}` : ''}</h3>
+          <h3>{editLog ? (isReadOnly ? '문의 상세' : '문의 수정') : '문의 기록'}{patientName ? ` — ${patientName}` : ''}</h3>
           <button className="pkg-modal-close-btn" onClick={handleClose}>×</button>
         </div>
 

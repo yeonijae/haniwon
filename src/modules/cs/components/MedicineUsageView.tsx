@@ -27,11 +27,15 @@ interface MedicineUsageViewProps {
   dateTo: string;
   filterCategory: string;
   refreshKey: number;
+  externalViewMode?: 'card' | 'table';
 }
 
-function MedicineUsageView({ searchTerm, dateFrom, dateTo, filterCategory, refreshKey }: MedicineUsageViewProps) {
+function MedicineUsageView({ searchTerm, dateFrom, dateTo, filterCategory, refreshKey, externalViewMode }: MedicineUsageViewProps) {
   const [usages, setUsages] = useState<MedicineUsageRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [internalViewMode, setInternalViewMode] = useState<'card' | 'table'>('card');
+  const viewMode = externalViewMode || internalViewMode;
+  const setViewMode = setInternalViewMode;
 
   const loadUsages = useCallback(async () => {
     setLoading(true);
@@ -118,7 +122,62 @@ function MedicineUsageView({ searchTerm, dateFrom, dateTo, filterCategory, refre
 
   return (
     <div className="medicine-usage-view">
-      {/* 그리드 */}
+      {/* 뷰 전환 (외부 제어 시 숨김) */}
+      {!externalViewMode && (
+        <div className="mu-view-toggle">
+          <button className={`mu-toggle-btn ${viewMode === 'card' ? 'active' : ''}`} onClick={() => setViewMode('card')}>
+            <i className="fas fa-th-large" /> 카드
+          </button>
+          <button className={`mu-toggle-btn ${viewMode === 'table' ? 'active' : ''}`} onClick={() => setViewMode('table')}>
+            <i className="fas fa-table" /> 표
+          </button>
+        </div>
+      )}
+
+      {/* 표 보기 */}
+      {viewMode === 'table' && (
+        <div className="mu-table-wrap">
+          <table className="mu-table">
+            <thead>
+              <tr>
+                <th>날짜</th>
+                <th>환자</th>
+                <th>차트번호</th>
+                <th>분류</th>
+                <th>약품명</th>
+                <th>수량</th>
+                <th>용도</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 20 }}><i className="fas fa-spinner fa-spin" /> 로딩 중...</td></tr>
+              ) : usages.length === 0 ? (
+                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 20, color: '#9ca3af' }}>기록이 없습니다</td></tr>
+              ) : (
+                usages.map(item => (
+                  <tr key={item.id}>
+                    <td>{extractDate(item.usage_date)}</td>
+                    <td>{item.patient_name}</td>
+                    <td>{item.chart_number}</td>
+                    <td>
+                      {item.category && (
+                        <span className="mu-cat-badge" style={{ backgroundColor: getCategoryColor(item.category) }}>{item.category}</span>
+                      )}
+                    </td>
+                    <td>{item.medicine_name}</td>
+                    <td>{item.quantity}</td>
+                    <td>{item.purpose || '-'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 카드 보기 */}
+      {viewMode === 'card' && (
       <div className="herbal-grid-container">
         {loading ? (
           <div className="timeline-loading">
@@ -172,12 +231,68 @@ function MedicineUsageView({ searchTerm, dateFrom, dateTo, filterCategory, refre
           ))
         )}
       </div>
+      )}
 
       <style>{`
         .medicine-usage-view {
           display: flex;
           flex-direction: column;
           gap: 12px;
+        }
+        .mu-view-toggle {
+          display: flex;
+          gap: 4px;
+          margin-bottom: 4px;
+          justify-content: flex-end;
+        }
+        .mu-toggle-btn {
+          padding: 5px 12px;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          background: #fff;
+          font-size: 11px;
+          cursor: pointer;
+          color: #6b7280;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .mu-toggle-btn:hover { background: #f3f4f6; }
+        .mu-toggle-btn.active {
+          background: #3b82f6;
+          color: white;
+          border-color: #3b82f6;
+        }
+        .mu-table-wrap {
+          overflow-x: auto;
+        }
+        .mu-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 13px;
+        }
+        .mu-table th {
+          background: #f9fafb;
+          padding: 8px 10px;
+          text-align: left;
+          font-weight: 600;
+          color: #374151;
+          border-bottom: 2px solid #e5e7eb;
+          white-space: nowrap;
+        }
+        .mu-table td {
+          padding: 7px 10px;
+          border-bottom: 1px solid #f3f4f6;
+          color: #374151;
+        }
+        .mu-table tr:hover td { background: #f9fafb; }
+        .mu-cat-badge {
+          font-size: 11px;
+          padding: 2px 8px;
+          border-radius: 10px;
+          color: #fff;
+          font-weight: 600;
+          white-space: nowrap;
         }
 
         .medicine-usage-view .herbal-grid-container {
