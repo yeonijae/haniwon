@@ -108,7 +108,7 @@ export default function MedicineQuickModal({ patientId, chartNumber, patientName
           <button className="pkg-modal-close-btn" onClick={handleClose}><i className="fa-solid fa-xmark" /></button>
         </div>
 
-        <div className="hcm-body">
+        <div className="hcm-body" style={{ gridTemplateColumns: '1fr' }}>
           <div className="hcm-row">
             <label>진료일</label>
             <input type="date" value={consultDate} onChange={e => setConsultDate(e.target.value)} />

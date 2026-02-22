@@ -164,7 +164,7 @@ export default function HerbalConsultationModal({
 
   return (
     <div className="pkg-modal-overlay herbal-draft-overlay">
-      <div className="herbal-consult-modal">
+      <div className="herbal-consult-modal" style={{ maxWidth: 850, width: '90vw' }}>
         <div className="hcm-header">
           <h3>{isEdit ? '약상담 수정' : '약상담 등록'}</h3>
           <span className="hcm-patient">{patientName} ({chartNumber.replace(/^0+/, '')})</span>
@@ -276,16 +276,16 @@ export default function HerbalConsultationModal({
           </div>
 
           {/* 후상담 섹션 */}
-          <div className="hcm-section">
+          <div className="hcm-section" style={{ display: 'flex', flexDirection: 'column' }}>
             <h4>후상담 및 결제</h4>
 
             <div className="hcm-row">
-              <label>후상담 담당</label>
+              <label>상담 담당</label>
               <input type="text" value={followUpStaff} onChange={e => setFollowUpStaff(e.target.value)} placeholder="담당자" />
             </div>
 
             <div className="hcm-row">
-              <label>맞춤한약 결제</label>
+              <label>한약 결제</label>
               <div className="hcm-btn-group wrap">
                 {HERBAL_PAYMENTS.map(p => (
                   <button key={p} className={`hcm-btn ${herbalPayment === p ? 'active' : ''} ${p === '결제실패' ? 'fail' : ''}`} onClick={() => setHerbalPayment(herbalPayment === p ? '' : p)}>{p}</button>
@@ -314,13 +314,13 @@ export default function HerbalConsultationModal({
               </div>
             )}
 
-            <div className="hcm-row">
-              <label>후상담 메모</label>
+            <div className="hcm-row" style={{ flex: 1, alignItems: 'stretch' }}>
+              <label>상담 메모</label>
               <textarea
                 value={followUpMemo}
                 onChange={e => setFollowUpMemo(e.target.value)}
-                placeholder="후상담 회고 내용"
-                rows={3}
+                placeholder="상담 회고 내용"
+                style={{ flex: 1, minHeight: 80, resize: 'vertical' }}
               />
             </div>
           </div>

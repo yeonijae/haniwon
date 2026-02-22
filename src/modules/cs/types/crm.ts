@@ -134,6 +134,7 @@ export const CRM_TAB_LABELS: Record<CRMTabType, string> = {
 export interface PackageStatusSummary {
   // 통마
   tongma: {
+    id?: number;
     active: boolean;
     totalCount: number;
     usedCount: number;
@@ -141,32 +142,39 @@ export interface PackageStatusSummary {
     startDate?: string;
     expireDate?: string;
     packageName?: string;
+    createdAt?: string;
   } | null;
 
   // 한약 선결
   herbal: {
+    id?: number;
     active: boolean;
     herbalName?: string;
     totalCount: number;
     usedCount: number;
     remainingCount: number;
+    createdAt?: string;
   } | null;
 
   // 녹용 선결
   nokryong: {
+    id?: number;
     active: boolean;
     packageName?: string;
     totalMonths: number;
     remainingMonths: number;
+    createdAt?: string;
   } | null;
 
   // 멤버십
   membership: {
+    id?: number;
     active: boolean;
     membershipType: string;
     quantity: number;
     startDate?: string;
     expireDate: string;
+    createdAt?: string;
   } | null;
 }
 
@@ -350,6 +358,17 @@ export interface CallQueueItem {
     phone: string | null;
     last_visit_date: string | null;
   };
+  // 조인된 약 정보
+  herbal_name?: string | null;
+  reason?: string | null;
+}
+
+export interface CallNote {
+  id: number;
+  queue_id: number;
+  content: string;
+  created_by: string | null;
+  created_at: string;
 }
 
 export interface CreateCallQueueRequest {

@@ -26,6 +26,19 @@ interface UncoveredItem {
   amount: number;
 }
 
+interface PackageEditData {
+  id: number;
+  herbalName?: string;
+  totalCount?: number;
+  packageName?: string;
+  totalMonths?: number;
+  membershipType?: string;
+  quantity?: number;
+  startDate?: string;
+  expireDate?: string;
+  memo?: string;
+}
+
 interface PackageQuickAddModalProps {
   packageType: PackageType;
   patientId: number;
@@ -35,6 +48,7 @@ interface PackageQuickAddModalProps {
   receiptDate: string;
   uncoveredItems: UncoveredItem[];
   defaultDetailId?: number | null;
+  editData?: PackageEditData | null;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -44,6 +58,13 @@ const PACKAGE_TITLES: Record<PackageType, string> = {
   nokryong: '녹용 등록',
   treatment: '통마 등록',
   membership: '멤버십 등록',
+};
+
+const PACKAGE_EDIT_TITLES: Record<PackageType, string> = {
+  herbal: '한약 등록 수정',
+  nokryong: '녹용 등록 수정',
+  treatment: '통마 등록 수정',
+  membership: '멤버십 등록 수정',
 };
 
 const PACKAGE_COLORS: Record<PackageType, string> = {
@@ -62,9 +83,11 @@ function PackageQuickAddModal({
   receiptDate,
   uncoveredItems,
   defaultDetailId,
+  editData,
   onClose,
   onSuccess,
 }: PackageQuickAddModalProps) {
+  const isEdit = !!editData;
   // 드래그 상태
   const modalRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -170,6 +193,32 @@ function PackageQuickAddModal({
     };
     loadData();
   }, [packageType]);
+
+  // 수정 모드: 기존 데이터로 초기값 설정
+  useEffect(() => {
+    if (!editData) return;
+    if (packageType === 'herbal' && editData.herbalName) {
+      const match = editData.herbalName.match(/(\d+(?:\.\d+)?)M/);
+      if (match) {
+        const months = match[1];
+        const typeMap: Record<string, typeof herbalPackageType> = { '0.5': '0.5month', '1': '1month', '2': '2month', '3': '3month', '6': '6month' };
+        if (typeMap[months]) setHerbalPackageType(typeMap[months]);
+      }
+      if (editData.totalCount) setCustomHerbalCount(editData.totalCount);
+    }
+    if (packageType === 'nokryong') {
+      if (editData.packageName) setSelectedNokryongType(editData.packageName);
+      if (editData.totalMonths) setNokryongDoses(editData.totalMonths);
+    }
+    if (packageType === 'treatment' && editData.totalCount) {
+      setPackageCount(editData.totalCount);
+    }
+    if (packageType === 'membership') {
+      if (editData.membershipType) setSelectedMembershipType(editData.membershipType);
+      if (editData.quantity) setMembershipPeriod(editData.quantity);
+    }
+    if (editData.memo) setMemo(editData.memo);
+  }, [editData]);
 
   // 질환 태그 관련
   const filteredDiseaseTags = availableDiseaseTags.filter(
@@ -374,7 +423,7 @@ function PackageQuickAddModal({
         onMouseDown={handleMouseDown}
       >
         <div className="quick-modal-header">
-          <h3>{PACKAGE_TITLES[packageType]}</h3>
+          <h3>{isEdit ? PACKAGE_EDIT_TITLES[packageType] : PACKAGE_TITLES[packageType]}</h3>
           <button className="btn-close" onClick={onClose}>
             <i className="fa-solid fa-xmark"></i>
           </button>
@@ -560,7 +609,7 @@ function PackageQuickAddModal({
             onClick={handleSubmit}
             disabled={isSaving}
           >
-            {isSaving ? '등록 중...' : '등록'}
+            {isSaving ? (isEdit ? '수정 중...' : '등록 중...') : (isEdit ? '수정' : '등록')}
           </button>
         </div>
       </div>

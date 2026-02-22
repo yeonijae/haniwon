@@ -17,6 +17,7 @@ import TreatmentProgramAdmin from './components/TreatmentProgramAdmin';
 import SettingsView from './components/SettingsView';
 import InquiryView from './components/InquiryView';
 import { OutboundCallCenter } from './components/call-center';
+import VipManagementView from './components/vip/VipManagementView';
 import PatientTimelineModal from './components/PatientTimelineModal';
 import HeaderPatientSearch from './components/HeaderPatientSearch';
 import QuickMemoPanel from './components/QuickMemoPanel';
@@ -65,7 +66,7 @@ interface CSAppProps {
   user: PortalUser;
 }
 
-export type CSMenuType = 'reservation' | 'receipt' | 'noncovered' | 'inbound' | 'outbound' | 'settings';
+export type CSMenuType = 'reservation' | 'receipt' | 'noncovered' | 'inbound' | 'outbound' | 'vip' | 'settings';
 
 const MENU_TITLES: Record<CSMenuType, string> = {
   reservation: '예약관리',
@@ -73,6 +74,7 @@ const MENU_TITLES: Record<CSMenuType, string> = {
   noncovered: '비급여관리',
   inbound: '인콜',
   outbound: '아웃콜',
+  vip: 'VIP관리',
   settings: '프로그램설정',
 };
 
@@ -85,9 +87,10 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   { id: 'receipt', icon: '💰', label: '수납' },
   { id: 'reservation', icon: '📅', label: '예약' },
-  { id: 'noncovered', icon: '💊', label: '비급여' },
+  { id: 'noncovered', icon: '💊', label: '한약' },
   { id: 'inbound', icon: '📞', label: '인콜' },
   { id: 'outbound', icon: '📣', label: '아웃콜' },
+  { id: 'vip', icon: '👑', label: 'VIP' },
   { id: 'settings', icon: '⚙️', label: '설정' },
 ];
 
@@ -376,6 +379,8 @@ function CSApp({ user }: CSAppProps) {
         return <InquiryView user={user} />;
       case 'outbound':
         return <OutboundCallCenter user={user} />;
+      case 'vip':
+        return <VipManagementView user={user} />;
       case 'settings':
         return <SettingsView user={user} />;
       default:

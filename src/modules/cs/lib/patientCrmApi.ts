@@ -325,22 +325,20 @@ export async function getPatientPackageStatusByChartNumber(chartNumber: string):
     LIMIT 1
   `);
 
-  // 한약 선결
-  const herbalPackage = await queryOne<HerbalPackage>(`
+  // 한약 선결 (모든 active 패키지 합산)
+  const herbalPackages = await query<HerbalPackage>(`
     SELECT * FROM cs_herbal_packages
     WHERE chart_number = ${escapeString(chartNumber)}
     AND status = 'active'
     ORDER BY created_at DESC
-    LIMIT 1
   `);
 
-  // 녹용 선결
-  const nokryongPackage = await queryOne<NokryongPackage>(`
+  // 녹용 선결 (모든 active 패키지 합산)
+  const nokryongPackages = await query<NokryongPackage>(`
     SELECT * FROM cs_nokryong_packages
     WHERE chart_number = ${escapeString(chartNumber)}
     AND status = 'active'
     ORDER BY created_at DESC
-    LIMIT 1
   `);
 
   // 멤버십
@@ -354,6 +352,7 @@ export async function getPatientPackageStatusByChartNumber(chartNumber: string):
 
   return {
     tongma: tongmaPackage ? {
+      id: tongmaPackage.id,
       active: true,
       totalCount: tongmaPackage.total_count,
       usedCount: tongmaPackage.used_count,
@@ -361,29 +360,36 @@ export async function getPatientPackageStatusByChartNumber(chartNumber: string):
       startDate: tongmaPackage.start_date,
       expireDate: tongmaPackage.expire_date,
       packageName: tongmaPackage.package_name,
+      createdAt: tongmaPackage.created_at,
     } : null,
 
-    herbal: herbalPackage ? {
+    herbal: herbalPackages.length > 0 ? {
+      id: herbalPackages[0].id,
       active: true,
-      herbalName: herbalPackage.herbal_name,
-      totalCount: herbalPackage.total_count,
-      usedCount: herbalPackage.used_count,
-      remainingCount: herbalPackage.remaining_count,
+      herbalName: herbalPackages[0].herbal_name,
+      totalCount: herbalPackages.reduce((s, p) => s + (p.total_count || 0), 0),
+      usedCount: herbalPackages.reduce((s, p) => s + (p.used_count || 0), 0),
+      remainingCount: herbalPackages.reduce((s, p) => s + ((p.total_count || 0) - (p.used_count || 0)), 0),
+      createdAt: herbalPackages[0].created_at,
     } : null,
 
-    nokryong: nokryongPackage ? {
+    nokryong: nokryongPackages.length > 0 ? {
+      id: nokryongPackages[0].id,
       active: true,
-      packageName: nokryongPackage.package_name,
-      totalMonths: nokryongPackage.total_months,
-      remainingMonths: nokryongPackage.remaining_months,
+      packageName: nokryongPackages[0].package_name,
+      totalMonths: nokryongPackages.reduce((s, p) => s + (p.total_months || 0), 0),
+      remainingMonths: nokryongPackages.reduce((s, p) => s + (p.remaining_months || 0), 0),
+      createdAt: nokryongPackages[0].created_at,
     } : null,
 
     membership: membership ? {
+      id: membership.id,
       active: true,
       membershipType: membership.membership_type,
       quantity: membership.quantity,
       startDate: membership.start_date,
       expireDate: membership.expire_date,
+      createdAt: membership.created_at,
     } : null,
   };
 }

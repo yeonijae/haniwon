@@ -12841,6 +12841,17 @@
   opacity: 0.5;
   background: #fef2f2;
 }
+.pkg-manage-item.completed {
+  opacity: 0.6;
+  background: #f9fafb;
+}
+.pkg-manage-item .pkg-hover-delete {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.pkg-manage-item:hover .pkg-hover-delete {
+  opacity: 1;
+}
 .pkg-manage-item-header {
   display: flex;
   align-items: center;
@@ -12964,6 +12975,12 @@
   font-weight: 600;
   text-align: center;
   color: #1f2937;
+  -moz-appearance: textfield;
+}
+.pkg-manage-item-controls input::-webkit-outer-spin-button,
+.pkg-manage-item-controls input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 .pkg-manage-item-controls input:focus {
   outline: none;
@@ -13062,6 +13079,10 @@
 }
 .pkg-history-badge.usage {
   background: #f59e0b;
+  color: white;
+}
+.pkg-history-badge.edit {
+  background: #3b82f6;
   color: white;
 }
 .pkg-history-label {
@@ -19831,6 +19852,116 @@
   flex-shrink: 0;
 }
 
+.dashboard-header-inline .dh-badge {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 3px 10px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+/* 섹션 제목 클릭 */
+.section-title-clickable {
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.section-title-clickable:hover {
+  color: #3b82f6;
+}
+/* 확대 모달 */
+.expanded-section-modal {
+  background: white;
+  border-radius: 12px;
+  width: 480px;
+  max-width: 90vw;
+  height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.expanded-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.expanded-section-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+.expanded-section-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  min-height: 0;
+}
+.expanded-section-body,
+.expanded-section-body * {
+  max-height: none !important;
+}
+.expanded-section-body {
+  max-height: none !important;
+  overflow-y: auto !important;
+  padding: 8px 10px !important;
+}
+.expanded-section-body .dashboard-section-content {
+  padding: 0 !important;
+}
+.expanded-section-body .herbal-draft-history {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.dashboard-header-inline .dh-badge.clickable {
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+.dashboard-header-inline .dh-badge.clickable:hover {
+  filter: brightness(0.9);
+}
+.dashboard-header-inline .dh-badges {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.dh-badge.herbal { background: #d1fae5; color: #059669; }
+.dh-badge.nokryong { background: #fef3c7; color: #d97706; }
+.dh-badge.tongma { background: #dbeafe; color: #2563eb; }
+.dh-badge.membership { background: #ede9fe; color: #7c3aed; }
+
+.dashboard-header-inline .dh-add-btns {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+.dh-add-btns .pkg-add-btn {
+  padding: 3px 10px;
+  height: 28px;
+  border: 1px solid;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.dh-add-btns .pkg-add-btn.herbal { background: #f0fdf4; border-color: #86efac; color: #22c55e; }
+.dh-add-btns .pkg-add-btn.herbal:hover { background: #22c55e; color: white; }
+.dh-add-btns .pkg-add-btn.nokryong { background: #fffbeb; border-color: #fcd34d; color: #f59e0b; }
+.dh-add-btns .pkg-add-btn.nokryong:hover { background: #f59e0b; color: white; }
+.dh-add-btns .pkg-add-btn.treatment { background: #ecfeff; border-color: #67e8f9; color: #0891b2; }
+.dh-add-btns .pkg-add-btn.treatment:hover { background: #0891b2; color: white; }
+.dh-add-btns .pkg-add-btn.membership { background: #fef2f2; border-color: #fca5a5; color: #ef4444; }
+.dh-add-btns .pkg-add-btn.membership:hover { background: #ef4444; color: white; }
+
 .dashboard-header-inline .dh-actions {
   display: flex;
   align-items: center;
@@ -20166,9 +20297,12 @@
   flex: 1;
   overflow-y: auto;
   padding: 16px 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 24px;
 }
 .hcm-section {
-  margin-bottom: 20px;
+  margin-bottom: 4px;
 }
 .hcm-section h4 {
   font-size: 13px;
@@ -20278,10 +20412,10 @@
 }
 .hcm-tag-input-wrap input {
   width: 100%;
-  padding: 5px 8px;
+  padding: 6px 10px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 15px;
 }
 .hcm-tag-suggestions {
   position: absolute;
@@ -21031,3 +21165,24 @@
   flex: 1;
 }
 
+
+/* VIP year chip (shared) */
+.vip-year-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 2px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #f3f4f6;
+  color: #6b7280;
+}
+.vip-year-chip.current {
+  background: #8b5cf6;
+  color: white;
+}
+.dh-vip-badges {
+  display: inline-flex;
+  gap: 2px;
+  vertical-align: middle;
+}

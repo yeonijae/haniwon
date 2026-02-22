@@ -4186,12 +4186,52 @@ export async function getPatientAuditLogs(
 
 export interface PackageHistoryItem {
   id: string;
-  type: 'add' | 'usage';  // 등록 또는 사용
+  type: 'add' | 'usage' | 'edit';
   date: string;
   label: string;
   subLabel?: string;
-  deductionPoints?: number;  // 차감 포인트 (사용시)
-  remainingAfter?: number;   // 차감 후 잔여
+  deductionPoints?: number;
+  remainingAfter?: number;
+}
+
+// 패키지 수정 이력 테이블
+let _pkgAuditTableReady = false;
+async function ensurePackageAuditTable() {
+  if (_pkgAuditTableReady) return;
+  await execute(`CREATE TABLE IF NOT EXISTS cs_package_audit_log (
+    id SERIAL PRIMARY KEY,
+    package_type TEXT NOT NULL,
+    package_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    detail TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
+  _pkgAuditTableReady = true;
+}
+
+export async function addPackageAuditLog(packageType: string, packageId: number, action: string, detail: string) {
+  await ensurePackageAuditTable();
+  await execute(`INSERT INTO cs_package_audit_log (package_type, package_id, action, detail) VALUES (${escapeString(packageType)}, ${packageId}, ${escapeString(action)}, ${escapeString(detail)})`);
+}
+
+export async function getPackageAuditLogs(packageType: string, packageId: number): Promise<PackageHistoryItem[]> {
+  await ensurePackageAuditTable();
+  const rows = await query<{ id: number; action: string; detail: string; created_at: string }>(`SELECT * FROM cs_package_audit_log WHERE package_type = ${escapeString(packageType)} AND package_id = ${packageId} ORDER BY created_at DESC`);
+  return rows.map(r => {
+    let dateStr = '';
+    if (r.created_at) {
+      const d = new Date(r.created_at);
+      if (!isNaN(d.getTime())) {
+        dateStr = `${String(d.getFullYear()).slice(2)}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+      }
+    }
+    return {
+      id: `audit_${r.id}`,
+      type: 'edit' as const,
+      date: dateStr,
+      label: r.detail || r.action,
+    };
+  });
 }
 
 /**
@@ -4261,8 +4301,7 @@ export async function getHerbalPackageHistory(packageId: number): Promise<Packag
       id: `add_herbal_${pkg.id}`,
       type: 'add',
       date: pkg.start_date,
-      label: `${pkg.purpose || '한약'} 선결제 등록`,
-      subLabel: `${pkg.total_count}회${pkg.purpose ? ` (${pkg.purpose})` : ''}`,
+      label: `${pkg.purpose || '한약'} 선결제 ${pkg.total_count}회 등록`,
     });
   }
 
@@ -5363,4 +5402,30 @@ export async function updateHerbalConsultation(id: number, data: Partial<HerbalC
 export async function deleteHerbalConsultation(id: number): Promise<void> {
   await ensureHerbalConsultationsTable();
   await execute(`DELETE FROM cs_herbal_consultations WHERE id = ${id}`);
+}
+
+// 패키지 종류별 active 삭제
+export async function deletePackageByKind(patientId: number, kind: string): Promise<void> {
+  switch (kind) {
+    case 'tongma': {
+      const pkgs = await getActiveTreatmentPackages(patientId);
+      for (const p of pkgs) await deleteTreatmentPackage(p.id);
+      break;
+    }
+    case 'herbal': {
+      const pkgs = await getActiveHerbalPackages(patientId);
+      for (const p of pkgs) await deleteHerbalPackage(p.id);
+      break;
+    }
+    case 'nokryong': {
+      const pkgs = await query<{ id: number }>(`SELECT id FROM cs_nokryong_packages WHERE patient_id = ${patientId} AND status = 'active'`);
+      for (const p of pkgs) await deleteNokryongPackage(p.id);
+      break;
+    }
+    case 'membership': {
+      const m = await getActiveMembership(patientId);
+      if (m) await deleteMembership(m.id);
+      break;
+    }
+  }
 }

@@ -123,6 +123,8 @@ interface PatientPackageSectionProps {
   onDeleteDraft?: (draft: HerbalDraft) => void;
   onEditMedicine?: (usage: MedicineUsage) => void;
   onDeleteMedicine?: (usage: MedicineUsage) => void;
+  onEditPackage?: (kind: string) => void;
+  onDeletePackage?: (kind: string) => void;
 }
 
 // 분기 타입 → 표시 라벨
@@ -162,6 +164,8 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
   onDeleteDraft,
   onEditMedicine,
   onDeleteMedicine,
+  onEditPackage,
+  onDeletePackage,
 }) => {
   if (isLoading) {
     return <div className="section-loading">로딩 중...</div>;
@@ -176,48 +180,64 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
   const allItems: UnifiedItem[] = [];
 
   // 패키지 → 통합 리스트에 추가
+  const pkgActions = (kind: string) => (
+    (onEditPackage || onDeletePackage) ? (
+      <span className="herbal-draft-action-btns">
+        {onEditPackage && <button className="herbal-draft-action-btn" onClick={() => onEditPackage(kind)} title="수정"><i className="fa-solid fa-pen" /></button>}
+        {onDeletePackage && <button className="herbal-draft-action-btn delete" onClick={() => onDeletePackage(kind)} title="삭제"><i className="fa-solid fa-trash" /></button>}
+      </span>
+    ) : null
+  );
+
   if (packages?.tongma) {
     allItems.push({
-      type: 'pkg', kind: 'tongma', date: packages.tongma.startDate || '9999',
+      type: 'pkg', kind: 'tongma', date: packages.tongma.createdAt || '',
       node: (
         <div className="herbal-draft-history-row">
           <span className="pkg-badge tongma">통마</span>
-          <span className="herbal-draft-history-date">{formatDate(packages.tongma.startDate)}</span>
+          <span className="herbal-draft-history-date">{formatDate(packages.tongma.createdAt || packages.tongma.startDate)}</span>
           <span className="pkg-info">통마{packages.tongma.totalCount}회 결제</span>
+
+          {pkgActions('tongma')}
         </div>
       ),
     });
   }
   if (packages?.membership) {
     allItems.push({
-      type: 'pkg', kind: 'membership', date: packages.membership.startDate || '9999',
+      type: 'pkg', kind: 'membership', date: packages.membership.createdAt || '',
       node: (
         <div className="herbal-draft-history-row">
           <span className="pkg-badge membership">멤버</span>
-          <span className="herbal-draft-history-date">{formatDate(packages.membership.startDate)}</span>
+          <span className="herbal-draft-history-date">{formatDate(packages.membership.createdAt || packages.membership.startDate)}</span>
           <span className="pkg-info">{packages.membership.membershipType} ~{formatDate(packages.membership.expireDate)}</span>
+          {pkgActions('membership')}
         </div>
       ),
     });
   }
   if (packages?.herbal) {
     allItems.push({
-      type: 'pkg', kind: 'herbal', date: '9999',
+      type: 'pkg', kind: 'herbal', date: packages.herbal.createdAt || '',
       node: (
         <div className="herbal-draft-history-row">
-          <span className="pkg-badge herbal">선결</span>
-          <span className="pkg-info">{packages.herbal.herbalName || '한약'} {packages.herbal.remainingCount}/{packages.herbal.totalCount}회</span>
+          <span className="herbal-draft-category-badge herbal">탕약</span>
+          <span className="herbal-draft-history-date">{formatDate(packages.herbal.createdAt)}</span>
+          <span className="pkg-info">한약 {packages.herbal.totalCount}회 선결제</span>
+          {pkgActions('herbal')}
         </div>
       ),
     });
   }
   if (packages?.nokryong) {
     allItems.push({
-      type: 'pkg', kind: 'nokryong', date: '9999',
+      type: 'pkg', kind: 'nokryong', date: packages.nokryong.createdAt || '',
       node: (
         <div className="herbal-draft-history-row">
-          <span className="pkg-badge nokryong">녹용</span>
-          <span className="pkg-info">{packages.nokryong.packageName || '녹용'} {packages.nokryong.remainingMonths}/{packages.nokryong.totalMonths}개월</span>
+          <span className="herbal-draft-category-badge nokryong-badge">녹용</span>
+          <span className="herbal-draft-history-date">{formatDate(packages.nokryong.createdAt)}</span>
+          <span className="pkg-info">{packages.nokryong.packageName || '녹용'} 선결제</span>
+          {pkgActions('nokryong')}
         </div>
       ),
     });
@@ -225,21 +245,26 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
 
   // 한약 기록
   herbalDrafts.forEach(draft => {
-    allItems.push({ type: 'draft', date: draft.receipt_date || draft.created_at || '', draft });
+    allItems.push({ type: 'draft', date: draft.created_at || draft.receipt_date || '', draft });
   });
 
   // 상비약
   medicineUsages.forEach(usage => {
-    allItems.push({ type: 'medicine', date: usage.usage_date || '', usage });
+    allItems.push({ type: 'medicine', date: (usage as any).created_at || usage.usage_date || '', usage });
   });
 
   // 탕전
   decoctionOrders.forEach(order => {
-    allItems.push({ type: 'decoction', date: order.scheduled_date || '', order });
+    allItems.push({ type: 'decoction', date: (order as any).created_at || order.scheduled_date || '', order });
   });
 
   // 날짜 내림차순 정렬
-  allItems.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  // 모든 항목 최근순 (date 기준, 빈 값은 맨 아래)
+  allItems.sort((a, b) => {
+    const da = a.date || '0000';
+    const db = b.date || '0000';
+    return db.localeCompare(da);
+  });
 
   if (allItems.length === 0) {
     return <div className="section-empty">패키지/한약 기록이 없습니다.</div>;
@@ -404,6 +429,16 @@ const DRAFT_HISTORY_STYLES = `
   .herbal-draft-history-item:hover .herbal-draft-item-actions {
     opacity: 1;
   }
+  .herbal-draft-action-btns {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    margin-left: auto;
+  }
+  .herbal-draft-history-row:hover .herbal-draft-action-btns {
+    opacity: 1;
+  }
   .herbal-draft-action-btn {
     width: 22px;
     height: 22px;
@@ -489,6 +524,10 @@ const DRAFT_HISTORY_STYLES = `
   .herbal-draft-category-badge.package {
     background: #ede9fe;
     color: #6d28d9;
+  }
+  .herbal-draft-category-badge.nokryong-badge {
+    background: #fef3c7;
+    color: #d97706;
   }
   .herbal-draft-history-details {
     display: flex;

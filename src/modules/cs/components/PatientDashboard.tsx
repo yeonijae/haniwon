@@ -10,7 +10,7 @@ import type { StaffRole } from '../types/crm';
 import type { HerbalDraft, MedicineUsage } from '../types';
 import type { ContactLog } from '../types/crm';
 import { usePatientDashboard } from '../hooks/usePatientDashboard';
-import { deleteHerbalDraft, deleteMedicineUsage, getConsultationMemos, addConsultationMemo, deleteConsultationMemo, getHerbalConsultations } from '../lib/api';
+import { deleteHerbalDraft, deleteMedicineUsage, getConsultationMemos, addConsultationMemo, deleteConsultationMemo, getHerbalConsultations, deletePackageByKind } from '../lib/api';
 import type { ConsultationMemo, HerbalConsultation } from '../lib/api';
 
 // 연속 줄바꿈을 1회로 축약
@@ -27,6 +27,10 @@ import HerbalDraftModal from './HerbalDraftModal';
 import HerbalConsultationModal from './patient-dashboard/HerbalConsultationModal';
 import MedicineQuickModal from './patient-dashboard/MedicineQuickModal';
 import ContactLogQuickModal from './patient-dashboard/ContactLogQuickModal';
+import PackageQuickAddModal from './PackageQuickAddModal';
+import PackageManageModal from './patient-dashboard/PackageManageModal';
+import PatientEditModal from './patient-dashboard/PatientEditModal';
+import { getPatientVipYears } from '../lib/vipApi';
 import { ReservationStep1Modal, type ReservationDraft, type InitialPatient } from '../../reservation/components/ReservationStep1Modal';
 import { QuickReservationModal } from './QuickReservationModal';
 import { fetchDoctors } from '../../reservation/lib/api';
@@ -57,7 +61,9 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
   selectedDoctor: propSelectedDoctor,
 }) => {
   const [showMemoForm, setShowMemoForm] = useState(false);
-  const [showPackageModal, setShowPackageModal] = useState(false);
+  const [quickAddType, setQuickAddType] = useState<'herbal' | 'nokryong' | 'treatment' | 'membership' | null>(null);
+  const [quickAddEditData, setQuickAddEditData] = useState<any>(null);
+  const [pkgManageType, setPkgManageType] = useState<'herbal' | 'nokryong' | 'treatment' | 'membership' | null>(null);
   const [showDraftModal, setShowDraftModal] = useState(false);
   const [draftMode, setDraftMode] = useState<'tangya' | 'jaboyak'>('tangya');
   const [showContactLogModal, setShowContactLogModal] = useState(false);
@@ -74,6 +80,10 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
   const [showMemoInput, setShowMemoInput] = useState(false);
   const [showConsultModal, setShowConsultModal] = useState(false);
   const [showMedicineModal, setShowMedicineModal] = useState(false);
+  const [expandedSection, setExpandedSection] = useState<'packages' | 'contacts' | 'consults' | null>(null);
+  const [showPatientEdit, setShowPatientEdit] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [vipYears, setVipYears] = useState<{ year: number; grade: string }[]>([]);
   const [herbalConsultations, setHerbalConsultations] = useState<HerbalConsultation[]>([]);
   const {
     mssqlData,
@@ -109,6 +119,11 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
     if (!isOpen) return;
     loadConsultMemos();
   }, [isOpen, loadConsultMemos]);
+
+  useEffect(() => {
+    if (!isOpen || !patient.id) return;
+    getPatientVipYears(patient.id).then(setVipYears).catch(() => {});
+  }, [isOpen, patient.id]);
 
   const handleAddConsultMemo = async () => {
     if (!newMemoText.trim()) return;
@@ -217,7 +232,18 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
       {/* 한 줄 컴팩트 헤더 */}
       <div className="dashboard-header-bar">
         <div className="dashboard-header-inline">
-          <span className="dh-name">{patient.name}</span>
+          <span className="dh-name" onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }); }}>
+            {patient.name}
+            {vipYears.length > 0 && (
+              <span className="dh-vip-badges" style={{ marginLeft: 6 }}>
+                {vipYears.map(v => (
+                  <span key={v.year} className={`vip-year-chip ${v.year === new Date().getFullYear() ? 'current' : ''}`} title={`${v.year}년 ${v.grade}`}>
+                    {v.grade === 'VVIP' ? '👑' : '⭐'}'{String(v.year).slice(2)}
+                  </span>
+                ))}
+              </span>
+            )}
+          </span>
           <span className="dh-sep">|</span>
           <span className="dh-chart">{patient.chart_number}</span>
           {patient.gender && (
@@ -257,16 +283,33 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
             </>
           )}
 
-          <div className="dh-actions">
-            <button
-              className={`btn-memo-toggle ${showMemoForm ? 'active' : ''}`}
-              onClick={() => setShowMemoForm(!showMemoForm)}
-            >
-              {showMemoForm ? '닫기' : '+ 메모'}
-            </button>
-<button className="btn-refresh-dashboard" onClick={refresh}>새로고침</button>
-            <button className="btn-header-close" onClick={onClose}>&times;</button>
+          <div style={{ flex: 1 }} />
+
+          {/* 선결제/패키지 배지 */}
+          <div className="dh-badges">
+            {packages?.herbal?.active && (
+              <span className="dh-badge herbal clickable" onClick={() => setPkgManageType('herbal')}>한약{packages.herbal.remainingCount}회</span>
+            )}
+            {packages?.nokryong?.active && (
+              <span className="dh-badge nokryong clickable" onClick={() => setPkgManageType('nokryong')}>녹용{packages.nokryong.remainingMonths}회</span>
+            )}
+            {packages?.tongma?.active && (
+              <span className="dh-badge tongma clickable" onClick={() => setPkgManageType('treatment')}>통마{packages.tongma.remainingCount}회</span>
+            )}
+            {packages?.membership?.active && (
+              <span className="dh-badge membership clickable" onClick={() => setPkgManageType('membership')}>멤버십</span>
+            )}
           </div>
+
+          {/* 추가 버튼 */}
+          <div className="dh-add-btns">
+            <button className="pkg-add-btn herbal" onClick={() => { setQuickAddEditData(null); setQuickAddType('herbal'); }}>한약+</button>
+            <button className="pkg-add-btn nokryong" onClick={() => { setQuickAddEditData(null); setQuickAddType('nokryong'); }}>녹용+</button>
+            <button className="pkg-add-btn treatment" onClick={() => { setQuickAddEditData(null); setQuickAddType('treatment'); }}>통마+</button>
+            <button className="pkg-add-btn membership" onClick={() => { setQuickAddEditData(null); setQuickAddType('membership'); }}>멤버+</button>
+          </div>
+
+          <button className="btn-header-close" onClick={onClose}>&times;</button>
         </div>
 
         {showMemoForm && (
@@ -335,7 +378,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
         <div className="dashboard-col equal-split">
           <div className="dashboard-section">
             <div className="section-header">
-              <h4>약상담</h4>
+              <h4 className="section-title-clickable" onClick={() => setExpandedSection('consults')}>약상담</h4>
               <span className="section-count">{herbalConsultations.length + consultMemos.length}건</span>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
                 <button
@@ -430,7 +473,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
 
           <div className="dashboard-section">
             <div className="section-header">
-              <h4>한약/비급여</h4>
+              <h4 className="section-title-clickable" onClick={() => setExpandedSection('packages')}>한약/비급여</h4>
               <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
                 <button
                   className="section-action-btn herbal-draft"
@@ -461,6 +504,30 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
               onDeleteDraft={handleDeleteDraft}
               onEditMedicine={(usage) => { setEditingMedicine(usage); setShowMedicineModal(true); }}
               onDeleteMedicine={handleDeleteMedicine}
+              onEditPackage={(kind) => {
+                const pkg = packages?.[kind as keyof typeof packages] as any;
+                if (pkg) {
+                  setQuickAddEditData({
+                    id: pkg.id,
+                    herbalName: pkg.herbalName,
+                    totalCount: pkg.totalCount,
+                    packageName: pkg.packageName,
+                    totalMonths: pkg.totalMonths,
+                    membershipType: pkg.membershipType,
+                    quantity: pkg.quantity,
+                    startDate: pkg.startDate,
+                    expireDate: pkg.expireDate,
+                  });
+                }
+                setQuickAddType(kind as any);
+              }}
+              onDeletePackage={async (kind) => {
+                if (!confirm(`${kind === 'tongma' ? '통마' : kind === 'membership' ? '멤버십' : kind === 'herbal' ? '한약 선결제' : '녹용'} 패키지를 삭제하시겠습니까?`)) return;
+                try {
+                    await deletePackageByKind(patient.mssql_id || patient.id, kind);
+                  refresh();
+                } catch (err) { alert('삭제에 실패했습니다.'); }
+              }}
               decoctionOrders={decoctionOrders}
             />
           </div>
@@ -470,7 +537,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
         <div className="dashboard-col equal-split">
           <div className="dashboard-section">
             <div className="section-header">
-              <h4>인콜/아웃콜</h4>
+              <h4 className="section-title-clickable" onClick={() => setExpandedSection('contacts')}>인콜/아웃콜</h4>
               <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
                 <button
                   className="section-action-btn incall-btn"
@@ -588,7 +655,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
         patientId={patient.mssql_id || 0}
         chartNumber={patient.chart_number || ''}
         patientName={patient.name}
-        mainDoctor={patient.main_doctor || ''}
+        mainDoctor={propSelectedDoctor || mssqlData?.main_doctor || patient.main_doctor || ''}
         onClose={() => setShowConsultModal(false)}
         onSuccess={() => { loadConsultMemos(); }}
       />
@@ -613,6 +680,130 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
         setEditingDraft(null);
       }}
     />
+
+    {pkgManageType && (
+      <PackageManageModal
+        type={pkgManageType}
+        patientId={patient.mssql_id || patient.id}
+        chartNumber={patient.chart_number || ''}
+        onClose={() => setPkgManageType(null)}
+        onSuccess={async () => { await refresh(); }}
+      />
+    )}
+
+    {/* 우클릭 컨텍스트 메뉴 */}
+    {contextMenu && (
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }} onClick={() => setContextMenu(null)}>
+        <div
+          className="context-menu"
+          style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, background: 'white', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', border: '1px solid #e5e7eb', padding: '4px 0', minWidth: 140, zIndex: 10000 }}
+          onClick={e => e.stopPropagation()}
+        >
+          <button
+            style={{ display: 'block', width: '100%', padding: '8px 16px', border: 'none', background: 'none', textAlign: 'left', fontSize: 13, cursor: 'pointer' }}
+            onMouseOver={e => (e.currentTarget.style.background = '#f3f4f6')}
+            onMouseOut={e => (e.currentTarget.style.background = 'none')}
+            onClick={() => { setContextMenu(null); setShowPatientEdit(true); }}
+          >
+            <i className="fa-solid fa-pen-to-square" style={{ marginRight: 8, color: '#6b7280' }} />환자정보 수정
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* 환자정보 수정 모달 */}
+    {showPatientEdit && (
+      <PatientEditModal
+        patient={patient}
+        onClose={() => setShowPatientEdit(false)}
+        onSuccess={() => refresh()}
+      />
+    )}
+
+    {/* 확대 모달 */}
+    {expandedSection && (
+      <div className="pkg-modal-overlay" onClick={() => setExpandedSection(null)}>
+        <div className="expanded-section-modal" onClick={e => e.stopPropagation()}>
+          <div className="expanded-section-header">
+            <h3>{expandedSection === 'packages' ? '한약/비급여' : expandedSection === 'contacts' ? '인콜/아웃콜' : '약상담'}</h3>
+            <button className="pkg-modal-close-btn" onClick={() => setExpandedSection(null)}><i className="fa-solid fa-xmark" /></button>
+          </div>
+          <div className="expanded-section-body">
+            {expandedSection === 'packages' && (
+              <PatientPackageSection
+                packages={packages}
+                herbalDrafts={herbalDrafts}
+                medicineUsages={medicineUsages}
+                isLoading={isLoading}
+                onEditDraft={handleEditDraft}
+                onDeleteDraft={handleDeleteDraft}
+                onEditMedicine={(usage) => { setEditingMedicine(usage); setShowMedicineModal(true); }}
+                onDeleteMedicine={handleDeleteMedicine}
+                onEditPackage={(kind) => {
+                  const pkg = packages?.[kind as keyof typeof packages] as any;
+                  if (pkg) setQuickAddEditData({ id: pkg.id, herbalName: pkg.herbalName, totalCount: pkg.totalCount, packageName: pkg.packageName, totalMonths: pkg.totalMonths, membershipType: pkg.membershipType, quantity: pkg.quantity, startDate: pkg.startDate, expireDate: pkg.expireDate });
+                  setQuickAddType(kind as any);
+                }}
+                onDeletePackage={async (kind) => {
+                  if (!confirm(`${kind === 'tongma' ? '통마' : kind === 'membership' ? '멤버십' : kind === 'herbal' ? '한약 선결제' : '녹용'} 패키지를 삭제하시겠습니까?`)) return;
+                  try { await deletePackageByKind(patient.mssql_id || patient.id, kind); refresh(); } catch { alert('삭제 실패'); }
+                }}
+                decoctionOrders={decoctionOrders}
+              />
+            )}
+            {expandedSection === 'contacts' && (
+              <PatientInquirySection
+                contactLogs={contactLogs || []}
+                patientName={patient.name}
+                isLoading={isLoading}
+                onEditLog={(log) => { setEditingContactLog(log); setShowContactLogModal(true); }}
+                onRefresh={refresh}
+              />
+            )}
+            {expandedSection === 'consults' && (
+              <div>
+                {herbalConsultations.length === 0 && consultMemos.length === 0 ? (
+                  <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af' }}>약상담 없음</div>
+                ) : (
+                  <>
+                    {herbalConsultations.map(c => (
+                      <div key={c.id} className="herbal-consult-card" style={{ margin: '8px 0' }}>
+                        <span className="herbal-consult-type-badge">{c.consult_type}</span>
+                        <span style={{ fontSize: 12, color: '#6b7280' }}>{c.consult_date}</span>
+                        <span style={{ fontSize: 13, marginLeft: 8 }}>{c.disease_names}</span>
+                        {c.memo && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>{c.memo}</div>}
+                      </div>
+                    ))}
+                    {consultMemos.map(m => (
+                      <div key={m.id} className="consult-memo-card" style={{ margin: '8px 0' }}>
+                        <span style={{ fontSize: 12, color: '#6b7280' }}>{m.created_at?.slice(0, 10)}</span>
+                        <span style={{ fontSize: 13, marginLeft: 8 }}>{m.content}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+
+    {quickAddType && (
+      <PackageQuickAddModal
+        packageType={quickAddType}
+        patientId={patient.mssql_id || 0}
+        patientName={patient.name}
+        chartNumber={patient.chart_number || ''}
+        receiptId={0}
+        receiptDate={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })()}
+        uncoveredItems={[]}
+        defaultDetailId={null}
+        editData={quickAddEditData}
+        onClose={() => { setQuickAddType(null); setQuickAddEditData(null); }}
+        onSuccess={async () => { await refresh(); setQuickAddType(null); setQuickAddEditData(null); }}
+      />
+    )}
 
 </div>
   );

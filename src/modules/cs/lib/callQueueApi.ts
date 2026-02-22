@@ -6,6 +6,7 @@
 import { query, execute, escapeString, getCurrentTimestamp } from '@shared/lib/postgres';
 import type {
   CallQueueItem,
+  CallNote,
   CreateCallQueueRequest,
   UpdateCallQueueRequest,
   CallConditionSetting,
@@ -52,10 +53,28 @@ export async function getCallQueue(
 /**
  * 오늘 콜 큐 조회 (예정일 기준)
  */
-export async function getTodayCallQueue(callType?: CallType): Promise<CallQueueItem[]> {
-  const today = new Date().toISOString().split('T')[0];
+let _queueMigrated = false;
+async function ensureQueueReasonColumn() {
+  if (_queueMigrated) return;
+  _queueMigrated = true;
+  await execute(`ALTER TABLE outbound_call_queue ADD COLUMN IF NOT EXISTS reason TEXT`).catch(() => {});
+}
 
-  let whereClause = `q.status = 'pending' AND q.due_date <= ${escapeString(today)}`;
+export async function getTodayCallQueue(callType?: CallType, baseDate?: string, statusFilter?: 'all' | 'incomplete' | 'completed'): Promise<CallQueueItem[]> {
+  await ensureQueueReasonColumn();
+  const today = baseDate || new Date().toISOString().split('T')[0];
+
+  let whereClause = `q.due_date <= ${escapeString(today)}`;
+
+  // 상태 필터
+  if (statusFilter === 'completed') {
+    whereClause += ` AND q.status = 'completed'`;
+  } else if (statusFilter === 'all') {
+    // 전체: 조건 없음
+  } else {
+    // 기본(incomplete): pending + no_answer
+    whereClause += ` AND q.status IN ('pending', 'no_answer')`;
+  }
 
   if (callType) {
     whereClause += ` AND q.call_type = ${escapeString(callType)}`;
@@ -69,11 +88,16 @@ export async function getTodayCallQueue(callType?: CallType): Promise<CallQueueI
         'chart_number', p.chart_number,
         'phone', p.phone,
         'last_visit_date', p.last_visit_date
-      ) as patient
+      ) as patient,
+      CASE WHEN q.related_type = 'herbal_draft' THEN
+        COALESCE(d.herbal_name, d.consultation_type, '탕약')
+      ELSE NULL END as herbal_name,
+      q.reason
     FROM outbound_call_queue q
     LEFT JOIN patients p ON q.patient_id = p.id
+    LEFT JOIN cs_herbal_drafts d ON q.related_type = 'herbal_draft' AND q.related_id = d.id
     WHERE ${whereClause}
-    ORDER BY q.priority DESC, q.due_date ASC
+    ORDER BY q.status ASC, q.priority DESC, q.due_date ASC
   `);
 }
 
@@ -108,7 +132,7 @@ export async function createCallQueueItem(
   const result = await query<{ id: number }>(`
     INSERT INTO outbound_call_queue (
       patient_id, call_type, related_type, related_id,
-      due_date, priority, status, created_at, updated_at
+      due_date, priority, status, reason, created_at, updated_at
     ) VALUES (
       ${data.patient_id},
       ${escapeString(data.call_type)},
@@ -117,15 +141,27 @@ export async function createCallQueueItem(
       ${escapeString(data.due_date)},
       ${data.priority || 0},
       'pending',
+      ${escapeString((data as any).reason || null)},
       ${escapeString(now)},
       ${escapeString(now)}
     ) RETURNING id
   `);
 
-  const created = await getCallQueueItemById(result[0].id);
-  if (!created) {
-    throw new Error('콜 큐 아이템 생성 실패');
+  let id = result?.[0]?.id;
+  if (!id) {
+    // RETURNING fallback: 최근 생성된 레코드 조회
+    const fallback = await query<{ id: number }>(`
+      SELECT id FROM outbound_call_queue
+      WHERE patient_id = ${data.patient_id} AND call_type = ${escapeString(data.call_type)}
+      ORDER BY id DESC LIMIT 1
+    `);
+    id = fallback?.[0]?.id;
   }
+
+  if (!id) throw new Error('콜 큐 아이템 생성 실패');
+
+  const created = await getCallQueueItemById(id);
+  if (!created) throw new Error('콜 큐 아이템 조회 실패');
   return created;
 }
 
@@ -170,12 +206,11 @@ export async function updateCallQueueItem(
  */
 export async function completeCall(
   queueId: number,
-  contactLogId: number
+  contactLogId?: number | null
 ): Promise<CallQueueItem | null> {
-  return updateCallQueueItem(queueId, {
-    status: 'completed',
-    contact_log_id: contactLogId,
-  });
+  const updates: Record<string, any> = { status: 'completed' };
+  if (contactLogId != null) updates.contact_log_id = contactLogId;
+  return updateCallQueueItem(queueId, updates);
 }
 
 /**
@@ -354,12 +389,15 @@ export interface CallTargetPatient {
 
 /**
  * 배송콜 대상자 조회
- * 조건: 수령 후 N일 (기본 3일)
+ * 조건: 복약 시작(medication_start) 후 2~3일 경과
+ * cs_herbal_drafts의 journey_status.medication_start 기준
  */
-export async function getDeliveryCallTargets(daysAfter: number = 3): Promise<CallTargetPatient[]> {
-  const targetDate = new Date();
-  targetDate.setDate(targetDate.getDate() - daysAfter);
-  const dateStr = targetDate.toISOString().split('T')[0];
+export async function getDeliveryCallTargets(daysAfter: number = 3, baseDate?: string): Promise<CallTargetPatient[]> {
+  const now = baseDate ? new Date(baseDate + 'T00:00:00') : new Date();
+  const dateTo = new Date(now);
+  dateTo.setDate(now.getDate() - 2);
+  const toStr = `${dateTo.getFullYear()}-${String(dateTo.getMonth()+1).padStart(2,'0')}-${String(dateTo.getDate()).padStart(2,'0')}`;
+  const baseDateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
   const results = await query<CallTargetPatient>(`
     SELECT
@@ -368,29 +406,31 @@ export async function getDeliveryCallTargets(daysAfter: number = 3): Promise<Cal
       p.chart_number,
       p.phone,
       'delivery_call' as call_type,
-      '수령 ${daysAfter}일차 확인' as reason,
-      'herbal_pickup' as related_type,
-      hp.id as related_id,
+      '복약 ' || (${escapeString(baseDateStr)}::date - (d.journey_status->>'medication_start')::date) || '일차 확인' as reason,
+      'herbal_draft' as related_type,
+      d.id as related_id,
       1 as priority,
       p.last_visit_date,
       json_build_object(
-        'delivery_method', hp.delivery_method,
-        'pickup_date', hp.pickup_date,
-        'herbal_name', COALESCE(hpkg.herbal_name, '한약'),
-        'round_number', hp.round_number
+        'delivery_method', d.delivery_method,
+        'shipping_date', d.shipping_date,
+        'medication_start', d.journey_status->>'medication_start',
+        'medication_days', d.journey_status->>'medication_days',
+        'herbal_name', COALESCE(d.herbal_name, d.consultation_type, '탕약')
       ) as extra_info
-    FROM cs_herbal_pickups hp
-    JOIN patients p ON hp.patient_id = p.id
-    LEFT JOIN cs_herbal_packages hpkg ON hp.package_id = hpkg.id
-    WHERE hp.pickup_date = ${escapeString(dateStr)}
+    FROM cs_herbal_drafts d
+    JOIN patients p ON d.chart_number = p.chart_number
+    WHERE d.journey_status->>'medication_start' IS NOT NULL
+      AND (d.journey_status->>'medication_start')::date <= ${escapeString(toStr)}
       AND NOT EXISTS (
         SELECT 1 FROM outbound_call_queue q
         WHERE q.patient_id = p.id
           AND q.call_type = 'delivery_call'
-          AND q.related_id = hp.id
-          AND q.status IN ('completed', 'pending')
+          AND q.related_id = d.id
+          AND q.related_type = 'herbal_draft'
+          AND q.status IN ('completed', 'pending', 'no_answer')
       )
-    ORDER BY hp.pickup_date DESC
+    ORDER BY (d.journey_status->>'medication_start')::date DESC
     LIMIT 100
   `);
 
@@ -431,7 +471,7 @@ export async function getChurnRisk1Targets(daysSince: number = 14): Promise<Call
         SELECT 1 FROM outbound_call_queue q
         WHERE q.patient_id = p.id
           AND q.call_type = 'churn_risk_1'
-          AND q.status IN ('completed', 'pending')
+          AND q.status IN ('completed', 'pending', 'no_answer')
           AND q.created_at > NOW() - INTERVAL '30 days'
       )
     ORDER BY p.last_visit_date ASC
@@ -475,7 +515,7 @@ export async function getChurnRisk3Targets(daysSince: number = 30): Promise<Call
         SELECT 1 FROM outbound_call_queue q
         WHERE q.patient_id = p.id
           AND q.call_type = 'churn_risk_3'
-          AND q.status IN ('completed', 'pending')
+          AND q.status IN ('completed', 'pending', 'no_answer')
           AND q.created_at > NOW() - INTERVAL '30 days'
       )
     ORDER BY p.last_visit_date ASC
@@ -523,7 +563,7 @@ export async function getUnconsumedTargets(monthsSince: number = 2): Promise<Cal
         WHERE q.patient_id = p.id
           AND q.call_type = 'unconsumed'
           AND q.related_id = hpkg.id
-          AND q.status IN ('completed', 'pending')
+          AND q.status IN ('completed', 'pending', 'no_answer')
       )
     ORDER BY hpkg.created_at ASC
     LIMIT 100
@@ -568,7 +608,7 @@ export async function getVipCareTargets(): Promise<CallTargetPatient[]> {
         SELECT 1 FROM outbound_call_queue q
         WHERE q.patient_id = p.id
           AND q.call_type = 'vip_care'
-          AND q.status IN ('completed', 'pending')
+          AND q.status IN ('completed', 'pending', 'no_answer')
           AND q.created_at > NOW() - INTERVAL '30 days'
       )
     ORDER BY hpkg.created_at DESC
@@ -579,13 +619,13 @@ export async function getVipCareTargets(): Promise<CallTargetPatient[]> {
 }
 
 /**
- * 내원콜 대상자 (수령 12일차)
- * 조건: 한약 수령 후 12일 경과한 환자
+ * 내원콜 대상자
+ * 조건: 복약 시작 후 medication_days - 5일 경과 (복약 완료 5일 전 내원 안내)
+ * cs_herbal_drafts의 journey_status 기준
  */
-export async function getVisitCallTargets(daysAfter: number = 12): Promise<CallTargetPatient[]> {
-  const targetDate = new Date();
-  targetDate.setDate(targetDate.getDate() - daysAfter);
-  const dateStr = targetDate.toISOString().split('T')[0];
+export async function getVisitCallTargets(baseDate?: string): Promise<CallTargetPatient[]> {
+  const now = baseDate ? new Date(baseDate + 'T00:00:00') : new Date();
+  const baseDateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
   const results = await query<CallTargetPatient>(`
     SELECT
@@ -594,31 +634,80 @@ export async function getVisitCallTargets(daysAfter: number = 12): Promise<CallT
       p.chart_number,
       p.phone,
       'visit_call' as call_type,
-      hpkg.herbal_name || ' 수령 ' || ${daysAfter} || '일차 - 내원 안내' as reason,
-      'herbal_package' as related_type,
-      hpkg.id as related_id,
+      '복약 ' || (${escapeString(baseDateStr)}::date - (d.journey_status->>'medication_start')::date) || '일차 / '
+        || COALESCE(d.journey_status->>'medication_days', '15') || '일분 - 내원 안내' as reason,
+      'herbal_draft' as related_type,
+      d.id as related_id,
       7 as priority,
       p.last_visit_date,
       json_build_object(
-        'herbal_name', hpkg.herbal_name,
-        'pickup_date', hp.pickup_date,
-        'round_number', hp.round_number,
-        'remaining_count', hpkg.remaining_count
+        'herbal_name', COALESCE(d.herbal_name, d.consultation_type, '탕약'),
+        'medication_start', d.journey_status->>'medication_start',
+        'medication_days', d.journey_status->>'medication_days',
+        'shipping_date', d.shipping_date
       ) as extra_info
-    FROM cs_herbal_pickups hp
-    JOIN cs_herbal_packages hpkg ON hp.package_id = hpkg.id
-    JOIN patients p ON hp.patient_id = p.id
-    WHERE hp.pickup_date = '${dateStr}'
-      AND hpkg.status = 'active'
+    FROM cs_herbal_drafts d
+    JOIN patients p ON d.chart_number = p.chart_number
+    WHERE d.journey_status->>'medication_start' IS NOT NULL
+      AND COALESCE((d.journey_status->>'medication_days')::int, 15) > 0
+      AND (${escapeString(baseDateStr)}::date - (d.journey_status->>'medication_start')::date)
+          >= COALESCE((d.journey_status->>'medication_days')::int, 15) - 5
       AND NOT EXISTS (
         SELECT 1 FROM outbound_call_queue q
         WHERE q.patient_id = p.id
           AND q.call_type = 'visit_call'
-          AND q.related_id = hpkg.id
-          AND q.status IN ('completed', 'pending')
-          AND q.created_at > NOW() - INTERVAL '14 days'
+          AND q.related_id = d.id
+          AND q.related_type = 'herbal_draft'
+          AND q.status IN ('completed', 'pending', 'no_answer')
       )
-    ORDER BY hp.pickup_date ASC
+    ORDER BY (d.journey_status->>'medication_start')::date ASC
+    LIMIT 100
+  `);
+
+  return results;
+}
+
+/**
+ * 애프터콜 대상자
+ * 조건: 복약 완료 후 1~3일 경과 (복약 종료 직후 상태 확인)
+ * cs_herbal_drafts의 journey_status 기준
+ */
+export async function getAfterCallTargets(baseDate?: string): Promise<CallTargetPatient[]> {
+  const now = baseDate ? new Date(baseDate + 'T00:00:00') : new Date();
+  const baseDateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+  const results = await query<CallTargetPatient>(`
+    SELECT
+      p.id as patient_id,
+      p.name,
+      p.chart_number,
+      p.phone,
+      'after_call' as call_type,
+      '복약완료 ' || (${escapeString(baseDateStr)}::date - ((d.journey_status->>'medication_start')::date + COALESCE((d.journey_status->>'medication_days')::int, 15))) || '일차 - 상태 확인' as reason,
+      'herbal_draft' as related_type,
+      d.id as related_id,
+      5 as priority,
+      p.last_visit_date,
+      json_build_object(
+        'herbal_name', COALESCE(d.herbal_name, d.consultation_type, '탕약'),
+        'medication_start', d.journey_status->>'medication_start',
+        'medication_days', d.journey_status->>'medication_days',
+        'medication_end', (d.journey_status->>'medication_start')::date + COALESCE((d.journey_status->>'medication_days')::int, 15)
+      ) as extra_info
+    FROM cs_herbal_drafts d
+    JOIN patients p ON d.chart_number = p.chart_number
+    WHERE d.journey_status->>'medication_start' IS NOT NULL
+      AND COALESCE((d.journey_status->>'medication_days')::int, 15) > 0
+      AND ${escapeString(baseDateStr)}::date >= (d.journey_status->>'medication_start')::date + COALESCE((d.journey_status->>'medication_days')::int, 15) + 1
+      AND NOT EXISTS (
+        SELECT 1 FROM outbound_call_queue q
+        WHERE q.patient_id = p.id
+          AND q.call_type = 'after_call'
+          AND q.related_id = d.id
+          AND q.related_type = 'herbal_draft'
+          AND q.status IN ('completed', 'pending', 'no_answer')
+      )
+    ORDER BY (d.journey_status->>'medication_start')::date DESC
     LIMIT 100
   `);
 
@@ -657,7 +746,7 @@ export async function getRepaymentConsultTargets(): Promise<CallTargetPatient[]>
         WHERE q.patient_id = p.id
           AND q.call_type = 'repayment_consult'
           AND q.related_id = hpkg.id
-          AND q.status IN ('completed', 'pending')
+          AND q.status IN ('completed', 'pending', 'no_answer')
           AND q.created_at > NOW() - INTERVAL '30 days'
       )
     ORDER BY hpkg.updated_at ASC
@@ -704,7 +793,7 @@ export async function getRemind3MonthTargets(): Promise<CallTargetPatient[]> {
         WHERE q.patient_id = p.id
           AND q.call_type = 'remind_3month'
           AND q.related_id = hpkg.id
-          AND q.status IN ('completed', 'pending')
+          AND q.status IN ('completed', 'pending', 'no_answer')
       )
     ORDER BY hpkg.updated_at ASC
     LIMIT 100
@@ -765,7 +854,7 @@ export async function getExpiryWarningTargets(daysUntilExpiry: number = 14): Pro
         WHERE q.patient_id = p.id
           AND q.call_type = 'expiry_warning'
           AND q.related_id = tp.id
-          AND q.status IN ('completed', 'pending')
+          AND q.status IN ('completed', 'pending', 'no_answer')
           AND q.created_at > NOW() - INTERVAL '7 days'
       )
     ORDER BY tp.expire_date ASC
@@ -778,13 +867,15 @@ export async function getExpiryWarningTargets(daysUntilExpiry: number = 14): Pro
 /**
  * 전체 콜 대상자 조회 (유형별 통합)
  */
-export async function getAllCallTargets(callType?: CallType): Promise<CallTargetPatient[]> {
+export async function getAllCallTargets(callType?: CallType, baseDate?: string): Promise<CallTargetPatient[]> {
   if (callType) {
     switch (callType) {
       case 'delivery_call':
-        return getDeliveryCallTargets();
+        return getDeliveryCallTargets(3, baseDate);
       case 'visit_call':
-        return getVisitCallTargets();
+        return getVisitCallTargets(baseDate);
+      case 'after_call':
+        return getAfterCallTargets(baseDate);
       case 'churn_risk_1':
         return getChurnRisk1Targets();
       case 'churn_risk_3':
@@ -805,9 +896,10 @@ export async function getAllCallTargets(callType?: CallType): Promise<CallTarget
   }
 
   // 전체 조회 시 우선순위별로 합침
-  const [delivery, visitCall, churn1, churn3, unconsumed, vip, repayment, remind, expiry] = await Promise.all([
-    getDeliveryCallTargets(),
-    getVisitCallTargets(),
+  const [delivery, visitCall, afterCall, churn1, churn3, unconsumed, vip, repayment, remind, expiry] = await Promise.all([
+    getDeliveryCallTargets(3, baseDate),
+    getVisitCallTargets(baseDate),
+    getAfterCallTargets(baseDate),
     getChurnRisk1Targets(),
     getChurnRisk3Targets(),
     getUnconsumedTargets(),
@@ -817,8 +909,98 @@ export async function getAllCallTargets(callType?: CallType): Promise<CallTarget
     getExpiryWarningTargets(),
   ]);
 
-  return [...expiry, ...repayment, ...vip, ...visitCall, ...delivery, ...unconsumed, ...remind, ...churn1, ...churn3]
+  return [...expiry, ...repayment, ...vip, ...afterCall, ...visitCall, ...delivery, ...unconsumed, ...remind, ...churn1, ...churn3]
     .sort((a, b) => b.priority - a.priority);
+}
+
+// ============================================
+// 콜 메모 (outbound_call_notes)
+// ============================================
+
+async function ensureCallNotesTable(): Promise<void> {
+  await execute(`
+    CREATE TABLE IF NOT EXISTS outbound_call_notes (
+      id SERIAL PRIMARY KEY,
+      queue_id INTEGER NOT NULL REFERENCES outbound_call_queue(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      created_by TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+}
+
+/**
+ * 콜 메모 목록 조회
+ */
+export async function getCallNotes(queueId: number): Promise<CallNote[]> {
+  await ensureCallNotesTable();
+  return query<CallNote>(`
+    SELECT * FROM outbound_call_notes
+    WHERE queue_id = ${queueId}
+    ORDER BY created_at ASC
+  `);
+}
+
+/**
+ * 콜 메모 추가
+ */
+export async function addCallNote(queueId: number, content: string, createdBy?: string): Promise<CallNote> {
+  await ensureCallNotesTable();
+  const now = getCurrentTimestamp();
+  await execute(`
+    INSERT INTO outbound_call_notes (queue_id, content, created_by, created_at)
+    VALUES (${queueId}, ${escapeString(content)}, ${createdBy ? escapeString(createdBy) : 'NULL'}, ${escapeString(now)})
+  `);
+  const result = await query<CallNote>(`
+    SELECT * FROM outbound_call_notes WHERE queue_id = ${queueId} ORDER BY id DESC LIMIT 1
+  `);
+  return result[0];
+}
+
+/**
+ * 콜 메모 삭제
+ */
+export async function deleteCallNote(noteId: number): Promise<void> {
+  await execute(`DELETE FROM outbound_call_notes WHERE id = ${noteId}`);
+}
+
+export async function updateCallNote(noteId: number, content: string): Promise<void> {
+  await execute(`UPDATE outbound_call_notes SET content = ${escapeString(content)} WHERE id = ${noteId}`);
+}
+
+/**
+ * 큐 아이템별 메모 일괄 조회 (큐 목록용)
+ */
+export async function getCallNotesByQueueIds(queueIds: number[]): Promise<Map<number, CallNote[]>> {
+  if (queueIds.length === 0) return new Map();
+  await ensureCallNotesTable();
+  const notes = await query<CallNote>(`
+    SELECT * FROM outbound_call_notes
+    WHERE queue_id IN (${queueIds.join(',')})
+    ORDER BY created_at ASC
+  `);
+  const map = new Map<number, CallNote[]>();
+  for (const n of notes) {
+    if (!map.has(n.queue_id)) map.set(n.queue_id, []);
+    map.get(n.queue_id)!.push(n);
+  }
+  return map;
+}
+
+/**
+ * 대상자(환자+call_type+related) 기준 메모 조회 (대상자 리스트용)
+ * 큐에 등록된 적이 있으면 그 큐의 메모를 반환
+ */
+export async function getCallNotesByTarget(patientId: number, callType: string, relatedId?: number): Promise<CallNote[]> {
+  await ensureCallNotesTable();
+  let where = `q.patient_id = ${patientId} AND q.call_type = ${escapeString(callType)}`;
+  if (relatedId) where += ` AND q.related_id = ${relatedId}`;
+  return query<CallNote>(`
+    SELECT n.* FROM outbound_call_notes n
+    JOIN outbound_call_queue q ON n.queue_id = q.id
+    WHERE ${where}
+    ORDER BY n.created_at ASC
+  `);
 }
 
 /**
@@ -834,5 +1016,6 @@ export async function addTargetToQueue(target: CallTargetPatient): Promise<CallQ
     related_id: target.related_id,
     due_date: today,
     priority: target.priority,
-  });
+    reason: target.reason,
+  } as any);
 }

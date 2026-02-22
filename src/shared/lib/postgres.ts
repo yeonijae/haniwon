@@ -5,8 +5,29 @@
 
 const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
 
-// 테이블 초기화 캐시 (세션당 한 번만 실행)
+// 테이블 초기화 캐시 (localStorage 기반 — 하루에 한 번만 실행)
+const INIT_CACHE_KEY = 'pg_table_init';
 const initializedTables = new Set<string>();
+
+function loadInitCache(): void {
+  try {
+    const stored = localStorage.getItem(INIT_CACHE_KEY);
+    if (stored) {
+      const { date, keys } = JSON.parse(stored);
+      const today = new Date().toISOString().split('T')[0];
+      if (date === today && Array.isArray(keys)) {
+        keys.forEach((k: string) => initializedTables.add(k));
+      }
+    }
+  } catch {}
+}
+function saveInitCache(): void {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    localStorage.setItem(INIT_CACHE_KEY, JSON.stringify({ date: today, keys: [...initializedTables] }));
+  } catch {}
+}
+loadInitCache();
 
 export function isTableInitialized(key: string): boolean {
   return initializedTables.has(key);
@@ -14,6 +35,7 @@ export function isTableInitialized(key: string): boolean {
 
 export function markTableInitialized(key: string): void {
   initializedTables.add(key);
+  saveInitCache();
 }
 
 interface ApiResponse {

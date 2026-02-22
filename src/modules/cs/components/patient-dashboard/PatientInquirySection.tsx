@@ -103,6 +103,63 @@ const PatientInquirySection: React.FC<PatientInquirySectionProps> = ({
     return true;
   }
 
+  const OUTBOUND_CALL_TYPES = new Set(['delivery_call','visit_call','after_call','unconsumed','vip_care','churn_risk_1','churn_risk_3','repayment_consult','remind_3month','expiry_warning']);
+
+  const CALL_TYPE_LABELS: Record<string, string> = {
+    delivery_call: '배송콜', visit_call: '내원콜', after_call: '애프터콜',
+    unconsumed: '미복용', vip_care: 'VIP관리', churn_risk_1: '이탈위험',
+    churn_risk_3: '재방문유도', repayment_consult: '재결제상담',
+    remind_3month: '리마인드', expiry_warning: '유효기간임박',
+  };
+
+  function isOutboundLog(log: ContactLog): boolean {
+    return log.direction === 'outbound' || OUTBOUND_CALL_TYPES.has(log.contact_type);
+  }
+
+  // result 메타 파싱 (아웃콜용)
+  function parseMeta(result: string | null): Record<string, string> {
+    if (!result) return {};
+    // 메타 형식: "콜종류:배송콜|약종류:자보약|사유:..."
+    if (!result.includes(':')) return {};
+    const meta: Record<string, string> = {};
+    result.split('|').forEach(part => {
+      const idx = part.indexOf(':');
+      if (idx > 0) meta[part.slice(0, idx).trim()] = part.slice(idx + 1).trim();
+    });
+    return meta;
+  }
+
+  // 아웃콜 카드 렌더
+  function renderOutboundCard(log: ContactLog) {
+    const meta = parseMeta(log.result);
+    const callType = meta['콜종류'] || CALL_TYPE_LABELS[log.contact_type] || '';
+    const herbalName = meta['약종류'] || '';
+    const reason = meta['사유'] || '';
+    return (
+      <div key={log.id} className="cl-card cl-outbound-card">
+        <div className="cl-card-actions">
+          {onEditLog && <button className="cl-action-btn" onClick={e => { e.stopPropagation(); onEditLog(log); }} title="수정"><i className="fa-solid fa-pen" /></button>}
+          <button className="cl-action-btn delete" onClick={e => { e.stopPropagation(); handleDelete(log); }} title="삭제"><i className="fa-solid fa-trash" /></button>
+        </div>
+        <div className="cl-outbound-row1">
+          <span className="cl-outbound-dt">{formatDate(log.created_at)}</span>
+          {callType && <span className="cl-outbound-badge call">{callType}</span>}
+          {herbalName && <span className="cl-outbound-badge herbal">{herbalName}</span>}
+          {reason && <span className="cl-outbound-reason">{reason}</span>}
+          {!reason && !callType && log.content && <span className="cl-outbound-reason">{log.content.split('\n')[0]}</span>}
+          <span className="cl-outbound-by">{log.created_by || ''}</span>
+        </div>
+        {log.content && (
+          <div className="cl-outbound-memos">
+            {log.content.split('\n').filter(Boolean).map((line, i) => (
+              <div key={i} className="cl-outbound-memo-line">{line}</div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard-section-content">
       {contactLogs.length === 0 ? (
@@ -110,6 +167,8 @@ const PatientInquirySection: React.FC<PatientInquirySectionProps> = ({
       ) : (
         <div className="cl-list">
           {contactLogs.slice(0, 15).map(log => {
+            // 아웃콜은 카드 형태
+            if (isOutboundLog(log)) return renderOutboundCard(log);
             const isExpanded = expandedId === log.id;
             // JSON이면 content에 전체 대화, 아니면 문의+응답 합침
             const isJson = log.content?.trim().startsWith('[');
@@ -234,6 +293,62 @@ const PatientInquirySection: React.FC<PatientInquirySectionProps> = ({
         .cl-more {
           text-align: center; font-size: 11px; color: #6b7280;
           margin-top: 4px; padding: 2px 0;
+        }
+        /* 아웃콜 카드 */
+        .cl-outbound-card {
+          background: #f0f9ff;
+          cursor: default;
+        }
+        .cl-outbound-card:hover { border-color: #93c5fd; }
+        .cl-outbound-row1 {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+          margin-bottom: 4px;
+        }
+        .cl-outbound-dt {
+          font-size: 11px;
+          color: #9ca3af;
+          white-space: nowrap;
+        }
+        .cl-outbound-badge {
+          font-size: 11px;
+          padding: 2px 7px;
+          border-radius: 8px;
+          font-weight: 500;
+          white-space: nowrap;
+        }
+        .cl-outbound-badge.call {
+          background: #dbeafe;
+          color: #1e40af;
+        }
+        .cl-outbound-badge.herbal {
+          background: #f3e8ff;
+          color: #7c3aed;
+        }
+        .cl-outbound-reason {
+          font-size: 13px;
+          color: #374151;
+          flex: 1;
+        }
+        .cl-outbound-by {
+          font-size: 11px;
+          color: #6b7280;
+          margin-left: auto;
+          white-space: nowrap;
+        }
+        .cl-outbound-memos {
+          background: #fffbeb;
+          border-radius: 6px;
+          padding: 6px 8px;
+        }
+        .cl-outbound-memo-line {
+          font-size: 13px;
+          color: #374151;
+          line-height: 1.5;
+          white-space: pre-wrap;
+          word-break: break-word;
         }
       `}</style>
     </div>

@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { PortalUser } from '@shared/types';
 import type { CallType, CallQueueItem, CallCenterStats } from '../../types/crm';
 import { CALL_TYPE_LABELS } from '../../types/crm';
+import type { CallNote } from '../../types/crm';
 import {
   getTodayCallQueue,
   getCallCenterStats,
@@ -15,6 +16,11 @@ import {
   completeCall,
   postponeCall,
   updateCallQueueItem,
+  getCallNotesByQueueIds,
+  addCallNote,
+  deleteCallNote,
+  updateCallNote,
+  deleteCallQueueItem,
   type CallTargetPatient,
 } from '../../lib/callQueueApi';
 import { createContactLog } from '../../lib/contactLogApi';
@@ -30,8 +36,6 @@ interface OutboundCallCenterProps {
   user: PortalUser;
 }
 
-type ViewMode = 'queue' | 'targets';
-
 const CALL_TYPES: CallType[] = [
   'delivery_call',
   'visit_call',
@@ -45,13 +49,59 @@ const CALL_TYPES: CallType[] = [
   'expiry_warning',
 ];
 
+function formatLocalDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+/** "2026-02-21" → "26/2/21" */
+function fmtDate(s: string | null | undefined): string {
+  if (!s) return '-';
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  return `${String(d.getFullYear()).slice(2)}/${d.getMonth()+1}/${d.getDate()}`;
+}
+
+/** any date string → "26/2/21 14:30" */
+function fmtDateTime(s: string | null | undefined): string {
+  if (!s) return '';
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  const date = `${String(d.getFullYear()).slice(2)}/${d.getMonth()+1}/${d.getDate()}`;
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  return `${date} ${h}:${m}`;
+}
+
 const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
-  const [viewMode, setViewMode] = useState<ViewMode>('queue');
   const [selectedType, setSelectedType] = useState<CallType | null>(null);
-  const [queueItems, setQueueItems] = useState<CallQueueItem[]>([]);
+  const [queueItems, setQueueItems] = useState<CallQueueItem[]>([]);       // 미완료 큐
+  const [completedItems, setCompletedItems] = useState<CallQueueItem[]>([]); // 완료 큐
   const [targetPatients, setTargetPatients] = useState<CallTargetPatient[]>([]);
   const [stats, setStats] = useState<CallCenterStats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [baseDate, setBaseDate] = useState<string>(formatLocalDate(new Date()));
+  const [targetSelected, setTargetSelected] = useState<Set<number>>(new Set());
+  const [operator, setOperator] = useState<string>(() => localStorage.getItem('occ_operator') || '');
+  const [showOperatorInput, setShowOperatorInput] = useState(false);
+
+  // 미루기 모달
+  const [postponeTarget, setPostponeTarget] = useState<CallQueueItem | null>(null);
+  const [postponeDate, setPostponeDate] = useState('');
+  const [postponeReason, setPostponeReason] = useState('');
+
+  const moveDate = (days: number) => {
+    const d = new Date(baseDate + 'T00:00:00');
+    d.setDate(d.getDate() + days);
+    setBaseDate(formatLocalDate(d));
+  };
+  const isToday = baseDate === formatLocalDate(new Date());
+
+  // 메모 상태
+  const [notesMap, setNotesMap] = useState<Map<number, CallNote[]>>(new Map());
+  const [expandedNotes, setExpandedNotes] = useState<Set<number>>(new Set());
+  const [noteInput, setNoteInput] = useState<Record<number, string>>({});
+  const [editingNote, setEditingNote] = useState<{ id: number; queueId: number; content: string } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; item: CallQueueItem } | null>(null);
 
   // 모달 상태
   const [showDashboard, setShowDashboard] = useState(false);
@@ -76,55 +126,39 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
     }
   }, []);
 
-  // 콜 큐 로드
-  const loadQueue = useCallback(async () => {
+  // 전체 데이터 로드 (3컬럼 동시)
+  const loadAll = useCallback(async () => {
     setIsLoading(true);
     try {
-      const items = await getTodayCallQueue(selectedType || undefined);
-      setQueueItems(items);
+      const [incompleteItems, doneItems, targets, st] = await Promise.all([
+        getTodayCallQueue(selectedType || undefined, baseDate, 'incomplete'),
+        getTodayCallQueue(selectedType || undefined, baseDate, 'completed'),
+        getAllCallTargets(selectedType || undefined, baseDate),
+        getCallCenterStats(),
+      ]);
+      setQueueItems(incompleteItems);
+      setCompletedItems(doneItems);
+      setTargetPatients(targets);
+      setTargetSelected(new Set());
+      setStats(st);
+      // 메모 일괄 로드
+      const allIds = [...incompleteItems, ...doneItems].map(i => i.id);
+      if (allIds.length > 0) {
+        const notes = await getCallNotesByQueueIds(allIds);
+        setNotesMap(notes);
+      } else {
+        setNotesMap(new Map());
+      }
     } catch (error) {
-      console.error('콜 큐 로드 오류:', error);
+      console.error('콜 센터 로드 오류:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [selectedType]);
+  }, [selectedType, baseDate]);
 
-  // 콜 대상자 로드
-  const loadTargets = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const patients = await getAllCallTargets(selectedType || undefined);
-      setTargetPatients(patients);
-    } catch (error) {
-      console.error('콜 대상자 로드 오류:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedType]);
+  useEffect(() => { loadAll(); }, [loadAll]);
 
-  // 초기 로드
-  useEffect(() => {
-    loadStats();
-  }, [loadStats]);
-
-  // 뷰 모드 또는 유형 변경 시 데이터 로드
-  useEffect(() => {
-    if (viewMode === 'queue') {
-      loadQueue();
-    } else {
-      loadTargets();
-    }
-  }, [viewMode, loadQueue, loadTargets]);
-
-  // 새로고침
-  const handleRefresh = () => {
-    loadStats();
-    if (viewMode === 'queue') {
-      loadQueue();
-    } else {
-      loadTargets();
-    }
-  };
+  const handleRefresh = () => { loadAll(); };
 
   // 환자 클릭 → 환자 통합 대시보드 열기
   const handlePatientClick = async (patientId: number) => {
@@ -136,9 +170,57 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
   };
 
   // 콜 완료 버튼 클릭
-  const handleCallComplete = (item: CallQueueItem) => {
-    setSelectedQueueItem(item);
-    setShowResultModal(true);
+  const requireOperator = (): boolean => {
+    if (!operator.trim()) {
+      alert('담당자를 입력하세요.');
+      setShowOperatorInput(true);
+      return false;
+    }
+    return true;
+  };
+
+  const saveOperator = (name: string) => {
+    setOperator(name);
+    localStorage.setItem('occ_operator', name);
+    setShowOperatorInput(false);
+  };
+
+  const handleCallComplete = async (item: CallQueueItem) => {
+    if (!requireOperator()) return;
+    const notes = notesMap.get(item.id) || [];
+    const hasActivity = item.status === 'no_answer' || notes.length > 0;
+    if (!hasActivity) {
+      if (!confirm('메모없이 완료하시겠습니까?')) return;
+    }
+    try {
+      // 메모 내용을 모아서 contact_log 생성
+      const memoLines = notes.filter(Boolean).map(n => {
+        const dt = fmtDateTime(n.created_at);
+        return `${dt} ${n.content}`;
+      });
+      const memoText = memoLines.join('\n');
+      // result에 메타 정보 저장 (콜종류, 약종류, 사유)
+      const meta = [
+        `콜종류:${CALL_TYPE_LABELS[item.call_type]}`,
+        item.herbal_name ? `약종류:${item.herbal_name}` : '',
+        item.reason ? `사유:${item.reason}` : '',
+      ].filter(Boolean).join('|');
+      const log = await createContactLog({
+        patient_id: item.patient_id,
+        direction: 'outbound',
+        channel: 'phone',
+        contact_type: item.call_type as any,
+        content: memoText || `[${CALL_TYPE_LABELS[item.call_type]}] 완료`,
+        result: meta,
+        related_type: item.related_type || undefined,
+        related_id: item.related_id || undefined,
+        created_by: operator,
+      });
+      await completeCall(item.id, log?.id);
+      handleRefresh();
+    } catch (error) {
+      console.error('완료 처리 오류:', error);
+    }
   };
 
   // 콜 결과 저장
@@ -171,14 +253,28 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
     }
   };
 
-  // 콜 미루기
-  const handlePostpone = async (item: CallQueueItem, days: number) => {
-    try {
-      const newDate = new Date();
-      newDate.setDate(newDate.getDate() + days);
-      const dateStr = newDate.toISOString().split('T')[0];
+  // 콜 미루기 모달 열기
+  const handlePostponeOpen = (item: CallQueueItem) => {
+    if (!requireOperator()) return;
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setPostponeTarget(item);
+    setPostponeDate(formatLocalDate(tomorrow));
+    setPostponeReason('');
+  };
 
-      await postponeCall(item.id, dateStr);
+  // 콜 미루기 확정
+  const handlePostponeConfirm = async () => {
+    if (!postponeTarget || !postponeDate) return;
+    try {
+      await postponeCall(postponeTarget.id, postponeDate);
+      // 미루기 사유를 메모로 기록
+      if (postponeReason.trim()) {
+        await addCallNote(postponeTarget.id, `[미루기 → ${fmtDate(postponeDate)}] ${postponeReason.trim()}`, operator);
+      } else {
+        await addCallNote(postponeTarget.id, `[미루기 → ${fmtDate(postponeDate)}]`, operator);
+      }
+      setPostponeTarget(null);
       handleRefresh();
     } catch (error) {
       console.error('콜 미루기 오류:', error);
@@ -187,9 +283,62 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
   };
 
   // 부재중 처리
+  // 완료 취소 → 콜큐로 되돌리기 + contact_log 삭제
+  const handleUndoComplete = async (item: CallQueueItem) => {
+    try {
+      const { deleteContactLog, getContactLogsByPatient } = await import('../../lib/contactLogApi');
+      // 먼저 FK 해제 + 상태 변경
+      const logId = item.contact_log_id;
+      await updateCallQueueItem(item.id, { status: 'pending', contact_log_id: null });
+      // 그 다음 contact_log 삭제
+      if (logId) {
+        await deleteContactLog(logId).catch(() => {});
+      } else {
+        try {
+          const logs = await getContactLogsByPatient(item.patient_id);
+          const match = logs.find(l =>
+            l.direction === 'outbound' &&
+            l.contact_type === item.call_type &&
+            l.related_id === item.related_id
+          );
+          if (match) await deleteContactLog(match.id).catch(() => {});
+        } catch {}
+      }
+      setCtxMenu(null);
+      handleRefresh();
+    } catch (err) {
+      console.error('완료 취소 실패:', err);
+    }
+  };
+
+  // 콜큐에서 제거 (대상자로 되돌리기)
+  const handleRemoveFromQueue = async (item: CallQueueItem) => {
+    try {
+      await deleteCallQueueItem(item.id);
+      handleRefresh();
+    } catch (err) {
+      console.error('큐 제거 실패:', err);
+    }
+  };
+
+  const handleClearNoAnswer = async (item: CallQueueItem) => {
+    try {
+      await updateCallQueueItem(item.id, { status: 'pending' });
+      // 부재중 메모 삭제
+      const notes = notesMap.get(item.id) || [];
+      const noAnswerNote = notes.find(n => n.content === '[부재중]');
+      if (noAnswerNote) await deleteCallNote(noAnswerNote.id);
+      handleRefresh();
+    } catch (err) {
+      console.error('부재 해제 실패:', err);
+    }
+  };
+
   const handleNoAnswer = async (item: CallQueueItem) => {
+    if (!requireOperator()) return;
     try {
       await updateCallQueueItem(item.id, { status: 'no_answer' });
+      await addCallNote(item.id, '[부재중]', operator);
       handleRefresh();
     } catch (error) {
       console.error('부재중 처리 오류:', error);
@@ -203,29 +352,175 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
       handleRefresh();
     } catch (error) {
       console.error('큐 추가 오류:', error);
-      alert('큐 추가에 실패했습니다.');
     }
   };
 
-  // 일괄 큐 추가
+  // 일괄 큐 추가 (전체)
   const handleBulkAddToQueue = async () => {
     if (targetPatients.length === 0) return;
+    await batchAddToQueueInternal(targetPatients);
+  };
 
-    const confirmed = confirm(`${targetPatients.length}명을 콜 큐에 추가하시겠습니까?`);
-    if (!confirmed) return;
+  // 선택 큐 추가
+  const handleBatchAddTargets = async (targets: CallTargetPatient[]) => {
+    await batchAddToQueueInternal(targets);
+  };
 
+  const batchAddToQueueInternal = async (targets: CallTargetPatient[]) => {
     try {
       setIsLoading(true);
-      for (const target of targetPatients) {
+      for (const target of targets) {
         await addTargetToQueue(target);
       }
-      alert(`${targetPatients.length}명이 콜 큐에 추가되었습니다.`);
       handleRefresh();
     } catch (error) {
       console.error('일괄 추가 오류:', error);
-      alert('일부 추가에 실패했습니다.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // 대상자 정렬 (CallTargetList와 동일 순서)
+  const sortedTargets = [...targetPatients].sort((a, b) => b.priority - a.priority);
+
+  const toggleTargetSelect = (idx: number) => {
+    setTargetSelected(prev => {
+      const next = new Set(prev);
+      next.has(idx) ? next.delete(idx) : next.add(idx);
+      return next;
+    });
+  };
+
+  const toggleTargetSelectAll = () => {
+    if (targetSelected.size === sortedTargets.length) {
+      setTargetSelected(new Set());
+    } else {
+      setTargetSelected(new Set(sortedTargets.map((_, i) => i)));
+    }
+  };
+
+  const handleTargetDragStart = (e: React.DragEvent, index: number) => {
+    const indices = targetSelected.size > 0 && targetSelected.has(index)
+      ? [...targetSelected]
+      : [index];
+    e.dataTransfer.setData('text/plain', JSON.stringify(indices));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  // 드래그앤드롭: 콜큐 컬럼에 드롭
+  const handleQueueDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.currentTarget.classList.remove('occ-drop-over');
+    try {
+      const data = e.dataTransfer.getData('text/plain');
+      const indices: number[] = JSON.parse(data);
+      const targets = indices.map(i => sortedTargets[i]).filter(Boolean);
+      if (targets.length > 0) {
+        await batchAddToQueueInternal(targets);
+      }
+    } catch {}
+  };
+
+  const handleQueueDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.classList.add('occ-drop-over');
+  };
+
+  const handleQueueDragLeave = (e: React.DragEvent) => {
+    e.currentTarget.classList.remove('occ-drop-over');
+  };
+
+  // 드래그앤드롭: 대상자 컬럼에 큐 아이템 드롭 → 큐에서 제거
+  const handleTargetDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.currentTarget.classList.remove('occ-drop-over');
+    const queueItemId = e.dataTransfer.getData('application/queue-item');
+    if (queueItemId) {
+      try {
+        await deleteCallQueueItem(Number(queueItemId));
+        handleRefresh();
+      } catch {}
+    }
+  };
+
+  const handleTargetDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('application/queue-item')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      e.currentTarget.classList.add('occ-drop-over');
+    }
+  };
+
+  const handleTargetDragLeave = (e: React.DragEvent) => {
+    e.currentTarget.classList.remove('occ-drop-over');
+  };
+
+  // 메모 토글
+  const toggleNotes = (queueId: number) => {
+    setExpandedNotes(prev => {
+      const next = new Set(prev);
+      next.has(queueId) ? next.delete(queueId) : next.add(queueId);
+      return next;
+    });
+  };
+
+  // 메모 추가
+  const handleAddNote = async (queueId: number) => {
+    if (!requireOperator()) return;
+    const text = noteInput[queueId]?.trim();
+    if (!text) return;
+    try {
+      const note = await addCallNote(queueId, text, operator);
+      if (!note) return;
+      setNotesMap(prev => {
+        const next = new Map(prev);
+        const list = next.get(queueId) || [];
+        next.set(queueId, [...list, note]);
+        return next;
+      });
+      setNoteInput(prev => ({ ...prev, [queueId]: '' }));
+      // 저장 후 입력패널 닫기
+      setExpandedNotes(prev => {
+        const next = new Set(prev);
+        next.delete(queueId);
+        return next;
+      });
+    } catch (err) {
+      console.error('메모 추가 실패:', err);
+    }
+  };
+
+  // 메모 삭제
+  const handleEditNoteSave = async () => {
+    if (!requireOperator()) return;
+    if (!editingNote || !editingNote.content.trim()) return;
+    try {
+      await updateCallNote(editingNote.id, editingNote.content.trim());
+      setNotesMap(prev => {
+        const next = new Map(prev);
+        const list = (next.get(editingNote.queueId) || []).map(n =>
+          n.id === editingNote.id ? { ...n, content: editingNote.content.trim() } : n
+        );
+        next.set(editingNote.queueId, list);
+        return next;
+      });
+      setEditingNote(null);
+    } catch (err) {
+      console.error('메모 수정 실패:', err);
+    }
+  };
+
+  const handleDeleteNote = async (queueId: number, noteId: number) => {
+    try {
+      await deleteCallNote(noteId);
+      setNotesMap(prev => {
+        const next = new Map(prev);
+        next.set(queueId, (next.get(queueId) || []).filter(n => n.id !== noteId));
+        return next;
+      });
+    } catch (err) {
+      console.error('메모 삭제 실패:', err);
     }
   };
 
@@ -257,182 +552,262 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
     setShowMessageModal(true);
   };
 
-  return (
-    <div className="outbound-call-center">
-      {/* 헤더 */}
-      <div className="call-center-header">
-        <div className="header-left">
-          <h2>아웃바운드 콜 센터</h2>
-          {stats && (
-            <div className="header-stats">
-              <span className="stat-item pending">
-                <i className="fa-solid fa-phone-volume"></i>
-                대기 {stats.total_pending}건
-              </span>
-              <span className="stat-item completed">
-                <i className="fa-solid fa-check"></i>
-                오늘 완료 {stats.completed_today}건
-              </span>
+  // 큐 아이템 → 카드 렌더러
+  const renderQueueCard = (item: CallQueueItem, showActions: boolean = true) => {
+    const notes = notesMap.get(item.id) || [];
+    const isExpanded = expandedNotes.has(item.id);
+    const isDone = item.status === 'completed';
+    const isNoAnswer = item.status === 'no_answer';
+    return (
+      <div
+        key={item.id}
+        className={`qc-card ${isDone ? 'qc-done' : ''} ${isNoAnswer ? 'qc-no-answer' : ''}`}
+        draggable={!isDone}
+        onContextMenu={isDone ? (e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item }); }) : undefined}
+        onDragStart={e => {
+          e.dataTransfer.setData('application/queue-item', String(item.id));
+          e.dataTransfer.effectAllowed = 'move';
+        }}
+      >
+        {!isDone && showActions && (
+          <button className="qc-remove-btn" onClick={() => handleRemoveFromQueue(item)} title="큐에서 제거">
+            <i className="fa-solid fa-xmark"></i>
+          </button>
+        )}
+        {/* 1행: 콜종류 + 약종류 + 이름 + 차트 + 전화 */}
+        <div className="qc-row1">
+          <span className={`call-type-badge sm ${item.call_type}`}>{CALL_TYPE_LABELS[item.call_type]}</span>
+          {item.herbal_name && <span className="ct-tag">{item.herbal_name}</span>}
+          <span className="ct-name" onClick={() => handlePatientClick(item.patient_id)}>{item.patient?.name || '-'}</span>
+          <span className="ct-chart">{item.patient?.chart_number}</span>
+          <a href={`tel:${item.patient?.phone}`} className="ct-phone" onClick={e => e.stopPropagation()}>
+            {item.patient?.phone || '-'}
+          </a>
+          {isNoAnswer && <span className="q-status-badge no-answer clickable" onClick={() => handleClearNoAnswer(item)} title="부재 해제">부재 ✕</span>}
+          {isDone && <span className="q-status-badge completed">완료</span>}
+        </div>
+        {/* 2행: 예정일 + 사유 + 액션 */}
+        <div className="qc-row2">
+          <span className="qc-date">{item.due_date === baseDate ? '오늘' : fmtDate(item.due_date)}</span>
+          {item.reason && <span className="ct-reason">{item.reason}</span>}
+          {showActions && !isDone && (
+            <div className="qc-actions">
+              <button className="q-act-btn complete" onClick={() => handleCallComplete(item)} title="완료"><i className="fa-solid fa-check"></i></button>
+              <button className="q-act-btn postpone" onClick={() => handlePostponeOpen(item)} title="미루기"><i className="fa-solid fa-clock"></i></button>
+              <button className="q-act-btn no-answer" onClick={() => handleNoAnswer(item)} title="부재중"><i className="fa-solid fa-phone-slash"></i></button>
+              <button className="q-act-btn message" onClick={() => handleSendMessage(item)} title="문자"><i className="fa-solid fa-message"></i></button>
+              <button className="q-act-btn memo" onClick={() => toggleNotes(item.id)} title="메모"><i className="fa-solid fa-note-sticky"></i></button>
             </div>
           )}
         </div>
-        <div className="header-right">
-          <button className="btn-refresh" onClick={handleRefresh} disabled={isLoading}>
-            <i className="fa-solid fa-refresh"></i>
-            새로고침
-          </button>
-        </div>
-      </div>
-
-      {/* 뷰 모드 전환 */}
-      <div className="view-mode-tabs">
-        <button
-          className={`view-tab ${viewMode === 'queue' ? 'active' : ''}`}
-          onClick={() => setViewMode('queue')}
-        >
-          <i className="fa-solid fa-list-check"></i>
-          콜 큐
-          {stats && stats.total_pending > 0 && (
-            <span className="tab-badge">{stats.total_pending}</span>
-          )}
-        </button>
-        <button
-          className={`view-tab ${viewMode === 'targets' ? 'active' : ''}`}
-          onClick={() => setViewMode('targets')}
-        >
-          <i className="fa-solid fa-users"></i>
-          대상자 리스트업
-        </button>
-      </div>
-
-      {/* 콜 유형 필터 */}
-      <div className="call-type-filter">
-        <button
-          className={`filter-btn ${selectedType === null ? 'active' : ''}`}
-          onClick={() => setSelectedType(null)}
-        >
-          전체
-        </button>
-        {CALL_TYPES.map(type => (
-          <button
-            key={type}
-            className={`filter-btn ${selectedType === type ? 'active' : ''}`}
-            onClick={() => setSelectedType(type)}
-          >
-            {CALL_TYPE_LABELS[type]}
-            {stats?.by_type[type] && viewMode === 'queue' && (
-              <span className="filter-count">{stats.by_type[type]}</span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* 콘텐츠 */}
-      <div className="call-center-content">
-        {isLoading ? (
-          <div className="loading-state">
-            <i className="fa-solid fa-spinner fa-spin"></i>
-            <span>로딩 중...</span>
-          </div>
-        ) : viewMode === 'queue' ? (
-          /* 콜 큐 목록 */
-          <div className="queue-list">
-            {queueItems.length === 0 ? (
-              <div className="empty-state">
-                <i className="fa-solid fa-check-circle"></i>
-                <span>대기 중인 콜이 없습니다.</span>
+        {/* 메모 (있을때만 표시) */}
+        {(notes.length > 0 || isExpanded) && (
+          <div className="qc-notes">
+            {notes.filter(Boolean).map(n => (
+              <div key={n.id} className="queue-memo-line">
+                {editingNote?.id === n.id ? (
+                  <div className="queue-note-input queue-note-edit">
+                    <textarea
+                      rows={2}
+                      value={editingNote.content}
+                      onChange={e => setEditingNote({ ...editingNote, content: e.target.value })}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleEditNoteSave(); }
+                        if (e.key === 'Escape') setEditingNote(null);
+                      }}
+                      autoFocus
+                    />
+                    <div className="queue-note-edit-actions">
+                      <button onClick={handleEditNoteSave} disabled={!editingNote.content.trim()}>저장</button>
+                      <button className="cancel" onClick={() => setEditingNote(null)}>취소</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <span className="queue-memo-dt">{fmtDateTime(n.created_at)}</span>
+                    <span className="queue-memo-text">{n.content}</span>
+                    {!isDone && (
+                      <>
+                        <button className="queue-memo-edit" onClick={() => setEditingNote({ id: n.id, queueId: item.id, content: n.content })} title="수정">
+                          <i className="fa-solid fa-pen"></i>
+                        </button>
+                        <button className="queue-memo-del" onClick={() => handleDeleteNote(item.id, n.id)} title="삭제">
+                          <i className="fa-solid fa-trash"></i>
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
               </div>
-            ) : (
-              queueItems.map(item => (
-                <div key={item.id} className="queue-item">
-                  <div className="queue-item-left">
-                    <span className={`call-type-badge ${item.call_type}`}>
-                      {CALL_TYPE_LABELS[item.call_type]}
-                    </span>
-                    <div
-                      className="patient-info"
-                      onClick={() => handlePatientClick(item.patient_id)}
-                    >
-                      <span className="patient-name">{item.patient?.name || '이름 없음'}</span>
-                      <span className="patient-chart">({item.patient?.chart_number})</span>
-                    </div>
-                    <a
-                      href={`tel:${item.patient?.phone}`}
-                      className="patient-phone"
-                      onClick={e => e.stopPropagation()}
-                    >
-                      <i className="fa-solid fa-phone"></i>
-                      {item.patient?.phone || '-'}
-                    </a>
-                  </div>
-                  <div className="queue-item-right">
-                    <div className="queue-actions">
-                      <button
-                        className="action-btn complete"
-                        onClick={() => handleCallComplete(item)}
-                        title="통화 완료"
-                      >
-                        <i className="fa-solid fa-check"></i>
-                        완료
-                      </button>
-                      <button
-                        className="action-btn postpone"
-                        onClick={() => handlePostpone(item, 1)}
-                        title="내일로 미루기"
-                      >
-                        <i className="fa-solid fa-clock"></i>
-                        미룸
-                      </button>
-                      <button
-                        className="action-btn no-answer"
-                        onClick={() => handleNoAnswer(item)}
-                        title="부재중"
-                      >
-                        <i className="fa-solid fa-phone-slash"></i>
-                      </button>
-                      <button
-                        className="action-btn message"
-                        onClick={() => handleSendMessage(item)}
-                        title="문자 발송"
-                      >
-                        <i className="fa-solid fa-message"></i>
-                      </button>
-                    </div>
-                    <span className="queue-date">
-                      {item.due_date === new Date().toISOString().split('T')[0]
-                        ? '오늘'
-                        : item.due_date}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        ) : (
-          /* 대상자 리스트업 */
-          <div className="targets-section">
-            {targetPatients.length > 0 && (
-              <div className="bulk-actions">
-                <span className="target-count">{targetPatients.length}명 대상</span>
-                <button
-                  className="btn-bulk-add"
-                  onClick={handleBulkAddToQueue}
-                  disabled={isLoading}
-                >
-                  <i className="fa-solid fa-plus"></i>
-                  전체 큐에 추가
-                </button>
+            ))}
+            {isExpanded && (
+              <div className="queue-note-input">
+                <textarea
+                  placeholder="메모..."
+                  rows={2}
+                  value={noteInput[item.id] || ''}
+                  onChange={e => setNoteInput(prev => ({ ...prev, [item.id]: e.target.value }))}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleAddNote(item.id); }
+                    if (e.key === 'Escape') toggleNotes(item.id);
+                  }}
+                  autoFocus
+                />
+                <button onClick={() => handleAddNote(item.id)} disabled={!noteInput[item.id]?.trim()}>저장</button>
               </div>
             )}
-            <CallTargetList
-              targets={targetPatients}
-              onPatientClick={handlePatientClick}
-              onAddToQueue={handleAddToQueue}
-              onSendMessage={handleSendMessageToTarget}
-            />
           </div>
         )}
       </div>
+    );
+  };
+
+  return (
+    <div className="outbound-call-center occ-3col">
+      {/* 헤더: 기준일 + 카테고리 + 새로고침 */}
+      <div className="occ-header-bar">
+        <div className="occ-date-nav">
+          <button onClick={() => moveDate(-1)} className="occ-date-btn">◀</button>
+          <input
+            type="date"
+            value={baseDate}
+            onChange={e => setBaseDate(e.target.value)}
+            className="occ-date-input"
+          />
+          <button onClick={() => moveDate(1)} className="occ-date-btn">▶</button>
+          {!isToday && (
+            <button onClick={() => setBaseDate(formatLocalDate(new Date()))} className="occ-today-btn">오늘</button>
+          )}
+        </div>
+        <div className="occ-type-filters">
+          <button className={`filter-btn ${selectedType === null ? 'active' : ''}`} onClick={() => setSelectedType(null)}>전체</button>
+          {CALL_TYPES.map(type => (
+            <button key={type} className={`filter-btn ${selectedType === type ? 'active' : ''}`} onClick={() => setSelectedType(type)}>
+              {CALL_TYPE_LABELS[type]}
+              {stats?.by_type[type] ? <span className="filter-count">{stats.by_type[type]}</span> : null}
+            </button>
+          ))}
+        </div>
+        <button className="btn-refresh" onClick={handleRefresh} disabled={isLoading}>
+          <i className="fa-solid fa-refresh"></i>
+        </button>
+      </div>
+
+      {/* 3컬럼 레이아웃 */}
+      <div className="occ-columns">
+        {/* 1. 대상자 */}
+        <div
+          className="occ-col"
+          onDrop={handleTargetDrop}
+          onDragOver={handleTargetDragOver}
+          onDragLeave={handleTargetDragLeave}
+        >
+          <div className="occ-col-header">
+            <h3>📋 대상자 <span className="occ-col-count">{sortedTargets.length}</span></h3>
+            <div className="occ-col-header-right">
+              {targetSelected.size > 0 && (
+                <button className="ct-btn-batch" onClick={() => handleBatchAddTargets(sortedTargets.filter((_, i) => targetSelected.has(i)))}>
+                  <i className="fa-solid fa-arrow-right"></i> {targetSelected.size}명 큐 추가
+                </button>
+              )}
+              <button
+                className={`ct-btn-selectall ${targetSelected.size === sortedTargets.length && sortedTargets.length > 0 ? 'active' : ''}`}
+                onClick={toggleTargetSelectAll}
+                disabled={sortedTargets.length === 0}
+              >
+                전체
+              </button>
+            </div>
+          </div>
+          <div className="occ-col-body">
+            {isLoading ? (
+              <div className="occ-loading"><i className="fa-solid fa-spinner fa-spin"></i></div>
+            ) : sortedTargets.length === 0 ? (
+              <div className="occ-empty">대상자 없음</div>
+            ) : (
+              <CallTargetList
+                targets={sortedTargets}
+                selected={targetSelected}
+                onToggleSelect={toggleTargetSelect}
+                onPatientClick={handlePatientClick}
+                onAddToQueue={handleAddToQueue}
+                onSendMessage={handleSendMessageToTarget}
+                onDragStart={handleTargetDragStart}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* 2. 콜큐 (미완료) */}
+        <div
+          className="occ-col occ-col-queue"
+          onDrop={handleQueueDrop}
+          onDragOver={handleQueueDragOver}
+          onDragLeave={handleQueueDragLeave}
+        >
+          <div className="occ-col-header">
+            <h3>📞 콜큐 <span className="occ-col-count">{queueItems.length}</span></h3>
+            <div className="occ-operator">
+              {operator && !showOperatorInput ? (
+                <span className="occ-operator-badge" onClick={() => setShowOperatorInput(true)} title="담당자 변경">
+                  {operator} ✕
+                </span>
+              ) : (
+                <span className="occ-operator-input-wrap">
+                  <input
+                    type="text"
+                    className="occ-operator-input"
+                    placeholder="담당자 이름"
+                    defaultValue={operator}
+                    autoFocus
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') saveOperator((e.target as HTMLInputElement).value.trim());
+                      if (e.key === 'Escape') setShowOperatorInput(false);
+                    }}
+                    onBlur={e => { if (e.target.value.trim()) saveOperator(e.target.value.trim()); else setShowOperatorInput(false); }}
+                  />
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="occ-col-body">
+            {queueItems.length === 0 ? (
+              <div className="occ-empty">대기 중인 콜 없음</div>
+            ) : (
+              <div className="qc-list">
+                {queueItems.map(item => renderQueueCard(item, true))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 3. 완료 */}
+        <div className="occ-col occ-col-done">
+          <div className="occ-col-header">
+            <h3>✅ 완료 <span className="occ-col-count">{completedItems.length}</span></h3>
+          </div>
+          <div className="occ-col-body">
+            {completedItems.length === 0 ? (
+              <div className="occ-empty">완료된 콜 없음</div>
+            ) : (
+              <div className="qc-list">
+                {completedItems.map(item => renderQueueCard(item, false))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 우클릭 컨텍스트 메뉴 */}
+      {ctxMenu && (
+        <div className="occ-ctx-backdrop" onClick={() => setCtxMenu(null)}>
+          <div className="occ-ctx-menu" style={{ top: ctxMenu.y, left: ctxMenu.x }} onClick={e => e.stopPropagation()}>
+            <button onClick={() => handleUndoComplete(ctxMenu.item)}>
+              <i className="fa-solid fa-rotate-left"></i> 완료 취소
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 환자 통합 대시보드 */}
       {showDashboard && dashboardPatient && (
@@ -476,6 +851,54 @@ const OutboundCallCenter: React.FC<OutboundCallCenterProps> = ({ user }) => {
             setMessageTarget(null);
           }}
         />
+      )}
+
+      {/* 미루기 모달 */}
+      {postponeTarget && (
+        <div className="call-result-modal-overlay" onClick={() => setPostponeTarget(null)}>
+          <div className="call-result-modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>콜 미루기</h3>
+              <button className="modal-close" onClick={() => setPostponeTarget(null)}>
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="patient-info-bar">
+                <span className={`call-type-badge ${postponeTarget.call_type}`}>
+                  {CALL_TYPE_LABELS[postponeTarget.call_type]}
+                </span>
+                <span className="patient-name">{postponeTarget.patient?.name}</span>
+              </div>
+              <div className="form-group">
+                <label>미루기 날짜</label>
+                <input
+                  type="date"
+                  value={postponeDate}
+                  onChange={e => setPostponeDate(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14 }}
+                />
+              </div>
+              <div className="form-group">
+                <label>사유 (메모로 기록)</label>
+                <textarea
+                  value={postponeReason}
+                  onChange={e => setPostponeReason(e.target.value)}
+                  placeholder="미루기 사유를 입력하세요..."
+                  rows={3}
+                  className="form-textarea"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-cancel" onClick={() => setPostponeTarget(null)}>취소</button>
+              <button className="btn-submit" onClick={handlePostponeConfirm} disabled={!postponeDate}>
+                <i className="fa-solid fa-clock"></i> 미루기
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
