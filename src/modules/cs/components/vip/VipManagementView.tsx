@@ -49,6 +49,21 @@ export default function VipManagementView({ user }: Props) {
   const [candidatesLoaded, setCandidatesLoaded] = useState(false);
   const [expandedFamily, setExpandedFamily] = useState<Set<number>>(new Set());
 
+  // 정렬
+  type SortKey = 'score' | 'revenue' | 'noncovered' | 'copay' | 'visit_count' | 'referral_count' | 'referral_total_revenue' | 'referral_noncovered';
+  const [sortKey, setSortKey] = useState<SortKey>('score');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+    else { setSortKey(key); setSortDir('desc'); }
+  };
+  const sortedCandidates = [...candidates].sort((a, b) => {
+    const av = (a as any)[sortKey] ?? 0;
+    const bv = (b as any)[sortKey] ?? 0;
+    return sortDir === 'desc' ? bv - av : av - bv;
+  });
+  const sortIcon = (key: SortKey) => sortKey === key ? (sortDir === 'desc' ? ' ▼' : ' ▲') : '';
+
   // 대시보드
   const [dashboardPatient, setDashboardPatient] = useState<LocalPatient | null>(null);
 
@@ -346,17 +361,17 @@ export default function VipManagementView({ user }: Props) {
                       <th>추천등급</th>
                       <th>이름</th>
                       <th>차트</th>
-                      {revCriteria && <th>{revCriteria === 'total' ? '총진료비' : revCriteria === 'noncovered' ? '비급여' : '본인부담'}</th>}
-                      {useVisits && <th>내원</th>}
-                      {useReferral && <th>소개수</th>}
-                      {useReferral && <th>소개총매출</th>}
-                      {useReferral && <th>소개비급여</th>}
-                      <th>점수</th>
+                      {revCriteria && <th style={{ cursor: 'pointer' }} onClick={() => handleSort(revCriteria === 'total' ? 'revenue' : revCriteria === 'noncovered' ? 'noncovered' : 'copay')}>{revCriteria === 'total' ? '총진료비' : revCriteria === 'noncovered' ? '비급여' : '본인부담'}{sortIcon(revCriteria === 'total' ? 'revenue' : revCriteria === 'noncovered' ? 'noncovered' : 'copay')}</th>}
+                      {useVisits && <th style={{ cursor: 'pointer' }} onClick={() => handleSort('visit_count')}>내원{sortIcon('visit_count')}</th>}
+                      {useReferral && <th style={{ cursor: 'pointer' }} onClick={() => handleSort('referral_count')}>소개수{sortIcon('referral_count')}</th>}
+                      {useReferral && <th style={{ cursor: 'pointer' }} onClick={() => handleSort('referral_total_revenue')}>소개총매출{sortIcon('referral_total_revenue')}</th>}
+                      {useReferral && <th style={{ cursor: 'pointer' }} onClick={() => handleSort('referral_noncovered')}>소개비급여{sortIcon('referral_noncovered')}</th>}
+                      <th style={{ cursor: 'pointer' }} onClick={() => handleSort('score')}>점수{sortIcon('score')}</th>
                       <th>사유</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {candidates.map(c => {
+                    {sortedCandidates.map(c => {
                       const hasFamily = c.familyMembers && c.familyMembers.length > 0;
                       const isExpanded = expandedFamily.has(c.patient_id);
                       const colCount = 4 + (revCriteria ? 1 : 0) + (useVisits ? 1 : 0) + (useReferral ? 3 : 0) + 2;

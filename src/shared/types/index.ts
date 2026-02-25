@@ -1,4 +1,4 @@
-export type AppType = 'manage' | 'doctor' | 'inventory' | 'treatment' | 'acting' | 'herbal' | 'funnel' | 'content' | 'reservation' | 'pad' | 'statistics' | 'db_admin' | 'staff' | 'wiki' | 'cs' | 'exam' | 'chat' | 'metrics';
+export type AppType = 'manage' | 'doctor' | 'inventory' | 'treatment' | 'acting' | 'herbal' | 'funnel' | 'content' | 'reservation' | 'pad' | 'statistics' | 'db_admin' | 'staff' | 'wiki' | 'cs' | 'exam' | 'chat' | 'metrics' | 'decoction';
 
 export type UserRole = 'super_admin' | 'medical_staff' | 'desk' | 'counseling' | 'treatment' | 'decoction';
 

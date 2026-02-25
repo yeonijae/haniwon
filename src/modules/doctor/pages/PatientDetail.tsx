@@ -4,6 +4,7 @@ import { query, execute } from '@shared/lib/postgres';
 import type { Patient, TreatmentPlan, ProgressNote } from '../types';
 import { useAudioRecorder } from '@modules/pad/hooks/useAudioRecorder';
 import { processRecording } from '@modules/pad/services/transcriptionService';
+import '@modules/cs/styles/cs.css';
 
 // MSSQL API URL
 const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
@@ -18,10 +19,18 @@ import PatientTreatmentStatusCard from '@shared/components/PatientTreatmentStatu
 import PatientPrepaidStatusCard from '@shared/components/PatientPrepaidStatusCard';
 import TreatmentRecordList from '@shared/components/TreatmentRecordList';
 
-const PatientDetail: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+interface PatientDetailProps {
+  patientId?: string;
+  chartNumber?: string;
+  onClose?: () => void;
+  isModal?: boolean;
+}
+
+const PatientDetail: React.FC<PatientDetailProps> = (props) => {
+  const params = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const id = props.patientId || params.id;
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
   const [chartView, setChartView] = useState<'plan' | 'initial' | 'diagnosis' | 'progress' | null>(null);
@@ -176,15 +185,20 @@ const PatientDetail: React.FC = () => {
       setLoading(true);
 
       // chartNo가 있으면 chart_no로 조회, 없으면 id로 조회
-      const chartNo = searchParams.get('chartNo');
+      const chartNo = props.chartNumber || searchParams.get('chartNo');
       let apiUrl: string;
 
       if (chartNo) {
         apiUrl = `${MSSQL_API_URL}/api/patients/chart/${chartNo}`;
         console.log('[PatientDetail] chartNo로 환자 조회:', chartNo);
-      } else {
+      } else if (id) {
         apiUrl = `${MSSQL_API_URL}/api/patients/${id}`;
         console.log('[PatientDetail] id로 환자 조회:', id);
+      } else {
+        console.error('[PatientDetail] id도 chartNo도 없음');
+        if (props.isModal) props.onClose?.();
+        else navigate('/doctor/patients');
+        return;
       }
 
       const response = await fetch(apiUrl);
@@ -198,8 +212,11 @@ const PatientDetail: React.FC = () => {
       setPatient(patientData);
     } catch (error) {
       console.error('환자 정보 로드 실패:', error);
-      alert('환자 정보를 불러오는데 실패했습니다');
-      navigate('/doctor/patients');
+      if (props.isModal) {
+        props.onClose?.();
+      } else {
+        navigate('/doctor/patients');
+      }
     } finally {
       setLoading(false);
     }
@@ -253,11 +270,15 @@ const PatientDetail: React.FC = () => {
     }
   };
 
-  // 진료계획 삭제 핸들러
+  // 진료계획 삭제 핸들러 (연결된 차트/경과기록도 함께 삭제)
   const handleDeletePlan = async (planId: number) => {
+    if (!confirm('이 진료계획과 관련된 차트/경과기록이 모두 삭제됩니다. 계속하시겠습니까?')) return;
     try {
+      // FK 참조 순서대로 삭제
+      await execute(`DELETE FROM progress_notes WHERE treatment_plan_id = ${planId}`);
+      await execute(`DELETE FROM initial_charts WHERE treatment_plan_id = ${planId}`);
       await execute(`DELETE FROM treatment_plans WHERE id = ${planId}`);
-      setRefreshKey(prev => prev + 1); // 목록 새로고침
+      setRefreshKey(prev => prev + 1);
     } catch (error) {
       console.error('진료계획 삭제 실패:', error);
       alert('진료계획 삭제에 실패했습니다.');
@@ -357,61 +378,52 @@ const PatientDetail: React.FC = () => {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="max-w-7xl mx-auto w-full p-4 flex-1 flex flex-col overflow-hidden">
-        {/* 헤더: 환자이름 + 컨트롤 */}
-        <div className="flex justify-between items-start mb-3 flex-shrink-0">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => navigate('/doctor/patients')}
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                title="목록으로"
-              >
-                <i className="fas fa-arrow-left text-lg"></i>
-              </button>
-              <h1 className="text-2xl font-bold text-clinic-text-primary">
-                {patient.name}
-                <span className="text-lg font-normal text-gray-500 ml-2">
-                  ({patient.chart_number || '-'})
-                </span>
-              </h1>
-              {/* 기본 정보 뱃지 */}
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                {patient.dob && (
-                  <span className="px-2 py-1 bg-gray-100 rounded">
-                    {calculateAge(patient.dob)}세
-                  </span>
-                )}
-                {patient.gender && (
-                  <span className="px-2 py-1 bg-gray-100 rounded">
-                    {formatGender(patient.gender)}
-                  </span>
-                )}
-                {patient.phone && (
-                  <span className="px-2 py-1 bg-gray-100 rounded">
-                    <i className="fas fa-phone text-xs mr-1"></i>
-                    {patient.phone}
-                  </span>
-                )}
-              </div>
-            </div>
-            {/* 추가 정보: 주소, 내원경로 */}
-            <div className="flex items-center gap-4 ml-12 text-sm text-gray-500">
-              {patient.address && (
-                <span>
-                  <i className="fas fa-map-marker-alt mr-1"></i>
-                  {patient.address}
-                </span>
-              )}
-              {patient.referral_path && (
-                <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded">
-                  <i className="fas fa-route mr-1"></i>
+    <div className="h-full flex flex-col overflow-hidden" style={{ maxWidth: '100%' }}>
+      <div className="w-full flex-1 flex flex-col overflow-hidden" style={{ minWidth: 0 }}>
+        {/* 헤더: CS 환자통합대시보드 스타일 */}
+        <div className="dashboard-header-bar">
+          <div className="dashboard-header-inline">
+            <button
+              onClick={() => props.isModal ? props.onClose?.() : navigate(-1)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px', color: '#64748b', fontSize: 16, flexShrink: 0 }}
+              title={props.isModal ? '닫기' : '뒤로가기'}
+            >
+              <i className={`fas ${props.isModal ? 'fa-times' : 'fa-arrow-left'}`}></i>
+            </button>
+            <span className="dh-name">{patient.name}</span>
+            <span className="dh-sep">|</span>
+            <span className="dh-chart">{patient.chart_number || '-'}</span>
+            {patient.gender && (
+              <>
+                <span className="dh-sep">|</span>
+                <span className="dh-gender">{formatGender(patient.gender)}</span>
+              </>
+            )}
+            {patient.dob && (
+              <>
+                <span className="dh-sep">|</span>
+                <span className="dh-age">{calculateAge(patient.dob)}세</span>
+              </>
+            )}
+            {patient.phone && (
+              <>
+                <span className="dh-sep">|</span>
+                <a href={`tel:${patient.phone}`} className="dh-phone">
+                  <i className="fas fa-phone" style={{ fontSize: 11, marginRight: 4 }}></i>
+                  {patient.phone}
+                </a>
+              </>
+            )}
+            {patient.referral_path && (
+              <>
+                <span className="dh-sep">|</span>
+                <span className="dh-referral">
+                  <i className="fas fa-route" style={{ marginRight: 4 }}></i>
                   {patient.referral_path}
                 </span>
-              )}
-            </div>
-          </div>
+              </>
+            )}
+            <div style={{ flex: 1 }} />
 
           {/* 녹음 컨트롤 + 액션 버튼 */}
           <div className="flex items-center gap-2">
@@ -500,6 +512,7 @@ const PatientDetail: React.FC = () => {
               <i className="fas fa-plus mr-1"></i>새진료
             </button>
           </div>
+        </div>
         </div>
 
         {/* 메인 콘텐츠: 진료기록 + 사이드바 */}

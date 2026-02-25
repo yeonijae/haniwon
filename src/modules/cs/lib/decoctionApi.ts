@@ -194,11 +194,12 @@ export async function getPendingPrescriptionPackages(daysUntilDecoction?: number
 /**
  * 담당원장별 처방 대기 패키지 목록
  */
-export async function getPendingPrescriptionsByDoctor(doctorId: number): Promise<any[]> {
+export async function getPendingPrescriptionsByDoctor(doctorId: number, doctorName?: string): Promise<any[]> {
   const today = new Date().toISOString().split('T')[0];
-  const sql = `
-    SELECT
-      hp.*,
+
+  // 1) 기존: 패키지 기반 처방 대기
+  const pkgSql = `
+    SELECT hp.*,
       hp.decoction_date::date - '${today}'::date as days_until_decoction
     FROM cs_herbal_packages hp
     WHERE hp.doctor_id = ${doctorId}
@@ -207,7 +208,31 @@ export async function getPendingPrescriptionsByDoctor(doctorId: number): Promise
       AND hp.decoction_date >= '${today}'
     ORDER BY hp.decoction_date ASC, hp.created_at ASC
   `;
-  return await query(sql);
+  const pkgs = await query(pkgSql).catch(() => [] as any[]);
+
+  // 2) 탕약기록(drafts) 기반 처방 대기: decoction_queue에 아직 없는 것
+  const draftFilter = doctorName ? `AND d.doctor = '${doctorName.replace(/'/g, "''")}'` : '';
+  const draftSql = `
+    SELECT
+      d.id, d.patient_id, d.patient_name, d.chart_number,
+      COALESCE(d.consultation_type, '') as herbal_name,
+      d.shipping_date as decoction_date, 0 as prescription_request_count, d.created_at,
+      CASE WHEN d.shipping_date IS NOT NULL THEN d.shipping_date::date - '${today}'::date ELSE 999 END as days_until_decoction,
+      'draft' as source_type
+    FROM cs_herbal_drafts d
+    LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
+    WHERE q.id IS NULL ${draftFilter}
+    ORDER BY d.created_at DESC
+  `;
+  const drafts = await query(draftSql).catch(() => [] as any[]);
+
+  // 합치고 정렬
+  const all = [
+    ...pkgs.map(p => ({ ...p, source_type: 'package' })),
+    ...drafts,
+  ].sort((a, b) => (a.days_until_decoction ?? 999) - (b.days_until_decoction ?? 999));
+
+  return all;
 }
 
 /**

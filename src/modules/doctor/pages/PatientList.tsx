@@ -18,7 +18,11 @@ interface DailyPatient extends Patient {
   disease_name?: string;
 }
 
-const PatientList: React.FC = () => {
+interface PatientListProps {
+  onPatientClick?: (patientId: string, chartNumber: string) => void;
+}
+
+const PatientList: React.FC<PatientListProps> = ({ onPatientClick }) => {
   const navigate = useNavigate();
   const [recentPatients, setRecentPatients] = useState<RecentPatient[]>([]);
   const [needsChartingPatients, setNeedsChartingPatients] = useState<Patient[]>([]);
@@ -466,7 +470,7 @@ const PatientList: React.FC = () => {
                 {dailyPatients.map((patient) => (
                   <div
                     key={patient.id}
-                    onClick={() => navigate(`/doctor/patients/${patient.id}?chartNo=${patient.chart_number}`)}
+                    onClick={() => onPatientClick ? onPatientClick(String(patient.id), patient.chart_number) : navigate(`/doctor/patients/${patient.id}?chartNo=${patient.chart_number}`)}
                     className={`border-2 rounded-lg p-3 cursor-pointer transition-colors ${
                       patient.has_chart
                         ? 'bg-green-50 border-green-400 hover:bg-green-100'
@@ -520,7 +524,7 @@ const PatientList: React.FC = () => {
               {needsChartingPatients.map((patient) => (
                 <div
                   key={patient.id}
-                  onClick={() => navigate(`/doctor/patients/${patient.id}`)}
+                  onClick={() => onPatientClick ? onPatientClick(String(patient.id), patient.chart_number || '') : navigate(`/doctor/patients/${patient.id}`)}
                   className="bg-white border-2 border-orange-400 rounded-lg p-3 hover:bg-orange-50 cursor-pointer transition-colors"
                 >
                   <div className="flex items-start justify-between">
@@ -569,7 +573,7 @@ const PatientList: React.FC = () => {
                 {displayPatients.map((patient) => (
                   <tr
                     key={patient.id}
-                    onClick={() => navigate(`/doctor/patients/${patient.id}`)}
+                    onClick={() => onPatientClick ? onPatientClick(String(patient.id), patient.chart_number || '') : navigate(`/doctor/patients/${patient.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-clinic-text-secondary">{patient.chart_number || '-'}</td>

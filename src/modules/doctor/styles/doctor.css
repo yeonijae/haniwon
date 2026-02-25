@@ -1,0 +1,505 @@
+/* 원장실 앱 스타일 (CS 패턴 기반) */
+
+/* 전체 레이아웃 */
+.doctor-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f3f4f6;
+  overflow: hidden;
+}
+
+/* 스크롤바 */
+.doctor-app ::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.doctor-app ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.doctor-app ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
+}
+.doctor-app ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ========== 헤더 ========== */
+.doctor-header {
+  display: flex;
+  align-items: center;
+  background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
+  color: white;
+  padding: 0 20px;
+  height: 56px;
+  line-height: 24px;
+  flex-shrink: 0;
+  gap: 8px;
+  z-index: 100;
+}
+
+.doctor-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 220px;
+  flex-shrink: 0;
+}
+
+.doctor-logo {
+  font-size: 24px;
+}
+
+.doctor-title {
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* 탭 네비게이션 */
+.doctor-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 16px;
+  flex-shrink: 0;
+}
+
+.doctor-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.doctor-nav-item:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.doctor-nav-item.active {
+  background: #fbbf24;
+  color: #1e40af;
+  font-weight: 700;
+}
+
+.doctor-nav-icon {
+  font-size: 16px;
+}
+
+.doctor-nav-label {
+  font-size: 15px;
+}
+
+/* 헤더 우측 도구 */
+.doctor-header-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* 원장 선택 드롭다운 */
+.doctor-select-wrapper {
+  position: relative;
+}
+
+.doctor-select-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.doctor-select-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.doctor-select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 180px;
+  overflow: hidden;
+}
+
+.doctor-select-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+  transition: background 0.1s;
+  text-align: left;
+}
+
+.doctor-select-option:hover {
+  background: #f0f9ff;
+}
+
+.doctor-select-option.active {
+  background: #eff6ff;
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.doctor-select-option .doctor-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* 설정 버튼 */
+.doctor-settings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s;
+}
+
+.doctor-settings-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+/* ========== 본문 영역 ========== */
+.doctor-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ========== 사이드바 ========== */
+.doctor-sidebar {
+  width: 220px;
+  background: white;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.doctor-sidebar-left {
+  border-right: 1px solid #e5e7eb;
+}
+
+.doctor-sidebar-right {
+  border-left: 1px solid #e5e7eb;
+}
+
+.doctor-sidebar-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.doctor-sidebar-section:first-child {
+  flex: 1;
+}
+
+.doctor-sidebar-section:last-child {
+  flex: 1;
+  border-top: 1px solid #e5e7eb;
+}
+
+.doctor-sidebar-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-bottom: 1px solid #f3f4f6;
+  flex-shrink: 0;
+}
+
+.doctor-sidebar-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.doctor-sidebar-section-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #1e40af;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.doctor-sidebar-section-count.urgent {
+  background: #ef4444;
+}
+
+.doctor-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.doctor-sidebar-empty {
+  padding: 20px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+/* 사이드바 카드 아이템 */
+.doctor-sidebar-card {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.doctor-sidebar-card:hover {
+  background: #f0f9ff;
+}
+
+.doctor-sidebar-card.urgent {
+  background: #fef2f2;
+  border-left: 3px solid #ef4444;
+}
+
+.doctor-sidebar-card.urgent:hover {
+  background: #fee2e2;
+}
+
+.doctor-sidebar-card-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.doctor-sidebar-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.doctor-sidebar-card-chart {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.doctor-sidebar-card-badge {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.doctor-sidebar-card-badge.waiting {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.doctor-sidebar-card-badge.acting {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.doctor-sidebar-card-badge.d-day {
+  background: #ef4444;
+  color: white;
+}
+
+.doctor-sidebar-card-badge.d-1 {
+  background: #f97316;
+  color: white;
+}
+
+.doctor-sidebar-card-badge.d-2 {
+  background: #eab308;
+  color: #1f2937;
+}
+
+.doctor-sidebar-card-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* ========== 메인 콘텐츠 ========== */
+.doctor-main {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.doctor-content {
+  flex: 1;
+  overflow: auto;
+}
+
+/* 글자크기 조절 (font-scale) */
+.doctor-header-tools .font-scale-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.doctor-header-tools .font-scale-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: #1e40af;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.doctor-header-tools .font-scale-btn:hover:not(:disabled) {
+  background: white;
+}
+
+.doctor-header-tools .font-scale-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.doctor-header-tools .font-scale-value {
+  min-width: 44px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.doctor-header-tools .font-scale-value:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* 업무 대기 타입 배지 */
+.doctor-task-type {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.doctor-task-type.prescription {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.doctor-task-type.dosage {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.doctor-task-draft {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+
+/* 환자통합차트 — 메인 콘텐츠 내 오버레이 */
+.patient-chart-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 환자통합차트 헤더 오버플로우 방지 */
+.patient-chart-overlay .dashboard-header-bar {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.patient-chart-overlay .dashboard-header-inline {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.patient-chart-overlay .dashboard-header-inline .dh-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 250px;
+}
+
+.patient-chart-overlay .flex.items-center.gap-2 {
+  flex-shrink: 0;
+}

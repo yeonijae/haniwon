@@ -247,7 +247,7 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
   const DOCTOR_LIST = ['강희종', '김대현', '임세열', '전인태'];
   const [doctor, setDoctor] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [showCalendarModal, setShowCalendarModal] = useState(false);
+  // showCalendarModal removed — 탕전일정은 별도 관리
   const [herbalPackages, setHerbalPackages] = useState<HerbalPackage[]>([]);
   const [nokryongPackages, setNokryongPackages] = useState<NokryongPackage[]>([]);
   const [selectedHerbalPkgId, setSelectedHerbalPkgId] = useState<number | null>(null);
@@ -316,10 +316,6 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
   }, []);
 
   const handleUpdate = useCallback((updates: Partial<HerbalDraftFormData>) => {
-    if ((updates as any)._openCalendar) {
-      setShowCalendarModal(true);
-      return;
-    }
     setFormData(prev => ({ ...prev, ...updates }));
   }, []);
 
@@ -425,12 +421,28 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
               {/* 진료일 + 담당의 */}
               <div className="herbal-draft-row" style={{ marginBottom: 6 }}>
                 <label className="herbal-draft-label">진료일</label>
-                <input
-                  type="date"
-                  className="herbal-draft-input"
-                  value={receiptDate}
-                  onChange={(e) => setReceiptDate(e.target.value)}
-                />
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <input
+                    type="date"
+                    className="herbal-draft-input"
+                    value={receiptDate}
+                    onChange={(e) => setReceiptDate(e.target.value)}
+                    style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
+                    id="herbal-draft-date-picker"
+                  />
+                  <button
+                    type="button"
+                    className="herbal-draft-input"
+                    style={{ cursor: 'pointer', textAlign: 'left', minWidth: 180 }}
+                    onClick={() => (document.getElementById('herbal-draft-date-picker') as HTMLInputElement)?.showPicker?.()}
+                  >
+                    {(() => {
+                      const d = new Date(receiptDate + 'T00:00:00');
+                      const days = ['일','월','화','수','목','금','토'];
+                      return `${d.getFullYear()}. ${String(d.getMonth()+1).padStart(2,'0')}. ${String(d.getDate()).padStart(2,'0')}. (${days[d.getDay()]})`;
+                    })()}
+                  </button>
+                </div>
               </div>
               <div className="herbal-draft-section" style={{ marginBottom: 6 }}>
                 <span className="herbal-draft-section-label">담당의</span>
@@ -517,28 +529,6 @@ export default function HerbalDraftModal({ isOpen, patient, user, onClose, onSuc
           </div>
         </div>
       </div>
-      {/* 탕전 캘린더 모달 */}
-      {showCalendarModal && (
-        <div className="herbal-cal-modal-overlay" onClick={() => setShowCalendarModal(false)}>
-          <div className="herbal-cal-modal" onClick={e => e.stopPropagation()}>
-            <div className="herbal-cal-modal-header">
-              <h3>탕전 일정 선택 — {patient?.name}</h3>
-              <button className="herbal-cal-modal-close" onClick={() => setShowCalendarModal(false)}>
-                <i className="fas fa-times" />
-              </button>
-            </div>
-            <CalendarGrid
-              selectedDate={formData.decoctionDate}
-              patientName={patient?.name}
-              chartNumber={patient?.chart_number}
-              onDateSelect={(date) => {
-                setFormData(prev => ({ ...prev, decoctionDate: date }));
-                setShowCalendarModal(false);
-              }}
-            />
-          </div>
-        </div>
-      )}
     </>
   );
 }

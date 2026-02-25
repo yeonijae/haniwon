@@ -923,8 +923,8 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2">
-      <div className="bg-white rounded-lg w-full h-[98vh] flex flex-col shadow-2xl">
+    <div className="fixed inset-0 bg-white flex flex-col overflow-hidden" style={{ left: '220px', top: '56px', zIndex: 60 }}>
+      <div className="bg-white w-full h-full flex flex-col">
         {/* 헤더 */}
         <div className="bg-gray-700 p-3 flex justify-between items-center text-white border-b-2 border-gray-800">
           <div className="flex items-center gap-2">

@@ -84,23 +84,7 @@ export default function BranchFollowUpDeduct({ formData, onUpdate, mode = 'tangy
 
       <hr className="herbal-draft-divider" />
 
-      {/* 2. 탕전 일정 — 캘린더 모달은 HerbalDraftModal에서 관리 */}
-      <div className="herbal-draft-row" style={{ alignItems: 'center' }}>
-        <label className="herbal-draft-label">탕전 일정</label>
-        <button
-          type="button"
-          className="herbal-draft-decoction-btn"
-          onClick={() => onUpdate({ _openCalendar: true } as any)}
-        >
-          {formData.decoctionDate ? (
-            <><i className="fas fa-calendar-check" style={{ marginRight: 6, color: '#10b981' }} />{formatDateLabel(formData.decoctionDate)}</>
-          ) : (
-            <><i className="fas fa-calendar-plus" style={{ marginRight: 6 }} />탕전 일정 선택</>
-          )}
-        </button>
-      </div>
-
-      {/* 3. 발송 + 예상시간 */}
+      {/* 3. 발송 */}
       <SharedChipSelector<DraftDeliveryMethod>
         label="발송"
         options={(mode === 'jaboyak' ? ['pickup', 'express'] : ['pickup', 'express', 'quick', 'other']) as DraftDeliveryMethod[]}
@@ -108,49 +92,42 @@ export default function BranchFollowUpDeduct({ formData, onUpdate, mode = 'tangy
         onSelect={v => onUpdate({ deliveryMethod: v as DraftDeliveryMethod })}
         labelMap={DRAFT_DELIVERY_LABELS}
       />
-      <DeliveryTimeEstimate
-        deliveryMethod={formData.deliveryMethod}
-        decoctionDate={formData.decoctionDate}
-      />
 
-      {/* 배송일자 (택배일 때만 수정 가능) */}
-      {formData.deliveryMethod === 'express' && formData.shippingDate && (
+      {/* 발송일자 */}
+      {formData.deliveryMethod && (
         <div className="herbal-draft-row" style={{ marginBottom: 6 }}>
           <label className="herbal-draft-label">발송일</label>
-          <input
-            type="date"
-            value={formData.shippingDate}
-            onChange={e => {
-              const v = e.target.value;
-              if (!isShippableDate(v)) {
-                alert('토/일/공휴일에는 택배 발송이 불가합니다.');
-                return;
-              }
-              onUpdate({ shippingDate: v });
-            }}
-            className="herbal-draft-input"
-            style={{ maxWidth: 180 }}
-          />
-          {!isShippableDate(formData.shippingDate) && (
-            <span style={{ fontSize: 11, color: '#dc2626' }}>⚠ 발송 불가일</span>
-          )}
-        </div>
-      )}
-
-      {/* 복약 시작 예상일 */}
-      {medicationStart && formData.deliveryMethod && (
-        <div className="herbal-draft-row" style={{ marginBottom: 6 }}>
-          <label className="herbal-draft-label">복약시작</label>
-          <span style={{ fontSize: 13, color: '#2563eb', fontWeight: 600 }}>
-            {formatShortDate(medicationStart)}
-          </span>
-          <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 4 }}>
-            ~ {(() => {
-              const end = new Date(medicationStart + 'T00:00:00');
-              end.setDate(end.getDate() + (formData.medicationDays || 15) - 1);
-              return formatShortDate(`${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`);
-            })()} ({formData.medicationDays}일)
-          </span>
+          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <input
+              type="date"
+              value={formData.shippingDate || ''}
+              onChange={e => onUpdate({ shippingDate: e.target.value })}
+              className="herbal-draft-input"
+              style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
+              id={"shipping-date-picker-" + (formData.branch || 'x')}
+            />
+            <button
+              type="button"
+              className="herbal-draft-input"
+              style={{ cursor: 'pointer', textAlign: 'left', minWidth: 160 }}
+              onClick={() => (document.getElementById("shipping-date-picker-" + (formData.branch || 'x')) as HTMLInputElement)?.showPicker?.()}
+            >
+              {formData.shippingDate ? (() => {
+                const d = new Date(formData.shippingDate + 'T00:00:00');
+                const days = ['일','월','화','수','목','금','토'];
+                return `${d.getFullYear()}. ${String(d.getMonth()+1).padStart(2,'0')}. ${String(d.getDate()).padStart(2,'0')}. (${days[d.getDay()]})`;
+              })() : '날짜 선택'}
+            </button>
+          </div>
+          {(() => {
+            const today = new Date();
+            const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            const tmr = new Date(today); tmr.setDate(tmr.getDate()+1);
+            return (<>
+              <button type="button" className="herbal-draft-chip" style={{ marginLeft: 4, fontSize: 12, padding: '3px 10px' }} onClick={() => onUpdate({ shippingDate: fmt(today) })}>오늘</button>
+              <button type="button" className="herbal-draft-chip" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => onUpdate({ shippingDate: fmt(tmr) })}>내일</button>
+            </>);
+          })()}
         </div>
       )}
 
@@ -175,6 +152,23 @@ export default function BranchFollowUpDeduct({ formData, onUpdate, mode = 'tangy
           <span style={{ fontSize: 12, color: '#6b7280' }}>일</span>
         </div>
       </div>
+
+      {/* 복약 시작 예상일 */}
+      {medicationStart && formData.deliveryMethod && (
+        <div className="herbal-draft-row" style={{ marginBottom: 6 }}>
+          <label className="herbal-draft-label">복약시작</label>
+          <span style={{ fontSize: 13, color: '#2563eb', fontWeight: 600 }}>
+            {formatShortDate(medicationStart)}
+          </span>
+          <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 4 }}>
+            ~ {(() => {
+              const end = new Date(medicationStart + 'T00:00:00');
+              end.setDate(end.getDate() + (formData.medicationDays || 15) - 1);
+              return formatShortDate(`${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`);
+            })()} ({formData.medicationDays}일)
+          </span>
+        </div>
+      )}
 
       {/* 5. 메모 */}
       <div className="herbal-draft-row">

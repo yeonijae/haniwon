@@ -1,6 +1,6 @@
 /**
  * Doctor Settings Page
- * 진료관리 설정 - 치료 프로그램 관리
+ * 원장실 설정 - 치료 프로그램 관리
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -172,7 +172,7 @@ const Settings: React.FC = () => {
       {/* 헤더 */}
       <div className="flex-shrink-0 bg-white border-b px-6 py-4">
         <h1 className="text-xl font-bold text-gray-800">설정</h1>
-        <p className="text-sm text-gray-500 mt-1">진료관리 시스템 설정</p>
+        <p className="text-sm text-gray-500 mt-1">원장실 시스템 설정</p>
       </div>
 
       {/* 컨텐츠 */}

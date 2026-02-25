@@ -50,14 +50,7 @@ export const APPS: AppInfo[] = [
     icon: '🎛️',
     color: '#14b8a6',
   },
-  {
-    id: 'herbal',
-    name: '복약관리',
-    description: '초진콜, 복약콜, 내원콜 등 환자 관리 업무를 처리합니다.',
-    path: '/herbal',
-    icon: '💊',
-    color: '#22c55e',
-  },
+  // herbal(복약관리) 모듈 제거 — CS 모듈로 통합됨
   {
     id: 'funnel',
     name: '퍼널관리',
@@ -153,5 +146,13 @@ export const APPS: AppInfo[] = [
     path: '/metrics',
     icon: '📊',
     color: '#f97316',
+  },
+  {
+    id: 'decoction',
+    name: '탕전실',
+    description: '약재 재고, 상비약, 탕전 일정, 구입요청을 관리합니다.',
+    path: '/decoction',
+    icon: '🏭',
+    color: '#8b5cf6',
   },
 ];

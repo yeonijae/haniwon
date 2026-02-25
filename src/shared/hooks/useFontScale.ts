@@ -17,10 +17,23 @@ export function useFontScale(appName: string, defaultScale: number = 1) {
     return saved ? parseFloat(saved) : defaultScale;
   });
 
-  // 스케일 변경 시 localStorage에 저장
+  // 스케일 변경 시 localStorage에 저장 + 다른 훅 인스턴스에 알림
   useEffect(() => {
     localStorage.setItem(storageKey, scale.toString());
+    window.dispatchEvent(new CustomEvent('font-scale-change', { detail: { key: storageKey, scale } }));
   }, [scale, storageKey]);
+
+  // 다른 컴포넌트의 useFontScale에서 변경한 값 동기화
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail.key === storageKey) {
+        setScale(detail.scale);
+      }
+    };
+    window.addEventListener('font-scale-change', handler);
+    return () => window.removeEventListener('font-scale-change', handler);
+  }, [storageKey]);
 
   // 스케일 증가
   const increaseScale = useCallback(() => {

@@ -3,6 +3,7 @@ import { query, queryOne, execute, insert, escapeString, getCurrentTimestamp, ge
 import type { InitialChart, TreatmentPlan } from '../types';
 import { useAudioRecorder } from '@modules/pad/hooks/useAudioRecorder';
 import { transcribeAudio } from '@modules/pad/services/transcriptionService';
+import { useFontScale } from '@shared/hooks/useFontScale';
 
 interface Props {
   patientId: number;
@@ -29,6 +30,8 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
   const [formData, setFormData] = useState<Partial<InitialChart>>({});
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [showHistory, setShowHistory] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
+  const { scale } = useFontScale('doctor');
   const [historyList, setHistoryList] = useState<ChartHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -499,41 +502,176 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl">
-        <div className="sticky top-0 bg-gradient-to-r from-clinic-primary to-clinic-secondary border-b p-3 flex justify-between items-center text-white shadow-md">
-          <div className="flex items-center gap-2">
-            <i className="fas fa-file-medical text-lg"></i>
-            <h2 className="text-lg font-bold">초진차트 - {patientName}</h2>
-          </div>
-          <div className="flex gap-2">
-            {chart && (
-              <button
-                onClick={loadHistory}
-                disabled={historyLoading}
-                className="px-3 py-1.5 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition-colors font-medium text-sm"
-              >
-                <i className={`fas ${historyLoading ? 'fa-spinner fa-spin' : 'fa-history'} mr-1`}></i>히스토리
+    <div className="fixed inset-0 bg-white flex flex-col overflow-hidden" style={{ left: '220px', top: '56px', zIndex: 60, fontSize: `${scale}em` }}>
+      {/* 헤더 */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 p-3 flex justify-between items-center text-gray-800">
+        <div className="flex items-center gap-2">
+          <i className="fas fa-file-medical text-lg"></i>
+          <h2 className="text-lg font-bold">초진차트 - {patientName}</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* 녹음 컨트롤 */}
+          {isRecording && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-100 rounded-lg">
+              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+              <span className="text-sm font-medium text-red-700">{formatRecordingTime(recordingTime)}</span>
+            </div>
+          )}
+          {isTranscribing && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-100 rounded-lg">
+              <i className="fas fa-spinner fa-spin text-yellow-600"></i>
+              <span className="text-sm text-yellow-700">변환 중...</span>
+            </div>
+          )}
+          {isRecording ? (
+            <>
+              {isPaused ? (
+                <button onClick={resumeRecording} className="px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm">
+                  <i className="fas fa-play mr-1"></i>계속
+                </button>
+              ) : (
+                <button onClick={pauseRecording} className="px-3 py-1.5 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 text-sm">
+                  <i className="fas fa-pause mr-1"></i>일시정지
+                </button>
+              )}
+              <button onClick={handleStopRecording} disabled={isTranscribing} className="px-3 py-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm disabled:opacity-50">
+                <i className="fas fa-stop mr-1"></i>녹음 완료
               </button>
-            )}
-            {!isEditing && chart && (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="px-3 py-1.5 bg-white text-clinic-primary rounded-lg hover:bg-gray-100 transition-colors font-medium text-sm"
-              >
-                <i className="fas fa-edit mr-1"></i>수정
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="px-3 py-1.5 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition-colors font-medium text-sm"
-            >
-              <i className="fas fa-times mr-1"></i>닫기
+            </>
+          ) : isEditing ? (
+            <button onClick={startRecording} disabled={isTranscribing} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm disabled:opacity-50">
+              <i className="fas fa-microphone mr-1"></i>음성 녹음
             </button>
-          </div>
+          ) : null}
+
+          {/* 자동저장 상태 */}
+          {autoSaveStatus === 'saving' && (
+            <span className="text-xs text-gray-400 flex items-center"><i className="fas fa-spinner fa-spin mr-1"></i>저장 중...</span>
+          )}
+          {autoSaveStatus === 'saved' && (
+            <span className="text-xs text-green-600 flex items-center"><i className="fas fa-check-circle mr-1"></i>자동저장됨</span>
+          )}
+
+          {/* 작성 방법 안내 */}
+          <button onClick={() => setShowGuide(true)} className="px-2 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm" title="작성 방법 안내">
+            <i className="fas fa-question-circle"></i>
+          </button>
+
+          {chart && (
+            <button onClick={loadHistory} disabled={historyLoading} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm">
+              <i className={`fas ${historyLoading ? 'fa-spinner fa-spin' : 'fa-history'} mr-1`}></i>히스토리
+            </button>
+          )}
+          {isEditing ? (
+            <>
+              <button onClick={handleSave} className="px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-semibold">
+                <i className="fas fa-save mr-1"></i>저장
+              </button>
+              <button onClick={onClose} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm">
+                <i className="fas fa-times mr-1"></i>닫기
+              </button>
+            </>
+          ) : (
+            <>
+              {chart && (
+                <button onClick={() => setIsEditing(true)} className="px-3 py-1.5 bg-white text-clinic-primary rounded-lg hover:bg-gray-100 text-sm font-medium">
+                  <i className="fas fa-edit mr-1"></i>수정
+                </button>
+              )}
+              <button onClick={onClose} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm">
+                <i className="fas fa-times mr-1"></i>닫기
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* 본문: 2단 레이아웃 */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* 왼쪽 사이드 패널 */}
+        <div className="w-[200px] flex-shrink-0 border-r bg-gray-50 p-4 flex flex-col gap-4 overflow-y-auto">
+          {isEditing && (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  <i className="fas fa-calendar-alt mr-1 text-clinic-primary"></i>진료일자
+                </label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={formData.chart_date || ''}
+                    onChange={(e) => setFormData({ ...formData, chart_date: e.target.value })}
+                    className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+                  />
+                  <div className="w-full border rounded-lg px-3 py-2 text-sm bg-white cursor-pointer hover:border-clinic-primary">
+                    {formData.chart_date ? (() => {
+                      const d = new Date(formData.chart_date + 'T00:00:00');
+                      const days = ['일', '월', '화', '수', '목', '금', '토'];
+                      return `${d.getFullYear()}. ${String(d.getMonth()+1).padStart(2,'0')}. ${String(d.getDate()).padStart(2,'0')}. (${days[d.getDay()]})`;
+                    })() : <span className="text-gray-400">날짜 선택</span>}
+                  </div>
+                </div>
+              </div>
+              <button className="w-full px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm font-medium text-left">
+                <i className="fas fa-clipboard-list mr-2"></i>설문지 가져오기
+              </button>
+              <button className="w-full px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 text-sm font-medium text-left">
+                <i className="fas fa-flask mr-2"></i>검사결과 보기
+              </button>
+            </>
+          )}
+          {!isEditing && chart && (
+            <>
+              <div>
+                <span className="text-xs font-semibold text-gray-500">진료일자</span>
+                <p className="text-sm font-medium text-gray-800 mt-1">{chart.chart_date ? (() => {
+                  const d = new Date(chart.chart_date + 'T00:00:00');
+                  const days = ['일', '월', '화', '수', '목', '금', '토'];
+                  return `${d.getFullYear()}. ${String(d.getMonth()+1).padStart(2,'0')}. ${String(d.getDate()).padStart(2,'0')}. (${days[d.getDay()]})`;
+                })() : '-'}</p>
+              </div>
+              <div>
+                <span className="text-xs font-semibold text-gray-500">생성일</span>
+                <p className="text-sm text-gray-600 mt-1">{chart.created_at ? new Date(chart.created_at).toLocaleString('ko-KR') : '-'}</p>
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="p-4">
+        {/* 오른쪽 메인 콘텐츠 */}
+        <div className="flex-1 overflow-hidden p-4 flex flex-col">
+          {/* 작성 방법 안내 모달 */}
+          {showGuide && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70]" onClick={() => setShowGuide(false)}>
+              <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-5 py-3 border-b bg-blue-50 rounded-t-xl">
+                  <h3 className="text-base font-bold text-blue-800 flex items-center gap-2">
+                    <i className="fas fa-info-circle"></i>작성 방법 안내
+                  </h3>
+                  <button onClick={() => setShowGuide(false)} className="text-gray-400 hover:text-gray-600">
+                    <i className="fas fa-times"></i>
+                  </button>
+                </div>
+                <div className="p-5 space-y-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-800 mb-1">대분류 (큰 섹션)</h4>
+                    <p className="text-sm text-gray-600"><code className="bg-blue-100 px-1.5 py-0.5 rounded text-blue-800 font-mono">[제목]</code> 형식으로 작성</p>
+                    <p className="text-xs text-gray-400 mt-1">예: [주소증], [문진], [복진], [처방]</p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-800 mb-1">중분류 (세부 항목)</h4>
+                    <p className="text-sm text-gray-600"><code className="bg-blue-100 px-1.5 py-0.5 rounded text-blue-800 font-mono">&gt; 제목</code> 형식으로 작성</p>
+                    <p className="text-xs text-gray-400 mt-1">예: &gt; 식사패턴, &gt; 소화, &gt; 커피 등</p>
+                  </div>
+                  <div className="border-t pt-3 space-y-2">
+                    <p className="text-xs text-green-600 flex items-center gap-1"><i className="fas fa-save"></i>입력 후 5초마다 자동저장됩니다</p>
+                    <p className="text-xs text-purple-600 flex items-center gap-1"><i className="fas fa-microphone"></i>음성 녹음 후 자동으로 텍스트 변환됩니다</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 히스토리 패널 */}
           {showHistory && (
             <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
@@ -583,134 +721,13 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
           )}
 
           {isEditing ? (
-            <div className="space-y-4">
-              {/* 진료일자 입력 */}
-              <div>
-                <label className="block font-semibold mb-2 text-lg text-clinic-text-primary">
-                  <i className="fas fa-calendar-alt mr-2 text-clinic-primary"></i>
-                  진료일자 <span className="text-sm font-normal text-clinic-text-secondary">(실제 진료를 시행한 날짜)</span>
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="date"
-                    value={formData.chart_date || ''}
-                    onChange={(e) => setFormData({ ...formData, chart_date: e.target.value })}
-                    className="border-2 border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:border-clinic-primary focus:ring-2 focus:ring-clinic-primary focus:ring-opacity-20 transition-colors"
-                    required
-                  />
-                  <span className="text-xs text-blue-600 bg-blue-50 px-3 py-2 rounded border border-blue-200">
-                    <i className="fas fa-magic mr-1"></i>
-                    차트 내용에서 날짜를 자동으로 추출합니다 (예: 25/11/15)
-                  </span>
-                  {/* 자동저장 상태 */}
-                  {autoSaveStatus === 'saving' && (
-                    <span className="text-xs text-gray-600 flex items-center">
-                      <i className="fas fa-spinner fa-spin mr-1"></i>
-                      저장 중...
-                    </span>
-                  )}
-                  {autoSaveStatus === 'saved' && (
-                    <span className="text-xs text-green-600 flex items-center">
-                      <i className="fas fa-check-circle mr-1"></i>
-                      자동저장 완료
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="font-semibold text-lg text-clinic-text-primary">초진차트 내용</label>
-
-                  {/* 녹음 컨트롤 */}
-                  <div className="flex items-center gap-2">
-                    {recordingError && (
-                      <span className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
-                        <i className="fas fa-exclamation-circle mr-1"></i>
-                        {recordingError}
-                      </span>
-                    )}
-
-                    {isRecording && (
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-red-100 rounded-lg">
-                        <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-                        <span className="text-sm font-medium text-red-700">
-                          {formatRecordingTime(recordingTime)}
-                        </span>
-                      </div>
-                    )}
-
-                    {isTranscribing && (
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-100 rounded-lg">
-                        <i className="fas fa-spinner fa-spin text-yellow-600"></i>
-                        <span className="text-sm text-yellow-700">변환 중...</span>
-                      </div>
-                    )}
-
-                    {isRecording ? (
-                      <>
-                        {isPaused ? (
-                          <button
-                            onClick={resumeRecording}
-                            className="px-3 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm"
-                          >
-                            <i className="fas fa-play mr-1"></i>계속
-                          </button>
-                        ) : (
-                          <button
-                            onClick={pauseRecording}
-                            className="px-3 py-1.5 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 text-sm"
-                          >
-                            <i className="fas fa-pause mr-1"></i>일시정지
-                          </button>
-                        )}
-                        <button
-                          onClick={handleStopRecording}
-                          disabled={isTranscribing}
-                          className="px-3 py-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm disabled:opacity-50"
-                        >
-                          <i className="fas fa-stop mr-1"></i>녹음 완료
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={startRecording}
-                        disabled={isTranscribing}
-                        className="px-3 py-1.5 bg-clinic-primary text-white rounded-lg hover:bg-clinic-primary-dark text-sm disabled:opacity-50"
-                      >
-                        <i className="fas fa-microphone mr-1"></i>음성 녹음
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                  <p className="text-sm text-blue-800 mb-2">
-                    <i className="fas fa-info-circle mr-1"></i>
-                    <strong>작성 방법:</strong>
-                  </p>
-                  <ul className="text-xs text-blue-700 space-y-1 ml-5 list-disc">
-                    <li>대분류(큰 섹션): <code className="bg-blue-100 px-1 rounded">[제목]</code> 형식</li>
-                    <li>중분류(세부 항목): <code className="bg-blue-100 px-1 rounded">&gt; 제목</code> 형식</li>
-                    <li>예: [주소증], [문진], [복진], [처방] / &gt; 식사패턴, &gt; 소화, &gt; 커피 등</li>
-                    <li className="text-green-700 font-semibold">
-                      <i className="fas fa-save mr-1"></i>
-                      입력 후 5초마다 자동저장됩니다
-                    </li>
-                    <li className="text-purple-700">
-                      <i className="fas fa-microphone mr-1"></i>
-                      음성 녹음 후 자동으로 텍스트 변환됩니다
-                    </li>
-                  </ul>
-                </div>
+            <div className="flex flex-col flex-1 min-h-0">
                 <textarea
                   ref={textareaRef}
                   value={formData.notes || ''}
                   onChange={(e) => {
                     const newNotes = e.target.value;
                     const extractedDate = extractDateFromText(newNotes);
-
-                    // 텍스트에서 날짜를 찾았고, 아직 진료일자가 설정되지 않았거나 오늘 날짜인 경우 자동 설정
                     if (extractedDate) {
                       const today = getCurrentDate();
                       if (!formData.chart_date || formData.chart_date === today) {
@@ -718,33 +735,12 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, onClose, fo
                         return;
                       }
                     }
-
                     setFormData({ ...formData, notes: newNotes });
                   }}
-                  className="w-full border-2 border-gray-300 rounded-lg p-3 focus:outline-none focus:border-clinic-primary focus:ring-2 focus:ring-clinic-primary focus:ring-opacity-20 transition-colors font-mono"
-                  rows={20}
-                  placeholder="[주소증] 여/38세/165cm/74kg&#10;1. 임신준비&#10;- 딸이 3명인데, 남아를 낳고 싶다.&#10;&#10;2. 비염&#10;- 비염이 심하게 오면 두통이 온다.&#10;&#10;[문진]&#10;> 식사패턴 : 규칙적&#10;- 아침식사 : 안먹는다.&#10;- 점심식사 : 12시&#10;&#10;> 소화&#10;- 배고픔 : 때가 되면 느낀다.&#10;- 소화상태 : 더부룩함&#10;&#10;> 커피 : 하루1~2잔&#10;- 커피 종류 : 아메리카노&#10;&#10;[복진]&#10;> 복직근 : 긴장+압통&#10;> 심하부 : 압통 있음&#10;&#10;[처방]&#10;25/11/15 백인 소시호 귀비탕 15일분"
-                  style={{ fontSize: '0.9rem', lineHeight: '1.5' }}
+                  className="w-full flex-1 border border-gray-300 rounded-lg p-4 resize-none focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
+                  placeholder="[주소증] 여/38세/165cm/74kg&#10;1. 임신준비&#10;- 딸이 3명인데, 남아를 낳고 싶다.&#10;&#10;[문진]&#10;> 식사패턴 : 규칙적&#10;&#10;[복진]&#10;> 복직근 : 긴장+압통&#10;&#10;[처방]&#10;25/11/15 백인 소시호 귀비탕 15일분"
+                  style={{ fontSize: '1.025em', lineHeight: '1.6', fontFamily: 'inherit' }}
                 />
-              </div>
-
-              <div className="flex gap-2 pt-4 border-t">
-                <button
-                  onClick={handleSave}
-                  className="px-6 py-2 bg-clinic-accent text-white rounded-lg hover:bg-green-700 transition-colors font-semibold shadow-md"
-                >
-                  <i className="fas fa-save mr-2"></i>저장
-                </button>
-                <button
-                  onClick={() => {
-                    setIsEditing(false);
-                    if (chart) setFormData(chart);
-                  }}
-                  className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors font-medium"
-                >
-                  <i className="fas fa-times mr-2"></i>취소
-                </button>
-              </div>
             </div>
           ) : chart ? (
             <div className="space-y-4">

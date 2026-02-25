@@ -28,6 +28,7 @@ import CSApp from './modules/cs/CSApp';
 import ExamApp from './modules/exam/ExamApp';
 import ChatApp from './modules/chat/ChatApp';
 import MetricsApp from './modules/metrics/MetricsApp';
+import DecoctionApp from './modules/decoction/DecoctionApp';
 
 // Public Blog Pages (공개 - 로그인 불필요)
 import BlogListPage from './modules/blog/pages/BlogListPage';
@@ -201,11 +202,8 @@ function App() {
         element={user ? <DbAdminApp /> : <Navigate to="/login" replace />}
       />
 
-      {/* Herbal Management Routes (복약관리) */}
-      <Route
-        path="/herbal/*"
-        element={user ? <HerbalApp user={user} /> : <Navigate to="/login" replace />}
-      />
+      {/* Herbal(복약관리) 제거 — CS로 통합. 레거시 URL은 CS로 리다이렉트 */}
+      <Route path="/herbal/*" element={<Navigate to="/cs" replace />} />
 
       {/* Staff Management Routes (직원관리) */}
       <Route
@@ -241,6 +239,12 @@ function App() {
       <Route
         path="/metrics/*"
         element={user ? <MetricsApp user={user} /> : <Navigate to="/login" replace />}
+      />
+
+      {/* Decoction Routes (탕전실) */}
+      <Route
+        path="/decoction/*"
+        element={user ? <DecoctionApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Fallback */}

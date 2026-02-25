@@ -16,6 +16,14 @@ interface Props {
 
 type PendingPackage = HerbalPackage & {
   days_until_decoction: number;
+  source_type?: 'package' | 'draft';
+};
+
+const CONSULT_TYPE_LABELS: Record<string, string> = {
+  initial_herbal: '초진 탕약',
+  followup_deduct: '재진 차감',
+  followup_payment: '재진 결제',
+  other: '기타 상담',
 };
 
 export function PrescriptionPendingPanel({
@@ -29,7 +37,7 @@ export function PrescriptionPendingPanel({
 
   const loadPackages = useCallback(async () => {
     try {
-      const data = await getPendingPrescriptionsByDoctor(doctorId);
+      const data = await getPendingPrescriptionsByDoctor(doctorId, doctorName);
       setPackages(data);
     } catch (error) {
       console.error('처방 대기 목록 로드 오류:', error);
@@ -163,7 +171,12 @@ export function PrescriptionPendingPanel({
                           </span>
                         </div>
                         <div className="text-xs text-gray-500 truncate">
-                          {pkg.herbal_name}
+                          {pkg.source_type === 'draft'
+                            ? (CONSULT_TYPE_LABELS[pkg.herbal_name] || '탕약기록')
+                            : pkg.herbal_name}
+                          {pkg.source_type === 'draft' && (
+                            <span className="ml-1 px-1 py-0.5 rounded bg-purple-100 text-purple-600 text-[10px]">탕약기록</span>
+                          )}
                         </div>
                       </div>
                     </div>

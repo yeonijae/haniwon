@@ -1036,7 +1036,7 @@ const MedicationManagement: React.FC = () => {
               {/* 중앙: 치료 목록 */}
               <div className="w-1/4 bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
                 <div className="bg-gray-50 px-4 py-3 border-b flex-shrink-0">
-                  <h2 className="font-semibold text-clinic-text-primary">진료관리</h2>
+                  <h2 className="font-semibold text-clinic-text-primary">원장실</h2>
                 </div>
                 <div className="overflow-auto flex-1">
                   {!selectedPatientId ? (

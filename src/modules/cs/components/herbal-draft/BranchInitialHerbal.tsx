@@ -90,23 +90,7 @@ export default function BranchInitialHerbal({ formData, onUpdate }: BranchInitia
 
       <hr className="herbal-draft-divider" />
 
-      {/* 6. 탕전 일정 — 캘린더 모달은 HerbalDraftModal에서 관리 */}
-      <div className="herbal-draft-field-group">
-        <label className="herbal-draft-field-label">탕전 일정</label>
-        <button
-          type="button"
-          className="herbal-draft-decoction-btn"
-          onClick={() => onUpdate({ _openCalendar: true } as any)}
-        >
-          {formData.decoctionDate ? (
-            <><i className="fas fa-calendar-check" style={{ marginRight: 6, color: '#10b981' }} />{formatDateLabel(formData.decoctionDate)}</>
-          ) : (
-            <><i className="fas fa-calendar-plus" style={{ marginRight: 6 }} />탕전 일정 선택</>
-          )}
-        </button>
-      </div>
-
-      {/* 7. 발송 + 예상시간 */}
+      {/* 7. 발송 */}
       <SharedChipSelector<DraftDeliveryMethod>
         label="발송"
         options={(['pickup', 'express', 'quick', 'other'] as DraftDeliveryMethod[])}
@@ -114,10 +98,42 @@ export default function BranchInitialHerbal({ formData, onUpdate }: BranchInitia
         onSelect={v => onUpdate({ deliveryMethod: v as DraftDeliveryMethod })}
         labelMap={DRAFT_DELIVERY_LABELS}
       />
-      <DeliveryTimeEstimate
-        deliveryMethod={formData.deliveryMethod}
-        decoctionDate={formData.decoctionDate}
-      />
+      {formData.deliveryMethod && (
+        <div className="herbal-draft-row" style={{ marginBottom: 6 }}>
+          <label className="herbal-draft-label">발송일</label>
+          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <input
+              type="date"
+              value={formData.shippingDate || ''}
+              onChange={e => onUpdate({ shippingDate: e.target.value })}
+              className="herbal-draft-input"
+              style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}
+              id={"shipping-date-picker-" + (formData.branch || 'x')}
+            />
+            <button
+              type="button"
+              className="herbal-draft-input"
+              style={{ cursor: 'pointer', textAlign: 'left', minWidth: 160 }}
+              onClick={() => (document.getElementById("shipping-date-picker-" + (formData.branch || 'x')) as HTMLInputElement)?.showPicker?.()}
+            >
+              {formData.shippingDate ? (() => {
+                const d = new Date(formData.shippingDate + 'T00:00:00');
+                const days = ['일','월','화','수','목','금','토'];
+                return `${d.getFullYear()}. ${String(d.getMonth()+1).padStart(2,'0')}. ${String(d.getDate()).padStart(2,'0')}. (${days[d.getDay()]})`;
+              })() : '날짜 선택'}
+            </button>
+          </div>
+          {(() => {
+            const today = new Date();
+            const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            const tmr = new Date(today); tmr.setDate(tmr.getDate()+1);
+            return (<>
+              <button type="button" className="herbal-draft-chip" style={{ marginLeft: 4, fontSize: 12, padding: '3px 10px' }} onClick={() => onUpdate({ shippingDate: fmt(today) })}>오늘</button>
+              <button type="button" className="herbal-draft-chip" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => onUpdate({ shippingDate: fmt(tmr) })}>내일</button>
+            </>);
+          })()}
+        </div>
+      )}
 
       {/* 8. 메모 */}
       <div className="herbal-draft-row">

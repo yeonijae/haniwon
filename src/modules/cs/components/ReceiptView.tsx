@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import './call-center/OutboundCallCenter.css';
 import type { PortalUser } from '@shared/types';
 import { getCurrentDate } from '@shared/lib/postgres';
 import {
@@ -137,26 +138,25 @@ interface ReceiptViewProps {
 }
 
 // 현재 근무 중인 의사인지 확인
-const isActiveDoctor = (doc: Doctor): boolean => {
+const isActiveDoctorOnDate = (doc: Doctor, dateStr: string): boolean => {
   // 기타(DOCTOR) 제외
   if (doc.isOther || doc.name === 'DOCTOR') return false;
 
-  // 퇴사자 제외
-  if (doc.resigned) return false;
+  const target = new Date(dateStr + 'T00:00:00');
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // 입사일이 오늘 이후면 제외
+  // 입사일이 해당일 이후면 제외
   if (doc.workStartDate) {
     const startDate = new Date(doc.workStartDate);
-    if (startDate > today) return false;
+    if (startDate > target) return false;
   }
 
-  // 퇴사일이 오늘 이전이면 제외
+  // 퇴사일이 해당일 이전이면 제외 (퇴사자도 근무 기간 내면 표시)
   if (doc.workEndDate) {
     const endDate = new Date(doc.workEndDate);
-    if (endDate < today) return false;
+    if (endDate < target) return false;
+  } else if (doc.resigned) {
+    // 퇴사일 없는 퇴사자는 제외
+    return false;
   }
 
   return true;
@@ -201,6 +201,17 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
   const [patientEtcMemo, setPatientEtcMemo] = useState<string>('');
   const [dashboardPatient, setDashboardPatient] = useState<LocalPatient | null>(null);
   const [dashboardDoctor, setDashboardDoctor] = useState('');
+  const [filterDoctor, setFilterDoctor] = useState<string | null>(null);
+
+  // 정렬
+  type ReceiptSortKey = 'time' | 'patient' | 'doctor' | 'total' | 'self' | 'general';
+  const [receiptSortKey, setReceiptSortKey] = useState<ReceiptSortKey | null>(null);
+  const [receiptSortDir, setReceiptSortDir] = useState<'asc' | 'desc'>('asc');
+  const handleReceiptSort = (key: ReceiptSortKey) => {
+    if (receiptSortKey === key) setReceiptSortDir(d => d === 'desc' ? 'asc' : 'desc');
+    else { setReceiptSortKey(key); setReceiptSortDir('asc'); }
+  };
+  const receiptSortIcon = (key: ReceiptSortKey) => receiptSortKey === key ? (receiptSortDir === 'desc' ? ' ▼' : ' ▲') : '';
 
   // 날짜 이동 후 선택할 환자 ID (수납이력에서 클릭 시)
   const pendingPatientSelectRef = useRef<number | null>(null);
@@ -786,19 +797,24 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
   // 테이블 초기화
   useEffect(() => {
     ensureReceiptTables();
-    loadDoctors();
   }, []);
 
-  // 의사 목록 로드 (현재 근무 중인 원장만)
-  const loadDoctors = async () => {
+  // 의사 목록 로드 (선택 날짜 기준 근무 중인 원장만)
+  const loadDoctors = useCallback(async () => {
     try {
       const allDocs = await fetchDoctors();
-      const activeDocs = allDocs.filter(isActiveDoctor);
+      const activeDocs = allDocs.filter(doc => isActiveDoctorOnDate(doc, selectedDate));
       setDoctors(activeDocs);
+      setFilterDoctor(prev => prev && !activeDocs.some(d => d.name === prev) ? null : prev);
     } catch (err) {
       console.error('의사 목록 로드 실패:', err);
     }
-  };
+  }, [selectedDate]);
+
+  // 날짜 변경 시 의사 목록 리프레시
+  useEffect(() => {
+    loadDoctors();
+  }, [loadDoctors]);
 
   // MSSQL 수납 내역 로드 (manage 모듈 API 사용)
   const loadReceipts = useCallback(async () => {
@@ -1856,10 +1872,23 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
 
   // 필터링된 수납 목록
   const filteredReceipts = receipts.filter(receipt => {
-    if (recordFilter === 'all') return true;
-    if (recordFilter === 'completed') return receipt.isCompleted;
-    if (recordFilter === 'incomplete') return !receipt.isCompleted;
+    if (recordFilter === 'completed' && !receipt.isCompleted) return false;
+    if (recordFilter === 'incomplete' && receipt.isCompleted) return false;
+    if (filterDoctor && receipt.treatments?.[0]?.doctor !== filterDoctor) return false;
     return true;
+  }).sort((a, b) => {
+    if (!receiptSortKey) return 0;
+    let av: any, bv: any;
+    switch (receiptSortKey) {
+      case 'time': av = a.receipt_time || ''; bv = b.receipt_time || ''; break;
+      case 'patient': av = a.patient_name || ''; bv = b.patient_name || ''; break;
+      case 'doctor': av = a.treatments?.[0]?.doctor || ''; bv = b.treatments?.[0]?.doctor || ''; break;
+      case 'total': av = a.total_amount || 0; bv = b.total_amount || 0; break;
+      case 'self': av = a.insurance_self || 0; bv = b.insurance_self || 0; break;
+      case 'general': av = a.general_amount || 0; bv = b.general_amount || 0; break;
+    }
+    const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+    return receiptSortDir === 'asc' ? cmp : -cmp;
   });
 
   // 필터 카운트
@@ -1877,81 +1906,73 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
   return (
     <div className="receipt-view">
       {/* 날짜 선택 바 */}
-      <div className="receipt-date-bar">
-        <button onClick={() => changeDate(-1)} className="date-nav-btn">
-          <i className="fa-solid fa-chevron-left"></i>
-        </button>
-        <div className="date-input-wrap">
-          <input
-            type="date"
-            ref={el => { if (el) (el as any)._dateRef = el; }}
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="date-input-hidden"
-            id="receipt-date-picker"
-          />
-          <button className="date-display" onClick={() => {
-            const el = document.getElementById('receipt-date-picker') as HTMLInputElement;
-            el?.showPicker?.();
-          }}>
-            {(() => {
-              const d = new Date(selectedDate + 'T00:00:00');
-              const days = ['일','월','화','수','목','금','토'];
-              return `${d.getFullYear()}. ${String(d.getMonth()+1).padStart(2,'0')}. ${String(d.getDate()).padStart(2,'0')}. (${days[d.getDay()]})`;
-            })()}
-          </button>
-        </div>
-        <button onClick={() => changeDate(1)} className="date-nav-btn">
-          <i className="fa-solid fa-chevron-right"></i>
-        </button>
-        <button
-          onClick={() => setSelectedDate(getCurrentDate())}
-          className="today-btn"
-        >
-          오늘
-        </button>
-
-        {/* 기록 상태 필터 */}
-        <div className="record-filter-group">
-          <button
-            className={`record-filter-btn ${recordFilter === 'all' ? 'active' : ''}`}
-            onClick={() => setRecordFilter('all')}
-          >
-            전체 <span className="filter-count">{receipts.length}</span>
-          </button>
-          <button
-            className={`record-filter-btn incomplete ${recordFilter === 'incomplete' ? 'active' : ''}`}
-            onClick={() => setRecordFilter('incomplete')}
-          >
-            미기록 <span className="filter-count">{incompleteCount}</span>
-          </button>
-          <button
-            className={`record-filter-btn completed ${recordFilter === 'completed' ? 'active' : ''}`}
-            onClick={() => setRecordFilter('completed')}
-          >
-            완료 <span className="filter-count">{completedCount}</span>
-          </button>
-        </div>
-
-        {/* 현장예약율 */}
-        {onsiteStats && (
-          <div className="onsite-rate-display">
-            <div className="onsite-rate-item">
-              <span className="onsite-label">현장예약율</span>
-              <span className="onsite-value">{onsiteStats.onsite_rate}%</span>
-              <span className="onsite-detail">({onsiteStats.onsite_count}/{onsiteStats.total_chim_patients})</span>
-            </div>
-            <div className="onsite-rate-divider"></div>
-            <div className="onsite-rate-item">
-              <span className="onsite-label">사전예약율</span>
-              <span className="onsite-value reserved">{onsiteStats.reservation_rate}%</span>
-            </div>
+      <div className="occ-header-bar">
+        <div className="occ-date-nav">
+          <button onClick={() => changeDate(-1)} className="occ-date-btn">◀</button>
+          <div className="occ-date-wrap">
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="occ-date-hidden"
+              id="receipt-date-picker"
+            />
+            <button className="occ-date-display" onClick={() => {
+              const el = document.getElementById('receipt-date-picker') as HTMLInputElement;
+              el?.showPicker?.();
+            }}>
+              {(() => {
+                const d = new Date(selectedDate + 'T00:00:00');
+                const days = ['일','월','화','수','목','금','토'];
+                return `${d.getFullYear()}. ${String(d.getMonth()+1).padStart(2,'0')}. ${String(d.getDate()).padStart(2,'0')}. (${days[d.getDay()]})`;
+              })()}
+            </button>
           </div>
-        )}
+          <button onClick={() => changeDate(1)} className="occ-date-btn">▶</button>
+          {selectedDate !== getCurrentDate() && (
+            <button onClick={() => setSelectedDate(getCurrentDate())} className="occ-today-btn">오늘</button>
+          )}
 
-        <button onClick={loadReceipts} className="refresh-btn">
-          <i className="fa-solid fa-rotate-right"></i> 새로고침
-        </button>
+          {/* 기록 상태 필터 */}
+          <div className="occ-filter-group occ-filter-patient">
+            <button className={`occ-filter-btn ${recordFilter === 'all' ? 'active' : ''}`} onClick={() => setRecordFilter('all')}>
+              전체 {receipts.length}
+            </button>
+            <button className={`occ-filter-btn ${recordFilter === 'incomplete' ? 'active' : ''}`} onClick={() => setRecordFilter('incomplete')}>
+              미기록 {incompleteCount}
+            </button>
+            <button className={`occ-filter-btn ${recordFilter === 'completed' ? 'active' : ''}`} onClick={() => setRecordFilter('completed')}>
+              완료 {completedCount}
+            </button>
+          </div>
+
+          {/* 담당의 필터 */}
+          <div className="occ-filter-group occ-filter-channel">
+            <button className={`occ-filter-btn ${filterDoctor === null ? 'active' : ''}`} onClick={() => setFilterDoctor(null)}>전체</button>
+            {doctors.map(doc => (
+              <button key={doc.id} className={`occ-filter-btn ${filterDoctor === doc.name ? 'active' : ''}`} onClick={() => setFilterDoctor(doc.name)}>
+                {doc.name}
+              </button>
+            ))}
+          </div>
+
+          {/* 현장예약율 */}
+          {onsiteStats && (
+            <div style={{ display: 'flex', gap: 0, border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', fontSize: 13, fontWeight: 500, marginLeft: 4 }}>
+              <span style={{ padding: '5px 12px', borderRight: '1px solid #d1d5db', background: '#eff6ff', color: '#2563eb' }}>
+                현장예약 <b>{onsiteStats.onsite_rate}%</b> <span style={{ fontSize: 11 }}>({onsiteStats.onsite_count}/{onsiteStats.total_chim_patients})</span>
+              </span>
+              <span style={{ padding: '5px 12px', background: '#f0fdf4', color: '#16a34a' }}>
+                사전예약 <b>{onsiteStats.reservation_rate}%</b>
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="occ-header-actions">
+          <button className="occ-refresh-btn" onClick={loadReceipts}>
+            <i className="fa-solid fa-rotate-right"></i>
+          </button>
+        </div>
       </div>
 
       {/* 2단 레이아웃 */}
@@ -1990,12 +2011,12 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
           <div className="receipt-header-2row">
             <div className="header-row-1">
               <div className="col-num">#</div>
-              <div className="col-time">시간</div>
-              <div className="col-patient">환자</div>
-              <div className="col-doctor">담당</div>
-              <div className="col-total">총수납</div>
-              <div className="col-self">본부금</div>
-              <div className="col-general">비급여</div>
+              <div className="col-time" style={{ cursor: 'pointer' }} onClick={() => handleReceiptSort('time')}>시간{receiptSortIcon('time')}</div>
+              <div className="col-patient" style={{ cursor: 'pointer' }} onClick={() => handleReceiptSort('patient')}>환자{receiptSortIcon('patient')}</div>
+              <div className="col-doctor" style={{ cursor: 'pointer' }} onClick={() => handleReceiptSort('doctor')}>담당{receiptSortIcon('doctor')}</div>
+              <div className="col-total" style={{ cursor: 'pointer' }} onClick={() => handleReceiptSort('total')}>총수납{receiptSortIcon('total')}</div>
+              <div className="col-self" style={{ cursor: 'pointer' }} onClick={() => handleReceiptSort('self')}>본부금{receiptSortIcon('self')}</div>
+              <div className="col-general" style={{ cursor: 'pointer' }} onClick={() => handleReceiptSort('general')}>비급여{receiptSortIcon('general')}</div>
             </div>
             <div className="header-row-2">
               <div className="col-chart-info"></div>

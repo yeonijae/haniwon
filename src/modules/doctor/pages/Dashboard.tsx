@@ -108,8 +108,13 @@ const Dashboard: React.FC = () => {
   };
 
   // 처방 클릭 핸들러
-  const handlePrescriptionClick = (pkg: HerbalPackage) => {
-    navigate(`/doctor/prescription/edit?packageId=${pkg.id}`);
+  const handlePrescriptionClick = (pkg: any) => {
+    if (pkg.source_type === 'draft') {
+      // 탕약기록 → 환자통합차트로 이동
+      navigate(`/doctor/patients/${pkg.patient_id}?chartNo=${pkg.chart_number}`);
+    } else {
+      navigate(`/doctor/prescription/edit?packageId=${pkg.id}`);
+    }
   };
 
   // 복용법 클릭 핸들러

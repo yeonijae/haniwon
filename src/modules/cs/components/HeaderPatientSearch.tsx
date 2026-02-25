@@ -4,6 +4,7 @@ import LocalPatientRegisterModal from './LocalPatientRegisterModal';
 
 interface HeaderPatientSearchProps {
   onPatientSelect: (patient: LocalPatient) => void;
+  hideRegister?: boolean;
 }
 
 /**
@@ -12,7 +13,7 @@ interface HeaderPatientSearchProps {
  * - 300ms 디바운스 자동 검색
  * - 최소 2글자 이상 입력 시 검색 실행
  */
-export default function HeaderPatientSearch({ onPatientSelect }: HeaderPatientSearchProps) {
+export default function HeaderPatientSearch({ onPatientSelect, hideRegister }: HeaderPatientSearchProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LocalPatient[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -210,19 +211,23 @@ export default function HeaderPatientSearch({ onPatientSelect }: HeaderPatientSe
         </div>
       )}
     </div>
-    <button
-      className="cs-header-register-btn"
-      onClick={() => setShowRegisterModal(true)}
-      title="로컬 환자 등록 (EMR 연동 없이)"
-    >
-      <i className="fa-solid fa-user-plus"></i>
-    </button>
+    {!hideRegister && (
+      <>
+        <button
+          className="cs-header-register-btn"
+          onClick={() => setShowRegisterModal(true)}
+          title="로컬 환자 등록 (EMR 연동 없이)"
+        >
+          <i className="fa-solid fa-user-plus"></i>
+        </button>
 
-    {showRegisterModal && (
-      <LocalPatientRegisterModal
-        onClose={() => setShowRegisterModal(false)}
-        onSuccess={handleRegisterSuccess}
-      />
+        {showRegisterModal && (
+          <LocalPatientRegisterModal
+            onClose={() => setShowRegisterModal(false)}
+            onSuccess={handleRegisterSuccess}
+          />
+        )}
+      </>
     )}
     </>
   );

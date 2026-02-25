@@ -1,0 +1,170 @@
+.decoction-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f8fafc;
+}
+
+.decoction-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* 좌측 사이드바 영역 */
+.decoction-sidebar-wrap {
+  display: flex;
+  flex-direction: column;
+  width: 220px;
+  min-width: 220px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.decoction-sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 56px;
+  padding: 0 16px;
+  background: #1e40af;
+  border-right: 1px solid #1e40af;
+}
+
+.decoction-logo {
+  font-size: 22px;
+}
+
+.decoction-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* 우측 영역 */
+.decoction-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.decoction-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 56px;
+  padding: 0 20px;
+  background: #1e40af;
+}
+
+.decoction-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.decoction-tab {
+  padding: 8px 16px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.decoction-tab:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.decoction-tab.active {
+  background: #fbbf24;
+  color: #1e3a8a;
+  font-weight: 700;
+}
+
+.decoction-header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.decoction-main {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+}
+
+/* 사이드바 */
+.decoction-sidebar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid #e2e8f0;
+}
+
+.decoction-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.decoction-sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.decoction-sidebar-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.decoction-sidebar-card:hover {
+  border-color: #a5b4fc;
+  background: #f5f3ff;
+}
+
+.decoction-sidebar-card.selected {
+  border-color: #8b5cf6;
+  background: #ede9fe;
+}
+
+.decoction-sidebar-card.urgent {
+  border-left: 3px solid #ef4444;
+}
+
+.decoction-view h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 16px;
+}
+
+.decoction-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  background: #fff;
+  border-radius: 12px;
+  border: 2px dashed #e2e8f0;
+  color: #94a3b8;
+  font-size: 16px;
+}
