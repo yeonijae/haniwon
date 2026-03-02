@@ -20,6 +20,7 @@ import PatientPrepaidStatusCard from '@shared/components/PatientPrepaidStatusCar
 import TreatmentRecordList from '@shared/components/TreatmentRecordList';
 import PatientReceiptHistory from '../components/PatientReceiptHistory';
 import DosageInstructionCreator from './DosageInstructionCreator';
+import DrugWiki from './DrugWiki';
 
 interface PatientDetailProps {
   patientId?: string;
@@ -46,6 +47,8 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
   const [autoOpenDosage, setAutoOpenDosage] = useState(false);
   const [showDosageCreator, setShowDosageCreator] = useState(false);
   const [dosageCreatorState, setDosageCreatorState] = useState<any>(null);
+  const [showDrugWiki, setShowDrugWiki] = useState(false);
+  const [drugWikiSearch, setDrugWikiSearch] = useState('');
   const [refreshKey, setRefreshKey] = useState(0); // 목록 새로고침용
   const [showTreatmentHistory, setShowTreatmentHistory] = useState(false); // 진료내역 모달
   const [autoCreateChecked, setAutoCreateChecked] = useState(false); // autoCreate 체크 완료 여부
@@ -541,6 +544,14 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
               </button>
             )}
 
+            {/* 양약사전 버튼 */}
+            <button
+              onClick={() => { setDrugWikiSearch(''); setShowDrugWiki(true); }}
+              className="px-3 py-1.5 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-all font-semibold shadow text-sm"
+            >
+              📖 양약
+            </button>
+
             {/* 기존 차트 등록 버튼 */}
             <button
               onClick={async () => {
@@ -682,6 +693,10 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
                     if (sourceType === 'initial_chart') {
                       setSelectedRecordId(sourceId);
                     }
+                  }}
+                  onOpenDrugWiki={(searchTerm) => {
+                    setDrugWikiSearch(searchTerm || '');
+                    setShowDrugWiki(true);
                   }}
                 />
               </div>
@@ -856,6 +871,17 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
         </div>
       )}
       </div>
+
+      {/* 양약사전 오버레이 */}
+      {showDrugWiki && (
+        <div className="absolute inset-0 bg-white z-[35] flex flex-col overflow-hidden">
+          <DrugWiki
+            embedded={true}
+            initialSearch={drugWikiSearch}
+            onClose={() => setShowDrugWiki(false)}
+          />
+        </div>
+      )}
 
       {/* 복용법 작성 (전체 영역 오버레이) */}
       {showDosageCreator && dosageCreatorState && (

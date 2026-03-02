@@ -50,6 +50,7 @@ interface Props {
   onEditChart?: (chartId: number) => void;
   onIssuePrescription?: (sourceType: 'initial_chart' | 'progress_note', sourceId: number, planId: number) => void;
   onCreateDosage?: (sourceType: 'initial_chart' | 'progress_note', sourceId: number, planId: number) => void;
+  onOpenDrugWiki?: (searchTerm?: string) => void;
 }
 
 type DateFilterType = 'all' | 'today' | 'week' | 'month' | 'custom';
@@ -69,6 +70,7 @@ const MedicalRecordList: React.FC<Props> = ({
   onEditChart,
   onIssuePrescription,
   onCreateDosage,
+  onOpenDrugWiki,
 }) => {
   const [plans, setPlans] = useState<TreatmentPlanWithRecords[]>([]);
   const [loading, setLoading] = useState(true);
@@ -582,6 +584,16 @@ const MedicalRecordList: React.FC<Props> = ({
                           title={chart.dosage_created ? '복용법 작성완료' : '복용법 작성'}
                         >
                           {chart.dosage_created ? '✅ 복용법' : '복용법'}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenDrugWiki?.();
+                          }}
+                          className="px-2 py-1 text-xs rounded transition-colors bg-teal-100 text-teal-700 hover:bg-teal-200"
+                          title="양약사전"
+                        >
+                          📖 양약
                         </button>
                       </div>
                     </div>

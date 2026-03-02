@@ -21,12 +21,18 @@ interface DrugDetail {
 
 type CategoryFilter = '전체' | '기전' | '약물';
 
-export default function DrugWiki() {
+interface DrugWikiProps {
+  embedded?: boolean;
+  initialSearch?: string;
+  onClose?: () => void;
+}
+
+export default function DrugWiki({ embedded, initialSearch, onClose }: DrugWikiProps = {}) {
   const [drugs, setDrugs] = useState<DrugEntry[]>([]);
   const [selected, setSelected] = useState<DrugDetail | null>(null);
   const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearch || '');
+  const [debouncedQuery, setDebouncedQuery] = useState(initialSearch || '');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('전체');
   const [showNewModal, setShowNewModal] = useState(false);
   const [newDrugName, setNewDrugName] = useState('');
@@ -141,9 +147,16 @@ export default function DrugWiki() {
   const categories: CategoryFilter[] = ['전체', '기전', '약물'];
 
   return (
-    <div className="flex h-full" style={{ height: 'calc(100vh - 120px)' }}>
+    <div className="flex h-full" style={embedded ? { height: '100%' } : { height: 'calc(100vh - 120px)' }}>
       {/* Left panel - list */}
-      <div className="flex flex-col border-r border-gray-200 bg-white" style={{ width: 320, minWidth: 320 }}>
+      <div className="flex flex-col border-r border-gray-200 bg-white" style={{ width: 280, minWidth: 280 }}>
+        {/* Header with close button (embedded mode) */}
+        {embedded && onClose && (
+          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 bg-gray-50">
+            <span className="font-semibold text-sm text-gray-700">📖 양약사전</span>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+          </div>
+        )}
         {/* Search */}
         <div className="p-3 border-b border-gray-200">
           <div className="relative">
