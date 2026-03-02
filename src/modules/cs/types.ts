@@ -1161,6 +1161,62 @@ export interface TimelineResult {
 }
 
 // ============================================
+// 설문(Survey) 관련 타입
+// ============================================
+
+export type SurveyQuestionType = 'text' | 'single_choice' | 'multiple_choice' | 'scale';
+
+export interface SurveyQuestion {
+  id: string;
+  question_text: string;
+  question_type: SurveyQuestionType;
+  options?: string[];
+  required: boolean;
+  order: number;
+}
+
+export interface SurveyTemplate {
+  id: number;
+  name: string;
+  description?: string;
+  questions: SurveyQuestion[];
+  display_mode: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SurveySession {
+  id: number;
+  patient_id?: number;
+  patient_name?: string;
+  chart_number?: string;
+  age?: number;
+  gender?: string;
+  template_id: number;
+  template_name?: string;
+  doctor_name?: string;
+  status: 'waiting' | 'in_progress' | 'completed';
+  created_by?: string;
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface SurveyAnswer {
+  question_id: string;
+  answer: string | string[];
+}
+
+export interface SurveyResponse {
+  id: number;
+  session_id: number;
+  template_id: number;
+  patient_id?: number;
+  answers: SurveyAnswer[];
+  submitted_at: string;
+}
+
+// ============================================
 // 직원 역할 타입 (CRM 모듈 re-export)
 // ============================================
 

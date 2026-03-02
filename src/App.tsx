@@ -29,6 +29,7 @@ import ExamApp from './modules/exam/ExamApp';
 import ChatApp from './modules/chat/ChatApp';
 import MetricsApp from './modules/metrics/MetricsApp';
 import DecoctionApp from './modules/decoction/DecoctionApp';
+import SurveyApp from './modules/survey/SurveyApp';
 
 // Public Blog Pages (공개 - 로그인 불필요)
 import BlogListPage from './modules/blog/pages/BlogListPage';
@@ -246,6 +247,9 @@ function App() {
         path="/decoction/*"
         element={user ? <DecoctionApp user={user} /> : <Navigate to="/login" replace />}
       />
+
+      {/* Survey Routes (아이패드 설문 - 공개 라우트) */}
+      <Route path="/survey/*" element={<SurveyApp />} />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />

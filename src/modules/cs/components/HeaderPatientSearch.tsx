@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { searchLocalPatients, getLocalPatientByChartNo, type LocalPatient } from '../lib/patientSync';
+import { searchLocalPatients, searchAndSyncPatients, getLocalPatientByChartNo, type LocalPatient } from '../lib/patientSync';
 import LocalPatientRegisterModal from './LocalPatientRegisterModal';
 
 interface HeaderPatientSearchProps {
@@ -35,7 +35,14 @@ export default function HeaderPatientSearch({ onPatientSelect, hideRegister }: H
 
     setIsLoading(true);
     try {
-      const patients = await searchLocalPatients(term.trim());
+      // 1차: PostgreSQL 로컬 검색
+      let patients = await searchLocalPatients(term.trim());
+
+      // 2차: 로컬에 없으면 MSSQL 검색 + 자동 동기화
+      if (patients.length === 0) {
+        patients = await searchAndSyncPatients(term.trim());
+      }
+
       setResults(patients);
       setIsOpen(true);
     } catch (error) {

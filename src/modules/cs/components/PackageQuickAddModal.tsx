@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   createHerbalPackage,
+  updateHerbalPackage,
   createNokryongPackage,
+  updateNokryongPackage,
   createTreatmentPackage,
   createMembership,
   addPackageUsage,
@@ -152,6 +154,9 @@ function PackageQuickAddModal({
   const [selectedPackageTypeName, setSelectedPackageTypeName] = useState('');
   const [packageCount, setPackageCount] = useState(10);
 
+  // 기록 날짜
+  const [recordDate, setRecordDate] = useState(receiptDate || new Date().toISOString().split('T')[0]);
+
   // 멤버십 폼 상태
   const [membershipTypes, setMembershipTypes] = useState<string[]>([]);
   const [selectedMembershipType, setSelectedMembershipType] = useState('');
@@ -207,7 +212,12 @@ function PackageQuickAddModal({
       if (editData.totalCount) setCustomHerbalCount(editData.totalCount);
     }
     if (packageType === 'nokryong') {
-      if (editData.packageName) setSelectedNokryongType(editData.packageName);
+      if (editData.packageName) {
+        // "녹용(베이직) 2회분" → "베이직" 추출
+        const typeMatch = editData.packageName.match(/녹용\((.+?)\)/);
+        if (typeMatch) setSelectedNokryongType(typeMatch[1]);
+        else setSelectedNokryongType(editData.packageName);
+      }
       if (editData.totalMonths) setNokryongDoses(editData.totalMonths);
     }
     if (packageType === 'treatment' && editData.totalCount) {
@@ -218,6 +228,7 @@ function PackageQuickAddModal({
       if (editData.quantity) setMembershipPeriod(editData.quantity);
     }
     if (editData.memo) setMemo(editData.memo);
+    if (editData.startDate) setRecordDate(editData.startDate);
   }, [editData]);
 
   // 질환 태그 관련
@@ -242,45 +253,70 @@ function PackageQuickAddModal({
       switch (packageType) {
         case 'herbal': {
           const totalCount = customHerbalCount || HERBAL_PACKAGE_ROUNDS[herbalPackageType] || 2;
-          const packageId = await createHerbalPackage({
-            patient_id: patientId,
-            chart_number: chartNumber,
-            patient_name: patientName,
-            herbal_name: herbalPackageType.replace('month', 'M') + ' ' + totalCount + '회',
-            package_type: herbalPackageType,
-            total_count: totalCount,
-            used_count: 0,
-            remaining_count: totalCount,
-            start_date: receiptDate,
-            memo: memo || undefined,
-            mssql_detail_id: selectedDetailId || undefined,
-            status: 'active',
-          });
+          const herbalName = herbalPackageType.replace('month', 'M') + ' ' + totalCount + '회';
 
-          // 질환 태그 연결
-          if (herbalDiseaseTags.length > 0) {
-            const tagIds: number[] = [];
-            for (const tag of herbalDiseaseTags) {
-              const tagId = tag.id ?? await findOrCreateDiseaseTag(tag.name);
-              tagIds.push(tagId);
+          if (isEdit && editData?.id) {
+            // 수정 모드
+            await updateHerbalPackage(editData.id, {
+              herbal_name: herbalName,
+              package_type: herbalPackageType,
+              total_count: totalCount,
+              remaining_count: totalCount - (editData.totalCount ? editData.totalCount - (editData.totalCount || 0) : 0),
+              start_date: recordDate,
+              memo: memo || undefined,
+              mssql_detail_id: selectedDetailId || undefined,
+            });
+            // 질환 태그 연결
+            if (herbalDiseaseTags.length > 0) {
+              const tagIds: number[] = [];
+              for (const tag of herbalDiseaseTags) {
+                const tagId = tag.id ?? await findOrCreateDiseaseTag(tag.name);
+                tagIds.push(tagId);
+              }
+              await setPackageDiseaseTags(editData.id, tagIds);
             }
-            await setPackageDiseaseTags(packageId, tagIds);
-          }
+          } else {
+            // 신규 등록
+            const packageId = await createHerbalPackage({
+              patient_id: patientId,
+              chart_number: chartNumber,
+              patient_name: patientName,
+              herbal_name: herbalName,
+              package_type: herbalPackageType,
+              total_count: totalCount,
+              used_count: 0,
+              remaining_count: totalCount,
+              start_date: recordDate,
+              memo: memo || undefined,
+              mssql_detail_id: selectedDetailId || undefined,
+              status: 'active',
+            });
 
-          // 사용기록 추가
-          await addPackageUsage({
-            package_type: 'herbal',
-            package_id: packageId,
-            patient_id: patientId,
-            chart_number: chartNumber,
-            patient_name: patientName,
-            usage_date: receiptDate,
-            usage_type: 'add',
-            count: totalCount,
-            mssql_detail_id: selectedDetailId || undefined,
-            mssql_receipt_id: receiptId,
-            memo: memo || undefined,
-          });
+            // 질환 태그 연결
+            if (herbalDiseaseTags.length > 0) {
+              const tagIds: number[] = [];
+              for (const tag of herbalDiseaseTags) {
+                const tagId = tag.id ?? await findOrCreateDiseaseTag(tag.name);
+                tagIds.push(tagId);
+              }
+              await setPackageDiseaseTags(packageId, tagIds);
+            }
+
+            // 사용기록 추가
+            await addPackageUsage({
+              package_type: 'herbal',
+              package_id: packageId,
+              patient_id: patientId,
+              chart_number: chartNumber,
+              patient_name: patientName,
+              usage_date: receiptDate,
+              usage_type: 'add',
+              count: totalCount,
+              mssql_detail_id: selectedDetailId || undefined,
+              mssql_receipt_id: receiptId,
+              memo: memo || undefined,
+            });
+          }
           break;
         }
 
@@ -290,34 +326,45 @@ function PackageQuickAddModal({
             return;
           }
           const packageName = `녹용(${selectedNokryongType}) ${nokryongDoses}회분`;
-          const packageId = await createNokryongPackage({
-            patient_id: patientId,
-            chart_number: chartNumber,
-            patient_name: patientName,
-            package_name: packageName,
-            nokryong_type: selectedNokryongType,
-            total_doses: nokryongDoses,
-            used_doses: 0,
-            total_months: nokryongDoses,
-            remaining_months: nokryongDoses,
-            start_date: receiptDate,
-            status: 'active',
-            mssql_detail_id: selectedDetailId || undefined,
-          });
 
-          await addPackageUsage({
-            package_type: 'nokryong',
-            package_id: packageId,
-            patient_id: patientId,
-            chart_number: chartNumber,
-            patient_name: patientName,
-            usage_date: receiptDate,
-            usage_type: 'add',
-            count: nokryongDoses,
-            mssql_detail_id: selectedDetailId || undefined,
-            mssql_receipt_id: receiptId,
-            memo: memo || undefined,
-          });
+          if (isEdit && editData?.id) {
+            await updateNokryongPackage(editData.id, {
+              package_name: packageName,
+              total_months: nokryongDoses,
+              remaining_months: nokryongDoses,
+              start_date: recordDate,
+              memo: memo || undefined,
+            });
+          } else {
+            const packageId = await createNokryongPackage({
+              patient_id: patientId,
+              chart_number: chartNumber,
+              patient_name: patientName,
+              package_name: packageName,
+              nokryong_type: selectedNokryongType,
+              total_doses: nokryongDoses,
+              used_doses: 0,
+              total_months: nokryongDoses,
+              remaining_months: nokryongDoses,
+              start_date: recordDate,
+              status: 'active',
+              mssql_detail_id: selectedDetailId || undefined,
+            });
+
+            await addPackageUsage({
+              package_type: 'nokryong',
+              package_id: packageId,
+              patient_id: patientId,
+              chart_number: chartNumber,
+              patient_name: patientName,
+              usage_date: receiptDate,
+              usage_type: 'add',
+              count: nokryongDoses,
+              mssql_detail_id: selectedDetailId || undefined,
+              mssql_receipt_id: receiptId,
+              memo: memo || undefined,
+            });
+          }
           break;
         }
 
@@ -334,7 +381,7 @@ function PackageQuickAddModal({
             total_count: packageCount,
             used_count: 0,
             remaining_count: packageCount,
-            start_date: receiptDate,
+            start_date: recordDate,
             memo: memo || undefined,
             mssql_detail_id: selectedDetailId || undefined,
             status: 'active',
@@ -361,7 +408,7 @@ function PackageQuickAddModal({
             alert('멤버십 종류를 선택해주세요.');
             return;
           }
-          const startDate = new Date(receiptDate);
+          const startDate = new Date(recordDate);
           const expireDate = new Date(startDate);
           expireDate.setMonth(expireDate.getMonth() + membershipPeriod);
           expireDate.setDate(expireDate.getDate() - 1);
@@ -374,7 +421,7 @@ function PackageQuickAddModal({
             membership_type: selectedMembershipType,
             period_months: membershipPeriod,
             quantity: 1,
-            start_date: receiptDate,
+            start_date: recordDate,
             end_date: expireDateStr,
             expire_date: expireDateStr,
             memo: memo || undefined,
@@ -430,6 +477,27 @@ function PackageQuickAddModal({
         </div>
 
         <div className="quick-modal-body">
+          {/* 기록 날짜 */}
+          <div className="form-group">
+            <label>기록 날짜</label>
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <input
+                type="date"
+                value={recordDate}
+                onChange={e => setRecordDate(e.target.value)}
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
+              />
+              <div style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, cursor: 'pointer', background: '#fff', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {(() => {
+                  const d = new Date(recordDate + 'T00:00:00');
+                  const days = ['일', '월', '화', '수', '목', '금', '토'];
+                  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]})`;
+                })()}
+                <span style={{ color: '#94a3b8', fontSize: 12 }}>📅</span>
+              </div>
+            </div>
+          </div>
+
           {/* 비급여 항목 연결 */}
           <div className="form-group">
             <label>비급여 항목 연결</label>

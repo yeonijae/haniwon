@@ -9,6 +9,7 @@ interface UseAudioRecorderReturn {
   isRecording: boolean;
   isPaused: boolean;
   recordingTime: number;
+  audioLevel: number; // 0~1 normalized audio level
   startRecording: () => Promise<boolean>;
   stopRecording: () => Promise<Blob | null>;
   pauseRecording: () => void;
@@ -21,11 +22,15 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [audioLevel, setAudioLevel] = useState(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const animFrameRef = useRef<number | null>(null);
 
   // 녹음 시작
   const startRecording = useCallback(async (): Promise<boolean> => {
@@ -88,6 +93,30 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         console.error('MediaRecorder error:', event);
         setError('녹음 중 오류가 발생했습니다.');
       };
+
+      // AnalyserNode로 오디오 레벨 모니터링
+      try {
+        const audioContext = new AudioContext();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.5;
+        source.connect(analyser);
+        audioContextRef.current = audioContext;
+        analyserRef.current = analyser;
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const updateLevel = () => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteFrequencyData(dataArray);
+          const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+          setAudioLevel(Math.min(avg / 128, 1)); // normalize to 0~1
+          animFrameRef.current = requestAnimationFrame(updateLevel);
+        };
+        updateLevel();
+      } catch (e) {
+        console.warn('[AudioRecorder] AnalyserNode setup failed:', e);
+      }
 
       // 1초마다 데이터 저장 (중간에 끊겨도 데이터 보존)
       mediaRecorder.start(1000);
@@ -152,6 +181,18 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
           streamRef.current = null;
         }
 
+        // AnalyserNode 정리
+        if (animFrameRef.current) {
+          cancelAnimationFrame(animFrameRef.current);
+          animFrameRef.current = null;
+        }
+        if (audioContextRef.current) {
+          audioContextRef.current.close().catch(() => {});
+          audioContextRef.current = null;
+        }
+        analyserRef.current = null;
+        setAudioLevel(0);
+
         setIsRecording(false);
         setIsPaused(false);
         resolve(blob);
@@ -190,6 +231,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     isRecording,
     isPaused,
     recordingTime,
+    audioLevel,
     startRecording,
     stopRecording,
     pauseRecording,

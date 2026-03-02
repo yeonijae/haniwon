@@ -30,6 +30,7 @@ import ContactLogQuickModal from './patient-dashboard/ContactLogQuickModal';
 import PackageQuickAddModal from './PackageQuickAddModal';
 import PackageManageModal from './patient-dashboard/PackageManageModal';
 import PatientEditModal from './patient-dashboard/PatientEditModal';
+import SurveyCreateModal from './survey/SurveyCreateModal';
 import { getPatientVipYears } from '../lib/vipApi';
 import { ReservationStep1Modal, type ReservationDraft, type InitialPatient } from '../../reservation/components/ReservationStep1Modal';
 import { QuickReservationModal } from './QuickReservationModal';
@@ -88,6 +89,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
   const [herbalConsultations, setHerbalConsultations] = useState<HerbalConsultation[]>([]);
   const [showReferralList, setShowReferralList] = useState(false);
   const [referralList, setReferralList] = useState<{ name: string; chart_no: string; total_revenue: number; reg_date: string | null }[]>([]);
+  const [showSurveyModal, setShowSurveyModal] = useState(false);
   const [referralLoading, setReferralLoading] = useState(false);
   const {
     mssqlData,
@@ -437,6 +439,13 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
                   onClick={() => setShowMemoInput(!showMemoInput)}
                 >
                   {showMemoInput ? '닫기' : '메모+'}
+                </button>
+                <button
+                  className="section-action-btn consult-add"
+                  onClick={() => setShowSurveyModal(true)}
+                  style={{ background: '#8b5cf6', color: '#fff' }}
+                >
+                  설문+
                 </button>
               </div>
             </div>
@@ -913,6 +922,14 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
         editData={quickAddEditData}
         onClose={() => { setQuickAddType(null); setQuickAddEditData(null); }}
         onSuccess={async () => { await refresh(); setQuickAddType(null); setQuickAddEditData(null); }}
+      />
+    )}
+
+    {showSurveyModal && (
+      <SurveyCreateModal
+        patient={patient}
+        doctors={doctors}
+        onClose={() => setShowSurveyModal(false)}
       />
     )}
 

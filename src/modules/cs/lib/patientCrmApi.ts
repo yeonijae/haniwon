@@ -370,6 +370,7 @@ export async function getPatientPackageStatusByChartNumber(chartNumber: string):
       totalCount: herbalPackages.reduce((s, p) => s + (p.total_count || 0), 0),
       usedCount: herbalPackages.reduce((s, p) => s + (p.used_count || 0), 0),
       remainingCount: herbalPackages.reduce((s, p) => s + ((p.total_count || 0) - (p.used_count || 0)), 0),
+      startDate: herbalPackages[0].start_date,
       createdAt: herbalPackages[0].created_at,
     } : null,
 
@@ -379,6 +380,7 @@ export async function getPatientPackageStatusByChartNumber(chartNumber: string):
       packageName: nokryongPackages[0].package_name,
       totalMonths: nokryongPackages.reduce((s, p) => s + (p.total_months || 0), 0),
       remainingMonths: nokryongPackages.reduce((s, p) => s + (p.remaining_months || 0), 0),
+      startDate: nokryongPackages[0].start_date,
       createdAt: nokryongPackages[0].created_at,
     } : null,
 

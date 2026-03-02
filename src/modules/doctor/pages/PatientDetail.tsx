@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { query, execute } from '@shared/lib/postgres';
+import { query, queryOne, execute, insert } from '@shared/lib/postgres';
 import type { Patient, TreatmentPlan, ProgressNote } from '../types';
 import { useAudioRecorder } from '@modules/pad/hooks/useAudioRecorder';
 import { processRecording } from '@modules/pad/services/transcriptionService';
@@ -18,6 +18,8 @@ import LegacyChartImporter from '../components/LegacyChartImporter';
 import PatientTreatmentStatusCard from '@shared/components/PatientTreatmentStatusCard';
 import PatientPrepaidStatusCard from '@shared/components/PatientPrepaidStatusCard';
 import TreatmentRecordList from '@shared/components/TreatmentRecordList';
+import PatientReceiptHistory from '../components/PatientReceiptHistory';
+import DosageInstructionCreator from './DosageInstructionCreator';
 
 interface PatientDetailProps {
   patientId?: string;
@@ -32,6 +34,7 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
   const [searchParams] = useSearchParams();
   const id = props.patientId || params.id;
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [mssqlPatientId, setMssqlPatientId] = useState<number | null>(null); // MSSQL 원본 ID (CS 모듈용)
   const [loading, setLoading] = useState(true);
   const [chartView, setChartView] = useState<'plan' | 'initial' | 'diagnosis' | 'progress' | null>(null);
   const [currentPlan, setCurrentPlan] = useState<Partial<TreatmentPlan> | null>(null);
@@ -39,12 +42,17 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
   const [progressPlanId, setProgressPlanId] = useState<number | null>(null); // 경과 입력할 계획 ID
   const [importingPlanId, setImportingPlanId] = useState<number | null>(null); // 기존 차트 등록할 계획 ID
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
+  const [autoOpenPrescription, setAutoOpenPrescription] = useState(false);
+  const [autoOpenDosage, setAutoOpenDosage] = useState(false);
+  const [showDosageCreator, setShowDosageCreator] = useState(false);
+  const [dosageCreatorState, setDosageCreatorState] = useState<any>(null);
   const [refreshKey, setRefreshKey] = useState(0); // 목록 새로고침용
   const [showTreatmentHistory, setShowTreatmentHistory] = useState(false); // 진료내역 모달
   const [autoCreateChecked, setAutoCreateChecked] = useState(false); // autoCreate 체크 완료 여부
   const [recordingStarted, setRecordingStarted] = useState(false); // 녹음 시작 여부
   const [isProcessing, setIsProcessing] = useState(false); // 녹음 처리 중
   const [editingProgress, setEditingProgress] = useState<ProgressNote | null>(null); // 수정 중인 경과기록
+  const [editingChartId, setEditingChartId] = useState<number | null>(null); // 초진차트 수정
 
   // 녹음 관련
   const {
@@ -122,6 +130,30 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
       return () => clearTimeout(timer);
     }
   }, [autoRecord, patient, autoCreateChecked, recordingStarted, isRecording, startRecording]);
+
+  // SSE: 선결제 테이블 변경 실시간 감지 → 선결제 카드 새로고침
+  useEffect(() => {
+    if (!patient) return;
+    const pgUrl = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.48:3200';
+    const watchTables = new Set(['cs_herbal_packages', 'cs_nokryong_packages']);
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(`${pgUrl}/api/subscribe`);
+      es.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.table && watchTables.has(data.table)) {
+            setRefreshKey(prev => prev + 1);
+          }
+        } catch { /* ignore keepalive */ }
+      };
+      es.onerror = () => { es?.close(); es = null; };
+    } catch { /* EventSource 미지원 시 무시 */ }
+
+    return () => {
+      es?.close();
+    };
+  }, [patient?.id]);
 
   // 녹음 중지 및 처리
   const handleStopRecording = useCallback(async () => {
@@ -208,6 +240,19 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
 
       const mssqlData = await response.json();
       const patientData = convertMssqlPatient(mssqlData);
+
+      // MSSQL 원본 ID 보존 (CS 모듈에서 사용)
+      setMssqlPatientId(patientData.id);
+
+      // PostgreSQL의 실제 patient_id 조회 (MSSQL id와 다를 수 있음)
+      if (patientData.chart_number) {
+        const pgPatient = await queryOne<{ id: number }>(
+          `SELECT id FROM patients WHERE chart_number = '${patientData.chart_number}'`
+        );
+        if (pgPatient) {
+          patientData.id = pgPatient.id;
+        }
+      }
 
       setPatient(patientData);
     } catch (error) {
@@ -378,7 +423,7 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden" style={{ maxWidth: '100%' }}>
+    <div className="relative h-full flex flex-col overflow-hidden" style={{ maxWidth: '100%' }}>
       <div className="w-full flex-1 flex flex-col overflow-hidden" style={{ minWidth: 0 }}>
         {/* 헤더: CS 환자통합대시보드 스타일 */}
         <div className="dashboard-header-bar">
@@ -496,17 +541,41 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
               </button>
             )}
 
-            {/* 진료내역 버튼 */}
+            {/* 기존 차트 등록 버튼 */}
             <button
-              onClick={() => setShowTreatmentHistory(true)}
-              className="px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+              onClick={async () => {
+                try {
+                  const now = new Date().toISOString();
+                  await execute(
+                    `INSERT INTO treatment_plans (patient_id, status, created_at, updated_at) VALUES (${patient.id}, 'active', '${now}', '${now}')`
+                  );
+                  const newPlan = await queryOne<{ id: number }>(`SELECT id FROM treatment_plans WHERE patient_id = ${patient.id} ORDER BY id DESC LIMIT 1`);
+                  if (newPlan) {
+                    setImportingPlanId(newPlan.id);
+                  }
+                } catch (error) {
+                  console.error('기존차트 등록 실패:', error);
+                }
+              }}
+              className="px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-all font-semibold shadow text-sm"
             >
-              <i className="fas fa-history mr-1"></i>진료내역
+              <i className="fas fa-upload mr-1"></i>기존차트 등록
             </button>
 
             {/* 새진료 시작 버튼 */}
             <button
-              onClick={() => setChartView('plan')}
+              onClick={async () => {
+                try {
+                  const now = new Date().toISOString();
+                  await execute(
+                    `INSERT INTO treatment_plans (patient_id, status, created_at, updated_at) VALUES (${patient.id}, 'active', '${now}', '${now}')`
+                  );
+                  setRefreshKey(prev => prev + 1);
+                } catch (error) {
+                  console.error('새진료 생성 실패:', error);
+                  alert('새진료 생성에 실패했습니다.');
+                }
+              }}
               className="px-4 py-1.5 bg-gradient-to-r from-clinic-primary to-clinic-secondary text-white rounded-lg hover:from-blue-900 hover:to-purple-900 transition-all font-semibold shadow text-sm"
             >
               <i className="fas fa-plus mr-1"></i>새진료
@@ -516,37 +585,108 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
         </div>
 
         {/* 메인 콘텐츠: 진료기록 + 사이드바 */}
-        <div className="flex-1 flex gap-4 overflow-hidden">
-          {/* 진료기록 목록 */}
-          <div className="flex-1 bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
-            <div className="flex-1 overflow-auto p-4">
-              <MedicalRecordList
-                key={refreshKey}
-                patientId={patient.id}
-                patientName={patient.name}
-                onSelectRecord={(recordId) => setSelectedRecordId(recordId)}
-                onEditPlan={handleEditPlan}
-                onDeletePlan={handleDeletePlan}
-                onCreateChartFromPlan={handleCreateChartFromPlan}
-                onCreateProgressFromPlan={handleCreateProgressFromPlan}
-                onImportLegacyChart={(planId) => setImportingPlanId(planId)}
-                onEditProgress={handleEditProgress}
-                onDeleteProgress={handleDeleteProgress}
-              />
-            </div>
+        <div className="flex-1 flex overflow-hidden">
+          {/* 좌측 사이드바: 치료 상태 + 선결제 현황 */}
+          <div className="flex-shrink-0 space-y-3 self-start p-2" style={{ width: '200px' }}>
+            <PatientPrepaidStatusCard
+              key={`prepaid-${refreshKey}`}
+              patientId={mssqlPatientId || patient.id}
+              patientName={patient.name}
+            />
+            <PatientReceiptHistory patientId={mssqlPatientId || patient.id} />
           </div>
 
-          {/* 사이드바: 치료 상태 + 선결제 현황 */}
-          <div className="w-72 flex-shrink-0 space-y-3 overflow-y-auto">
-            <PatientTreatmentStatusCard
-              patientId={patient.id}
-              patientName={patient.name}
-            />
-            <PatientPrepaidStatusCard
-              patientId={patient.id}
-              patientName={patient.name}
-            />
-          </div>
+          {/* 진료기록 목록 또는 초진차트 또는 진료기록 상세 */}
+          {chartView === 'initial' ? (
+            <div className="flex-1 overflow-hidden">
+              <InitialChartView
+                patientId={patient.id}
+                patientName={patient.name}
+                treatmentPlan={currentPlan}
+                onClose={() => {
+                  setChartView(null);
+                  setCurrentPlan(null);
+                  setRefreshKey(prev => prev + 1);
+                }}
+                forceNew={true}
+                embedded={true}
+              />
+            </div>
+          ) : editingChartId ? (
+            <div className="flex-1 overflow-hidden">
+              <InitialChartView
+                patientId={patient.id}
+                patientName={patient.name}
+                chartId={editingChartId}
+                startEditing={true}
+                embedded={true}
+                onClose={() => {
+                  setEditingChartId(null);
+                  setRefreshKey(prev => prev + 1);
+                }}
+              />
+            </div>
+          ) : selectedRecordId ? (
+            <div className="flex-1 overflow-hidden">
+              <MedicalRecordDetail
+                recordId={selectedRecordId}
+                patientName={patient.name}
+                patientInfo={{
+                  chartNumber: patient.chart_number,
+                  dob: patient.dob,
+                  gender: patient.gender,
+                  age: calculateAge(patient.dob)
+                }}
+                onClose={() => {
+                  setSelectedRecordId(null);
+                  setAutoOpenPrescription(false);
+                  setAutoOpenDosage(false);
+                  setRefreshKey(prev => prev + 1);
+                }}
+                embedded={true}
+                autoOpenPrescription={autoOpenPrescription}
+                autoOpenDosage={autoOpenDosage}
+                onOpenDosageCreator={(state) => {
+                  setDosageCreatorState(state);
+                  setShowDosageCreator(true);
+                }}
+              />
+            </div>
+          ) : (
+            <div className="flex-1 bg-white rounded-lg shadow-sm overflow-hidden flex flex-col">
+              <div className="flex-1 overflow-auto p-4">
+                <MedicalRecordList
+                  key={refreshKey}
+                  patientId={patient.id}
+                  patientName={patient.name}
+                  onSelectRecord={(recordId) => setSelectedRecordId(recordId)}
+                  onEditPlan={handleEditPlan}
+                  onDeletePlan={handleDeletePlan}
+                  onCreateChartFromPlan={handleCreateChartFromPlan}
+                  onCreateProgressFromPlan={handleCreateProgressFromPlan}
+                  onImportLegacyChart={(planId) => setImportingPlanId(planId)}
+                  onEditProgress={handleEditProgress}
+                  onDeleteProgress={handleDeleteProgress}
+                  onEditChart={(chartId) => setEditingChartId(chartId)}
+                  onIssuePrescription={(sourceType, sourceId, planId) => {
+                    // 처방전 발급 → 상세보기 + 처방 모달 자동 오픈
+                    setSelectedRecordId(null);
+                    setAutoOpenPrescription(true);
+                    if (sourceType === 'initial_chart') {
+                      setSelectedRecordId(sourceId);
+                    }
+                  }}
+                  onCreateDosage={(sourceType, sourceId, planId) => {
+                    setSelectedRecordId(null);
+                    setAutoOpenDosage(true);
+                    if (sourceType === 'initial_chart') {
+                      setSelectedRecordId(sourceId);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
       {/* 진료 계획 설정 모달 */}
@@ -575,20 +715,7 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
         />
       )}
 
-      {/* 초진차트 모달 */}
-      {chartView === 'initial' && (
-        <InitialChartView
-          patientId={patient.id}
-          patientName={patient.name}
-          treatmentPlan={currentPlan}
-          onClose={() => {
-            setChartView(null);
-            setCurrentPlan(null);
-            setRefreshKey(prev => prev + 1); // 목록 새로고침
-          }}
-          forceNew={true}
-        />
-      )}
+      {/* 초진차트는 메인 콘텐츠 영역에 인라인으로 표시 */}
 
       {chartView === 'diagnosis' && (
         <DiagnosisListView
@@ -610,23 +737,7 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
         />
       )}
 
-      {/* 진료기록 상세보기 모달 */}
-      {selectedRecordId && (
-        <MedicalRecordDetail
-          recordId={selectedRecordId}
-          patientName={patient.name}
-          patientInfo={{
-            chartNumber: patient.chart_number,
-            dob: patient.dob,
-            gender: patient.gender,
-            age: calculateAge(patient.dob)
-          }}
-          onClose={() => {
-            setSelectedRecordId(null);
-            setRefreshKey(prev => prev + 1); // 목록 새로고침
-          }}
-        />
-      )}
+      {/* 진료기록 상세는 메인 콘텐츠 영역에 인라인으로 표시 */}
 
       {/* 기존 차트 등록 모달 */}
       {importingPlanId && (
@@ -745,6 +856,24 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
         </div>
       )}
       </div>
+
+      {/* 복용법 작성 (전체 영역 오버레이) */}
+      {showDosageCreator && dosageCreatorState && (
+        <div className="absolute inset-0 bg-white z-[40] flex flex-col overflow-hidden">
+          <DosageInstructionCreator
+            embedded={true}
+            embeddedState={dosageCreatorState}
+            onClose={() => {
+              setShowDosageCreator(false);
+              setAutoOpenDosage(false);
+              setRefreshKey(prev => prev + 1);
+            }}
+            onSaved={() => {
+              setRefreshKey(prev => prev + 1);
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 };

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { query } from '@shared/lib/postgres';
+import { query, execute } from '@shared/lib/postgres';
 
 interface LinkedChart {
   id: number;
   chart_date: string;
   chief_complaint: string;
+  prescription_issued: boolean;
+  dosage_created: boolean;
   created_at: string;
 }
 
@@ -13,6 +15,7 @@ interface LinkedProgress {
   note_date: string;
   assessment: string;
   notes: string;
+  prescription_issued: boolean;
   created_at: string;
 }
 
@@ -23,6 +26,10 @@ interface TreatmentPlanWithRecords {
   visit_frequency: string;
   planned_duration_weeks: number | null;
   selected_programs: { program_id: number; name: string }[] | null;
+  treatment_purpose?: string;
+  nokryong_recommendation?: string;
+  consultation_type?: string;
+  status?: string;
   created_at: string;
   charts: LinkedChart[];
   progressNotes: LinkedProgress[];
@@ -40,6 +47,9 @@ interface Props {
   onImportLegacyChart?: (planId: number) => void;
   onEditProgress?: (progressId: number, planId: number) => void;
   onDeleteProgress?: (progressId: number) => void;
+  onEditChart?: (chartId: number) => void;
+  onIssuePrescription?: (sourceType: 'initial_chart' | 'progress_note', sourceId: number, planId: number) => void;
+  onCreateDosage?: (sourceType: 'initial_chart' | 'progress_note', sourceId: number, planId: number) => void;
 }
 
 type DateFilterType = 'all' | 'today' | 'week' | 'month' | 'custom';
@@ -56,6 +66,9 @@ const MedicalRecordList: React.FC<Props> = ({
   onImportLegacyChart,
   onEditProgress,
   onDeleteProgress,
+  onEditChart,
+  onIssuePrescription,
+  onCreateDosage,
 }) => {
   const [plans, setPlans] = useState<TreatmentPlanWithRecords[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,8 +92,12 @@ const MedicalRecordList: React.FC<Props> = ({
         visit_frequency: string;
         planned_duration_weeks: number | null;
         selected_programs: { program_id: number; name: string }[] | null;
+        treatment_purpose?: string;
+        nokryong_recommendation?: string;
+        consultation_type?: string;
+        status?: string;
         created_at: string;
-      }>(`SELECT id, patient_id, disease_name, visit_frequency, planned_duration_weeks, selected_programs, created_at
+      }>(`SELECT id, patient_id, disease_name, visit_frequency, planned_duration_weeks, selected_programs, treatment_purpose, nokryong_recommendation, consultation_type, status, created_at
           FROM treatment_plans
           WHERE patient_id = ${patientId}
           ORDER BY created_at DESC`);
@@ -91,8 +108,9 @@ const MedicalRecordList: React.FC<Props> = ({
         treatment_plan_id: number | null;
         chart_date: string;
         notes: string;
+        prescription_issued: boolean;
         created_at: string;
-      }>(`SELECT id, treatment_plan_id, chart_date, notes, created_at
+      }>(`SELECT id, treatment_plan_id, chart_date, notes, COALESCE(prescription_issued, 0) as prescription_issued, created_at
           FROM initial_charts
           WHERE patient_id = ${patientId}
           ORDER BY created_at DESC`);
@@ -104,11 +122,25 @@ const MedicalRecordList: React.FC<Props> = ({
         note_date: string;
         assessment: string;
         notes: string;
+        prescription_issued: boolean;
         created_at: string;
-      }>(`SELECT id, treatment_plan_id, note_date, assessment, notes, created_at
+      }>(`SELECT id, treatment_plan_id, note_date, assessment, notes, COALESCE(prescription_issued, 0) as prescription_issued, created_at
           FROM progress_notes
           WHERE patient_id = ${patientId}
           ORDER BY note_date DESC`);
+
+      // 3.5. 복용법 작성 여부 조회 (prescriptions 테이블)
+      const dosageData = await query<{
+        source_type: string;
+        source_id: number;
+        dosage_instruction_created: boolean;
+      }>(`SELECT source_type, source_id, COALESCE(dosage_instruction_created, 0) as dosage_instruction_created
+          FROM prescriptions
+          WHERE patient_id = ${patientId} AND dosage_instruction_created = 1`);
+
+      const dosageMap = new Set(
+        (dosageData || []).map(d => `${d.source_type}_${d.source_id}`)
+      );
 
       // 4. 진료계획별로 차트/경과 연결
       const plansWithRecords: TreatmentPlanWithRecords[] = (plansData || []).map(plan => ({
@@ -119,6 +151,8 @@ const MedicalRecordList: React.FC<Props> = ({
             id: c.id,
             chart_date: c.chart_date,
             chief_complaint: extractChiefComplaint(c.notes),
+            prescription_issued: c.prescription_issued || false,
+            dosage_created: dosageMap.has(`initial_chart_${c.id}`),
             created_at: c.created_at,
           })),
         progressNotes: (progressData || [])
@@ -128,16 +162,18 @@ const MedicalRecordList: React.FC<Props> = ({
             note_date: p.note_date,
             assessment: p.assessment || '(내용 없음)',
             notes: p.notes || '',
+            prescription_issued: p.prescription_issued || false,
             created_at: p.created_at,
           })),
       }));
 
       setPlans(plansWithRecords);
 
-      // 기본적으로 첫번째 계획 펼치기
-      if (plansWithRecords.length > 0) {
-        setExpandedPlans(new Set([plansWithRecords[0].id]));
-      }
+      // 완료되지 않은 진료카드는 펼치고, 완료된 건 닫기
+      const activeIds = plansWithRecords
+        .filter(p => p.status !== 'completed')
+        .map(p => p.id);
+      setExpandedPlans(new Set(activeIds));
     } catch (error) {
       console.error('진료기록 로드 실패:', error);
     } finally {
@@ -149,19 +185,26 @@ const MedicalRecordList: React.FC<Props> = ({
   const extractChiefComplaint = (notes: string): string => {
     if (!notes) return '-';
     const sectionMatch = notes.match(/\[주소증\]\s*([^\[]+)/);
-    if (!sectionMatch) return '-';
-    const sectionText = sectionMatch[1].trim();
-    const lines = sectionText.split('\n');
-    const numberedItems: string[] = [];
-    for (const line of lines) {
-      const numberedMatch = line.match(/^\d+\.\s*(.+)/);
-      if (numberedMatch) {
-        numberedItems.push(numberedMatch[1].trim());
+    if (sectionMatch) {
+      const sectionText = sectionMatch[1].trim();
+      const lines = sectionText.split('\n').filter(l => l.trim());
+      // 번호 항목 추출
+      const numberedItems: string[] = [];
+      for (const line of lines) {
+        const numberedMatch = line.match(/^\d+\.\s*(.+)/);
+        if (numberedMatch) {
+          numberedItems.push(numberedMatch[1].trim());
+        }
       }
+      if (numberedItems.length > 0) {
+        return numberedItems.join(', ');
+      }
+      // 번호 항목이 없으면 주소증 섹션 텍스트 그대로
+      return lines.join(' ');
     }
-    if (numberedItems.length === 0) return '-';
-    const result = numberedItems.join(', ');
-    return result.length > 40 ? result.substring(0, 40) + '...' : result;
+    // [주소증] 마커가 없으면 첫 의미있는 줄들
+    const contentLines = notes.split('\n').filter(l => l.trim() && !l.startsWith('['));
+    return contentLines.join(' ').trim() || '-';
   };
 
   // 날짜 필터링
@@ -304,7 +347,10 @@ const MedicalRecordList: React.FC<Props> = ({
         const hasRecords = plan.charts.length > 0 || plan.progressNotes.length > 0;
 
         // 카드 스타일
-        const cardBg = plan.charts.length > 0
+        const isCompleted = plan.status === 'completed';
+        const cardBg = isCompleted
+          ? 'bg-gray-50 border-gray-200 opacity-70'
+          : plan.charts.length > 0
           ? 'bg-green-50 border-green-300'
           : complete
           ? 'bg-blue-50 border-blue-300'
@@ -331,49 +377,36 @@ const MedicalRecordList: React.FC<Props> = ({
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <i className={`fas fa-chevron-${isExpanded ? 'down' : 'right'} text-gray-400 text-sm`}></i>
-                    <span className="bg-gray-700 text-white px-2 py-0.5 rounded text-xs font-medium">
-                      진료계획
+                    <span className="text-gray-800 font-semibold text-sm">
+                      {(() => {
+                        const d = new Date(plan.created_at);
+                        const days = ['일', '월', '화', '수', '목', '금', '토'];
+                        return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}(${days[d.getDay()]})`;
+                      })()}
                     </span>
-                    <span className="text-gray-600 text-sm">
-                      {new Date(plan.created_at).toLocaleDateString('ko-KR')}{' '}
-                      {new Date(plan.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${badgeStyle}`}>
-                      {statusText}
-                    </span>
-                  </div>
-                  <div className="ml-5">
-                    <p className="font-semibold text-gray-800">
-                      {plan.disease_name || '(질환명 미입력)'}
-                    </p>
-                    <div className="flex flex-wrap gap-2 mt-1 text-sm text-gray-600">
-                      {plan.visit_frequency && (
-                        <span><i className="fas fa-calendar-alt mr-1"></i>{plan.visit_frequency}</span>
-                      )}
-                      {plan.planned_duration_weeks && (
-                        <span><i className="fas fa-clock mr-1"></i>{getDurationLabel(plan.planned_duration_weeks)}</span>
-                      )}
-                      {plan.selected_programs && plan.selected_programs.length > 0 && (
-                        <span>
-                          <i className="fas fa-pills mr-1"></i>
-                          {plan.selected_programs.map(p => p.name).join(', ')}
-                        </span>
-                      )}
-                      {hasRecords && (
-                        <span className="text-green-700">
-                          <i className="fas fa-file-medical mr-1"></i>
-                          차트 {plan.charts.length} / 경과 {plan.progressNotes.length}
-                        </span>
-                      )}
-                    </div>
+                    {plan.treatment_purpose && (
+                      <span className="text-sm text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded">{plan.treatment_purpose}</span>
+                    )}
+                    {plan.disease_name && (
+                      <span className="text-sm text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">{plan.disease_name}</span>
+                    )}
+                    {plan.planned_duration_weeks && (
+                      <span className="text-sm text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{getDurationLabel(plan.planned_duration_weeks)} 치료</span>
+                    )}
+                    {plan.visit_frequency && (
+                      <span className="text-sm text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded">{plan.visit_frequency} 내원</span>
+                    )}
+                    {plan.nokryong_recommendation && plan.nokryong_recommendation !== '언급없음' && (
+                      <span className="text-sm text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">{plan.nokryong_recommendation}</span>
+                    )}
                   </div>
                 </div>
               </div>
 
               {/* 액션 버튼 */}
-              <div className="flex flex-wrap gap-2 mt-3 ml-5">
+              <div className={`flex flex-wrap gap-2 mt-3 ml-5 ${isCompleted ? 'opacity-60' : ''}`}>
                 {/* 초진차트가 있으면 비활성화 */}
                 {plan.charts.length > 0 ? (
                   <button
@@ -382,7 +415,7 @@ const MedicalRecordList: React.FC<Props> = ({
                     title="이미 초진차트가 작성되었습니다"
                   >
                     <i className="fas fa-check-circle"></i>
-                    초진차트 완료
+                    초진차트
                   </button>
                 ) : (
                   <button
@@ -413,16 +446,16 @@ const MedicalRecordList: React.FC<Props> = ({
                   <i className="fas fa-notes-medical"></i>
                   경과 입력
                 </button>
-                {onImportLegacyChart && (
+                {plan.charts.length > 0 && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onImportLegacyChart(plan.id);
+                      onSelectRecord(plan.charts[0].id);
                     }}
-                    className="px-3 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 transition-colors flex items-center gap-1"
+                    className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
                   >
-                    <i className="fas fa-upload"></i>
-                    기존 차트 등록
+                    <i className="fas fa-clipboard-list"></i>
+                    상세보기
                   </button>
                 )}
                 <button
@@ -430,11 +463,40 @@ const MedicalRecordList: React.FC<Props> = ({
                     e.stopPropagation();
                     onEditPlan?.(plan.id);
                   }}
-                  className="px-3 py-1.5 bg-gray-500 text-white text-xs rounded-lg hover:bg-gray-600 transition-colors flex items-center gap-1"
+                  className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1 font-medium"
                 >
-                  <i className="fas fa-pen"></i>
-                  수정
+                  <i className="fas fa-clipboard-list"></i>
+                  진료계획
                 </button>
+                {plan.status !== 'completed' ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm('이 진료를 완료 처리하시겠습니까?')) {
+                        execute(`UPDATE treatment_plans SET status = 'completed', updated_at = '${new Date().toISOString()}' WHERE id = ${plan.id}`).then(() => {
+                          loadRecords();
+                        });
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-gray-600 text-white text-xs rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-1"
+                  >
+                    <i className="fas fa-check-circle"></i>
+                    진료완료
+                  </button>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      execute(`UPDATE treatment_plans SET status = 'active', updated_at = '${new Date().toISOString()}' WHERE id = ${plan.id}`).then(() => {
+                        loadRecords();
+                      });
+                    }}
+                    className="px-3 py-1.5 bg-green-100 text-green-700 text-xs rounded-lg hover:bg-green-200 transition-colors flex items-center gap-1"
+                  >
+                    <i className="fas fa-check-circle"></i>
+                    진료완료됨
+                  </button>
+                )}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -457,18 +519,71 @@ const MedicalRecordList: React.FC<Props> = ({
                 {plan.charts.map(chart => (
                   <div
                     key={`chart-${chart.id}`}
-                    onClick={() => onSelectRecord(chart.id)}
-                    className="ml-8 mr-4 my-2 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:shadow-md hover:border-clinic-primary transition-all"
+                    className="group ml-8 mr-4 my-2 p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow-sm transition-all"
                   >
                     <div className="flex items-center gap-2">
                       <span className="bg-clinic-primary text-white px-2 py-0.5 rounded text-xs">초진</span>
                       <span className="text-sm text-gray-600">
                         {new Date(chart.chart_date).toLocaleDateString('ko-KR')}
                       </span>
-                      <span className="text-sm text-gray-800 font-medium flex-1 truncate">
+                      <span className="text-sm text-gray-800 font-medium flex-1" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                         {chart.chief_complaint}
                       </span>
-                      <i className="fas fa-chevron-right text-gray-400 text-sm"></i>
+                      <div className="flex gap-1 ml-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditChart ? onEditChart(chart.id) : onSelectRecord(chart.id);
+                          }}
+                          className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors opacity-0 group-hover:opacity-100"
+                          title="수정"
+                        >
+                          <i className="fas fa-pen"></i>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('이 초진차트를 삭제하시겠습니까?')) {
+                              execute(`DELETE FROM initial_charts WHERE id = ${chart.id}`).then(() => {
+                                loadRecords();
+                              });
+                            }
+                          }}
+                          className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors opacity-0 group-hover:opacity-100"
+                          title="삭제"
+                        >
+                          <i className="fas fa-trash"></i>
+                        </button>
+                        <span className="w-px h-4 bg-gray-300 mx-0.5 opacity-0 group-hover:opacity-100"></span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onIssuePrescription?.('initial_chart', chart.id, plan.id);
+                          }}
+                          className={`px-2 py-1 text-xs rounded transition-colors ${
+                            chart.prescription_issued
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                          }`}
+                          title={chart.prescription_issued ? '처방전 발급완료' : '처방전 발급'}
+                        >
+                          {chart.prescription_issued ? '✅ 처방전' : '처방전'}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCreateDosage?.('initial_chart', chart.id, plan.id);
+                          }}
+                          className={`px-2 py-1 text-xs rounded transition-colors ${
+                            chart.dosage_created
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                          }`}
+                          title={chart.dosage_created ? '복용법 작성완료' : '복용법 작성'}
+                        >
+                          {chart.dosage_created ? '✅ 복용법' : '복용법'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -482,13 +597,18 @@ const MedicalRecordList: React.FC<Props> = ({
                   return (
                     <div
                       key={`progress-${note.id}`}
-                      className="ml-8 mr-4 my-2 p-3 bg-white rounded-lg border border-gray-200 hover:border-green-400 transition-colors"
+                      className="group ml-8 mr-4 my-2 p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow-sm transition-all"
                     >
                       <div className="flex items-center gap-2">
                         <span className="bg-green-600 text-white px-2 py-0.5 rounded text-xs">경과</span>
                         <span className="text-sm text-gray-600">
-                          {new Date(note.note_date).toLocaleDateString('ko-KR')}
+                          {note.assessment?.includes('날짜미상')
+                            ? note.assessment.replace(' (날짜미상)', '')
+                            : new Date(note.note_date).toLocaleDateString('ko-KR')}
                         </span>
+                        {note.assessment?.includes('날짜미상') && (
+                          <span className="text-xs text-gray-400">(날짜미상)</span>
+                        )}
                         <span className="text-sm text-gray-800 flex-1 truncate">
                           {displayText}
                         </span>
@@ -499,7 +619,7 @@ const MedicalRecordList: React.FC<Props> = ({
                               e.stopPropagation();
                               onEditProgress?.(note.id, plan.id);
                             }}
-                            className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                            className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors opacity-0 group-hover:opacity-100"
                             title="수정"
                           >
                             <i className="fas fa-pen"></i>
@@ -511,10 +631,25 @@ const MedicalRecordList: React.FC<Props> = ({
                                 onDeleteProgress?.(note.id);
                               }
                             }}
-                            className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                            className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors opacity-0 group-hover:opacity-100"
                             title="삭제"
                           >
                             <i className="fas fa-trash"></i>
+                          </button>
+                          <span className="w-px h-4 bg-gray-300 mx-0.5 opacity-0 group-hover:opacity-100"></span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onIssuePrescription?.('progress_note', note.id, plan.id);
+                            }}
+                            className={`px-2 py-1 text-xs rounded transition-colors ${
+                              note.prescription_issued
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                            }`}
+                            title={note.prescription_issued ? '처방전 발급완료' : '처방전 발급'}
+                          >
+                            {note.prescription_issued ? '✅ 처방전' : '처방전'}
                           </button>
                         </div>
                       </div>

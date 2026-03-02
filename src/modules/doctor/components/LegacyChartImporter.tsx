@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { insert, escapeString, getCurrentTimestamp } from '@shared/lib/postgres';
+import { insert, execute, escapeString, getCurrentTimestamp } from '@shared/lib/postgres';
 
 interface Props {
   patientId: number;
@@ -48,6 +48,7 @@ const LegacyChartImporter: React.FC<Props> = ({
   const [parsedResult, setParsedResult] = useState<ParsedChart | null>(null);
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState<'input' | 'preview'>('input');
+  const [chartDate, setChartDate] = useState('');
 
   // 날짜 파싱 (YY/MM/DD 형식)
   const parseDate = (text: string): string | null => {
@@ -310,6 +311,7 @@ const LegacyChartImporter: React.FC<Props> = ({
 
     const result = parseChartText(rawText);
     setParsedResult(result);
+    setChartDate(result.initialDate || new Date().toISOString().split('T')[0]);
     setStep('preview');
   };
 
@@ -320,7 +322,7 @@ const LegacyChartImporter: React.FC<Props> = ({
     setSaving(true);
     try {
       const now = getCurrentTimestamp();
-      const chartDate = parsedResult.initialDate || new Date().toISOString().split('T')[0];
+      const saveDateValue = chartDate || parsedResult.initialDate || new Date().toISOString().split('T')[0];
 
       // 1. 초진차트 저장
       const chartId = await insert(`
@@ -328,7 +330,7 @@ const LegacyChartImporter: React.FC<Props> = ({
         VALUES (
           ${patientId},
           ${escapeString(parsedResult.initialContent)},
-          ${escapeString(chartDate)},
+          ${escapeString(saveDateValue)},
           ${treatmentPlanId},
           ${escapeString(now)},
           ${escapeString(now)}
@@ -337,11 +339,15 @@ const LegacyChartImporter: React.FC<Props> = ({
 
       console.log('초진차트 저장 완료:', chartId);
 
+      // 진료카드(treatment_plan) 날짜도 업데이트
+      await execute(`UPDATE treatment_plans SET created_at = ${escapeString(saveDateValue + 'T00:00:00.000Z')}, updated_at = ${escapeString(now)} WHERE id = ${treatmentPlanId}`);
+
       // 2. 경과기록 저장
       for (const progress of parsedResult.progressList) {
-        const noteDate = progress.date || chartDate;
+        const noteDate = progress.date || saveDateValue;
         const content = formatSectionsToString(progress.sections, progress.prescription);
-        const assessment = `${progress.visitNumber}차 ${progress.type === 'call' ? '전화상담' : '내원'}`;
+        const dateUnknown = !progress.date;
+        const assessment = `${progress.visitNumber}차 ${progress.type === 'call' ? '전화상담' : '내원'}${dateUnknown ? ' (날짜미상)' : ''}`;
 
         await insert(`
           INSERT INTO progress_notes (
@@ -417,6 +423,24 @@ const LegacyChartImporter: React.FC<Props> = ({
             </div>
           ) : (
             <div className="space-y-4">
+              {/* 저장 날짜 선택 */}
+              <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3">
+                <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                  <i className="fas fa-calendar-alt mr-1 text-yellow-600"></i>초진 날짜
+                </label>
+                <input
+                  type="date"
+                  value={chartDate}
+                  onChange={(e) => setChartDate(e.target.value)}
+                  className="px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
+                />
+                {parsedResult?.initialDate && chartDate !== parsedResult.initialDate && (
+                  <span className="text-xs text-gray-500">
+                    (차트에서 추출: {parsedResult.initialDate})
+                  </span>
+                )}
+              </div>
+
               {/* 초진차트 미리보기 */}
               <div className="border rounded-lg overflow-hidden">
                 <div className="bg-clinic-primary text-white px-4 py-2 font-medium">
@@ -446,8 +470,10 @@ const LegacyChartImporter: React.FC<Props> = ({
                   }`}>
                     <i className={`fas ${progress.type === 'call' ? 'fa-phone' : 'fa-user'} mr-2`}></i>
                     {progress.visitNumber}차 {progress.type === 'call' ? '전화상담' : '내원'}
-                    {progress.date && (
+                    {progress.date ? (
                       <span className="ml-2 text-sm opacity-80">({progress.date})</span>
+                    ) : (
+                      <span className="ml-2 text-sm opacity-80">(날짜미상)</span>
                     )}
                   </div>
                   <div className="p-4 bg-gray-50">

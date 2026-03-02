@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { query } from '@shared/lib/postgres';
 import type { PrescriptionTemplate, PrescriptionHerb } from '../types';
 
@@ -32,6 +32,9 @@ export interface PrescriptionInputProps {
   onSave?: (data: PrescriptionData) => void;
   onChange?: (data: PrescriptionData) => void;
   patientName?: string;
+  patientChartNumber?: string;
+  patientAge?: number | null;
+  onClose?: () => void;
   onPatientNameChange?: (name: string) => void;
   showPatientInput?: boolean;
   showNotesInput?: boolean;
@@ -123,6 +126,9 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
   onSave,
   onChange,
   patientName: externalPatientName,
+  patientChartNumber,
+  patientAge,
+  onClose,
   onPatientNameChange,
   showPatientInput = true,
   showNotesInput = true,
@@ -151,6 +157,92 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
   const [showTemplateList, setShowTemplateList] = useState(false);
   const [templateSearchTerm, setTemplateSearchTerm] = useState('');
   const [herbAdjustment, setHerbAdjustment] = useState('');
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  const handlePrint = () => {
+    setShowPrintPreview(true);
+  };
+
+  const getPortrait2Html = () => {
+    const sortedHerbs = [...finalHerbs];
+    const packVol = packVolume || 120;
+    const finalTotalAmt = finalHerbs.reduce((sum, h) => sum + h.amount, 0);
+    const waterAmt = Math.round(totalDosage * 1.2 + packVol * (totalPacks + 1) + 300);
+    const MAX_HERBS_LEFT = 30;
+    const needsTwoColumns = sortedHerbs.length > MAX_HERBS_LEFT;
+
+    let leftHerbs, rightHerbs;
+    if (needsTwoColumns) {
+      leftHerbs = sortedHerbs.slice(0, MAX_HERBS_LEFT);
+      rightHerbs = sortedHerbs.slice(MAX_HERBS_LEFT);
+    } else {
+      leftHerbs = sortedHerbs;
+      rightHerbs = [] as typeof sortedHerbs;
+    }
+
+    const leftHerbsHtml = leftHerbs.map(h => `<tr><td class="row">${h.name}</td><td class="row">${Math.round(h.amount)}g</td></tr>`).join('');
+    const rightHerbsHtml = rightHerbs.map(h => `<tr><td class="row">${h.name}</td><td class="row">${Math.round(h.amount)}g</td></tr>`).join('');
+
+    const summaryHtml = `
+      <tr><td class="row summary-row">총 ${sortedHerbs.length}개</td><td class="row summary-row" style="text-align:right">총 ${Math.round(finalTotalAmt).toLocaleString()}g</td></tr>
+      <tr><td class="row">${packVol}ml</td><td class="row" style="text-align:right">${totalPacks}팩</td></tr>
+      <tr><td class="row water-row">${waterAmt.toLocaleString()}ml</td><td class="row"><button class="print-btn" onclick="window.print()">인쇄하기</button></td></tr>
+    `;
+
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>처방전 - ${patientName || '환자'}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Malgun Gothic', sans-serif; padding: 5mm 15mm 15mm 15mm; }
+        .container { display: flex; gap: 20px; align-items: flex-start; }
+        table { border-collapse: collapse; width: 200px; }
+        .row { border: 1px solid #999; padding: 5px 10px; height: 28px; font-size: 14px; }
+        .header-row { font-weight: bold; font-size: 16px; background: #f5f5f5; }
+        .summary-row { font-weight: bold; background: #e8e8e8; }
+        .water-row { font-weight: bold; background: #e3f2fd; color: #0d47a1; font-size: 16px; }
+        .print-btn { padding: 4px 16px; font-size: 13px; cursor: pointer; border: 1px solid #999; border-radius: 4px; background: #f5f5f5; }
+        .print-btn:hover { background: #e0e0e0; }
+        @media print {
+          body { padding: 5mm 10mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          @page { margin: 0; size: A4 portrait; }
+          .print-btn { display: none; }
+        }
+      </style></head><body>
+      <div class="container">
+        <table>
+          <tr><td class="row header-row" colspan="2">${[patientName || '-', patientChartNumber ? `(${patientChartNumber})` : '', patientAge ? `${patientAge}세` : ''].filter(Boolean).join(' ')}</td></tr>
+          ${leftHerbsHtml}
+          ${!needsTwoColumns ? summaryHtml : `<tr><td class="row summary-row" colspan="2">→ 계속</td></tr>`}
+        </table>
+        ${needsTwoColumns ? `<table>
+          <tr><td class="row header-row" colspan="2">(계속)</td></tr>
+          ${rightHerbsHtml}
+          ${summaryHtml}
+        </table>` : ''}
+      </div></body></html>`;
+  };
+
+  const executePrint = () => {
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.left = '-9999px';
+    iframe.style.width = '210mm';
+    iframe.style.height = '297mm';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    doc.open();
+    doc.write(getPortrait2Html());
+    doc.close();
+
+    iframe.onload = () => {
+      setTimeout(() => {
+        iframe.contentWindow?.print();
+        setTimeout(() => document.body.removeChild(iframe), 1000);
+      }, 500);
+    };
+  };
 
   // 외부에서 patientName을 제어하는 경우
   const patientName = externalPatientName !== undefined ? externalPatientName : internalPatientName;
@@ -490,13 +582,28 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
     <div className={`flex gap-4 ${compact ? '' : 'h-full'}`}>
       {/* 왼쪽: 처방 입력 */}
       <div className={`${compact ? 'w-full' : 'w-1/2'} bg-white rounded-lg shadow-sm p-4 flex flex-col overflow-hidden`}>
-        <h2 className="text-lg font-semibold text-clinic-text-primary mb-4 flex items-center">
-          <i className="fas fa-edit text-clinic-primary mr-2"></i>
-          처방 입력
-          <span className="text-xs font-normal text-gray-500 ml-2">
-            ({templates.length}개 처방)
-          </span>
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-clinic-text-primary flex items-center">
+            <i className="fas fa-edit text-clinic-primary mr-2"></i>
+            처방 입력
+            <span className="text-xs font-normal text-gray-500 ml-2">
+              ({templates.length}개 처방)
+            </span>
+          </h2>
+          {showSaveButton && (
+            <button
+              onClick={handleSave}
+              disabled={mergedHerbs.length === 0}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                mergedHerbs.length > 0
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <i className="fas fa-save mr-1"></i>저장
+            </button>
+          )}
+        </div>
 
         {/* 환자명 */}
         {showPatientInput && (
@@ -524,7 +631,7 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
               value={formula}
               onChange={(e) => setFormula(e.target.value)}
               placeholder="처방명을 띄어쓰기로 구분하여 입력"
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-opacity-20 font-mono text-lg ${
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-opacity-20 text-lg ${
                 parseError
                   ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
                   : 'border-gray-300 focus:border-clinic-primary focus:ring-clinic-primary'
@@ -698,7 +805,7 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
             value={herbAdjustment}
             onChange={(e) => setHerbAdjustment(e.target.value)}
             placeholder="추가: 약재명+용량, 제거: -약재명+용량"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-clinic-primary focus:ring-2 focus:ring-clinic-primary focus:ring-opacity-20 font-mono"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-clinic-primary focus:ring-2 focus:ring-clinic-primary focus:ring-opacity-20"
           />
           {herbAdjustment && parseHerbAdjustment(herbAdjustment).length > 0 && (
             <div className="mt-1 text-xs text-gray-600">
@@ -725,32 +832,39 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
           </div>
         )}
 
-        {/* 저장 버튼 */}
-        {showSaveButton && (
-          <div className="mt-auto pt-4 border-t">
-            <button
-              onClick={handleSave}
-              disabled={mergedHerbs.length === 0}
-              className={`w-full py-3 rounded-lg font-semibold transition-colors ${
-                mergedHerbs.length > 0
-                  ? 'bg-clinic-primary text-white hover:bg-blue-900'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              <i className="fas fa-save mr-2"></i>
-              {saveButtonText}
-            </button>
-          </div>
-        )}
+        {/* 저장 버튼은 헤더로 이동 */}
       </div>
 
       {/* 오른쪽: 처방 미리보기 */}
       {!compact && (
         <div className="w-1/2 bg-white rounded-lg shadow-sm p-4 flex flex-col overflow-hidden">
-          <h2 className="text-lg font-semibold text-clinic-text-primary mb-4 flex items-center">
-            <i className="fas fa-eye text-clinic-primary mr-2"></i>
-            처방 미리보기
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-clinic-text-primary flex items-center">
+              <i className="fas fa-eye text-clinic-primary mr-2"></i>
+              처방 미리보기
+              {finalHerbs.length > 0 && (
+                <span className="ml-2 px-2.5 py-0.5 bg-blue-500 text-white text-sm font-bold rounded-full">총 {finalHerbs.length}개</span>
+              )}
+            </h2>
+            <div className="flex items-center gap-2">
+              {mergedHerbs.length > 0 && (
+                <button
+                  onClick={handlePrint}
+                  className="px-4 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                >
+                  <i className="fas fa-print mr-1"></i>인쇄
+                </button>
+              )}
+              {onClose && (
+                <button
+                  onClick={onClose}
+                  className="px-4 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                >
+                  닫기
+                </button>
+              )}
+            </div>
+          </div>
 
           {mergedHerbs.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-gray-400">
@@ -761,32 +875,6 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
             </div>
           ) : (
             <>
-              {/* 요약 정보 */}
-              <div className="bg-gradient-to-r from-clinic-primary to-purple-700 rounded-lg p-4 mb-4 text-white">
-                <div className="grid grid-cols-5 gap-2 text-center">
-                  <div>
-                    <p className="text-xs opacity-80">약재 수</p>
-                    <p className="text-xl font-bold">{finalHerbs.length}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs opacity-80">1첩 용량</p>
-                    <p className="text-xl font-bold">{totalDosage}g</p>
-                  </div>
-                  <div>
-                    <p className="text-xs opacity-80">총 첩수</p>
-                    <p className="text-xl font-bold">{totalDoses}첩</p>
-                  </div>
-                  <div>
-                    <p className="text-xs opacity-80">복용일수</p>
-                    <p className="text-xl font-bold">{days}일</p>
-                  </div>
-                  <div>
-                    <p className="text-xs opacity-80">총 팩수</p>
-                    <p className="text-xl font-bold">{totalPacks}팩</p>
-                  </div>
-                </div>
-              </div>
-
               {/* 약재 목록 */}
               <div className="flex-1 overflow-y-auto">
                 <table className="w-full">
@@ -839,13 +927,41 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
                 </table>
               </div>
 
-              {/* 공식 표시 */}
-              <div className="mt-4 pt-4 border-t">
-                <p className="text-xs text-gray-500 mb-1">처방 공식</p>
-                <p className="font-mono text-lg text-clinic-primary">{formula}</p>
-              </div>
+              {/* 공식 표시 제거됨 */}
             </>
           )}
+        </div>
+      )}
+
+      {/* 인쇄 미리보기 모달 */}
+      {showPrintPreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-[80] p-4">
+          <div className="bg-white rounded-xl w-full max-w-[650px] max-h-[90vh] flex flex-col shadow-lg overflow-hidden">
+            <div className="bg-gray-50 px-5 py-3 flex justify-between items-center border-b border-gray-200 flex-shrink-0">
+              <h3 className="text-base font-semibold text-gray-800">
+                <i className="fas fa-print text-gray-500 mr-2"></i>인쇄 미리보기
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { executePrint(); }}
+                  className="px-4 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                >
+                  <i className="fas fa-print mr-1"></i>인쇄
+                </button>
+                <button
+                  onClick={() => setShowPrintPreview(false)}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+            </div>
+            <iframe
+              srcDoc={getPortrait2Html()}
+              className="flex-1 w-full bg-white"
+              style={{ minHeight: '70vh' }}
+            />
+          </div>
         </div>
       )}
     </div>

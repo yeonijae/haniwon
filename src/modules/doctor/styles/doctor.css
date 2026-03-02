@@ -503,3 +503,161 @@
 .patient-chart-overlay .flex.items-center.gap-2 {
   flex-shrink: 0;
 }
+
+/* 초진차트 날짜 래퍼: 전체 너비 채우기 */
+.patient-chart-overlay .occ-date-wrap { display: flex; width: 100%; }
+
+/* ── 양약사전 마크다운 스타일 ── */
+.drug-wiki-content {
+  font-size: 1rem;
+  line-height: 1.85;
+  color: #374151;
+  word-break: keep-all;
+}
+
+.drug-wiki-content h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 2rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.drug-wiki-content h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 2rem 0 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.drug-wiki-content h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.drug-wiki-content h4 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #4b5563;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.drug-wiki-content p {
+  margin: 0.75rem 0;
+}
+
+.drug-wiki-content ul,
+.drug-wiki-content ol {
+  margin: 0.75rem 0;
+  padding-left: 1.75rem;
+}
+
+.drug-wiki-content li {
+  margin: 0.35rem 0;
+}
+
+.drug-wiki-content li > ul,
+.drug-wiki-content li > ol {
+  margin: 0.25rem 0;
+}
+
+.drug-wiki-content strong {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.drug-wiki-content em {
+  color: #6b7280;
+}
+
+/* 테이블 */
+.drug-wiki-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.925rem;
+}
+
+.drug-wiki-content th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #374151;
+  text-align: left;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid #e5e7eb;
+}
+
+.drug-wiki-content td {
+  padding: 0.55rem 0.85rem;
+  border: 1px solid #e5e7eb;
+  vertical-align: top;
+}
+
+.drug-wiki-content tr:hover td {
+  background: #f9fafb;
+}
+
+/* 인용구 (옵시디언 callout 포함) */
+.drug-wiki-content blockquote {
+  margin: 1rem 0;
+  padding: 0.75rem 1.25rem;
+  border-left: 4px solid #60a5fa;
+  background: #eff6ff;
+  color: #374151;
+  border-radius: 0 0.375rem 0.375rem 0;
+}
+
+.drug-wiki-content blockquote p {
+  margin: 0.25rem 0;
+}
+
+/* 코드 */
+.drug-wiki-content code {
+  background: #f3f4f6;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  font-size: 0.9em;
+  color: #dc2626;
+}
+
+.drug-wiki-content pre {
+  background: #1f2937;
+  color: #e5e7eb;
+  padding: 1rem 1.25rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 1rem 0;
+  line-height: 1.6;
+}
+
+.drug-wiki-content pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-size: 0.875rem;
+}
+
+/* 구분선 */
+.drug-wiki-content hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 1.5rem 0;
+}
+
+/* 링크 */
+.drug-wiki-content a {
+  color: #2563eb;
+  text-decoration: underline;
+  text-decoration-color: #93c5fd;
+  text-underline-offset: 2px;
+}
+
+.drug-wiki-content a:hover {
+  color: #1d4ed8;
+  text-decoration-color: #2563eb;
+}

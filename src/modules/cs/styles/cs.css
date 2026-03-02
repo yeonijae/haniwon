@@ -4450,10 +4450,10 @@
   gap: 8px;
 }
 
-.doctor-select-btn {
+.acting-assign-modal .doctor-select-btn {
   padding: 12px 16px;
   background: #f3f4f6;
-  border: 2px solid transparent;
+  border: 2px solid #d1d5db;
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
@@ -4462,11 +4462,11 @@
   transition: all 0.2s;
 }
 
-.doctor-select-btn:hover {
+.acting-assign-modal .doctor-select-btn:hover {
   background: #e5e7eb;
 }
 
-.doctor-select-btn.active {
+.acting-assign-modal .doctor-select-btn.active {
   background: #dbeafe;
   border-color: #3b82f6;
   color: #1e40af;

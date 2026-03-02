@@ -1,8 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { query, queryOne, execute, insert, escapeString, toSqlValue, getCurrentTimestamp, getCurrentDate } from '@shared/lib/postgres';
 import type { InitialChart } from '../types';
 import PrescriptionInput, { PrescriptionData } from './PrescriptionInput';
+import PrescriptionIssuedList from './PrescriptionIssuedList';
+import DosageList from './DosageList';
+import InitialChartView from './InitialChartView';
+import { useFontScale } from '@shared/hooks/useFontScale';
 
 interface ProgressEntry {
   id: number;
@@ -26,10 +30,15 @@ interface Props {
     age?: number | null;
   };
   onClose: () => void;
+  embedded?: boolean;
+  autoOpenPrescription?: boolean;
+  autoOpenDosage?: boolean;
+  onOpenDosageCreator?: (state: any) => void;
 }
 
-const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientInfo, onClose }) => {
+const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientInfo, onClose, embedded = false, autoOpenPrescription = false, autoOpenDosage = false, onOpenDosageCreator }) => {
   const navigate = useNavigate();
+  const { scale } = useFontScale('doctor');
   const [initialChart, setInitialChart] = useState<InitialChart | null>(null);
   const [initialChartPrescriptionIssued, setInitialChartPrescriptionIssued] = useState(false); // 초진차트 처방 발급 여부
   const [progressEntries, setProgressEntries] = useState<ProgressEntry[]>([]);
@@ -44,7 +53,40 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
   const [editingProgressId, setEditingProgressId] = useState<number | null>(null); // 수정 중인 경과 ID
   const [showDiagnosisModal, setShowDiagnosisModal] = useState(false); // 진단 모아보기 모달
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false); // 처방 모아보기 모달
+  const [isExpanded, setIsExpanded] = useState(false); // 크게보기 모드
+  const [splitPercent, setSplitPercent] = useState(50); // 좌우 분할 비율
+  const [isDragging, setIsDragging] = useState(false);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+
+  // 드래그로 좌우 분할 비율 조절
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      const percent = ((e.clientX - rect.left) / rect.width) * 100;
+      setSplitPercent(Math.min(80, Math.max(20, percent)));
+    };
+    const handleMouseUp = () => setIsDragging(false);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
   const [showProgressModal, setShowProgressModal] = useState(false); // 경과 모아보기 모달
+  const [showPrescriptionIssuedModal, setShowPrescriptionIssuedModal] = useState(false); // 처방전 발급 이력
+  const [showDosageModal, setShowDosageModal] = useState(false); // 복용법 이력
+  const [showDosageCreator, setShowDosageCreator] = useState(false); // 복용법 작성 모달
+  const [dosageCreatorState, setDosageCreatorState] = useState<any>(null);
+  const [issuedPrescriptions, setIssuedPrescriptions] = useState<any[]>([]); // 발급된 처방전 목록
+  const [dosageInstructions, setDosageInstructions] = useState<any[]>([]); // 복용법 목록
   const [showPrescriptionInputModal, setShowPrescriptionInputModal] = useState(false); // 처방입력기 모달
   const [prescriptionFormula, setPrescriptionFormula] = useState(''); // 처방공식
   const [prescriptionSourceType, setPrescriptionSourceType] = useState<'initial_chart' | 'progress_note'>('initial_chart');
@@ -53,6 +95,86 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
   useEffect(() => {
     loadData();
   }, [recordId]);
+
+  // autoOpenPrescription: 데이터 로드 후 처방 모달 자동 오픈
+  const [autoOpenDone, setAutoOpenDone] = useState(false);
+  useEffect(() => {
+    if (autoOpenPrescription && !autoOpenDone && initialChart) {
+      // 차트의 [처방] 섹션에서 처방공식 추출 후 처방입력기 오픈
+      handleIssuePrescriptionInitial();
+      setAutoOpenDone(true);
+    }
+  }, [autoOpenPrescription, autoOpenDone, initialChart]);
+
+  // autoOpenDosage: 데이터 로드 후 복용법 작성 모달 자동 오픈
+  const [autoOpenDosageDone, setAutoOpenDosageDone] = useState(false);
+  useEffect(() => {
+    if (autoOpenDosage && !autoOpenDosageDone && initialChart) {
+      // 최신 처방전 조회 후 복용법 작성 모달 오픈
+      (async () => {
+        try {
+          const rxList = await query<any>(
+            `SELECT id, formula, patient_name, patient_age, patient_gender
+             FROM prescriptions
+             WHERE source_type = 'initial_chart' AND source_id = ${initialChart.id}
+             ORDER BY created_at DESC LIMIT 1`
+          );
+          if (rxList && rxList.length > 0) {
+            const rx = rxList[0];
+            let chiefComplaint = '';
+            const match = (initialChart.notes || '').match(/\[주소증\]\s*([\s\S]*?)(?=\n\[|$)/);
+            if (match) chiefComplaint = match[1].trim();
+
+            const state = {
+              prescriptionId: rx.id,
+              patientName: rx.patient_name || patientName,
+              patientAge: rx.patient_age || patientInfo?.age,
+              patientGender: rx.patient_gender || patientInfo?.gender,
+              formula: rx.formula,
+              chiefComplaint,
+            };
+            if (onOpenDosageCreator) {
+              onOpenDosageCreator(state);
+            }
+          } else {
+            alert('처방전을 먼저 발급해주세요.');
+          }
+        } catch (err) {
+          console.error('복용법 모달 오픈 실패:', err);
+        }
+      })();
+      setAutoOpenDosageDone(true);
+    }
+  }, [autoOpenDosage, autoOpenDosageDone, initialChart]);
+
+  // ESC키: 가장 위에 있는 모달만 닫기
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+
+      // 우선순위: 가장 위에 있는 모달부터 닫기
+      if (showDosageCreator) {
+        setShowDosageCreator(false);
+      } else if (showPrescriptionInputModal) {
+        setShowPrescriptionInputModal(false);
+      } else if (showPrescriptionIssuedModal) {
+        setShowPrescriptionIssuedModal(false);
+      } else if (showDosageModal) {
+        setShowDosageModal(false);
+      } else if (showProgressModal) {
+        setShowProgressModal(false);
+      } else if (showDiagnosisModal) {
+        setShowDiagnosisModal(false);
+      } else if (showPrescriptionModal) {
+        setShowPrescriptionModal(false);
+      } else {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showDosageCreator, showPrescriptionInputModal, showPrescriptionIssuedModal, showDosageModal, showProgressModal, showDiagnosisModal, showPrescriptionModal]);
 
   // 자동 저장 (5초 디바운스)
   useEffect(() => {
@@ -97,7 +219,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
         prescription_issued: boolean;
         prescription_issued_at: string;
         created_at: string;
-      }>(`SELECT * FROM progress_notes WHERE patient_id = ${chartData.patient_id} ORDER BY note_date DESC`);
+      }>(`SELECT * FROM progress_notes WHERE patient_id = ${chartData.patient_id} AND treatment_plan_id = ${chartData.treatment_plan_id} ORDER BY note_date DESC`);
 
       // 데이터 변환
       const entries: ProgressEntry[] = (progressData || []).map(note => ({
@@ -217,11 +339,12 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
 
         console.log('경과 자동저장 완료 (업데이트)');
       } else {
-        // 새 경과 생성
-        const newId = await insert(`
-          INSERT INTO progress_notes (patient_id, note_date, objective, assessment, plan, notes, created_at, updated_at)
+        // 새 경과 생성 (insert()가 0을 반환하므로 execute+query 패턴 사용)
+        await execute(`
+          INSERT INTO progress_notes (patient_id, treatment_plan_id, note_date, objective, assessment, plan, notes, created_at, updated_at)
           VALUES (
             ${initialChart.patient_id},
+            ${initialChart.treatment_plan_id || 'null'},
             ${escapeString(noteDate)},
             ${toSqlValue(parsed.treatment)},
             ${toSqlValue(parsed.diagnosis)},
@@ -232,9 +355,13 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
           )
         `);
 
-        if (newId) {
-          setLastSavedId(newId);
-          console.log('경과 자동저장 완료 (신규)');
+        // 방금 생성된 ID 조회
+        const newest = await queryOne<{ id: number }>(
+          `SELECT id FROM progress_notes WHERE patient_id = ${initialChart.patient_id} ORDER BY id DESC LIMIT 1`
+        );
+        if (newest) {
+          setLastSavedId(newest.id);
+          console.log('경과 자동저장 완료 (신규), id:', newest.id);
         }
       }
 
@@ -245,8 +372,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
         setAutoSaveStatus('idle');
       }, 2000);
 
-      // 경과 목록 새로고침
-      await loadData();
+      // 자동저장 시에는 리프레시하지 않음 (UI 깜빡임 방지)
     } catch (error) {
       console.error('자동저장 오류:', error);
       setAutoSaveStatus('idle');
@@ -273,9 +399,10 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
       const noteDate = new Date(progressDate).toISOString();
 
       await insert(`
-        INSERT INTO progress_notes (patient_id, note_date, objective, assessment, plan, notes, created_at, updated_at)
+        INSERT INTO progress_notes (patient_id, treatment_plan_id, note_date, objective, assessment, plan, notes, created_at, updated_at)
         VALUES (
           ${initialChart.patient_id},
+          ${initialChart.treatment_plan_id || 'null'},
           ${escapeString(noteDate)},
           ${toSqlValue(parsed.treatment)},
           ${toSqlValue(parsed.diagnosis)},
@@ -322,10 +449,11 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     }
   };
 
+  const [showChartEditor, setShowChartEditor] = useState(false);
+
   const handleEditChart = () => {
     if (initialChart) {
-      setEditedNotes(initialChart.notes || '');
-      setIsEditingChart(true);
+      setShowChartEditor(true);
     }
   };
 
@@ -535,8 +663,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
       alert('처방전이 발급되었습니다');
       setShowPrescriptionInputModal(false);
       setPrescriptionSourceId(null);
-      onClose(); // 진료기록 상세 모달 닫기
-      navigate('/doctor/prescriptions'); // 처방관리로 이동
+      await loadData(); // 목록 새로고침
     } catch (error: any) {
       console.error('처방전 발급 실패:', error);
       alert('처방전 발급에 실패했습니다: ' + error.message);
@@ -923,12 +1050,12 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
   }
 
   return (
-    <div className="fixed inset-0 bg-white flex flex-col overflow-hidden" style={{ left: '220px', top: '56px', zIndex: 60 }}>
+    <div className={(embedded && !isExpanded) ? "relative bg-white flex flex-col overflow-hidden h-full" : "fixed inset-0 bg-white flex flex-col overflow-hidden"} style={(embedded && !isExpanded) ? { zoom: scale } : { top: '56px', left: '220px', zIndex: 90, zoom: scale }}>
       <div className="bg-white w-full h-full flex flex-col">
         {/* 헤더 */}
-        <div className="bg-gray-700 p-3 flex justify-between items-center text-white border-b-2 border-gray-800">
+        <div className="bg-white p-3 flex justify-between items-center text-gray-800 border-b border-gray-200">
           <div className="flex items-center gap-2">
-            <i className="fas fa-file-medical text-lg"></i>
+            <i className="fas fa-file-medical text-lg text-clinic-primary"></i>
             <h2 className="text-lg font-bold">
               진료기록 상세 - {patientName}
               {patientInfo?.chartNumber && `(${patientInfo.chartNumber})`}
@@ -939,31 +1066,39 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
           <div className="flex gap-2">
             <button
               onClick={() => setShowProgressModal(true)}
-              className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 rounded transition-colors font-medium text-sm"
+              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors font-medium text-sm"
             >
-              <i className="fas fa-notes-medical mr-1"></i>경과 모아보기
+              <i className="fas fa-notes-medical mr-1"></i>경과
             </button>
             <button
               onClick={() => setShowDiagnosisModal(true)}
-              className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 rounded transition-colors font-medium text-sm"
+              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors font-medium text-sm"
             >
-              <i className="fas fa-stethoscope mr-1"></i>진단 모아보기
+              <i className="fas fa-stethoscope mr-1"></i>진단
             </button>
             <button
               onClick={() => setShowPrescriptionModal(true)}
-              className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 rounded transition-colors font-medium text-sm"
+              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors font-medium text-sm"
             >
-              <i className="fas fa-prescription-bottle mr-1"></i>처방 모아보기
+              <i className="fas fa-prescription-bottle mr-1"></i>처방
             </button>
             <button
               onClick={handleDelete}
-              className="px-3 py-1.5 bg-red-700 hover:bg-red-600 rounded transition-colors font-medium text-sm"
+              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded transition-colors font-medium text-sm"
             >
               <i className="fas fa-trash mr-1"></i>삭제
             </button>
+            {embedded && (
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors font-medium text-sm"
+              >
+                <i className={`fas fa-${isExpanded ? 'compress' : 'expand'} mr-1`}></i>{isExpanded ? '축소' : '크게'}
+              </button>
+            )}
             <button
               onClick={onClose}
-              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 rounded transition-colors font-medium text-sm"
+              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded transition-colors font-medium text-sm"
             >
               <i className="fas fa-times mr-1"></i>닫기
             </button>
@@ -971,10 +1106,10 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
         </div>
 
         {/* 본문 (좌우 분할) */}
-        <div className="flex-1 flex overflow-hidden">
+        <div ref={splitContainerRef} className={`flex-1 flex overflow-hidden ${isDragging ? 'select-none' : ''}`}>
           {/* 왼쪽: 초진차트 (독립 스크롤) */}
-          <div className="w-1/2 border-r border-gray-200 overflow-y-auto p-6">
-            <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2">
+          <div className="overflow-y-auto p-6" style={{ width: `${splitPercent}%`, flexShrink: 0 }}>
+            <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold text-clinic-text-primary flex items-center">
                 <i className="fas fa-file-alt text-clinic-primary mr-2"></i>
                 초진차트
@@ -1020,7 +1155,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
                     <div key={sectionIndex} className="bg-white border border-gray-300 rounded overflow-hidden shadow-sm">
                       <div className="bg-gray-100 px-4 py-2 border-b border-gray-300">
                         <div className="flex items-center justify-between">
-                          <h4 className="font-semibold text-gray-800 text-base flex items-center">
+                          <h4 className="font-semibold text-gray-800 flex items-center" style={{ fontSize: '1.15rem' }}>
                             <i className="fas fa-chevron-right text-xs mr-2"></i>
                             {section.title}
                           </h4>
@@ -1051,7 +1186,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
 
                       {section.directContent && (
                         <div className="px-4 py-3 bg-gray-50">
-                          <p className="text-clinic-text-primary whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '0.95rem' }}>
+                          <p className="text-clinic-text-primary whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '1.1375rem' }}>
                             {section.directContent}
                           </p>
                         </div>
@@ -1061,10 +1196,10 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
                         <div className="p-4 space-y-3">
                           {section.subsections.map((subsection, subIndex) => (
                             <div key={subIndex} className="border-l-3 border-gray-400 pl-4 py-2 bg-gray-50">
-                              <h5 className="font-semibold text-gray-700 mb-2 text-sm">
+                              <h5 className="font-semibold text-gray-700 mb-2" style={{ fontSize: '1.0875rem' }}>
                                 • {subsection.title}
                               </h5>
-                              <div className="text-clinic-text-primary whitespace-pre-wrap ml-3" style={{ lineHeight: '1.7', fontSize: '0.9rem' }}>
+                              <div className="text-clinic-text-primary whitespace-pre-wrap ml-3" style={{ lineHeight: '1.7', fontSize: '1.0875rem' }}>
                                 {subsection.content}
                               </div>
                             </div>
@@ -1095,8 +1230,17 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
           </div>
 
           {/* 오른쪽: 경과 목록 */}
-          <div className="w-1/2 overflow-y-auto p-6">
-            <div className="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2">
+          {/* 드래그 구분선 */}
+          <div
+            onMouseDown={handleMouseDown}
+            className="flex-shrink-0 w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors relative group"
+          >
+            <div className="absolute inset-y-0 -left-1 -right-1" />
+          </div>
+
+          {/* 오른쪽: 진료 경과 */}
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold text-clinic-text-primary flex items-center">
                 <i className="fas fa-list-ul text-clinic-primary mr-2"></i>
                 진료 경과
@@ -1129,11 +1273,66 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
 
             {/* 경과 추가 폼 */}
             {showAddForm && (
-              <div className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-4">
-                <div className="flex justify-between items-center mb-3">
-                  <h4 className="font-semibold text-gray-800">
-                    {editingProgressId ? '경과 수정' : '새 경과 추가'}
-                  </h4>
+              <div className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-4 flex flex-col" style={{ minHeight: '60vh' }}>
+                <div className="flex justify-between items-center mb-2">
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="date"
+                      value={progressDate}
+                      onChange={(e) => setProgressDate(e.target.value)}
+                      className="border-2 border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-400 focus:ring-opacity-20 transition-colors"
+                      required
+                    />
+                    <button
+                      onClick={() => {
+                        const template = `[주요 경과]\n\n[복진]\n> 복피 :\n> 복외측 :\n> 복직근 :\n> 심하부 :\n> 임맥선 :\n> 하복부 :\n> 흉협부 :\n> 심흉부 :\n\n[설진]\n\n[맥진]\n- 촌구맥 :\n- 인영맥 :\n\n[혈색]\n- 하안검 :\n- 손톱 :\n- 입술 :\n\n[티칭]\n\n[처방]\n`;
+                        if (!progressText.trim() || confirm('기존 내용을 템플릿으로 대체하시겠습니까?')) {
+                          setProgressText(template);
+                        }
+                      }}
+                      className="px-2 py-1.5 text-sm bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors font-medium whitespace-nowrap min-w-[70px] text-center"
+                    >
+                      <i className="fas fa-user mr-1"></i>내원
+                    </button>
+                    <button
+                      onClick={() => {
+                        const template = `[주요 경과]\n\n[처방]\n`;
+                        if (!progressText.trim() || confirm('기존 내용을 템플릿으로 대체하시겠습니까?')) {
+                          setProgressText(template);
+                        }
+                      }}
+                      className="px-2 py-1.5 text-sm bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors font-medium whitespace-nowrap min-w-[70px] text-center"
+                    >
+                      <i className="fas fa-phone mr-1"></i>전화
+                    </button>
+                    <button
+                      onClick={editingProgressId ? handleUpdateProgress : handleAddProgress}
+                      className="px-2 py-1.5 bg-clinic-accent text-white rounded-lg hover:bg-green-700 transition-colors font-semibold text-sm whitespace-nowrap"
+                    >
+                      <i className="fas fa-save mr-1"></i>{editingProgressId ? '수정' : '저장'}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (lastSavedId && !editingProgressId) {
+                          if (confirm('자동저장된 항목이 삭제됩니다. 취소할까요?')) {
+                            await execute(`DELETE FROM progress_notes WHERE id = ${lastSavedId}`);
+                            await loadData();
+                          } else {
+                            return; // 팝업에서 취소 → 입력 상태 유지
+                          }
+                        }
+                        setShowAddForm(false);
+                        setProgressText('');
+                        setProgressDate('');
+                        setEditingProgressId(null);
+                        setLastSavedId(null);
+                        setAutoSaveStatus('idle');
+                      }}
+                      className="px-2 py-1.5 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm whitespace-nowrap"
+                    >
+                      <i className="fas fa-times mr-1"></i>취소
+                    </button>
+                  </div>
                   {/* 자동저장 상태 */}
                   {autoSaveStatus === 'saving' && (
                     <span className="text-xs text-gray-600 flex items-center">
@@ -1148,63 +1347,15 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
                     </span>
                   )}
                 </div>
-                <div className="space-y-3">
-                  {/* 경과 날짜 입력 */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-800 mb-1">
-                      <i className="fas fa-calendar-alt mr-1 text-gray-600"></i>
-                      경과 날짜
-                    </label>
-                    <input
-                      type="date"
-                      value={progressDate}
-                      onChange={(e) => setProgressDate(e.target.value)}
-                      className="border-2 border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-400 focus:ring-opacity-20 transition-colors"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-800 mb-1">
-                      경과 내용
-                    </label>
-                    <div className="bg-white border border-gray-300 rounded p-2 mb-2 text-xs text-gray-700">
-                      <i className="fas fa-info-circle mr-1"></i>
-                      <strong>작성 방법:</strong> [경과], [복진], [설진], [맥진], [혈색], [처방] 구분자를 사용하세요
-                      <span className="ml-2 text-gray-600">
-                        <i className="fas fa-save mr-1"></i>
-                        입력 후 5초마다 자동저장됩니다
-                      </span>
-                    </div>
+                <div className="flex-1 flex flex-col">
+                  <div className="flex-1 flex flex-col">
                     <textarea
                       value={progressText}
                       onChange={(e) => setProgressText(e.target.value)}
-                      className="w-full border border-gray-300 rounded p-3 text-sm font-mono focus:outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-400 focus:ring-opacity-20"
-                      rows={12}
-                      placeholder="[경과]&#10;환자 상태 호전됨&#10;두통 증상 감소&#10;&#10;[복진]&#10;복부 압통 감소&#10;&#10;[설진]&#10;설태 박백&#10;&#10;[맥진]&#10;맥 평이&#10;&#10;[혈색]&#10;안색 양호&#10;&#10;[처방]&#10;소시호탕 7일분"
-                      style={{ lineHeight: '1.6' }}
+                      className="w-full flex-1 border border-gray-300 rounded-lg p-4 focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary resize-none"
+                      placeholder="[경과], [복진], [설진], [맥진], [혈색], [처방] 구분자 사용 (자동저장)&#10;&#10;[경과]&#10;환자 상태 호전됨&#10;두통 증상 감소&#10;&#10;[복진]&#10;복부 압통 감소&#10;&#10;[설진]&#10;설태 박백&#10;&#10;[맥진]&#10;맥 평이&#10;&#10;[혈색]&#10;안색 양호&#10;&#10;[처방]&#10;소시호탕 7일분"
+                      style={{ fontSize: '1.025em', lineHeight: '1.6', fontFamily: 'inherit' }}
                     />
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={editingProgressId ? handleUpdateProgress : handleAddProgress}
-                      className="px-4 py-2 bg-clinic-accent text-white rounded hover:bg-green-700 transition-colors font-semibold"
-                    >
-                      <i className="fas fa-save mr-1"></i>
-                      {editingProgressId ? '수정 완료' : '저장'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowAddForm(false);
-                        setProgressText('');
-                        setProgressDate('');
-                        setEditingProgressId(null);
-                        setLastSavedId(null);
-                        setAutoSaveStatus('idle');
-                      }}
-                      className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
-                    >
-                      <i className="fas fa-times mr-1"></i>취소
-                    </button>
                   </div>
                 </div>
               </div>
@@ -1218,12 +1369,14 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
                   <p className="text-clinic-text-secondary">등록된 경과가 없습니다</p>
                 </div>
               ) : (
-                progressEntries.map((entry) => (
+                progressEntries.map((entry, idx) => (
                   <div key={entry.id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
                     <div className="flex items-center justify-between mb-3 pb-2 border-b">
                       <span className="text-sm font-semibold text-clinic-primary">
                         <i className="fas fa-calendar-alt mr-2"></i>
-                        {new Date(entry.entry_date).toLocaleDateString('ko-KR')}
+                        {entry.diagnosis?.includes('날짜미상')
+                          ? `${entry.diagnosis.replace(' (날짜미상)', '')} (날짜미상)`
+                          : new Date(entry.entry_date).toLocaleDateString('ko-KR')}
                       </span>
                       <div className="flex gap-2">
                         <button
@@ -1248,7 +1401,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
                         const prescriptionFromNotes = extractSectionFromNotes(entry.notes, '처방');
                         return (
                           <div>
-                            <pre className="text-gray-600 whitespace-pre-wrap font-sans" style={{ lineHeight: '1.7', fontSize: '0.9rem' }}>{entry.notes}</pre>
+                            <pre className="text-gray-600 whitespace-pre-wrap font-sans" style={{ lineHeight: '1.7', fontSize: '1.0875rem' }}>{entry.notes}</pre>
                             {/* 처방 섹션이 있으면 처방전 발급 버튼 표시 */}
                             {prescriptionFromNotes && (
                               <div className="mt-3 pt-3 border-t border-gray-200">
@@ -1287,14 +1440,14 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
                         {entry.treatment && (
                           <div className="mb-3">
                             <h5 className="font-semibold text-gray-700 mb-2" style={{ fontSize: '0.95rem' }}>진료</h5>
-                            <p className="text-gray-600 whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '0.9rem' }}>{entry.treatment}</p>
+                            <p className="text-gray-600 whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '1.0875rem' }}>{entry.treatment}</p>
                           </div>
                         )}
 
                         {entry.diagnosis && (
                           <div className="mb-3">
                             <h5 className="font-semibold text-gray-700 mb-2" style={{ fontSize: '0.95rem' }}>진단</h5>
-                            <p className="text-gray-600 whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '0.9rem' }}>{entry.diagnosis}</p>
+                            <p className="text-gray-600 whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '1.0875rem' }}>{entry.diagnosis}</p>
                           </div>
                         )}
 
@@ -1323,7 +1476,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
                                 </button>
                               )}
                             </div>
-                            <p className="text-gray-600 whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '0.9rem' }}>{entry.prescription}</p>
+                            <p className="text-gray-600 whitespace-pre-wrap" style={{ lineHeight: '1.7', fontSize: '1.0875rem' }}>{entry.prescription}</p>
                           </div>
                         )}
                       </>
@@ -1387,7 +1540,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
                             {dates.map((date, index) => (
                               <td key={index} className="border-2 border-gray-300 p-3 bg-white align-top">
                                 {data[date]?.[type as keyof typeof data[typeof date]] ? (
-                                  <div className="text-clinic-text-primary whitespace-pre-wrap" style={{ lineHeight: '1.6', fontSize: '0.9rem' }}>
+                                  <div className="text-clinic-text-primary whitespace-pre-wrap" style={{ lineHeight: '1.6', fontSize: '1.0875rem' }}>
                                     {data[date][type as keyof typeof data[typeof date]]}
                                   </div>
                                 ) : (
@@ -1491,43 +1644,96 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
         </div>
       )}
 
-      {/* 처방입력기 모달 */}
+      {/* 처방입력기 (진료상세보기 영역 내) */}
       {showPrescriptionInputModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[70] p-4">
-          <div className="bg-clinic-background rounded-lg w-full max-w-7xl h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-            {/* 헤더 */}
-            <div className="bg-gray-700 p-4 flex justify-between items-center text-white border-b-2 border-gray-800 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <i className="fas fa-prescription text-xl"></i>
-                <div>
-                  <h3 className="text-xl font-bold">처방전 발급</h3>
-                  <p className="text-sm text-gray-300">
-                    {patientName}
-                    {patientInfo?.chartNumber && ` (${patientInfo.chartNumber})`}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowPrescriptionInputModal(false)}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition-colors"
-              >
-                <i className="fas fa-times mr-2"></i>닫기
-              </button>
-            </div>
-
+        <div className="absolute inset-0 bg-white z-[30] flex flex-col overflow-hidden">
             {/* 처방입력기 */}
-            <div className="flex-1 overflow-hidden p-4">
+            <div className="flex-1 overflow-hidden p-4 bg-white">
               <PrescriptionInput
                 onSave={handleSavePrescription}
                 patientName={patientName}
+                patientChartNumber={patientInfo?.chartNumber}
+                patientAge={patientInfo?.age}
+                onClose={() => setShowPrescriptionInputModal(false)}
                 showPatientInput={false}
                 showNotesInput={true}
                 showSaveButton={true}
-                saveButtonText="처방전 발급"
+                saveButtonText="저장"
                 initialFormula={prescriptionFormula}
               />
             </div>
+        </div>
+      )}
+
+      {/* 처방전 발급 이력 모달 */}
+      {showPrescriptionIssuedModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] p-4">
+          <div className="bg-white rounded-lg w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl">
+            <div className="flex justify-between items-center px-6 py-4 border-b">
+              <h3 className="text-lg font-bold text-gray-800">
+                <i className="fas fa-file-prescription mr-2 text-blue-600"></i>처방전 발급 이력
+              </h3>
+              <button onClick={() => setShowPrescriptionIssuedModal(false)} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                <i className="fas fa-times text-xl"></i>
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6">
+              <PrescriptionIssuedList
+                patientId={initialChart?.patient_id || 0}
+                treatmentPlanId={initialChart?.treatment_plan_id}
+                onIssuePrescription={(sourceType, sourceId, formula) => {
+                  setPrescriptionSourceType(sourceType);
+                  setPrescriptionSourceId(sourceId);
+                  setPrescriptionFormula(formula);
+                  setShowPrescriptionIssuedModal(false);
+                  setShowPrescriptionInputModal(true);
+                }}
+                onRefresh={loadData}
+              />
+            </div>
           </div>
+        </div>
+      )}
+
+      {/* 복용법 이력 모달 */}
+      {showDosageModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] p-4">
+          <div className="bg-white rounded-lg w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl">
+            <div className="flex justify-between items-center px-6 py-4 border-b">
+              <h3 className="text-lg font-bold text-gray-800">
+                <i className="fas fa-pills mr-2 text-green-600"></i>복용법 이력
+              </h3>
+              <button onClick={() => setShowDosageModal(false)} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                <i className="fas fa-times text-xl"></i>
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6">
+              <DosageList
+                patientId={initialChart?.patient_id || 0}
+                treatmentPlanId={initialChart?.treatment_plan_id}
+                patientName={patientName}
+                patientInfo={patientInfo}
+                onRefresh={loadData}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 초진차트 수정 (인라인 오버레이) */}
+      {showChartEditor && initialChart && (
+        <div className="absolute inset-0 z-50 bg-white">
+          <InitialChartView
+            patientId={initialChart.patient_id}
+            patientName={patientName}
+            chartId={initialChart.id}
+            startEditing={true}
+            embedded={true}
+            onClose={() => {
+              setShowChartEditor(false);
+              loadData();
+            }}
+          />
         </div>
       )}
     </div>

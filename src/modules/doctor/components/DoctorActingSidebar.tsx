@@ -19,7 +19,9 @@ export default function DoctorActingSidebar({ doctorId, onPatientClick }: Props)
 
   const load = useCallback(async () => {
     try {
+      console.log('[ActingSidebar] 조회 doctorId:', doctorId);
       const data = await fetchDoctorQueue(doctorId);
+      console.log('[ActingSidebar] 결과:', data.length, '건', data.map(d => `${d.patientName}(doctor_id=${(d as any).doctorId})`));
       setQueue(data);
     } catch (e) {
       console.error('액팅 대기열 로드 오류:', e);

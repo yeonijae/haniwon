@@ -8,6 +8,8 @@ interface MedicalTranscript {
   id: number;
   acting_id: number;
   patient_id: number;
+  patient_name: string | null;
+  chart_number: string | null;
   doctor_id: number;
   doctor_name: string;
   acting_type: string;
@@ -328,7 +330,7 @@ const MedicalTranscripts: React.FC = () => {
     const patient = patientMap.get(selectedTranscript.patient_id);
     let content = `녹취록 내보내기\n`;
     content += `================\n\n`;
-    content += `환자: ${patient?.patient_name || `#${selectedTranscript.patient_id}`}\n`;
+    content += `환자: ${selectedTranscript.patient_name || patient?.patient_name || `#${selectedTranscript.patient_id}`}\n`;
     content += `의료진: ${selectedTranscript.doctor_name}\n`;
     content += `진료유형: ${selectedTranscript.acting_type}\n`;
     content += `녹음시간: ${formatDuration(selectedTranscript.duration_sec)}\n`;
@@ -706,10 +708,10 @@ const MedicalTranscripts: React.FC = () => {
                     <div className="flex items-start justify-between mb-2">
                       <div>
                         <span className="font-medium text-gray-800">
-                          {patient?.patient_name || `환자 #${t.patient_id}`}
+                          {t.patient_name || patient?.patient_name || `환자 #${t.patient_id}`}
                         </span>
-                        {patient?.chart_no && (
-                          <span className="ml-2 text-xs text-gray-400">#{patient.chart_no}</span>
+                        {(t.chart_number || patient?.chart_no) && (
+                          <span className="ml-2 text-xs text-gray-400">#{t.chart_number || patient?.chart_no}</span>
                         )}
                       </div>
                       <div className="flex items-center gap-1">
@@ -743,9 +745,15 @@ const MedicalTranscripts: React.FC = () => {
                       )}
                     </div>
                     {/* 녹취 미리보기 */}
-                    <p className="mt-2 text-xs text-gray-400 line-clamp-2">
-                      {t.transcript?.substring(0, 100)}...
-                    </p>
+                    {!t.transcript && t.audio_path ? (
+                      <p className="mt-2 text-xs text-amber-600">
+                        <i className="fas fa-exclamation-triangle mr-1"></i>녹취 실패 — 재시도 가능
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-xs text-gray-400 line-clamp-2">
+                        {t.transcript?.substring(0, 100)}...
+                      </p>
+                    )}
                   </div>
                 );
               })}
@@ -928,9 +936,27 @@ const MedicalTranscripts: React.FC = () => {
                       })}
                     </div>
                   ) : (
-                    <p className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm">
-                      {selectedTranscript.transcript || '녹취 내용이 없습니다.'}
-                    </p>
+                    <>
+                      <p className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm">
+                        {selectedTranscript.transcript || '녹취 내용이 없습니다.'}
+                      </p>
+                      {!selectedTranscript.transcript && selectedTranscript.audio_path && (
+                        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-center">
+                          <p className="text-sm text-amber-700 mb-2">
+                            <i className="fas fa-exclamation-triangle mr-1"></i>
+                            음성 파일은 있지만 텍스트 변환에 실패했습니다
+                          </p>
+                          <button
+                            onClick={() => handleServerRetry(selectedTranscript.id)}
+                            disabled={isReprocessing}
+                            className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 text-sm"
+                          >
+                            <i className={`fas fa-redo mr-1 ${isReprocessing ? 'animate-spin' : ''}`}></i>
+                            {isReprocessing ? '변환 중...' : '🎙️ 녹취 재시도'}
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
                 {selectedTranscript.audio_path && (

@@ -223,19 +223,24 @@ export async function uploadAudioFile(
     formData.append('file', audioBlob, fileName);
     formData.append('folder', `recordings/patient_${patientId}`);
 
-    const response = await fetch(`${API_URL}/api/files/upload`, {
+    const response = await fetch(`${API_URL}/api/files/upload-recording`, {
       method: 'POST',
       body: formData,
     });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`업로드 실패 (${response.status}): ${errText}`);
+    }
 
     const data = await response.json();
     if (data.path) {
       return data.path;
     }
-    return null;
+    throw new Error('서버 응답에 path가 없습니다');
   } catch (error) {
     console.error('오디오 업로드 실패:', error);
-    return null;
+    throw error;  // 에러를 상위로 전파 (null 반환 대신)
   }
 }
 

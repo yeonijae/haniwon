@@ -20,11 +20,14 @@ import PrescriptionDefinitions from './pages/PrescriptionDefinitions';
 import DosageInstructionManagement from './pages/DosageInstructionManagement';
 import DosageInstructionCreator from './pages/DosageInstructionCreator';
 import MedicalTranscripts from './pages/MedicalTranscripts';
+import { RecordingProvider } from './contexts/RecordingContext';
+import ConsultationFeedback from './pages/ConsultationFeedback';
 import Settings from './pages/Settings';
 import TreatmentHistory from './pages/TreatmentHistory';
 import TreatmentReflection from './pages/TreatmentReflection';
 import Metrics from './pages/Metrics';
 import MyMetrics from './pages/MyMetrics';
+import DrugWiki from './pages/DrugWiki';
 
 interface ChartAppProps {
   user: PortalUser;
@@ -40,8 +43,10 @@ interface TabItem {
 const TAB_ITEMS: TabItem[] = [
   { id: 'treatment-records', path: '/treatment-records', label: '진료내역', icon: '📋' },
   { id: 'transcripts', path: '/transcripts', label: '녹취', icon: '🎙️' },
+  { id: 'feedback', path: '/feedback', label: '피드백', icon: '💬' },
   { id: 'patients', path: '/patients', label: '차트', icon: '📁' },
   { id: 'prescriptions', path: '/prescriptions', label: '처방전', icon: '💊' },
+  { id: 'drug-wiki', path: '/drug-wiki', label: '양약사전', icon: '📖' },
   { id: 'dosage', path: '/dosage-instructions', label: '복용법', icon: '📝' },
   { id: 'reflection', path: '/reflection', label: '진료회고', icon: '🔍' },
   { id: 'metrics', path: '/metrics', label: '지표관리', icon: '📊' },
@@ -75,9 +80,9 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
   // 원장 목록 로드
   const FALLBACK_DOCTORS: StaffMember[] = [
     { id: 1, name: '강희종', role: 'doctor', status: 'active' } as unknown as StaffMember,
-    { id: 2, name: '김대현', role: 'doctor', status: 'active' } as unknown as StaffMember,
-    { id: 3, name: '임세열', role: 'doctor', status: 'active' } as unknown as StaffMember,
-    { id: 4, name: '전인재', role: 'doctor', status: 'active' } as unknown as StaffMember,
+    { id: 3, name: '김대현', role: 'doctor', status: 'active' } as unknown as StaffMember,
+    { id: 13, name: '임세열', role: 'doctor', status: 'active' } as unknown as StaffMember,
+    { id: 15, name: '전인재', role: 'doctor', status: 'active' } as unknown as StaffMember,
   ];
 
   useEffect(() => {
@@ -122,6 +127,7 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
   };
 
   return (
+    <RecordingProvider>
     <div className="doctor-app">
       {/* 헤더 */}
       <header className="doctor-header">
@@ -211,7 +217,7 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
         {/* 왼쪽: 액팅 대기열 */}
         {selectedDoctor && (
           <DoctorActingSidebar
-            doctorId={selectedDoctor.id}
+            doctorId={selectedDoctor.mssql_doctor_id ? parseInt(selectedDoctor.mssql_doctor_id.replace('doctor_', ''), 10) : selectedDoctor.id}
             onPatientClick={(pid, chart) => setChartModal({ patientId: pid, chartNumber: chart })}
           />
         )}
@@ -223,15 +229,17 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
               <Route path="/" element={<Dashboard />} />
               <Route path="/treatment-records" element={<TreatmentHistory />} />
               <Route path="/transcripts" element={<MedicalTranscripts />} />
+              <Route path="/feedback" element={<ConsultationFeedback />} />
               <Route path="/patients" element={<PatientList onPatientClick={(pid, chart) => setChartModal({ patientId: pid, chartNumber: chart })} />} />
               <Route path="/patients/:id" element={<PatientDetail />} />
               <Route path="/my-metrics" element={<MyMetrics />} />
               <Route path="/metrics" element={<Metrics />} />
               <Route path="/prescriptions" element={<PrescriptionManagement />} />
+              <Route path="/drug-wiki" element={<DrugWiki />} />
               <Route path="/prescription-definitions" element={<PrescriptionDefinitions />} />
               <Route path="/dosage-instructions" element={<DosageInstructionManagement />} />
               <Route path="/dosage-instructions/create" element={<DosageInstructionCreator />} />
-              <Route path="/reflection" element={<TreatmentReflection />} />
+              <Route path="/reflection" element={<TreatmentReflection doctorName={selectedDoctor?.name} />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </div>
@@ -249,7 +257,7 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
         {/* 오른쪽: 업무 대기 (처방전, 복용법) */}
         {selectedDoctor && (
           <DoctorTaskSidebar
-            doctorId={selectedDoctor.id}
+            doctorId={selectedDoctor.mssql_doctor_id ? parseInt(selectedDoctor.mssql_doctor_id.replace('doctor_', ''), 10) : selectedDoctor.id}
             doctorName={selectedDoctor.name}
             onPatientClick={(pid, chart) => setChartModal({ patientId: pid, chartNumber: chart })}
           />
@@ -258,6 +266,7 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
 
       {/* 빈 공간 - 드롭다운은 useEffect로 닫힘 */}
     </div>
+    </RecordingProvider>
   );
 };
 

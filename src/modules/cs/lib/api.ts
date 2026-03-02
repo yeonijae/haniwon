@@ -1094,6 +1094,8 @@ export async function updateHerbalPackage(id: number, updates: Partial<HerbalPac
   if (updates.delivery_method !== undefined) parts.push(`delivery_method = ${toSqlValue(updates.delivery_method)}`);
   if (updates.delivery_status !== undefined) parts.push(`delivery_status = ${toSqlValue(updates.delivery_status)}`);
   if (updates.mssql_detail_id !== undefined) parts.push(`mssql_detail_id = ${updates.mssql_detail_id === null ? 'NULL' : updates.mssql_detail_id}`);
+  if (updates.start_date !== undefined) parts.push(`start_date = ${toSqlValue(updates.start_date)}`);
+  if (updates.expire_date !== undefined) parts.push(`expire_date = ${toSqlValue(updates.expire_date)}`);
   parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
 
   await execute(`UPDATE cs_herbal_packages SET ${parts.join(', ')} WHERE id = ${id}`);
@@ -3470,6 +3472,7 @@ export async function updateNokryongPackage(id: number, updates: Partial<Nokryon
   if (updates.expire_date !== undefined) parts.push(`expire_date = ${toSqlValue(updates.expire_date)}`);
   if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
   if (updates.status !== undefined) parts.push(`status = ${escapeString(updates.status)}`);
+  if (updates.start_date !== undefined) parts.push(`start_date = ${toSqlValue(updates.start_date)}`);
   parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
 
   await execute(`UPDATE cs_nokryong_packages SET ${parts.join(', ')} WHERE id = ${id}`);

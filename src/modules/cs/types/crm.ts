@@ -153,6 +153,7 @@ export interface PackageStatusSummary {
     totalCount: number;
     usedCount: number;
     remainingCount: number;
+    startDate?: string;
     createdAt?: string;
   } | null;
 
@@ -163,6 +164,7 @@ export interface PackageStatusSummary {
     packageName?: string;
     totalMonths: number;
     remainingMonths: number;
+    startDate?: string;
     createdAt?: string;
   } | null;
 

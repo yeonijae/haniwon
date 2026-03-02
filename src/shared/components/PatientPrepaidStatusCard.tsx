@@ -108,103 +108,43 @@ const PatientPrepaidStatusCard: React.FC<PatientPrepaidStatusCardProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow">
-      {/* 헤더 */}
-      <div className="px-4 py-3 border-b flex items-center justify-between">
-        <h4 className="font-medium text-gray-900">
-          <i className="fas fa-pills text-purple-500 mr-2"></i>
-          선결제 현황
-        </h4>
-        <span className="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-700 rounded">
-          {herbalPackages.length + nokryongPackages.length}건
-        </span>
-      </div>
-
-      <div className="p-4 space-y-4">
-        {/* 한약 선결제 */}
-        {hasHerbal && (
-          <div>
-            <div className="text-xs text-gray-500 mb-2 flex items-center">
-              <i className="fas fa-mortar-pestle mr-1"></i>
-              한약 선결제
+    <div className="space-y-2">
+      {herbalPackages.map((pkg) => (
+        <div key={`h-${pkg.id}`} className="bg-green-50 rounded-lg p-3 border border-green-200">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-green-800">
+              한약 {pkg.used_count}/{pkg.total_count}회
+            </span>
+            <span className="text-xs text-green-600 bg-green-100 px-1.5 py-0.5 rounded">
+              {PACKAGE_TYPE_LABELS[pkg.package_type] || pkg.package_type}
+            </span>
+          </div>
+          <div className="mt-1.5 bg-green-200 rounded-full h-1.5 overflow-hidden">
+            <div
+              className={`h-full ${getProgressColor(pkg.used_count, pkg.total_count)} transition-all`}
+              style={{ width: `${getProgress(pkg.used_count, pkg.total_count)}%` }}
+            />
+          </div>
+        </div>
+      ))}
+      {nokryongPackages.map((pkg) => {
+        const usedMonths = pkg.total_months - pkg.remaining_months;
+        return (
+          <div key={`n-${pkg.id}`} className="bg-amber-50 rounded-lg p-3 border border-amber-200">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-amber-800">
+                녹용{pkg.nokryong_type ? `(${pkg.nokryong_type})` : ''} {usedMonths}/{pkg.total_months}회
+              </span>
             </div>
-            <div className="space-y-2">
-              {herbalPackages.map((pkg) => (
-                <div key={pkg.id} className="bg-green-50 rounded-lg p-3 border border-green-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-green-800 text-sm">
-                      {pkg.herbal_name || '약명 미지정'}
-                    </span>
-                    <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded">
-                      {PACKAGE_TYPE_LABELS[pkg.package_type] || pkg.package_type}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-green-200 rounded-full h-2 overflow-hidden">
-                      <div
-                        className={`h-full ${getProgressColor(pkg.used_count, pkg.total_count)} transition-all`}
-                        style={{ width: `${getProgress(pkg.used_count, pkg.total_count)}%` }}
-                      />
-                    </div>
-                    <span className="text-sm font-medium text-green-700 whitespace-nowrap">
-                      {pkg.used_count}/{pkg.total_count}회
-                    </span>
-                  </div>
-                  <div className="mt-2 text-xs text-green-600 flex justify-between">
-                    <span>잔여 {pkg.remaining_count || (pkg.total_count - pkg.used_count)}회</span>
-                    {pkg.next_delivery_date && (
-                      <span>다음배송: {pkg.next_delivery_date}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div className="mt-1.5 bg-amber-200 rounded-full h-1.5 overflow-hidden">
+              <div
+                className={`h-full ${getProgressColor(usedMonths, pkg.total_months)} transition-all`}
+                style={{ width: `${getProgress(usedMonths, pkg.total_months)}%` }}
+              />
             </div>
           </div>
-        )}
-
-        {/* 녹용 선결제 */}
-        {hasNokryong && (
-          <div>
-            <div className="text-xs text-gray-500 mb-2 flex items-center">
-              <i className="fas fa-deer mr-1"></i>
-              녹용 선결제
-            </div>
-            <div className="space-y-2">
-              {nokryongPackages.map((pkg) => {
-                const usedMonths = pkg.total_months - pkg.remaining_months;
-                return (
-                  <div key={pkg.id} className="bg-amber-50 rounded-lg p-3 border border-amber-200">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium text-amber-800 text-sm">
-                        {pkg.package_name || pkg.nokryong_type || '녹용'}
-                      </span>
-                      {pkg.nokryong_type && (
-                        <span className="text-xs text-amber-600 bg-amber-100 px-2 py-0.5 rounded">
-                          {pkg.nokryong_type}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 bg-amber-200 rounded-full h-2 overflow-hidden">
-                        <div
-                          className={`h-full ${getProgressColor(usedMonths, pkg.total_months)} transition-all`}
-                          style={{ width: `${getProgress(usedMonths, pkg.total_months)}%` }}
-                        />
-                      </div>
-                      <span className="text-sm font-medium text-amber-700 whitespace-nowrap">
-                        {usedMonths}/{pkg.total_months}회
-                      </span>
-                    </div>
-                    <div className="mt-2 text-xs text-amber-600">
-                      잔여 {pkg.remaining_months}회분
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
+        );
+      })}
     </div>
   );
 };

@@ -218,11 +218,11 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
   }
   if (packages?.herbal) {
     allItems.push({
-      type: 'pkg', kind: 'herbal', date: packages.herbal.createdAt || '',
+      type: 'pkg', kind: 'herbal', date: packages.herbal.startDate || packages.herbal.createdAt || '',
       node: (
         <div className="herbal-draft-history-row">
           <span className="herbal-draft-category-badge herbal">탕약</span>
-          <span className="herbal-draft-history-date">{formatDate(packages.herbal.createdAt)}</span>
+          <span className="herbal-draft-history-date">{formatDate(packages.herbal.startDate || packages.herbal.createdAt)}</span>
           <span className="pkg-info">한약 {packages.herbal.totalCount}회 선결제</span>
           {pkgActions('herbal')}
         </div>
@@ -231,11 +231,11 @@ const PatientPackageSection: React.FC<PatientPackageSectionProps> = ({
   }
   if (packages?.nokryong) {
     allItems.push({
-      type: 'pkg', kind: 'nokryong', date: packages.nokryong.createdAt || '',
+      type: 'pkg', kind: 'nokryong', date: packages.nokryong.startDate || packages.nokryong.createdAt || '',
       node: (
         <div className="herbal-draft-history-row">
           <span className="herbal-draft-category-badge nokryong-badge">녹용</span>
-          <span className="herbal-draft-history-date">{formatDate(packages.nokryong.createdAt)}</span>
+          <span className="herbal-draft-history-date">{formatDate(packages.nokryong.startDate || packages.nokryong.createdAt)}</span>
           <span className="pkg-info">{packages.nokryong.packageName || '녹용'} 선결제</span>
           {pkgActions('nokryong')}
         </div>

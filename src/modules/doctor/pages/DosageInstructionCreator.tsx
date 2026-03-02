@@ -154,15 +154,22 @@ const DEFAULT_STORAGE_TEMPLATE = {
   unit: '일'
 };
 
-const DosageInstructionCreator: React.FC = () => {
+interface DosageCreatorProps {
+  embedded?: boolean;
+  embeddedState?: PrescriptionState;
+  onClose?: () => void;
+  onSaved?: () => void;
+}
+
+const DosageInstructionCreator: React.FC<DosageCreatorProps> = ({ embedded = false, embeddedState, onClose, onSaved }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const patientId = searchParams.get('patientId');
-  const chiefComplaint = searchParams.get('chiefComplaint') || '';
+  const chiefComplaint = searchParams.get('chiefComplaint') || embeddedState?.chiefComplaint || '';
 
-  // 처방전 관리에서 전달받은 데이터
-  const prescriptionState = (location.state as PrescriptionState) || {};
+  // 처방전 관리에서 전달받은 데이터 (props 우선)
+  const prescriptionState = embeddedState || (location.state as PrescriptionState) || {};
 
   // 상태
   const [patient, setPatient] = useState<Patient | null>(null);
@@ -188,7 +195,7 @@ const DosageInstructionCreator: React.FC = () => {
   const [aiRecommendations, setAiRecommendations] = useState<AIRecommendation[]>([]);
   const [aiGenerated, setAiGenerated] = useState<AIGeneratedDescription | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiInputComplaint, setAiInputComplaint] = useState('');
+  const [aiInputComplaint, setAiInputComplaint] = useState(prescriptionState.chiefComplaint || chiefComplaint || '');
 
   // AI 생성 저장 모달 상태
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -626,6 +633,8 @@ const DosageInstructionCreator: React.FC = () => {
       `);
 
       alert('복용법이 저장되었습니다.');
+      if (onSaved) onSaved();
+      if (embedded && onClose) onClose();
     } catch (error) {
       console.error('복용법 저장 실패:', error);
       alert('복용법 저장에 실패했습니다.');
@@ -922,7 +931,7 @@ const DosageInstructionCreator: React.FC = () => {
         <div className="flex items-center justify-between mb-4 flex-shrink-0">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => navigate(prescriptionId ? '/doctor/prescriptions' : '/doctor/dosage-instructions')}
+              onClick={() => embedded && onClose ? onClose() : navigate(prescriptionId ? '/doctor/prescriptions' : '/doctor/dosage-instructions')}
               className="text-clinic-text-secondary hover:text-clinic-primary transition-colors"
             >
               <i className="fas fa-arrow-left text-xl"></i>

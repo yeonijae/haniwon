@@ -77,6 +77,7 @@ export interface InitialChart {
   notes?: string;
   prescription_issued?: boolean;
   prescription_issued_at?: string;
+  treatment_plan_id?: number;
   created_at: string;
   updated_at: string;
 }
@@ -268,6 +269,9 @@ export interface TreatmentPlan {
   estimated_total_cost?: number;  // 총 예상 비용
   selected_programs: SelectedProgram[]; // 선택된 치료 프로그램들
   notes?: string;                 // 비고
+  consultation_type?: string;     // 상담유형
+  treatment_purpose?: string;     // 치료목적
+  nokryong_recommendation?: string; // 녹용권유
   status: 'active' | 'completed' | 'cancelled';
   created_at: string;
   updated_at: string;
