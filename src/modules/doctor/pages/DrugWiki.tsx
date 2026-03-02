@@ -31,6 +31,8 @@ export default function DrugWiki() {
   const [showNewModal, setShowNewModal] = useState(false);
   const [newDrugName, setNewDrugName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [aiStatus, setAiStatus] = useState<string | null>(null); // 'queued' | 'pending' | 'completed' | null
+  const [requestingAi, setRequestingAi] = useState(false);
 
   // Debounce search
   useEffect(() => {
@@ -65,14 +67,40 @@ export default function DrugWiki() {
 
   const selectDrug = useCallback(async (name: string) => {
     setLoading(true);
+    setAiStatus(null);
     try {
-      const res = await fetch(`${POSTGRES_API}/api/wiki/drugs/${encodeURIComponent(name)}`);
-      const data = await res.json();
+      const [docRes, statusRes] = await Promise.all([
+        fetch(`${POSTGRES_API}/api/wiki/drugs/${encodeURIComponent(name)}`),
+        fetch(`${POSTGRES_API}/api/wiki/drugs/ai-status/${encodeURIComponent(name)}`),
+      ]);
+      const data = await docRes.json();
       setSelected(data);
+      const status = await statusRes.json();
+      setAiStatus(status.status || null); // 'pending' | 'completed' | 'not_requested' | 'not_found'
     } catch (e) {
       console.error('문서 로드 실패:', e);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const requestAiResearch = useCallback(async (name: string) => {
+    setRequestingAi(true);
+    try {
+      const res = await fetch(`${POSTGRES_API}/api/wiki/drugs/ai-research`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (data.status === 'queued' || data.status === 'already_queued') {
+        setAiStatus('pending');
+      }
+    } catch (e) {
+      console.error('AI 정리 요청 실패:', e);
+      alert('AI 정리 요청 중 오류가 발생했습니다.');
+    } finally {
+      setRequestingAi(false);
     }
   }, []);
 
@@ -88,6 +116,7 @@ export default function DrugWiki() {
       const data = await res.json();
       if (data.success) {
         setShowNewModal(false);
+        const drugName = data.name;
         setNewDrugName('');
         setDebouncedQuery('');
         setSearchQuery('');
@@ -95,7 +124,9 @@ export default function DrugWiki() {
         const listRes = await fetch(`${POSTGRES_API}/api/wiki/drugs`);
         setDrugs(await listRes.json());
         // Select the new drug
-        selectDrug(data.name);
+        selectDrug(drugName);
+        // Auto-request AI research
+        requestAiResearch(drugName);
       } else {
         alert(data.error || '등록 실패');
       }
@@ -206,6 +237,34 @@ export default function DrugWiki() {
                 {new Date(selected.modified).toLocaleDateString('ko-KR')}
               </span>
             </div>
+            {/* AI 상태 배너 */}
+            {aiStatus === 'pending' && (
+              <div className="flex items-center gap-2 px-4 py-3 mb-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+                <span className="animate-spin">⏳</span>
+                <span>AI 정리 요청됨 — 잠시 후 자동으로 내용이 채워집니다.</span>
+                <button
+                  onClick={() => selectDrug(selected.name)}
+                  className="ml-auto text-xs px-2 py-1 bg-amber-100 hover:bg-amber-200 rounded"
+                >
+                  새로고침
+                </button>
+              </div>
+            )}
+            {aiStatus === 'not_requested' && (
+              <div className="flex items-center gap-2 px-4 py-3 mb-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                <span>📝</span>
+                <span>빈 템플릿 상태입니다. AI가 자동으로 내용을 채울 수 있습니다.</span>
+                <button
+                  onClick={() => requestAiResearch(selected.name)}
+                  disabled={requestingAi}
+                  className="ml-auto text-xs px-3 py-1 bg-blue-600 text-white hover:bg-blue-700 rounded disabled:opacity-50"
+                >
+                  {requestingAi ? '요청 중...' : '🤖 AI 정리 요청'}
+                </button>
+              </div>
+            )}
+            {aiStatus === 'completed' && selected.content.length > 500 && null}
+
             <article className="drug-wiki-content">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {selected.content}
