@@ -11,6 +11,7 @@ interface Props {
   noteDate?: string;
   onClose: () => void;
   onSaved?: () => void;
+  onViewDrug?: (drugName: string) => void;
 }
 
 interface ExistingMedication {
@@ -29,6 +30,7 @@ const PatientMedicationInput: React.FC<Props> = ({
   noteDate,
   onClose,
   onSaved,
+  onViewDrug,
 }) => {
   const [medicationText, setMedicationText] = useState('');
   const [date, setDate] = useState(noteDate || new Date().toISOString().split('T')[0]);
@@ -246,9 +248,14 @@ const PatientMedicationInput: React.FC<Props> = ({
                   {med.drug_names?.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1.5">
                       {med.drug_names.map((name, i) => (
-                        <span key={i} className="px-1.5 py-0.5 bg-teal-100 text-teal-700 rounded text-xs">
+                        <button
+                          key={i}
+                          onClick={() => onViewDrug?.(name)}
+                          className="px-1.5 py-0.5 bg-teal-100 text-teal-700 rounded text-xs hover:bg-teal-200 transition-colors"
+                          title="양약사전에서 보기"
+                        >
                           {name}
-                        </span>
+                        </button>
                       ))}
                     </div>
                   )}

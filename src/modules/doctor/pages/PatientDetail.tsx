@@ -908,6 +908,11 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
           chartId={medicationInput.chartId}
           onClose={() => setMedicationInput(null)}
           onSaved={() => setRefreshKey(prev => prev + 1)}
+          onViewDrug={(drugName) => {
+            setMedicationInput(null);
+            setDrugWikiSearch(drugName);
+            setShowDrugWiki(true);
+          }}
         />
       )}
 
