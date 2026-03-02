@@ -75,14 +75,18 @@ export default function DrugWiki({ embedded, initialSearch, onClose }: DrugWikiP
     setLoading(true);
     setAiStatus(null);
     try {
-      const [docRes, statusRes] = await Promise.all([
-        fetch(`${POSTGRES_API}/api/wiki/drugs/${encodeURIComponent(name)}`),
-        fetch(`${POSTGRES_API}/api/wiki/drugs/ai-status/${encodeURIComponent(name)}`),
-      ]);
+      const docRes = await fetch(`${POSTGRES_API}/api/wiki/drugs/${encodeURIComponent(name)}`);
       const data = await docRes.json();
       setSelected(data);
-      const status = await statusRes.json();
-      setAiStatus(status.status || null); // 'pending' | 'completed' | 'not_requested' | 'not_found'
+
+      // AI 상태는 별도 (실패해도 문서는 표시)
+      try {
+        const statusRes = await fetch(`${POSTGRES_API}/api/wiki/drugs/ai-status/${encodeURIComponent(name)}`);
+        const status = await statusRes.json();
+        setAiStatus(status.status || null);
+      } catch {
+        setAiStatus(null);
+      }
     } catch (e) {
       console.error('문서 로드 실패:', e);
     } finally {
