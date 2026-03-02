@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { query, execute } from '@shared/lib/postgres';
 
 interface LinkedChart {
@@ -75,6 +75,17 @@ const MedicalRecordList: React.FC<Props> = ({
   const [plans, setPlans] = useState<TreatmentPlanWithRecords[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedPlans, setExpandedPlans] = useState<Set<number>>(new Set());
+  const [moreMenuPlanId, setMoreMenuPlanId] = useState<number | null>(null);
+
+  // 외부 클릭 시 더보기 메뉴 닫기
+  useEffect(() => {
+    if (!moreMenuPlanId) return;
+    const handler = (e: MouseEvent) => {
+      setMoreMenuPlanId(null);
+    };
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [moreMenuPlanId]);
   const [dateFilter, setDateFilter] = useState<DateFilterType>('all');
   const [customDate, setCustomDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
@@ -470,47 +481,67 @@ const MedicalRecordList: React.FC<Props> = ({
                   <i className="fas fa-clipboard-list"></i>
                   진료계획
                 </button>
-                {plan.status !== 'completed' ? (
+                {/* ⋯ 더보기 메뉴 */}
+                <div className="relative">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (confirm('이 진료를 완료 처리하시겠습니까?')) {
-                        execute(`UPDATE treatment_plans SET status = 'completed', updated_at = '${new Date().toISOString()}' WHERE id = ${plan.id}`).then(() => {
-                          loadRecords();
-                        });
-                      }
+                      setMoreMenuPlanId(moreMenuPlanId === plan.id ? null : plan.id);
                     }}
-                    className="px-3 py-1.5 bg-gray-600 text-white text-xs rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-1"
+                    className="px-2 py-1.5 text-gray-500 hover:bg-gray-200 text-xs rounded-lg transition-colors"
+                    title="더보기"
                   >
-                    <i className="fas fa-check-circle"></i>
-                    진료완료
+                    ⋯
                   </button>
-                ) : (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      execute(`UPDATE treatment_plans SET status = 'active', updated_at = '${new Date().toISOString()}' WHERE id = ${plan.id}`).then(() => {
-                        loadRecords();
-                      });
-                    }}
-                    className="px-3 py-1.5 bg-green-100 text-green-700 text-xs rounded-lg hover:bg-green-200 transition-colors flex items-center gap-1"
-                  >
-                    <i className="fas fa-check-circle"></i>
-                    진료완료됨
-                  </button>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (confirm('이 진료계획을 삭제하시겠습니까?')) {
-                      onDeletePlan?.(plan.id);
-                    }
-                  }}
-                  className="px-3 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors flex items-center gap-1"
-                >
-                  <i className="fas fa-trash"></i>
-                  삭제
-                </button>
+                  {moreMenuPlanId === plan.id && (
+                    <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[140px] py-1">
+                      {plan.status !== 'completed' ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMoreMenuPlanId(null);
+                            if (confirm('이 진료를 완료 처리하시겠습니까?')) {
+                              execute(`UPDATE treatment_plans SET status = 'completed', updated_at = '${new Date().toISOString()}' WHERE id = ${plan.id}`).then(() => {
+                                loadRecords();
+                              });
+                            }
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                        >
+                          <i className="fas fa-check-circle text-gray-500"></i>
+                          진료완료
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMoreMenuPlanId(null);
+                            execute(`UPDATE treatment_plans SET status = 'active', updated_at = '${new Date().toISOString()}' WHERE id = ${plan.id}`).then(() => {
+                              loadRecords();
+                            });
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-green-700 hover:bg-green-50 flex items-center gap-2"
+                        >
+                          <i className="fas fa-undo text-green-500"></i>
+                          진료재개
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMoreMenuPlanId(null);
+                          if (confirm('이 진료계획을 삭제하시겠습니까?')) {
+                            onDeletePlan?.(plan.id);
+                          }
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                      >
+                        <i className="fas fa-trash text-red-500"></i>
+                        삭제
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
