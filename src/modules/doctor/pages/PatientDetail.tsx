@@ -21,6 +21,8 @@ import TreatmentRecordList from '@shared/components/TreatmentRecordList';
 import PatientReceiptHistory from '../components/PatientReceiptHistory';
 import DosageInstructionCreator from './DosageInstructionCreator';
 import DrugWiki from './DrugWiki';
+import PatientMedicationHistory from '../components/PatientMedicationHistory';
+import PatientMedicationInput from '../components/PatientMedicationInput';
 
 interface PatientDetailProps {
   patientId?: string;
@@ -49,6 +51,8 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
   const [dosageCreatorState, setDosageCreatorState] = useState<any>(null);
   const [showDrugWiki, setShowDrugWiki] = useState(false);
   const [drugWikiSearch, setDrugWikiSearch] = useState('');
+  const [showMedicationHistory, setShowMedicationHistory] = useState(false);
+  const [medicationInput, setMedicationInput] = useState<{ planId: number; chartId?: number } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0); // 목록 새로고침용
   const [showTreatmentHistory, setShowTreatmentHistory] = useState(false); // 진료내역 모달
   const [autoCreateChecked, setAutoCreateChecked] = useState(false); // autoCreate 체크 완료 여부
@@ -544,12 +548,12 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
               </button>
             )}
 
-            {/* 양약사전 버튼 */}
+            {/* 양약 이력 조회 버튼 */}
             <button
-              onClick={() => { setDrugWikiSearch(''); setShowDrugWiki(true); }}
+              onClick={() => setShowMedicationHistory(true)}
               className="px-3 py-1.5 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-all font-semibold shadow text-sm"
             >
-              📖 양약
+              💊 양약
             </button>
 
             {/* 기존 차트 등록 버튼 */}
@@ -694,9 +698,8 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
                       setSelectedRecordId(sourceId);
                     }
                   }}
-                  onOpenDrugWiki={(searchTerm) => {
-                    setDrugWikiSearch(searchTerm || '');
-                    setShowDrugWiki(true);
+                  onOpenMedicationInput={(planId, chartId) => {
+                    setMedicationInput({ planId, chartId });
                   }}
                 />
               </div>
@@ -872,15 +875,40 @@ const PatientDetail: React.FC<PatientDetailProps> = (props) => {
       )}
       </div>
 
+      {/* 양약 이력 조회 오버레이 */}
+      {showMedicationHistory && (
+        <PatientMedicationHistory
+          patientId={patient.id}
+          patientName={patient.name}
+          onClose={() => setShowMedicationHistory(false)}
+          onViewDrug={(drugName) => {
+            setDrugWikiSearch(drugName);
+            setShowDrugWiki(true);
+          }}
+        />
+      )}
+
       {/* 양약사전 오버레이 */}
       {showDrugWiki && (
-        <div className="absolute inset-0 bg-white z-[35] flex flex-col overflow-hidden">
+        <div className="absolute inset-0 bg-white z-[36] flex flex-col overflow-hidden">
           <DrugWiki
             embedded={true}
             initialSearch={drugWikiSearch}
             onClose={() => setShowDrugWiki(false)}
           />
         </div>
+      )}
+
+      {/* 양약 입력 모달 */}
+      {medicationInput && (
+        <PatientMedicationInput
+          patientId={patient.id}
+          patientName={patient.name}
+          treatmentPlanId={medicationInput.planId}
+          chartId={medicationInput.chartId}
+          onClose={() => setMedicationInput(null)}
+          onSaved={() => setRefreshKey(prev => prev + 1)}
+        />
       )}
 
       {/* 복용법 작성 (전체 영역 오버레이) */}
