@@ -57,13 +57,6 @@ const ExamApp: React.FC<ExamAppProps> = ({ user }) => {
               {user?.role ? ROLE_LABELS[user.role] : '연이재한의원'}
             </span>
           </div>
-          <button
-            className="exam-close-btn"
-            onClick={() => window.close()}
-            title="닫기"
-          >
-            <i className="fas fa-xmark"></i>
-          </button>
         </div>
       </header>
 
