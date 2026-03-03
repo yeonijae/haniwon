@@ -50,6 +50,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   const [examTabLabels, setExamTabLabels] = useState<Record<string, string>>({});
   const [draggingTab, setDraggingTab] = useState<string | null>(null);
   const [newExamName, setNewExamName] = useState('');
+  const [editingCode, setEditingCode] = useState<string | null>(null);
 
   // 빠른 등록 상태
   const [quickFiles, setQuickFiles] = useState<QuickUploadFile[]>([]);
@@ -733,30 +734,48 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={() => handleDropExamTab(code)}
                     onDragEnd={() => setDraggingTab(null)}
-                    className={`flex items-center justify-between border rounded-lg px-3 py-2 cursor-move ${isDragging ? 'border-blue-300 bg-blue-50 opacity-70' : 'border-gray-200 bg-white'}`}
+                    className={`group flex items-center justify-between border rounded-lg px-3 py-2 cursor-move ${isDragging ? 'border-blue-300 bg-blue-50 opacity-70' : 'border-gray-200 bg-white'}`}
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <i className="fas fa-grip-vertical text-gray-400"></i>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs text-gray-400 mb-1">기본: {info?.name || code}</p>
-                        <input
-                          value={examTabLabels[code] ?? ''}
-                          onChange={(e) => setExamTabLabels((prev) => ({ ...prev, [code]: e.target.value }))}
-                          onClick={(e) => e.stopPropagation()}
-                          placeholder="표시 이름 수정"
-                          className="w-full px-2 py-1 border border-gray-200 rounded text-sm"
-                        />
+                        {editingCode === code ? (
+                          <input
+                            autoFocus
+                            value={examTabLabels[code] ?? ''}
+                            onChange={(e) => setExamTabLabels((prev) => ({ ...prev, [code]: e.target.value }))}
+                            onClick={(e) => e.stopPropagation()}
+                            onBlur={() => setEditingCode(null)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === 'Escape') setEditingCode(null);
+                            }}
+                            placeholder="표시 이름 수정"
+                            className="w-full px-2 py-1 border border-gray-200 rounded text-sm"
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-700 truncate">{getExamLabel(code)}</p>
+                        )}
                       </div>
                     </div>
                     <div className="ml-2 flex items-center gap-2">
                       <span className="text-xs text-gray-400">드래그</span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDeleteExamItem(code); }}
-                        className="w-7 h-7 rounded border border-red-200 text-red-500 hover:bg-red-50"
-                        title="항목 삭제"
-                      >
-                        <i className="fas fa-trash text-xs"></i>
-                      </button>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingCode(code); }}
+                          className="w-7 h-7 rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
+                          title="이름 수정"
+                        >
+                          <i className="fas fa-pen text-xs"></i>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteExamItem(code); }}
+                          className="w-7 h-7 rounded border border-red-200 text-red-500 hover:bg-red-50"
+                          title="항목 삭제"
+                        >
+                          <i className="fas fa-trash text-xs"></i>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
