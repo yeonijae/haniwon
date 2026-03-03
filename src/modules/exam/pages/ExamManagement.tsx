@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Patient, ExamDateGroup, ExamResult, ExamType } from '../types';
 import { EXAM_TYPES, getExamTypeInfo, getExamTypeStyles } from '../types';
 import {
   getExamResultsGroupedByDate,
+  createExamResult,
+  addExamAttachment,
 } from '../services/examService';
-import { getThumbnailUrl } from '../lib/fileUpload';
+import { getThumbnailUrl, uploadExamFile, formatFileSize } from '../lib/fileUpload';
 import ExamResultForm from '../components/ExamResultForm';
 import ExamResultDetail from '../components/ExamResultDetail';
 import ExamCompareViewer from '../components/ExamCompareViewer';
@@ -14,6 +16,11 @@ import ExamResultBook from '../components/ExamResultBook';
 interface ExamManagementProps {
   selectedPatientId: number | null;
   selectedPatientName: string;
+}
+
+interface QuickUploadFile {
+  file: File;
+  preview: string;
 }
 
 const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, selectedPatientName }) => {
@@ -34,6 +41,13 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   const [trendExamType, setTrendExamType] = useState<ExamType | null>(null);
   const [showBookGenerator, setShowBookGenerator] = useState(false);
 
+  // 빠른 등록 상태
+  const [quickFiles, setQuickFiles] = useState<QuickUploadFile[]>([]);
+  const [quickDragOver, setQuickDragOver] = useState(false);
+  const [quickViewMode, setQuickViewMode] = useState<'list' | 'card'>('card');
+  const [isQuickSaving, setIsQuickSaving] = useState(false);
+  const quickFileInputRef = useRef<HTMLInputElement>(null);
+
   // 선택된 환자 변경 시 검사결과 로드
   useEffect(() => {
     if (selectedPatientId) {
@@ -45,6 +59,12 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
       loadExamResults(selectedPatientId);
     }
   }, [selectedPatientId, selectedPatientName]);
+
+  useEffect(() => {
+    quickFiles.forEach((qf) => qf.preview && URL.revokeObjectURL(qf.preview));
+    setQuickFiles([]);
+    setQuickViewMode('card');
+  }, [activeExamTab]);
 
   // 검사결과 로드
   const loadExamResults = async (patientId: number) => {
@@ -166,6 +186,102 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
       age--;
     }
     return age;
+  };
+
+  const activeExamType = activeExamTab !== 'all' ? activeExamTab as ExamType : null;
+
+  const addQuickFiles = (fileList: FileList) => {
+    const allowed = ['image/', 'application/pdf'];
+    const incoming = Array.from(fileList)
+      .filter((file) => allowed.some((type) => file.type.startsWith(type)))
+      .map((file) => ({
+        file,
+        preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
+      }));
+
+    if (incoming.length === 0) {
+      alert('이미지(JPG/PNG) 또는 PDF 파일만 등록할 수 있습니다.');
+      return;
+    }
+
+    setQuickFiles((prev) => [...prev, ...incoming]);
+  };
+
+  const removeQuickFile = (index: number) => {
+    setQuickFiles((prev) => {
+      const next = [...prev];
+      if (next[index]?.preview) URL.revokeObjectURL(next[index].preview);
+      next.splice(index, 1);
+      return next;
+    });
+  };
+
+  const toExamDate = (ms: number) => {
+    const d = new Date(ms);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const toTimeLabel = (ms: number) => {
+    const d = new Date(ms);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
+  const handleQuickDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setQuickDragOver(false);
+    if (e.dataTransfer.files.length > 0) addQuickFiles(e.dataTransfer.files);
+  };
+
+  const handleQuickRegister = async () => {
+    if (!selectedPatient || !activeExamType) return;
+    if (quickFiles.length === 0) {
+      alert('등록할 파일을 먼저 추가해주세요.');
+      return;
+    }
+
+    setIsQuickSaving(true);
+    try {
+      const grouped = new Map<string, QuickUploadFile[]>();
+      for (const qf of quickFiles) {
+        const key = `${toExamDate(qf.file.lastModified)} ${toTimeLabel(qf.file.lastModified)}`;
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key)!.push(qf);
+      }
+
+      for (const [key, files] of grouped.entries()) {
+        const [examDate, timeLabel] = key.split(' ');
+        const examId = await createExamResult({
+          patient_id: selectedPatient.id,
+          exam_date: examDate,
+          exam_type: activeExamType,
+          memo: `빠른등록 (${timeLabel})`,
+        });
+
+        for (let i = 0; i < files.length; i++) {
+          const uploaded = await uploadExamFile(files[i].file, selectedPatient.id, activeExamType);
+          await addExamAttachment(examId, {
+            file_name: uploaded.original_name,
+            file_path: uploaded.file_path,
+            file_size: uploaded.file_size,
+            mime_type: uploaded.mime_type,
+            thumbnail_path: uploaded.thumbnail_path,
+            sort_order: i,
+          });
+        }
+      }
+
+      quickFiles.forEach((qf) => qf.preview && URL.revokeObjectURL(qf.preview));
+      setQuickFiles([]);
+      await refreshExamResults();
+    } catch (error) {
+      console.error('빠른등록 실패:', error);
+      alert('빠른등록 중 오류가 발생했습니다.');
+    } finally {
+      setIsQuickSaving(false);
+    }
   };
 
   return (
@@ -298,7 +414,100 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
               })}
             </aside>
 
-            <section className="flex-1 overflow-y-auto p-6">
+            <section className="flex-1 overflow-y-auto p-6 space-y-4">
+              {activeExamType && (
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h3 className="text-base font-semibold text-gray-800">빠른등록</h3>
+                      <p className="text-sm text-gray-500">파일의 날짜/시간(lastModified)으로 자동 등록됩니다.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setQuickViewMode('list')}
+                        className={`px-2 py-1 rounded border text-sm ${quickViewMode === 'list' ? 'bg-gray-100 border-gray-300' : 'border-gray-200 text-gray-500'}`}
+                      >목록</button>
+                      <button
+                        onClick={() => setQuickViewMode('card')}
+                        className={`px-2 py-1 rounded border text-sm ${quickViewMode === 'card' ? 'bg-gray-100 border-gray-300' : 'border-gray-200 text-gray-500'}`}
+                      >카드</button>
+                    </div>
+                  </div>
+
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-5 text-center cursor-pointer transition ${quickDragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400'}`}
+                    onDragOver={(e) => { e.preventDefault(); setQuickDragOver(true); }}
+                    onDragLeave={() => setQuickDragOver(false)}
+                    onDrop={handleQuickDrop}
+                    onClick={() => quickFileInputRef.current?.click()}
+                  >
+                    <input
+                      ref={quickFileInputRef}
+                      type="file"
+                      multiple
+                      accept="image/*,.pdf"
+                      className="hidden"
+                      onChange={(e) => e.target.files && addQuickFiles(e.target.files)}
+                    />
+                    <i className="fas fa-cloud-upload-alt text-2xl text-gray-400 mb-2"></i>
+                    <p className="text-base text-gray-700">파일을 드래그&드롭하거나 클릭해서 추가</p>
+                    <p className="text-sm text-gray-500">JPG/PNG/PDF · 여러 파일 가능</p>
+                  </div>
+
+                  {quickFiles.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {quickViewMode === 'list' ? (
+                        quickFiles.map((qf, idx) => (
+                          <div key={`${qf.file.name}-${idx}`} className="flex items-center gap-3 border border-gray-100 rounded-lg p-2">
+                            {qf.preview ? (
+                              <img src={qf.preview} alt="" className="w-10 h-10 rounded object-cover" />
+                            ) : (
+                              <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center">
+                                <i className="fas fa-file-pdf text-red-500"></i>
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0 text-sm">
+                              <p className="truncate font-medium text-gray-700">{qf.file.name}</p>
+                              <p className="text-gray-500">{toExamDate(qf.file.lastModified)} {toTimeLabel(qf.file.lastModified)} · {formatFileSize(qf.file.size)}</p>
+                            </div>
+                            <button onClick={() => removeQuickFile(idx)} className="text-gray-400 hover:text-red-500">
+                              <i className="fas fa-times"></i>
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          {quickFiles.map((qf, idx) => (
+                            <div key={`${qf.file.name}-${idx}`} className="border border-gray-100 rounded-lg p-2">
+                              <div className="aspect-square rounded bg-gray-100 mb-2 overflow-hidden">
+                                {qf.preview ? (
+                                  <img src={qf.preview} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center"><i className="fas fa-file-pdf text-red-500 text-2xl"></i></div>
+                                )}
+                              </div>
+                              <p className="text-sm font-medium text-gray-700 truncate">{qf.file.name}</p>
+                              <p className="text-xs text-gray-500">{toExamDate(qf.file.lastModified)} {toTimeLabel(qf.file.lastModified)}</p>
+                              <button onClick={() => removeQuickFile(idx)} className="mt-1 text-xs text-gray-500 hover:text-red-500">제거</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex justify-end">
+                        <button
+                          onClick={handleQuickRegister}
+                          disabled={isQuickSaving || quickFiles.length === 0}
+                          className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50 text-sm"
+                        >
+                          {isQuickSaving ? '등록 중...' : `${quickFiles.length}개 파일 빠른등록`}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {isLoading ? (
                 <div className="flex items-center justify-center h-40">
                   <i className="fas fa-spinner fa-spin text-2xl text-blue-600"></i>
