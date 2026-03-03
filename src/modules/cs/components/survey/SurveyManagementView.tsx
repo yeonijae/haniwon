@@ -18,6 +18,7 @@ interface SurveyManagementViewProps { user: PortalUser; }
 
 type ViewMode = 'sessions' | 'templates';
 type StatusFilter = 'all' | 'waiting' | 'completed';
+type DateRangeMode = 'day' | '1w' | '1m' | '3m';
 
 const toDateStr = (d: Date) => d.toISOString().split('T')[0];
 const formatDate = (s: string) => {
@@ -29,6 +30,7 @@ const formatDate = (s: string) => {
 export default function SurveyManagementView({ user }: SurveyManagementViewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('sessions');
   const [selectedDate, setSelectedDate] = useState(toDateStr(new Date()));
+  const [rangeMode, setRangeMode] = useState<DateRangeMode>('day');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [templates, setTemplates] = useState<SurveyTemplate[]>([]);
   const [allTemplates, setAllTemplates] = useState<SurveyTemplate[]>([]);
@@ -50,14 +52,24 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
   // Response preview
   const [previewResponse, setPreviewResponse] = useState<{ session: SurveySession; answers: SurveyAnswer[]; template: SurveyTemplate } | null>(null);
 
+  const getRangeStartDate = useCallback((date: string, mode: DateRangeMode) => {
+    if (mode === 'day') return date;
+    const d = new Date(date + 'T00:00:00');
+    if (mode === '1w') d.setDate(d.getDate() - 6);
+    else if (mode === '1m') d.setMonth(d.getMonth() - 1);
+    else if (mode === '3m') d.setMonth(d.getMonth() - 3);
+    return toDateStr(d);
+  }, []);
+
   // Load sessions (silent=true이면 로딩 표시 없이 백그라운드 갱신)
   const loadSessions = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const sess = await getSessionsByDate(selectedDate, statusFilter);
+      const startDate = getRangeStartDate(selectedDate, rangeMode);
+      const sess = await getSessionsByDate({ startDate, endDate: selectedDate }, statusFilter);
       setSessions(sess);
     } catch (e) { console.error(e); } finally { if (!silent) setLoading(false); }
-  }, [selectedDate, statusFilter]);
+  }, [getRangeStartDate, selectedDate, rangeMode, statusFilter]);
 
   // Load templates
   const loadTemplates = useCallback(async () => {
@@ -220,6 +232,22 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
               <span style={{ fontSize: 14, color: '#374151', fontWeight: 500 }}>{formatDate(selectedDate)}</span>
               <button style={H.navBtn} onClick={() => moveDate(1)}>▶</button>
               {!isToday && <button style={H.todayBtn} onClick={goToday}>오늘</button>}
+              <div style={H.rangeFilterGroup}>
+                {([
+                  ['day', '1일'],
+                  ['1w', '1주일'],
+                  ['1m', '1개월'],
+                  ['3m', '3개월'],
+                ] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setRangeMode(key)}
+                    style={{ ...H.filterBtn, ...(rangeMode === key ? H.filterActive : {}) }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -563,6 +591,7 @@ const H = {
   navBtn: { background: 'none', border: '1px solid #d1d5db', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: 12, color: '#374151' } as React.CSSProperties,
   dateInput: { padding: '3px 8px', borderRadius: 4, border: '1px solid #d1d5db', fontSize: 13 } as React.CSSProperties,
   todayBtn: { padding: '3px 10px', borderRadius: 4, border: 'none', background: '#dbeafe', color: '#1d4ed8', fontSize: 12, cursor: 'pointer', fontWeight: 600 } as React.CSSProperties,
+  rangeFilterGroup: { display: 'flex', gap: 4, marginLeft: 4 } as React.CSSProperties,
   filterBtn: { padding: '4px 12px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', cursor: 'pointer', fontSize: 12, fontWeight: 500 } as React.CSSProperties,
   filterActive: { background: '#4f46e5', color: '#fff', borderColor: '#4f46e5' } as React.CSSProperties,
   modeBtn: { padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 } as React.CSSProperties,

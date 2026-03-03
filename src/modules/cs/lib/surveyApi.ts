@@ -256,12 +256,21 @@ export async function createSession(data: {
   `);
 }
 
-export async function getSessionsByDate(date: string, statusFilter?: string): Promise<SurveySession[]> {
+export async function getSessionsByDate(
+  dateOrRange: string | { startDate: string; endDate?: string },
+  statusFilter?: string,
+): Promise<SurveySession[]> {
   await ensureSurveyTables();
-  let where = `WHERE s.created_at::date = '${date}'`;
+
+  const isRange = typeof dateOrRange !== 'string';
+  const startDate = isRange ? dateOrRange.startDate : dateOrRange;
+  const endDate = isRange ? (dateOrRange.endDate || dateOrRange.startDate) : dateOrRange;
+
+  let where = `WHERE s.created_at::date BETWEEN '${startDate}' AND '${endDate}'`;
   if (statusFilter && statusFilter !== 'all') {
     where += ` AND s.status = ${escapeString(statusFilter)}`;
   }
+
   return query<SurveySession>(`
     SELECT s.*, t.name as template_name
     FROM survey_sessions s
