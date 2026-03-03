@@ -23,7 +23,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   // 검사결과 관련 상태
   const [examGroups, setExamGroups] = useState<ExamDateGroup[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [filterType, setFilterType] = useState<string>('all');
+  const [activeExamTab, setActiveExamTab] = useState<string>('all');
 
   // 모달 상태
   const [showAddForm, setShowAddForm] = useState(false);
@@ -69,9 +69,9 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   // 필터링된 검사결과
   const filteredGroups = examGroups.map(group => ({
     ...group,
-    exams: filterType === 'all'
+    exams: activeExamTab === 'all'
       ? group.exams
-      : group.exams.filter(e => e.exam_type === filterType)
+      : group.exams.filter(e => e.exam_type === activeExamTab)
   })).filter(group => group.exams.length > 0);
 
   // 특정 유형의 모든 검사 (비교용)
@@ -124,6 +124,14 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     }
     return exams;
   }, [examGroups]);
+
+  const examTypeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const exam of allExams) {
+      counts[exam.exam_type] = (counts[exam.exam_type] || 0) + 1;
+    }
+    return counts;
+  }, [allExams]);
 
   // 검사 기간 계산
   const examDateRange = useMemo(() => {
@@ -182,19 +190,9 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {/* 필터 */}
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="all">전체</option>
-                {EXAM_TYPES.map((type) => (
-                  <option key={type.code} value={type.code}>
-                    {type.name}
-                  </option>
-                ))}
-              </select>
+              <div className="text-sm text-gray-500 mr-1">
+                {activeExamTab === 'all' ? '전체 검사 보기' : (getExamTypeInfo(activeExamTab as ExamType)?.name || activeExamTab)}
+              </div>
 
               {/* 추이 분석 버튼 */}
               {trendableTypes.length > 0 && (
@@ -274,82 +272,104 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
             </div>
           </div>
 
-          {/* 검사결과 목록 */}
-          <div className="flex-1 overflow-y-auto p-6">
-            {isLoading ? (
-              <div className="flex items-center justify-center h-40">
-                <i className="fas fa-spinner fa-spin text-2xl text-purple-600"></i>
-              </div>
-            ) : filteredGroups.length === 0 ? (
-              <div className="text-center py-20">
-                <i className="fas fa-folder-open text-6xl text-gray-300 mb-4"></i>
-                <p className="text-gray-500">등록된 검사결과가 없습니다</p>
-                <button
-                  onClick={() => setShowAddForm(true)}
-                  className="mt-4 text-purple-600 hover:underline"
-                >
-                  첫 검사 등록하기
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {filteredGroups.map((group) => (
-                  <div key={group.date} className="bg-white rounded-lg shadow-sm border border-gray-200">
-                    {/* 날짜 헤더 */}
-                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 rounded-t-lg">
-                      <h3 className="font-medium text-gray-700">
-                        <i className="fas fa-calendar-day mr-2 text-gray-400"></i>
-                        {group.date}
-                      </h3>
-                    </div>
+          {/* 검사결과 차트 */}
+          <div className="flex-1 min-h-0 flex overflow-hidden">
+            <aside className="w-64 border-r border-gray-200 bg-gray-50 p-3 overflow-y-auto">
+              <button
+                onClick={() => setActiveExamTab('all')}
+                className={`w-full text-left px-3 py-2 rounded-lg mb-2 text-sm flex items-center justify-between ${activeExamTab === 'all' ? 'bg-purple-100 text-purple-700 font-semibold' : 'hover:bg-gray-100 text-gray-700'}`}
+              >
+                <span>전체</span>
+                <span className="text-xs">{allExams.length}</span>
+              </button>
+              {EXAM_TYPES.map((type) => {
+                const count = examTypeCounts[type.code] || 0;
+                const isActive = activeExamTab === type.code;
+                return (
+                  <button
+                    key={type.code}
+                    onClick={() => setActiveExamTab(type.code)}
+                    className={`w-full text-left px-3 py-2 rounded-lg mb-2 text-sm flex items-center justify-between ${isActive ? 'bg-purple-100 text-purple-700 font-semibold' : 'hover:bg-gray-100 text-gray-700'}`}
+                  >
+                    <span className="truncate pr-2">{type.name}</span>
+                    <span className="text-xs">{count}</span>
+                  </button>
+                );
+              })}
+            </aside>
 
-                    {/* 검사 목록 */}
-                    <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                      {group.exams.map((exam) => {
-                        const typeInfo = getExamTypeInfo(exam.exam_type);
-                        const typeStyles = getExamTypeStyles(exam.exam_type);
-                        const thumbnail = exam.attachments?.[0]?.thumbnail_path;
+            <section className="flex-1 overflow-y-auto p-6">
+              {isLoading ? (
+                <div className="flex items-center justify-center h-40">
+                  <i className="fas fa-spinner fa-spin text-2xl text-purple-600"></i>
+                </div>
+              ) : filteredGroups.length === 0 ? (
+                <div className="text-center py-20">
+                  <i className="fas fa-folder-open text-6xl text-gray-300 mb-4"></i>
+                  <p className="text-gray-500">선택한 검사 유형의 결과가 없습니다</p>
+                  <button
+                    onClick={() => setShowAddForm(true)}
+                    className="mt-4 text-purple-600 hover:underline"
+                  >
+                    검사 등록하기
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {filteredGroups.map((group) => (
+                    <div key={group.date} className="bg-white rounded-lg shadow-sm border border-gray-200">
+                      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 rounded-t-lg">
+                        <h3 className="font-medium text-gray-700">
+                          <i className="fas fa-calendar-day mr-2 text-gray-400"></i>
+                          {group.date}
+                        </h3>
+                      </div>
 
-                        return (
-                          <button
-                            key={exam.id}
-                            onClick={() => setSelectedExam(exam)}
-                            className="group bg-gray-50 rounded-lg p-3 hover:bg-purple-50 hover:ring-2 hover:ring-purple-200 transition-all text-left"
-                          >
-                            {/* 썸네일 */}
-                            <div className="aspect-square bg-gray-200 rounded-lg mb-2 overflow-hidden">
-                              {thumbnail ? (
-                                <img
-                                  src={getThumbnailUrl(thumbnail)}
-                                  alt={typeInfo?.name || exam.exam_type}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <i className={`fas ${typeInfo?.icon || 'fa-file'} text-3xl text-gray-400`}></i>
-                                </div>
-                              )}
-                            </div>
+                      <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        {group.exams.map((exam) => {
+                          const typeInfo = getExamTypeInfo(exam.exam_type);
+                          const typeStyles = getExamTypeStyles(exam.exam_type);
+                          const thumbnail = exam.attachments?.[0]?.thumbnail_path;
 
-                            {/* 정보 */}
-                            <div className="flex items-center gap-2">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${typeStyles.badge}`}>
-                                {typeInfo?.name || exam.exam_type}
-                              </span>
-                              {(exam.attachments?.length || 0) > 1 && (
-                                <span className="text-xs text-gray-500">
-                                  +{(exam.attachments?.length || 1) - 1}
+                          return (
+                            <button
+                              key={exam.id}
+                              onClick={() => setSelectedExam(exam)}
+                              className="group bg-gray-50 rounded-lg p-3 hover:bg-purple-50 hover:ring-2 hover:ring-purple-200 transition-all text-left"
+                            >
+                              <div className="aspect-square bg-gray-200 rounded-lg mb-2 overflow-hidden">
+                                {thumbnail ? (
+                                  <img
+                                    src={getThumbnailUrl(thumbnail)}
+                                    alt={typeInfo?.name || exam.exam_type}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <i className={`fas ${typeInfo?.icon || 'fa-file'} text-3xl text-gray-400`}></i>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${typeStyles.badge}`}>
+                                  {typeInfo?.name || exam.exam_type}
                                 </span>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
+                                {(exam.attachments?.length || 0) > 1 && (
+                                  <span className="text-xs text-gray-500">
+                                    +{(exam.attachments?.length || 1) - 1}
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
         </>
       ) : (
