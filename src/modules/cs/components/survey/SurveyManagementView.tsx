@@ -429,13 +429,6 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
                   </button>
                 ))}
               </div>
-            </>
-          )}
-        </div>
-
-        <div className="occ-header-actions">
-          {viewMode === 'sessions' && (
-            <>
               <div className="occ-filter-group occ-filter-patient">
                 {(['all', 'waiting', 'completed'] as StatusFilter[]).map(s => (
                   <button key={s} onClick={() => setStatusFilter(s)} className={`occ-filter-btn ${statusFilter === s ? 'active' : ''}`}>
@@ -443,6 +436,13 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
                   </button>
                 ))}
               </div>
+            </>
+          )}
+        </div>
+
+        <div className="occ-header-actions">
+          {viewMode === 'sessions' && (
+            <>
               <button onClick={() => { resetCreateSessionForm(); setIsCreateModalOpen(true); }} style={H.createBtn}>
                 설문지 생성
               </button>
@@ -886,21 +886,21 @@ const H = {
   sessionDetailPanel: { flex: '1.3 1 440px', minWidth: 360, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, display: 'flex', flexDirection: 'column', minHeight: 360 } as React.CSSProperties,
   panelTitle: { padding: '12px 14px', borderBottom: '1px solid #e5e7eb', fontSize: 13, fontWeight: 600, color: '#334155' } as React.CSSProperties,
   sessionListBody: { flex: 1, overflow: 'auto' as const } as React.CSSProperties,
-  sessionTableWrap: { minWidth: 900, display: 'flex', flexDirection: 'column' } as React.CSSProperties,
-  sessionTableHead: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: '1px solid #e5e7eb', background: '#f8fafc', position: 'sticky' as const, top: 0, zIndex: 1 } as React.CSSProperties,
+  sessionTableWrap: { minWidth: 860, display: 'flex', flexDirection: 'column' } as React.CSSProperties,
+  sessionTableHead: { display: 'flex', alignItems: 'center', gap: 4, padding: '8px 12px', borderBottom: '1px solid #e5e7eb', background: '#f8fafc', position: 'sticky' as const, top: 0, zIndex: 1 } as React.CSSProperties,
   sessionTableBody: { display: 'flex', flexDirection: 'column' } as React.CSSProperties,
-  sessionRow: { display: 'flex', alignItems: 'center', gap: 6, padding: '9px 10px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: '#fff', lineHeight: 1.35 } as React.CSSProperties,
+  sessionRow: { display: 'flex', alignItems: 'center', gap: 4, padding: '9px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: '#fff', lineHeight: 1.35 } as React.CSSProperties,
   sessionRowActive: { background: '#eff6ff', boxShadow: 'inset 3px 0 0 #3b82f6' } as React.CSSProperties,
   sessionCol: { fontSize: 13, color: '#334155', whiteSpace: 'nowrap' as const, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const } as React.CSSProperties,
-  colName: { flex: '0 0 112px', fontWeight: 600, fontSize: 14 } as React.CSSProperties,
-  colChart: { flex: '0 0 84px', color: '#64748b' } as React.CSSProperties,
-  colAge: { flex: '0 0 54px', textAlign: 'right' as const } as React.CSSProperties,
-  colGender: { flex: '0 0 48px', textAlign: 'center' as const } as React.CSSProperties,
-  colTemplate: { flex: '1 1 200px' } as React.CSSProperties,
-  colDate: { flex: '0 0 110px', color: '#64748b' } as React.CSSProperties,
-  colTime: { flex: '0 0 66px', color: '#64748b' } as React.CSSProperties,
-  colStatus: { flex: '0 0 64px', textAlign: 'center' as const } as React.CSSProperties,
-  colAction: { flex: '0 0 44px', textAlign: 'right' as const } as React.CSSProperties,
+  colName: { flex: '0 0 108px', fontWeight: 600, fontSize: 14 } as React.CSSProperties,
+  colChart: { flex: '0 0 78px', color: '#64748b' } as React.CSSProperties,
+  colAge: { flex: '0 0 52px', textAlign: 'right' as const } as React.CSSProperties,
+  colGender: { flex: '0 0 44px', textAlign: 'center' as const } as React.CSSProperties,
+  colTemplate: { flex: '1 1 180px', padding: '0 4px' } as React.CSSProperties,
+  colDate: { flex: '0 0 106px', color: '#64748b' } as React.CSSProperties,
+  colTime: { flex: '0 0 58px', color: '#64748b' } as React.CSSProperties,
+  colStatus: { flex: '0 0 60px', textAlign: 'center' as const } as React.CSSProperties,
+  colAction: { flex: '0 0 42px', textAlign: 'right' as const } as React.CSSProperties,
   detailHeader: { padding: '12px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const } as React.CSSProperties,
   emptyState: { height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13 } as React.CSSProperties,
 
