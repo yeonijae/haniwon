@@ -47,6 +47,8 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   const [trendExamType, setTrendExamType] = useState<ExamType | null>(null);
   const [showBookGenerator, setShowBookGenerator] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [baseDate, setBaseDate] = useState<Date>(new Date());
+  const [rangePreset, setRangePreset] = useState<7 | 30 | 90>(30);
   const [examTabOrder, setExamTabOrder] = useState<string[]>(EXAM_TYPES.map((t) => t.code));
   const [examTabLabels, setExamTabLabels] = useState<Record<string, string>>({});
   const [draggingTab, setDraggingTab] = useState<string | null>(null);
@@ -122,8 +124,30 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     }
   };
 
+  const formatDateKey = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const baseDateKey = formatDateKey(baseDate);
+  const rangeStart = useMemo(() => {
+    const d = new Date(baseDate);
+    d.setDate(d.getDate() - (rangePreset - 1));
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, [baseDate, rangePreset]);
+
+  const dateFilteredGroups = useMemo(() => {
+    return examGroups.filter((group) => {
+      const g = new Date(`${group.date}T00:00:00`);
+      return g >= rangeStart && g <= new Date(`${baseDateKey}T23:59:59`);
+    });
+  }, [examGroups, rangeStart, baseDateKey]);
+
   // 필터링된 검사결과
-  const filteredGroups = examGroups.map(group => ({
+  const filteredGroups = dateFilteredGroups.map(group => ({
     ...group,
     exams: activeExamTab === 'all'
       ? group.exams
@@ -133,7 +157,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   // 특정 유형의 모든 검사 (비교용)
   const getExamsForCompare = useCallback((examType: ExamType): ExamResult[] => {
     const allExams: ExamResult[] = [];
-    for (const group of examGroups) {
+    for (const group of dateFilteredGroups) {
       for (const exam of group.exams) {
         if (exam.exam_type === examType) {
           allExams.push(exam);
@@ -141,12 +165,12 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
       }
     }
     return allExams.sort((a, b) => b.exam_date.localeCompare(a.exam_date));
-  }, [examGroups]);
+  }, [dateFilteredGroups]);
 
   // 비교 가능한 검사 유형 (2개 이상인 경우)
   const comparableTypes = useMemo(() => {
     const typeCounts: Record<string, number> = {};
-    for (const group of examGroups) {
+    for (const group of dateFilteredGroups) {
       for (const exam of group.exams) {
         typeCounts[exam.exam_type] = (typeCounts[exam.exam_type] || 0) + 1;
       }
@@ -154,12 +178,12 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     return Object.entries(typeCounts)
       .filter(([, count]) => count >= 2)
       .map(([type]) => type as ExamType);
-  }, [examGroups]);
+  }, [dateFilteredGroups]);
 
   // 추이 분석 가능한 검사 유형 (수치 데이터 포함, 2개 이상)
   const trendableTypes = useMemo(() => {
     const typeHasValues: Record<string, number> = {};
-    for (const group of examGroups) {
+    for (const group of dateFilteredGroups) {
       for (const exam of group.exams) {
         const info = getExamTypeInfo(exam.exam_type);
         if (info?.hasValues && exam.values && exam.values.length > 0) {
@@ -170,16 +194,16 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     return Object.entries(typeHasValues)
       .filter(([, count]) => count >= 2)
       .map(([type]) => type as ExamType);
-  }, [examGroups]);
+  }, [dateFilteredGroups]);
 
   // 모든 검사 (추이 분석용)
   const allExams = useMemo(() => {
     const exams: ExamResult[] = [];
-    for (const group of examGroups) {
+    for (const group of dateFilteredGroups) {
       exams.push(...group.exams);
     }
     return exams;
-  }, [examGroups]);
+  }, [dateFilteredGroups]);
 
   const examTypeCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -199,13 +223,13 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
 
   // 검사 기간 계산
   const examDateRange = useMemo(() => {
-    if (examGroups.length === 0) return { start: '', end: '' };
-    const dates = examGroups.map(g => g.date).sort();
+    if (dateFilteredGroups.length === 0) return { start: '', end: '' };
+    const dates = dateFilteredGroups.map(g => g.date).sort();
     return {
       start: dates[0],
       end: dates[dates.length - 1],
     };
-  }, [examGroups]);
+  }, [dateFilteredGroups]);
 
   // 비교 시작
   const handleStartCompare = (examType: ExamType) => {
@@ -239,6 +263,10 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   };
 
   const activeExamType = activeExamTab !== 'all' ? activeExamTab : null;
+  const baseDateLabel = useMemo(() => {
+    const w = ['일', '월', '화', '수', '목', '금', '토'];
+    return `${baseDate.getFullYear()}-${String(baseDate.getMonth() + 1).padStart(2, '0')}-${String(baseDate.getDate()).padStart(2, '0')} (${w[baseDate.getDay()]})`;
+  }, [baseDate]);
 
   const extractExifDateMs = async (file: File): Promise<number | null> => {
     if (!file.type.startsWith('image/jpeg')) return null;
@@ -538,7 +566,37 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap justify-end">
+              <div className="flex items-center gap-1 border border-gray-300 rounded-lg px-2 py-1.5 bg-white">
+                <button
+                  onClick={() => setBaseDate((prev) => { const d = new Date(prev); d.setDate(d.getDate() - 1); return d; })}
+                  className="w-7 h-7 rounded hover:bg-gray-100 text-gray-600"
+                  title="이전 날짜"
+                >
+                  <i className="fas fa-chevron-left text-xs"></i>
+                </button>
+                <span className="text-sm text-gray-700 min-w-[130px] text-center">{baseDateLabel}</span>
+                <button
+                  onClick={() => setBaseDate((prev) => { const d = new Date(prev); d.setDate(d.getDate() + 1); return d; })}
+                  className="w-7 h-7 rounded hover:bg-gray-100 text-gray-600"
+                  title="다음 날짜"
+                >
+                  <i className="fas fa-chevron-right text-xs"></i>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1">
+                {[7, 30, 90].map((days) => (
+                  <button
+                    key={days}
+                    onClick={() => setRangePreset(days as 7 | 30 | 90)}
+                    className={`px-2.5 py-1.5 rounded-lg text-sm border ${rangePreset === days ? 'bg-blue-100 text-blue-700 border-blue-200' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    {days === 7 ? '1주일' : days === 30 ? '1개월' : '3개월'}
+                  </button>
+                ))}
+              </div>
+
               <div className="text-sm text-gray-500 mr-1">
                 {activeExamTab === 'all' ? '전체 검사 보기' : getExamLabel(activeExamTab)}
               </div>
