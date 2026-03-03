@@ -1,24 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { PortalUser } from '@shared/types';
-import type { SurveyTemplate, SurveySession, SurveyQuestion, SurveyAnswer } from '../../types';
+import type { SurveyTemplate, SurveySession, SurveyQuestion, SurveyAnswer, SurveyResponse, SurveyQuestionType } from '../../types';
 import { searchLocalPatients, searchAndSyncPatients, type LocalPatient } from '../../lib/patientSync';
 import {
   getTemplates, createTemplate, updateTemplate, deleteTemplate, duplicateTemplate,
   createSession, getSessionsByDate, deleteSession,
   getResponseBySession,
 } from '../../lib/surveyApi';
-import SurveyTemplateEditorModal from './SurveyTemplateEditorModal';
-import SurveyResponseModal from './SurveyResponseModal';
 
 const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.48:3100';
 
 interface Doctor { id: string; name: string; isOther?: boolean; resigned?: boolean; workStartDate?: string; workEndDate?: string; }
-
 interface SurveyManagementViewProps { user: PortalUser; }
 
 type ViewMode = 'sessions' | 'templates';
 type StatusFilter = 'all' | 'waiting' | 'completed';
 type DateRangeMode = 'day' | '1w' | '1m' | '3m';
+type SessionDetailMode = 'full' | 'summary';
 
 const toDateStr = (d: Date) => d.toISOString().split('T')[0];
 const formatDate = (s: string) => {
@@ -26,6 +24,8 @@ const formatDate = (s: string) => {
   const days = ['일', '월', '화', '수', '목', '금', '토'];
   return `${d.getMonth() + 1}/${d.getDate()} (${days[d.getDay()]})`;
 };
+
+const GENDER_MAP: Record<string, string> = { M: '남', F: '여', 남: '남', 여: '여' };
 
 export default function SurveyManagementView({ user }: SurveyManagementViewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('sessions');
@@ -38,6 +38,13 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
+  const [responseBySessionId, setResponseBySessionId] = useState<Record<number, SurveyResponse | null>>({});
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailViewMode, setDetailViewMode] = useState<SessionDetailMode>('summary');
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [copied, setCopied] = useState(false);
+
   // Session creation form
   const [selectedPatient, setSelectedPatient] = useState<LocalPatient | null>(null);
   const [patientQuery, setPatientQuery] = useState('');
@@ -49,9 +56,6 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
   // Template editor (inline for templates view)
   const [selectedTemplateForEdit, setSelectedTemplateForEdit] = useState<SurveyTemplate | null>(null);
 
-  // Response preview
-  const [previewResponse, setPreviewResponse] = useState<{ session: SurveySession; answers: SurveyAnswer[]; template: SurveyTemplate } | null>(null);
-
   const getRangeStartDate = useCallback((date: string, mode: DateRangeMode) => {
     if (mode === 'day') return date;
     const d = new Date(date + 'T00:00:00');
@@ -61,13 +65,33 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
     return toDateStr(d);
   }, []);
 
-  // Load sessions (silent=true이면 로딩 표시 없이 백그라운드 갱신)
+  const loadResponseForSession = useCallback(async (session: SurveySession) => {
+    if (session.status !== 'completed') return;
+    if (responseBySessionId[session.id] !== undefined) return;
+    setDetailLoading(true);
+    try {
+      const resp = await getResponseBySession(session.id);
+      setResponseBySessionId(prev => ({ ...prev, [session.id]: resp || null }));
+    } catch (e) {
+      console.error(e);
+      setResponseBySessionId(prev => ({ ...prev, [session.id]: null }));
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [responseBySessionId]);
+
+  // Load sessions
   const loadSessions = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const startDate = getRangeStartDate(selectedDate, rangeMode);
       const sess = await getSessionsByDate({ startDate, endDate: selectedDate }, statusFilter);
       setSessions(sess);
+      setSelectedSessionId(prev => {
+        if (!sess.length) return null;
+        if (prev && sess.some(s => s.id === prev)) return prev;
+        return sess[0].id;
+      });
     } catch (e) { console.error(e); } finally { if (!silent) setLoading(false); }
   }, [getRangeStartDate, selectedDate, rangeMode, statusFilter]);
 
@@ -79,7 +103,7 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
       setAllTemplates(tpls);
       if (tpls.length > 0 && selectedTemplateId === '') setSelectedTemplateId(tpls[0].id);
     } catch (e) { console.error(e); }
-  }, []);
+  }, [selectedTemplateId]);
 
   useEffect(() => { loadTemplates(); }, [loadTemplates]);
   useEffect(() => { loadSessions(); }, [loadSessions]);
@@ -95,16 +119,14 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
         try {
           const data = JSON.parse(ev.data);
           if (data.table === 'survey_sessions') loadSessions(true);
-        } catch { /* ignore keepalive / parse errors */ }
+        } catch { /* ignore */ }
       };
       es.onerror = () => {
-        // SSE 연결 실패 시 폴링 fallback은 아래에서 처리
         es?.close();
         es = null;
       };
-    } catch { /* EventSource 미지원 시 무시 */ }
+    } catch { /* ignore */ }
 
-    // SSE 연결 실패 시 폴링 fallback (10초)
     const fallback = setInterval(() => {
       if (!es || es.readyState === EventSource.CLOSED) loadSessions(true);
     }, 10000);
@@ -137,6 +159,27 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
     return () => clearTimeout(timer);
   }, [patientQuery]);
 
+  const selectedSession = useMemo(
+    () => sessions.find(s => s.id === selectedSessionId) || null,
+    [sessions, selectedSessionId],
+  );
+
+  const selectedTemplate = useMemo(
+    () => allTemplates.find(t => t.id === selectedSession?.template_id) || null,
+    [allTemplates, selectedSession],
+  );
+
+  const selectedResponse = selectedSession ? responseBySessionId[selectedSession.id] : null;
+
+  useEffect(() => {
+    if (!selectedSession || !selectedTemplate) {
+      setExpandedIds(new Set());
+      return;
+    }
+    setExpandedIds(new Set(selectedTemplate.questions.map(q => q.id)));
+    if (selectedSession.status === 'completed') loadResponseForSession(selectedSession);
+  }, [selectedSession, selectedTemplate, loadResponseForSession]);
+
   // Date navigation
   const moveDate = (offset: number) => {
     const d = new Date(selectedDate + 'T00:00:00');
@@ -167,20 +210,23 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
 
   const handleDeleteSession = async (id: number) => {
     if (!confirm('삭제하시겠습니까?')) return;
-    try { await deleteSession(id); loadSessions(); } catch (e) { console.error(e); }
-  };
-
-  const handlePreviewResponse = async (session: SurveySession) => {
     try {
-      const resp = await getResponseBySession(session.id);
-      if (!resp) return alert('응답 데이터가 없습니다.');
-      const tmpl = allTemplates.find(t => t.id === session.template_id);
-      if (!tmpl) return;
-      setPreviewResponse({ session, answers: resp.answers as SurveyAnswer[], template: tmpl });
+      await deleteSession(id);
+      setResponseBySessionId(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      loadSessions();
     } catch (e) { console.error(e); }
   };
 
-  // Template CRUD (inline save for templates view)
+  const handleSelectSession = async (session: SurveySession) => {
+    setSelectedSessionId(session.id);
+    if (session.status === 'completed') await loadResponseForSession(session);
+  };
+
+  // Template CRUD
   const handleSaveTemplateInline = async (data: { name: string; description?: string; display_mode: string; questions: SurveyQuestion[] }) => {
     try {
       if (selectedTemplateForEdit) {
@@ -189,7 +235,6 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
         await createTemplate({ name: data.name, description: data.description, questions: data.questions, display_mode: data.display_mode });
       }
       await loadTemplates();
-      // Re-select updated template
       if (selectedTemplateForEdit) {
         const refreshed = (await getTemplates()).find(t => t.id === selectedTemplateForEdit.id);
         setSelectedTemplateForEdit(refreshed || null);
@@ -210,17 +255,103 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
     } catch (e) { console.error(e); }
   };
 
+  const getAnswer = (qId: string): SurveyAnswer | undefined => {
+    if (!selectedResponse) return undefined;
+    return selectedResponse.answers.find(a => a.question_id === qId);
+  };
+
+  const hasAnswer = (qId: string): boolean => {
+    const a = getAnswer(qId);
+    if (!a) return false;
+    if (Array.isArray(a.answer)) return a.answer.length > 0;
+    return !!a.answer;
+  };
+
+  const fmtAnswer = (a: SurveyAnswer | undefined): string => {
+    if (!a) return '(답변 없음)';
+    if (Array.isArray(a.answer)) return a.answer.join(', ') || '(선택 없음)';
+    return String(a.answer || '(답변 없음)');
+  };
+
+  const formatResponseSummary = () => {
+    if (!selectedSession || !selectedTemplate || !selectedResponse) return '';
+    const ga = (qId: string) => {
+      const a = getAnswer(qId);
+      if (!a) return '';
+      if (Array.isArray(a.answer)) return a.answer.join(' / ');
+      return String(a.answer || '');
+    };
+
+    const lines: string[] = [];
+    for (const q of selectedTemplate.questions) {
+      if (!hasAnswer(q.id)) continue;
+      const txt = ga(q.id);
+
+      if (['name', 'chart_number', 'doctor', 'gender_age', 'height_weight'].includes(q.id)) continue;
+      if (q.question_text.startsWith('>')) lines.push(`${q.question_text} ${txt}`);
+      else if (q.question_text.startsWith('-')) lines.push(`${q.question_text} ${txt}`);
+      else lines.push(`${q.question_text}: ${txt}`);
+    }
+
+    const result: string[] = [];
+    const nameLine = [selectedSession.patient_name, selectedSession.chart_number ? `(${selectedSession.chart_number})` : ''].filter(Boolean).join(' ');
+    if (nameLine) result.push(nameLine);
+
+    const genderAge = [
+      selectedSession.gender ? (GENDER_MAP[selectedSession.gender] || selectedSession.gender) : '',
+      selectedSession.age != null ? `${selectedSession.age}세` : '',
+    ].filter(Boolean).join('/');
+
+    const heightWeight = ga('height_weight');
+    const basicInfo = [genderAge, heightWeight].filter(Boolean).join(' / ');
+    if (basicInfo) result.push(basicInfo);
+
+    if (lines.length > 0) {
+      result.push('[문진]');
+      result.push(...lines);
+    }
+
+    return result.join('\n');
+  };
+
+  const handleCopySummary = async () => {
+    const text = formatResponseSummary();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        setCopied(true);
+      } catch {
+        alert('복사에 실패했습니다.');
+      }
+    }
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const toggle = (id: string) => {
+    const s = new Set(expandedIds);
+    s.has(id) ? s.delete(id) : s.add(id);
+    setExpandedIds(s);
+  };
+
   const statusBadge = (status: string) => {
     const c: Record<string, string> = { waiting: '#f59e0b', in_progress: '#3b82f6', completed: '#10b981' };
     const l: Record<string, string> = { waiting: '대기', in_progress: '작성중', completed: '완료' };
     return <span style={{ background: c[status] || '#9ca3af', color: '#fff', padding: '2px 8px', borderRadius: 12, fontSize: 12, fontWeight: 600 }}>{l[status] || status}</span>;
   };
 
-  /* ========== 렌더링 ========== */
-
   return (
     <div style={{ padding: 20, height: '100%', display: 'flex', flexDirection: 'column' }}>
-
       {/* ===== 헤더 ===== */}
       <div style={H.header}>
         <div style={H.left}>
@@ -277,7 +408,6 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
           {/* 세션 생성 폼 */}
           <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 16 }}>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              {/* 환자 검색 */}
               <div style={{ position: 'relative', flex: '1 1 200px' }}>
                 <label style={H.formLabel}>환자</label>
                 <input
@@ -321,49 +451,127 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
             </div>
           </div>
 
-          {/* 세션 목록 */}
-          <div style={{ flex: 1, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'auto' }}>
-            {loading ? <p style={{ textAlign: 'center', color: '#94a3b8', padding: 40 }}>로딩 중...</p> : sessions.length === 0 ? (
-              <p style={{ textAlign: 'center', color: '#94a3b8', padding: 40 }}>세션이 없습니다</p>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: '2px solid #e2e8f0', background: '#f8fafc' }}>
-                    <th style={H.th}>환자</th>
-                    <th style={H.th}>차트번호</th>
-                    <th style={H.th}>나이/성별</th>
-                    <th style={H.th}>담당의</th>
-                    <th style={H.th}>템플릿</th>
-                    <th style={{ ...H.th, textAlign: 'center' }}>상태</th>
-                    <th style={{ ...H.th, textAlign: 'center' }}>시간</th>
-                    <th style={{ ...H.th, textAlign: 'center' }}>작업</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sessions.map(s => (
-                    <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ ...H.td, fontWeight: 600 }}>{s.patient_name || '-'}</td>
-                      <td style={{ ...H.td, color: '#64748b' }}>{s.chart_number || '-'}</td>
-                      <td style={{ ...H.td, color: '#64748b', fontSize: 12 }}>{[s.age != null ? `${s.age}세` : '', s.gender ? (s.gender === 'M' || s.gender === '남' ? '남' : '여') : ''].filter(Boolean).join('/')}</td>
-                      <td style={H.td}>{s.doctor_name || '-'}</td>
-                      <td style={H.td}>{s.template_name || '-'}</td>
-                      <td style={{ ...H.td, textAlign: 'center' }}>{statusBadge(s.status)}</td>
-                      <td style={{ ...H.td, textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
-                        {s.created_at ? new Date(s.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-'}
-                      </td>
-                      <td style={{ ...H.td, textAlign: 'center' }}>
-                        {s.status === 'completed' && (
-                          <button onClick={() => handlePreviewResponse(s)} style={H.actionBtn}>👁️ 보기</button>
-                        )}
-                        {s.status === 'waiting' && (
-                          <button onClick={() => handleDeleteSession(s.id)} style={{ ...H.actionBtn, color: '#ef4444', borderColor: '#fca5a5' }}>삭제</button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+          {/* 2단 본문 */}
+          <div style={H.sessionSplitWrap}>
+            {/* 좌측: 세션 목록 */}
+            <div style={H.sessionListPanel}>
+              <div style={H.panelTitle}>검색 결과 ({sessions.length})</div>
+              <div style={{ flex: 1, overflow: 'auto' }}>
+                {loading ? <p style={{ textAlign: 'center', color: '#94a3b8', padding: 40 }}>로딩 중...</p> : sessions.length === 0 ? (
+                  <p style={{ textAlign: 'center', color: '#94a3b8', padding: 40 }}>세션이 없습니다</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {sessions.map(s => {
+                      const active = s.id === selectedSessionId;
+                      return (
+                        <div
+                          key={s.id}
+                          onClick={() => handleSelectSession(s)}
+                          style={{ ...H.sessionItem, ...(active ? H.sessionItemActive : {}) }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                            <strong style={{ fontSize: 14 }}>{s.patient_name || '-'}</strong>
+                            {statusBadge(s.status)}
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>
+                            {(s.chart_number || '-')}
+                            {' · '}
+                            {[s.age != null ? `${s.age}세` : '', s.gender ? (GENDER_MAP[s.gender] || s.gender) : ''].filter(Boolean).join('/') || '-'}
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>{s.template_name || '-'}</div>
+                          <div style={{ marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                              {s.created_at ? new Date(s.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}
+                            </span>
+                            {s.status === 'waiting' && (
+                              <button
+                                onClick={e => { e.stopPropagation(); handleDeleteSession(s.id); }}
+                                style={{ ...H.smallBtn, color: '#ef4444', borderColor: '#fca5a5' }}
+                              >
+                                삭제
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 우측: 상세 + 답변 모아보기 + 복사 */}
+            <div style={H.sessionDetailPanel}>
+              {!selectedSession ? (
+                <div style={H.emptyState}>좌측에서 설문 세션을 선택하세요</div>
+              ) : (
+                <>
+                  <div style={H.detailHeader}>
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 700 }}>{selectedSession.patient_name || '-'}</div>
+                      <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>
+                        {selectedSession.chart_number || '-'} · {selectedSession.template_name || '-'}
+                        {selectedSession.doctor_name ? ` · ${selectedSession.doctor_name}` : ''}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {statusBadge(selectedSession.status)}
+                      {selectedSession.status === 'completed' && (
+                        <>
+                          <div style={H.toggleWrap}>
+                            <button style={{ ...H.toggleBtn, ...(detailViewMode === 'full' ? H.toggleActive : {}) }} onClick={() => setDetailViewMode('full')}>전체 보기</button>
+                            <button style={{ ...H.toggleBtn, ...(detailViewMode === 'summary' ? H.toggleActive : {}) }} onClick={() => setDetailViewMode('summary')}>답변 모아보기</button>
+                          </div>
+                          <button style={{ ...H.copyBtn, ...(copied ? H.copyDone : {}) }} onClick={handleCopySummary}>
+                            {copied ? '✅ 복사됨' : '📋 답변 복사'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+                    {selectedSession.status !== 'completed' ? (
+                      <div style={H.emptyState}>아직 응답이 제출되지 않았습니다.</div>
+                    ) : detailLoading ? (
+                      <div style={H.emptyState}>응답 불러오는 중...</div>
+                    ) : !selectedResponse ? (
+                      <div style={H.emptyState}>응답 데이터가 없습니다.</div>
+                    ) : detailViewMode === 'summary' ? (
+                      <pre style={H.summaryBox}>{formatResponseSummary() || '(답변 없음)'}</pre>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {(selectedTemplate?.questions || []).map((q, i) => {
+                          const answer = getAnswer(q.id);
+                          const expanded = expandedIds.has(q.id);
+                          return (
+                            <div key={q.id} style={H.qCard}>
+                              <button style={H.qHeader} onClick={() => toggle(q.id)}>
+                                <div style={{ flex: 1, textAlign: 'left' }}>
+                                  <span style={{ color: '#94a3b8', fontSize: 12, marginRight: 6 }}>Q{i + 1}.</span>
+                                  <span style={{ fontWeight: 500, fontSize: 14 }}>{q.question_text}</span>
+                                </div>
+                                <span style={{ color: '#94a3b8', fontSize: 12 }}>{expanded ? '▲' : '▼'}</span>
+                              </button>
+                              {expanded && (
+                                <div style={H.qBody}>
+                                  <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+                                    {{ text: '주관식', single_choice: '단일선택', multiple_choice: '복수선택', scale: '척도' }[q.question_type]}
+                                  </div>
+                                  <div style={{ fontSize: 14, color: answer ? '#1e293b' : '#94a3b8', fontStyle: answer ? 'normal' : 'italic' }}>
+                                    {fmtAnswer(answer)}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -371,7 +579,6 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
       {/* ===== 템플릿 관리 뷰 (2단) ===== */}
       {viewMode === 'templates' && (
         <div style={{ flex: 1, display: 'flex', gap: 16, minHeight: 0 }}>
-          {/* 좌측: 템플릿 목록 */}
           <div style={{ width: 300, flexShrink: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #e5e7eb' }}>
               <span style={{ fontWeight: 600, fontSize: 14 }}>템플릿 목록</span>
@@ -403,20 +610,11 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
             </div>
           </div>
 
-          {/* 우측: 인라인 편집 */}
           <div style={{ flex: 1, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             {selectedTemplateForEdit === null && allTemplates.length > 0 && !selectedTemplateForEdit ? (
-              <InlineTemplateEditor
-                key="new"
-                template={null}
-                onSave={handleSaveTemplateInline}
-              />
+              <InlineTemplateEditor key="new" template={null} onSave={handleSaveTemplateInline} />
             ) : selectedTemplateForEdit ? (
-              <InlineTemplateEditor
-                key={selectedTemplateForEdit.id}
-                template={selectedTemplateForEdit}
-                onSave={handleSaveTemplateInline}
-              />
+              <InlineTemplateEditor key={selectedTemplateForEdit.id} template={selectedTemplateForEdit} onSave={handleSaveTemplateInline} />
             ) : (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>
                 좌측에서 템플릿을 선택하세요
@@ -425,22 +623,9 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
           </div>
         </div>
       )}
-
-      {/* 응답 상세 모달 */}
-      {previewResponse && (
-        <SurveyResponseModal
-          session={previewResponse.session}
-          answers={previewResponse.answers}
-          template={previewResponse.template}
-          onClose={() => setPreviewResponse(null)}
-        />
-      )}
     </div>
   );
 }
-
-/* ===== 인라인 템플릿 편집기 (우측 패널용) ===== */
-import type { SurveyQuestionType } from '../../types';
 
 const Q_TYPES: { value: SurveyQuestionType; label: string }[] = [
   { value: 'text', label: '주관식' },
@@ -476,7 +661,6 @@ function InlineTemplateEditor({ template, onSave }: { template: SurveyTemplate |
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* 헤더 */}
       <div style={{ padding: '12px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{template ? '템플릿 수정' : '새 템플릿'}</h3>
         <button onClick={save} disabled={saving} style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: '#4f46e5', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: saving ? 0.5 : 1 }}>
@@ -484,9 +668,7 @@ function InlineTemplateEditor({ template, onSave }: { template: SurveyTemplate |
         </button>
       </div>
 
-      {/* 본문 스크롤 */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
-        {/* 기본 정보 */}
         <div style={{ marginBottom: 12 }}>
           <label style={H.formLabel}>템플릿 이름 <span style={{ color: '#ef4444' }}>*</span></label>
           <input style={H.formInput} value={name} onChange={e => setName(e.target.value)} placeholder="예: 기본설문지-여성" />
@@ -507,7 +689,6 @@ function InlineTemplateEditor({ template, onSave }: { template: SurveyTemplate |
           </div>
         </div>
 
-        {/* 질문 목록 */}
         <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <span style={{ fontWeight: 600, fontSize: 14 }}>질문 목록 ({questions.length})</span>
@@ -521,13 +702,11 @@ function InlineTemplateEditor({ template, onSave }: { template: SurveyTemplate |
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {questions.map((q, i) => (
                 <div key={q.id} style={{ display: 'flex', gap: 6, padding: 10, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fafafa' }}>
-                  {/* 이동 */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, paddingTop: 2 }}>
                     <button style={H.moveBtn} onClick={() => moveQ(i, 'up')} disabled={i === 0}>▲</button>
                     <span style={{ color: '#ccc', fontSize: 10 }}>⋮⋮</span>
                     <button style={H.moveBtn} onClick={() => moveQ(i, 'down')} disabled={i === questions.length - 1}>▼</button>
                   </div>
-                  {/* 내용 */}
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                       <span style={{ color: '#6b7280', fontSize: 12, fontWeight: 500 }}>Q{i + 1}.</span>
@@ -548,7 +727,6 @@ function InlineTemplateEditor({ template, onSave }: { template: SurveyTemplate |
                         <input type="checkbox" checked={q.required} onChange={e => updateQ(i, { required: e.target.checked })} /> 필수
                       </label>
                     </div>
-                    {/* 옵션 */}
                     {(q.question_type === 'single_choice' || q.question_type === 'multiple_choice') && (
                       <div style={{ paddingLeft: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {q.options?.map((opt, oi) => (
@@ -569,7 +747,6 @@ function InlineTemplateEditor({ template, onSave }: { template: SurveyTemplate |
                       </div>
                     )}
                   </div>
-                  {/* 삭제 */}
                   <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, alignSelf: 'flex-start', padding: 2 }}
                     onClick={() => deleteQ(i)} title="삭제">🗑️</button>
                 </div>
@@ -582,7 +759,6 @@ function InlineTemplateEditor({ template, onSave }: { template: SurveyTemplate |
   );
 }
 
-/* ===== 스타일 ===== */
 const H = {
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' as const, gap: 10 } as React.CSSProperties,
   left: { display: 'flex', alignItems: 'center', gap: 16 } as React.CSSProperties,
@@ -600,9 +776,26 @@ const H = {
   createBtn: { padding: '7px 20px', borderRadius: 6, border: 'none', background: '#4f46e5', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13, height: 36 } as React.CSSProperties,
   dropdown: { position: 'absolute' as const, top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #d1d5db', borderRadius: 8, maxHeight: 200, overflowY: 'auto' as const, zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' } as React.CSSProperties,
   dropdownItem: { padding: '7px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: 13 } as React.CSSProperties,
-  th: { padding: '8px 10px', textAlign: 'left' as const, fontSize: 12, fontWeight: 600, color: '#64748b' } as React.CSSProperties,
-  td: { padding: '8px 10px' } as React.CSSProperties,
-  actionBtn: { padding: '3px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 11 } as React.CSSProperties,
   smallBtn: { padding: '2px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 11 } as React.CSSProperties,
   moveBtn: { background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 10, padding: '1px 3px' } as React.CSSProperties,
+
+  sessionSplitWrap: { flex: 1, display: 'flex', gap: 12, minHeight: 0, flexWrap: 'wrap' as const } as React.CSSProperties,
+  sessionListPanel: { flex: '1 1 340px', minWidth: 320, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, display: 'flex', flexDirection: 'column', minHeight: 360 } as React.CSSProperties,
+  sessionDetailPanel: { flex: '1.3 1 440px', minWidth: 360, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, display: 'flex', flexDirection: 'column', minHeight: 360 } as React.CSSProperties,
+  panelTitle: { padding: '12px 14px', borderBottom: '1px solid #e5e7eb', fontSize: 13, fontWeight: 600, color: '#334155' } as React.CSSProperties,
+  sessionItem: { padding: '12px 14px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: '#fff' } as React.CSSProperties,
+  sessionItemActive: { background: '#eff6ff', borderLeft: '3px solid #3b82f6' } as React.CSSProperties,
+  detailHeader: { padding: '12px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const } as React.CSSProperties,
+  emptyState: { height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13 } as React.CSSProperties,
+
+  toggleWrap: { display: 'flex', background: '#f1f5f9', borderRadius: 6, padding: 2 } as React.CSSProperties,
+  toggleBtn: { padding: '4px 10px', borderRadius: 4, border: 'none', background: 'transparent', fontSize: 12, cursor: 'pointer', color: '#64748b', fontWeight: 500 } as React.CSSProperties,
+  toggleActive: { background: '#fff', color: '#1e293b', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } as React.CSSProperties,
+  copyBtn: { padding: '6px 12px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 500 } as React.CSSProperties,
+  copyDone: { background: '#dcfce7', color: '#16a34a', borderColor: '#86efac' } as React.CSSProperties,
+  summaryBox: { margin: 0, background: '#f8fafc', borderRadius: 8, padding: 16, fontFamily: 'monospace', fontSize: 13, whiteSpace: 'pre-wrap' as const, lineHeight: 1.7, color: '#334155' } as React.CSSProperties,
+
+  qCard: { border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' } as React.CSSProperties,
+  qHeader: { width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', border: 'none', cursor: 'pointer' } as React.CSSProperties,
+  qBody: { padding: '10px 14px', background: '#fff' } as React.CSSProperties,
 };
