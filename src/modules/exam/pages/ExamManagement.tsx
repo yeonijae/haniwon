@@ -419,7 +419,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <h3 className="text-base font-semibold text-gray-800">빠른등록</h3>
+                      <h3 className="text-base font-semibold text-gray-800">빠른등록 - {getExamTypeInfo(activeExamType)?.name || activeExamType}</h3>
                       <p className="text-sm text-gray-500">파일의 날짜/시간(lastModified)으로 자동 등록됩니다.</p>
                     </div>
                     <div className="flex items-center gap-2">
