@@ -18,6 +18,7 @@ const ExamApp: React.FC<ExamAppProps> = ({ user }) => {
   const navigate = useNavigate();
   const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
   const [selectedPatientName, setSelectedPatientName] = useState<string>('');
+  const [settingsOpenSignal, setSettingsOpenSignal] = useState(0);
 
   const handlePatientSelect = (patient: LocalPatient) => {
     setSelectedPatientId(patient.id);
@@ -51,6 +52,14 @@ const ExamApp: React.FC<ExamAppProps> = ({ user }) => {
         </div>
 
         <div className="exam-header-right">
+          <button
+            className="exam-portal-btn"
+            onClick={() => setSettingsOpenSignal((v) => v + 1)}
+            title="검사결과 설정"
+          >
+            <i className="fas fa-gear"></i>
+            설정
+          </button>
           <div className="exam-user-info">
             <span className="exam-user-name">{user?.name || '관리자'}</span>
             <span className="exam-user-role">
@@ -73,6 +82,7 @@ const ExamApp: React.FC<ExamAppProps> = ({ user }) => {
               <ExamManagement
                 selectedPatientId={selectedPatientId}
                 selectedPatientName={selectedPatientName}
+                settingsOpenSignal={settingsOpenSignal}
               />
             } />
           </Routes>

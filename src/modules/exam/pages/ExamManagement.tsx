@@ -18,6 +18,7 @@ import ExamResultBook from '../components/ExamResultBook';
 interface ExamManagementProps {
   selectedPatientId: number | null;
   selectedPatientName: string;
+  settingsOpenSignal?: number;
 }
 
 interface QuickUploadFile {
@@ -25,7 +26,7 @@ interface QuickUploadFile {
   preview: string;
 }
 
-const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, selectedPatientName }) => {
+const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, selectedPatientName, settingsOpenSignal = 0 }) => {
   // 환자 관련 상태
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
 
@@ -67,6 +68,12 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     };
     loadTabOrder();
   }, []);
+
+  useEffect(() => {
+    if (settingsOpenSignal > 0) {
+      setShowSettings(true);
+    }
+  }, [settingsOpenSignal]);
 
   // 선택된 환자 변경 시 검사결과 로드
   useEffect(() => {
@@ -422,13 +429,6 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                 </button>
               )}
 
-              <button
-                onClick={() => setShowSettings(true)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2"
-              >
-                <i className="fas fa-gear"></i>
-                설정
-              </button>
 
               {/* 검사 등록 버튼 */}
               <button
