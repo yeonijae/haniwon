@@ -10,9 +10,9 @@ const calculateAgeFromBirthYear = (birthYear: number) => {
 };
 
 const DEV_WAITING_PATIENT = {
-  id: -1987,
-  patient_id: -1987,
-  chart_no: 'T1987',
+  id: 6748,
+  patient_id: 6748,
+  chart_no: '6748',
   patient_name: '이재은',
   age: calculateAgeFromBirthYear(1987),
   sex: 'F',
