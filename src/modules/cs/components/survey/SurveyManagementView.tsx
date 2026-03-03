@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { PortalUser } from '@shared/types';
 import type { SurveyTemplate, SurveySession, SurveyQuestion, SurveyAnswer, SurveyResponse, SurveyQuestionType } from '../../types';
 import '../call-center/OutboundCallCenter.css';
-import { searchLocalPatients, searchAndSyncPatients, type LocalPatient } from '../../lib/patientSync';
 import {
   getTemplates, createTemplate, updateTemplate, deleteTemplate, duplicateTemplate,
-  createSession, getSessionsByDate, deleteSession,
+  getSessionsByDate, deleteSession,
   getResponseBySession,
 } from '../../lib/surveyApi';
+import SurveySessionCreateModal from './SurveySessionCreateModal';
 
 const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.48:3100';
 
@@ -63,15 +63,7 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
 
-  // Session creation form
-  const [selectedPatient, setSelectedPatient] = useState<LocalPatient | null>(null);
-  const [patientQuery, setPatientQuery] = useState('');
-  const [patientResults, setPatientResults] = useState<LocalPatient[]>([]);
-  const [showPatientDropdown, setShowPatientDropdown] = useState(false);
-  const [selectedDoctor, setSelectedDoctor] = useState('');
-  const [selectedTemplateId, setSelectedTemplateId] = useState<number | ''>('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
 
   // Template editor (inline for templates view)
   const [selectedTemplateForEdit, setSelectedTemplateForEdit] = useState<SurveyTemplate | null>(null);
@@ -121,9 +113,8 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
       const tpls = await getTemplates();
       setTemplates(tpls);
       setAllTemplates(tpls);
-      if (tpls.length > 0 && selectedTemplateId === '') setSelectedTemplateId(tpls[0].id);
     } catch (e) { console.error(e); }
-  }, [selectedTemplateId]);
+  }, []);
 
   useEffect(() => { loadTemplates(); }, [loadTemplates]);
   useEffect(() => { loadSessions(); }, [loadSessions]);
@@ -165,20 +156,6 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
       .catch(console.error);
   }, []);
 
-  // Patient search with MSSQL fallback
-  useEffect(() => {
-    if (patientQuery.length < 2) { setPatientResults([]); setShowPatientDropdown(false); return; }
-    const timer = setTimeout(async () => {
-      try {
-        let results = await searchLocalPatients(patientQuery);
-        if (results.length === 0) results = await searchAndSyncPatients(patientQuery);
-        setPatientResults(results);
-        setShowPatientDropdown(true);
-      } catch (e) { console.error(e); }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [patientQuery]);
-
   const selectedSession = useMemo(
     () => sessions.find(s => s.id === selectedSessionId) || null,
     [sessions, selectedSessionId],
@@ -208,52 +185,6 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
   };
   const goToday = () => setSelectedDate(toDateStr(new Date()));
   const isToday = selectedDate === toDateStr(new Date());
-
-  const resetCreateSessionForm = useCallback(() => {
-    setSelectedPatient(null);
-    setPatientQuery('');
-    setPatientResults([]);
-    setShowPatientDropdown(false);
-    setSelectedDoctor('');
-    setSelectedTemplateId(templates.length > 0 ? templates[0].id : '');
-  }, [templates]);
-
-  const closeCreateSessionModal = useCallback(() => {
-    if (isCreatingSession) return;
-    setIsCreateModalOpen(false);
-    resetCreateSessionForm();
-  }, [isCreatingSession, resetCreateSessionForm]);
-
-  // Session CRUD
-  const handleCreateSession = async () => {
-    if (isCreatingSession) return;
-    if (!selectedPatient || !selectedTemplateId) {
-      alert('환자와 템플릿을 선택해주세요.');
-      return;
-    }
-
-    setIsCreatingSession(true);
-    try {
-      await createSession({
-        patient_id: selectedPatient.mssql_id || selectedPatient.id,
-        patient_name: selectedPatient.name,
-        chart_number: selectedPatient.chart_number || undefined,
-        age: selectedPatient.birth_date ? Math.floor((Date.now() - new Date(selectedPatient.birth_date).getTime()) / 31557600000) : undefined,
-        gender: selectedPatient.gender || undefined,
-        template_id: selectedTemplateId as number,
-        doctor_name: selectedDoctor || undefined,
-        created_by: user.name,
-      });
-      await loadSessions();
-      setIsCreateModalOpen(false);
-      resetCreateSessionForm();
-    } catch (e) {
-      console.error(e);
-      alert('세션 생성 실패');
-    } finally {
-      setIsCreatingSession(false);
-    }
-  };
 
   const handleDeleteSession = async (id: number) => {
     if (!confirm('삭제하시겠습니까?')) return;
@@ -443,7 +374,7 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
         <div className="occ-header-actions">
           {viewMode === 'sessions' && (
             <>
-              <button onClick={() => { resetCreateSessionForm(); setIsCreateModalOpen(true); }} style={H.createBtn}>
+              <button onClick={() => setIsCreateModalOpen(true)} style={H.createBtn}>
                 설문지 생성
               </button>
             </>
@@ -594,81 +525,13 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
         </div>
       )}
 
-      {isCreateModalOpen && (
-        <div style={H.modalOverlay} onClick={closeCreateSessionModal} role="dialog" aria-modal="true" aria-labelledby="survey-create-modal-title">
-          <div style={H.modalCard} onClick={e => e.stopPropagation()}>
-            <div style={H.modalHeader}>
-              <h3 id="survey-create-modal-title" style={H.modalTitle}>설문지 생성</h3>
-              <button
-                onClick={closeCreateSessionModal}
-                style={H.modalCloseBtn}
-                disabled={isCreatingSession}
-                aria-label="설문지 생성 모달 닫기"
-              >
-                ×
-              </button>
-            </div>
-            <div style={H.modalBody}>
-              <div style={{ position: 'relative' }}>
-                <label style={H.formLabel}>환자</label>
-                <input
-                  value={selectedPatient ? `${selectedPatient.name} (${selectedPatient.chart_number || ''})` : patientQuery}
-                  onChange={e => { setPatientQuery(e.target.value); setSelectedPatient(null); }}
-                  onFocus={() => patientResults.length > 0 && setShowPatientDropdown(true)}
-                  placeholder="이름/차트번호"
-                  style={H.formInput}
-                  autoFocus
-                />
-                {showPatientDropdown && patientResults.length > 0 && (
-                  <div style={H.dropdown}>
-                    {patientResults.map(p => (
-                      <div
-                        key={p.id}
-                        onClick={() => { setSelectedPatient(p); setShowPatientDropdown(false); setPatientQuery(''); }}
-                        style={H.dropdownItem}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#f1f5f9')}
-                        onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
-                      >
-                        <strong>{p.name}</strong> <span style={{ color: '#64748b' }}>({p.chart_number || '-'})</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div>
-                <label style={H.formLabel}>담당의</label>
-                <select value={selectedDoctor} onChange={e => setSelectedDoctor(e.target.value)} style={H.formInput}>
-                  <option value="">선택</option>
-                  {doctors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={H.formLabel}>템플릿</label>
-                <select value={selectedTemplateId} onChange={e => setSelectedTemplateId(Number(e.target.value))} style={H.formInput}>
-                  <option value="">선택</option>
-                  {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </div>
-            </div>
-            <div style={H.modalFooter}>
-              <button
-                onClick={closeCreateSessionModal}
-                style={H.modalCancelBtn}
-                disabled={isCreatingSession}
-              >
-                취소
-              </button>
-              <button
-                onClick={handleCreateSession}
-                disabled={!selectedPatient || !selectedTemplateId || isCreatingSession}
-                style={{ ...H.createBtn, opacity: selectedPatient && selectedTemplateId && !isCreatingSession ? 1 : 0.5 }}
-              >
-                {isCreatingSession ? '생성 중...' : '생성'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SurveySessionCreateModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={loadSessions}
+        doctors={doctors}
+        createdBy={user.name}
+      />
 
       {/* ===== 템플릿 관리 뷰 (2단) ===== */}
       {viewMode === 'templates' && (

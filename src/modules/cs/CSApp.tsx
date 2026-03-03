@@ -19,6 +19,7 @@ import InquiryView from './components/InquiryView';
 import { OutboundCallCenter } from './components/call-center';
 import VipManagementView from './components/vip/VipManagementView';
 import SurveyManagementView from './components/survey/SurveyManagementView';
+import SurveySessionCreateModal from './components/survey/SurveySessionCreateModal';
 import PatientTimelineModal from './components/PatientTimelineModal';
 import HeaderPatientSearch from './components/HeaderPatientSearch';
 import QuickMemoPanel from './components/QuickMemoPanel';
@@ -125,6 +126,10 @@ function CSApp({ user }: CSAppProps) {
   const [showProgramModal, setShowProgramModal] = useState(false);
   const [programModalPatient, setProgramModalPatient] = useState<ConsultationPatient | null>(null);
 
+  // 설문지 생성 모달 상태 (헤더/우클릭 공용 모달 재사용)
+  const [showSurveyCreateModal, setShowSurveyCreateModal] = useState(false);
+  const [surveyInitialPatient, setSurveyInitialPatient] = useState<LocalPatient | null>(null);
+
   // 예약 draft 상태 (수납 → 예약 탭 전환 시 사용)
   const [reservationDraft, setReservationDraft] = useState<ReservationDraft | null>(null);
 
@@ -162,6 +167,31 @@ function CSApp({ user }: CSAppProps) {
     setContextPatient(null);
     setContextMenuPos(null);
   }, []);
+
+  const mapConsultationPatientToLocalPatient = useCallback((patient: ConsultationPatient): LocalPatient => ({
+    id: patient.patient_id || 0,
+    mssql_id: patient.patient_id,
+    name: patient.patient_name,
+    chart_number: patient.chart_no,
+    phone: null,
+    birth_date: null,
+    gender: patient.sex || null,
+    address: null,
+    first_visit_date: null,
+    last_visit_date: null,
+    total_visits: 0,
+    created_at: '',
+    updated_at: '',
+    synced_at: null,
+    treatment_clothing: null,
+    treatment_notes: null,
+    deletion_date: null,
+    main_doctor: null,
+    doctor_memo: null,
+    nurse_memo: null,
+    referral_type: null,
+    consultation_memo: null,
+  }), []);
 
   // 컨텍스트 메뉴: 액팅 배정 선택
   const handleContextAssignActing = useCallback(() => {
@@ -233,34 +263,19 @@ function CSApp({ user }: CSAppProps) {
   // 컨텍스트 메뉴: 대시보드 열기
   const handleContextDashboard = useCallback(() => {
     if (contextPatient) {
-      const localPatient: LocalPatient = {
-        id: contextPatient.patient_id || 0,
-        mssql_id: contextPatient.patient_id,
-        name: contextPatient.patient_name,
-        chart_number: contextPatient.chart_no,
-        phone: null,
-        birth_date: null,
-        gender: contextPatient.sex || null,
-        address: null,
-        first_visit_date: null,
-        last_visit_date: null,
-        total_visits: 0,
-        created_at: '',
-        updated_at: '',
-        synced_at: null,
-        treatment_clothing: null,
-        treatment_notes: null,
-        deletion_date: null,
-        main_doctor: null,
-        doctor_memo: null,
-        nurse_memo: null,
-        referral_type: null,
-        consultation_memo: null,
-      };
-      setSelectedHeaderPatient(localPatient);
+      setSelectedHeaderPatient(mapConsultationPatientToLocalPatient(contextPatient));
     }
     closeContextMenu();
-  }, [contextPatient, closeContextMenu]);
+  }, [contextPatient, closeContextMenu, mapConsultationPatientToLocalPatient]);
+
+  // 컨텍스트 메뉴: 설문지 생성
+  const handleContextCreateSurvey = useCallback(() => {
+    if (contextPatient) {
+      setSurveyInitialPatient(mapConsultationPatientToLocalPatient(contextPatient));
+      setShowSurveyCreateModal(true);
+    }
+    closeContextMenu();
+  }, [contextPatient, closeContextMenu, mapConsultationPatientToLocalPatient]);
 
   // 프로그램 등록 모달 닫기
   const closeProgramModal = useCallback(() => {
@@ -499,6 +514,10 @@ function CSApp({ user }: CSAppProps) {
                   </button>
                 </>
               )}
+              <button className="cs-context-menu-item" onClick={handleContextCreateSurvey}>
+                <span className="cs-context-icon">📝</span>
+                <span>설문지 생성</span>
+              </button>
             </>
           )}
           {/* 상담완료 (in_progress/completed): 비급여관리, 대기상태로 */}
@@ -596,6 +615,20 @@ function CSApp({ user }: CSAppProps) {
           </div>
         </div>
       )}
+
+      <SurveySessionCreateModal
+        isOpen={showSurveyCreateModal}
+        onClose={() => {
+          setShowSurveyCreateModal(false);
+          setSurveyInitialPatient(null);
+        }}
+        onSuccess={() => {
+          setActiveMenu('survey');
+        }}
+        doctors={doctors}
+        createdBy={user.name}
+        initialPatient={surveyInitialPatient}
+      />
 
       {/* 비급여관리 타임라인 모달 */}
       {showProgramModal && programModalPatient && (
