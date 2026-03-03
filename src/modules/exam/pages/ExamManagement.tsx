@@ -211,7 +211,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                         <button
                           key={type}
                           onClick={() => handleStartTrend(type)}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-purple-50 flex items-center gap-2"
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-2"
                         >
                           <i className={`fas ${info?.icon || 'fa-file'} text-gray-400`}></i>
                           {info?.name || type}
@@ -239,7 +239,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                         <button
                           key={type}
                           onClick={() => handleStartCompare(type)}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-purple-50 flex items-center gap-2"
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-2"
                         >
                           <i className={`fas ${info?.icon || 'fa-file'} text-gray-400`}></i>
                           {info?.name || type}
@@ -264,7 +264,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
               {/* 검사 등록 버튼 */}
               <button
                 onClick={() => setShowAddForm(true)}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 flex items-center gap-2"
+                className="px-4 py-2 bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-800 flex items-center gap-2"
               >
                 <i className="fas fa-plus"></i>
                 검사 등록
@@ -277,7 +277,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
             <aside className="w-64 border-r border-gray-200 bg-gray-50 p-3 overflow-y-auto">
               <button
                 onClick={() => setActiveExamTab('all')}
-                className={`w-full text-left px-3 py-2 rounded-lg mb-2 text-sm flex items-center justify-between ${activeExamTab === 'all' ? 'bg-purple-100 text-purple-700 font-semibold' : 'hover:bg-gray-100 text-gray-700'}`}
+                className={`w-full text-left px-3 py-2 rounded-lg mb-2 text-sm flex items-center justify-between ${activeExamTab === 'all' ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100 text-gray-700'}`}
               >
                 <span>전체</span>
                 <span className="text-xs">{allExams.length}</span>
@@ -289,7 +289,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                   <button
                     key={type.code}
                     onClick={() => setActiveExamTab(type.code)}
-                    className={`w-full text-left px-3 py-2 rounded-lg mb-2 text-sm flex items-center justify-between ${isActive ? 'bg-purple-100 text-purple-700 font-semibold' : 'hover:bg-gray-100 text-gray-700'}`}
+                    className={`w-full text-left px-3 py-2 rounded-lg mb-2 text-sm flex items-center justify-between ${isActive ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100 text-gray-700'}`}
                   >
                     <span className="truncate pr-2">{type.name}</span>
                     <span className="text-xs">{count}</span>
@@ -301,7 +301,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
             <section className="flex-1 overflow-y-auto p-6">
               {isLoading ? (
                 <div className="flex items-center justify-center h-40">
-                  <i className="fas fa-spinner fa-spin text-2xl text-purple-600"></i>
+                  <i className="fas fa-spinner fa-spin text-2xl text-blue-600"></i>
                 </div>
               ) : filteredGroups.length === 0 ? (
                 <div className="text-center py-20">
@@ -309,7 +309,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                   <p className="text-gray-500">선택한 검사 유형의 결과가 없습니다</p>
                   <button
                     onClick={() => setShowAddForm(true)}
-                    className="mt-4 text-purple-600 hover:underline"
+                    className="mt-4 text-blue-600 hover:underline"
                   >
                     검사 등록하기
                   </button>
@@ -335,7 +335,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                             <button
                               key={exam.id}
                               onClick={() => setSelectedExam(exam)}
-                              className="group bg-gray-50 rounded-lg p-3 hover:bg-purple-50 hover:ring-2 hover:ring-purple-200 transition-all text-left"
+                              className="group bg-gray-50 rounded-lg p-3 hover:bg-blue-50 hover:ring-2 hover:ring-blue-200 transition-all text-left"
                             >
                               <div className="aspect-square bg-gray-200 rounded-lg mb-2 overflow-hidden">
                                 {thumbnail ? (
@@ -421,7 +421,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
           <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h2 className="text-lg font-bold text-gray-900">
-                <i className="fas fa-chart-line text-purple-600 mr-2"></i>
+                <i className="fas fa-chart-line text-blue-600 mr-2"></i>
                 수치 추이 분석
               </h2>
               <button
