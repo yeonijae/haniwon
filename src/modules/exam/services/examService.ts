@@ -416,3 +416,43 @@ export async function getExamStats(patientId: number): Promise<{
     lastExamDate: last[0]?.exam_date || null,
   };
 }
+
+async function ensureExamSettingsTable(): Promise<void> {
+  await execute(`
+    CREATE TABLE IF NOT EXISTS exam_settings (
+      key VARCHAR(100) PRIMARY KEY,
+      value TEXT,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+}
+
+export async function getExamTabOrder(): Promise<string[]> {
+  await ensureExamSettingsTable();
+  const rows = await query<{ value: string }>(`
+    SELECT value FROM exam_settings WHERE key = 'exam_tab_order'
+  `);
+
+  if (!rows[0]?.value) return [];
+
+  try {
+    const parsed = JSON.parse(rows[0].value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveExamTabOrder(order: string[]): Promise<boolean> {
+  await ensureExamSettingsTable();
+  const value = JSON.stringify(order).replace(/'/g, "''");
+
+  await execute(`
+    INSERT INTO exam_settings (key, value, updated_at)
+    VALUES ('exam_tab_order', '${value}', NOW())
+    ON CONFLICT (key)
+    DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+  `);
+
+  return true;
+}

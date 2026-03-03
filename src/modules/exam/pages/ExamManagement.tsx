@@ -5,6 +5,8 @@ import {
   getExamResultsGroupedByDate,
   createExamResult,
   addExamAttachment,
+  getExamTabOrder,
+  saveExamTabOrder,
 } from '../services/examService';
 import { getThumbnailUrl, uploadExamFile, formatFileSize } from '../lib/fileUpload';
 import ExamResultForm from '../components/ExamResultForm';
@@ -40,6 +42,8 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   const [showTrendViewer, setShowTrendViewer] = useState(false);
   const [trendExamType, setTrendExamType] = useState<ExamType | null>(null);
   const [showBookGenerator, setShowBookGenerator] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [examTabOrder, setExamTabOrder] = useState<ExamType[]>(EXAM_TYPES.map((t) => t.code));
 
   // 빠른 등록 상태
   const [quickFiles, setQuickFiles] = useState<QuickUploadFile[]>([]);
@@ -47,6 +51,22 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   const [quickViewMode, setQuickViewMode] = useState<'list' | 'card'>('card');
   const [isQuickSaving, setIsQuickSaving] = useState(false);
   const quickFileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const loadTabOrder = async () => {
+      try {
+        const saved = await getExamTabOrder();
+        if (saved.length > 0) {
+          const valid = saved.filter((code): code is ExamType => EXAM_TYPES.some((t) => t.code === code as ExamType));
+          const missing = EXAM_TYPES.map((t) => t.code).filter((code) => !valid.includes(code));
+          setExamTabOrder([...(valid as ExamType[]), ...missing]);
+        }
+      } catch (e) {
+        console.error('검사 탭 순서 로드 실패:', e);
+      }
+    };
+    loadTabOrder();
+  }, []);
 
   // 선택된 환자 변경 시 검사결과 로드
   useEffect(() => {
@@ -152,6 +172,13 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     }
     return counts;
   }, [allExams]);
+
+  const orderedExamTypes = useMemo(() => {
+    const map = new Map(EXAM_TYPES.map((type) => [type.code, type]));
+    const ordered = examTabOrder.map((code) => map.get(code)).filter(Boolean) as typeof EXAM_TYPES;
+    const rest = EXAM_TYPES.filter((type) => !examTabOrder.includes(type.code));
+    return [...ordered, ...rest];
+  }, [examTabOrder]);
 
   // 검사 기간 계산
   const examDateRange = useMemo(() => {
@@ -284,6 +311,24 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     }
   };
 
+  const moveExamTab = (index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= examTabOrder.length) return;
+    const next = [...examTabOrder];
+    [next[index], next[target]] = [next[target], next[index]];
+    setExamTabOrder(next);
+  };
+
+  const handleSaveSettings = async () => {
+    try {
+      await saveExamTabOrder(examTabOrder);
+      setShowSettings(false);
+    } catch (e) {
+      console.error('설정 저장 실패:', e);
+      alert('설정 저장에 실패했습니다.');
+    }
+  };
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {selectedPatient ? (
@@ -377,6 +422,14 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                 </button>
               )}
 
+              <button
+                onClick={() => setShowSettings(true)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2"
+              >
+                <i className="fas fa-gear"></i>
+                설정
+              </button>
+
               {/* 검사 등록 버튼 */}
               <button
                 onClick={() => setShowAddForm(true)}
@@ -398,7 +451,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                 <span>전체</span>
                 <span className="text-sm">{allExams.length}</span>
               </button>
-              {EXAM_TYPES.map((type) => {
+              {orderedExamTypes.map((type) => {
                 const count = examTypeCounts[type.code] || 0;
                 const isActive = activeExamTab === type.code;
                 return (
@@ -588,6 +641,53 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
             <i className="fas fa-search text-6xl text-gray-300 mb-4"></i>
             <p className="text-gray-500 text-lg">상단 검색창에서 환자를 검색하세요</p>
             <p className="text-gray-400 text-sm mt-2">이름, 차트번호, 연락처로 검색할 수 있습니다</p>
+          </div>
+        </div>
+      )}
+
+      {/* 설정 모달 */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-800">검사결과 설정</h3>
+              <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto space-y-2">
+              <p className="text-sm text-gray-500 mb-2">검사결과 탭 순서를 변경할 수 있습니다.</p>
+              {examTabOrder.map((code, idx) => {
+                const info = getExamTypeInfo(code);
+                return (
+                  <div key={code} className="flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2">
+                    <span className="text-base text-gray-700">{info?.name || code}</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => moveExamTab(idx, -1)}
+                        disabled={idx === 0}
+                        className="w-8 h-8 rounded border border-gray-200 text-gray-600 disabled:opacity-30"
+                        title="위로"
+                      >
+                        <i className="fas fa-arrow-up"></i>
+                      </button>
+                      <button
+                        onClick={() => moveExamTab(idx, 1)}
+                        disabled={idx === examTabOrder.length - 1}
+                        className="w-8 h-8 rounded border border-gray-200 text-gray-600 disabled:opacity-30"
+                        title="아래로"
+                      >
+                        <i className="fas fa-arrow-down"></i>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button onClick={() => setShowSettings(false)} className="px-3 py-2 bg-gray-100 rounded-lg text-sm">취소</button>
+              <button onClick={handleSaveSettings} className="px-3 py-2 bg-slate-700 text-white rounded-lg text-sm">저장</button>
+            </div>
           </div>
         </div>
       )}
