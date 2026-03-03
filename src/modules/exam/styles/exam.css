@@ -111,6 +111,149 @@
 .exam-main {
   flex: 1;
   overflow: hidden;
+  display: flex;
+  min-height: 0;
+}
+
+.exam-content-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ========== 좌측 상담대기 사이드바 ========== */
+.exam-waiting-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.exam-waiting-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.exam-waiting-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #374151;
+}
+
+.exam-waiting-count {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: #eef2ff;
+  color: #4338ca;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.exam-waiting-connection {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.exam-waiting-connection.connected {
+  color: #22c55e;
+}
+
+.exam-waiting-list {
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.exam-waiting-empty {
+  padding: 32px 10px;
+  text-align: center;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.exam-waiting-item {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #eef2f7;
+  margin-bottom: 8px;
+  background: #f9fafb;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.exam-waiting-item:hover {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+.exam-waiting-item.selected {
+  background: #ede9fe;
+  border-color: #a78bfa;
+}
+
+.exam-waiting-item.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.exam-waiting-item.long {
+  border-color: #fde68a;
+}
+
+.exam-waiting-item.very-long {
+  border-color: #fca5a5;
+}
+
+.exam-waiting-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.exam-waiting-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.exam-waiting-info {
+  margin-left: auto;
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.exam-waiting-time {
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b7280;
+}
+
+.exam-waiting-time.long {
+  color: #d97706;
+}
+
+.exam-waiting-time.very-long {
+  color: #dc2626;
+}
+
+.exam-waiting-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #9ca3af;
 }
 
 /* ========== HeaderPatientSearch 스타일 오버라이드 (exam 헤더용) ========== */

@@ -6,6 +6,7 @@ import { ROLE_LABELS } from '@shared/types';
 import HeaderPatientSearch from '@modules/cs/components/HeaderPatientSearch';
 import type { LocalPatient } from '@modules/cs/lib/patientSync';
 import ExamManagement from './pages/ExamManagement';
+import ExamWaitingSidebar from './components/ExamWaitingSidebar';
 import './styles/exam.css';
 
 interface ExamAppProps {
@@ -21,6 +22,11 @@ const ExamApp: React.FC<ExamAppProps> = ({ user }) => {
   const handlePatientSelect = (patient: LocalPatient) => {
     setSelectedPatientId(patient.id);
     setSelectedPatientName(patient.name);
+  };
+
+  const handleWaitingPatientSelect = (patientId: number, patientName: string) => {
+    setSelectedPatientId(patientId);
+    setSelectedPatientName(patientName);
   };
 
   return (
@@ -63,14 +69,21 @@ const ExamApp: React.FC<ExamAppProps> = ({ user }) => {
 
       {/* 메인 콘텐츠 */}
       <main className="exam-main">
-        <Routes>
-          <Route path="/" element={
-            <ExamManagement
-              selectedPatientId={selectedPatientId}
-              selectedPatientName={selectedPatientName}
-            />
-          } />
-        </Routes>
+        <ExamWaitingSidebar
+          onSelectPatient={handleWaitingPatientSelect}
+          selectedPatientId={selectedPatientId}
+        />
+
+        <section className="exam-content-area">
+          <Routes>
+            <Route path="/" element={
+              <ExamManagement
+                selectedPatientId={selectedPatientId}
+                selectedPatientName={selectedPatientName}
+              />
+            } />
+          </Routes>
+        </section>
       </main>
     </div>
   );
