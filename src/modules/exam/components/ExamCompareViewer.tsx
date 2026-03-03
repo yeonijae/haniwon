@@ -6,7 +6,7 @@
  * - 미니맵으로 현재 위치 표시
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { ExamResult, ExamAttachment } from '../types';
 import { getExamTypeInfo, getExamTypeStyles } from '../types';
 import { getFileUrl, getThumbnailUrl, isImageFile } from '../lib/fileUpload';
@@ -90,6 +90,14 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
 
   const typeInfo = getExamTypeInfo(exams[0]?.exam_type);
   const typeStyles = getExamTypeStyles(exams[0]?.exam_type);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
 
   // 그리드 열 수 계산
   const getGridCols = (panelCount: number) => {
@@ -579,9 +587,11 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
           </button>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-white"
+            className="px-3 py-1.5 text-sm text-white bg-red-600/80 hover:bg-red-600 rounded"
+            title="닫기 (ESC)"
           >
-            <i className="fas fa-times text-xl"></i>
+            <i className="fas fa-times mr-1"></i>
+            닫기
           </button>
         </div>
       </div>
