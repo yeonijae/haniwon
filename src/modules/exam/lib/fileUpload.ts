@@ -5,6 +5,11 @@
 import type { UploadResult, ExamType } from '../types';
 
 const FILE_API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
+const FILE_API_CANDIDATES = Array.from(new Set([
+  FILE_API_URL,
+  'http://192.168.0.48:5200',
+  'http://192.168.0.173:5200',
+]));
 
 /**
  * 로컬 서버에 파일 업로드
@@ -20,17 +25,28 @@ export async function uploadExamFile(
   formData.append('exam_type', examType);
   formData.append('category', 'exams');
 
-  const response = await fetch(`${FILE_API_URL}/api/files/upload`, {
-    method: 'POST',
-    body: formData,
-  });
+  let lastError: any = null;
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || '파일 업로드 실패');
+  for (const baseUrl of FILE_API_CANDIDATES) {
+    try {
+      const response = await fetch(`${baseUrl}/api/files/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        lastError = new Error(error.error || '파일 업로드 실패');
+        continue;
+      }
+
+      return response.json();
+    } catch (error) {
+      lastError = error;
+    }
   }
 
-  return response.json();
+  throw lastError || new Error('파일 업로드 실패');
 }
 
 /**
