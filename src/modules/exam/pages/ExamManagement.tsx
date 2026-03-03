@@ -7,6 +7,8 @@ import {
   addExamAttachment,
   getExamTabOrder,
   saveExamTabOrder,
+  getExamTabLabels,
+  saveExamTabLabels,
 } from '../services/examService';
 import { getThumbnailUrl, uploadExamFile, formatFileSize } from '../lib/fileUpload';
 import ExamResultForm from '../components/ExamResultForm';
@@ -45,6 +47,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   const [showBookGenerator, setShowBookGenerator] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [examTabOrder, setExamTabOrder] = useState<ExamType[]>(EXAM_TYPES.map((t) => t.code));
+  const [examTabLabels, setExamTabLabels] = useState<Record<string, string>>({});
   const [draggingTab, setDraggingTab] = useState<ExamType | null>(null);
 
   // 빠른 등록 상태
@@ -55,7 +58,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   const quickFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const loadTabOrder = async () => {
+    const loadSettings = async () => {
       try {
         const saved = await getExamTabOrder();
         if (saved.length > 0) {
@@ -63,11 +66,14 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
           const missing = EXAM_TYPES.map((t) => t.code).filter((code) => !valid.includes(code));
           setExamTabOrder([...(valid as ExamType[]), ...missing]);
         }
+
+        const labels = await getExamTabLabels();
+        setExamTabLabels(labels || {});
       } catch (e) {
-        console.error('검사 탭 순서 로드 실패:', e);
+        console.error('검사 설정 로드 실패:', e);
       }
     };
-    loadTabOrder();
+    loadSettings();
   }, []);
 
   useEffect(() => {
@@ -223,6 +229,12 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     return age;
   };
 
+  const getExamLabel = (code: string) => {
+    const custom = (examTabLabels[code] || '').trim();
+    if (custom) return custom;
+    return getExamTypeInfo(code as ExamType)?.name || code;
+  };
+
   const activeExamType = activeExamTab !== 'all' ? activeExamTab as ExamType : null;
 
   const addQuickFiles = (fileList: FileList) => {
@@ -334,6 +346,13 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   const handleSaveSettings = async () => {
     try {
       await saveExamTabOrder(examTabOrder);
+      const cleanedLabels = Object.fromEntries(
+        Object.entries(examTabLabels)
+          .map(([k, v]) => [k, (v || '').trim()])
+          .filter(([, v]) => !!v)
+      );
+      await saveExamTabLabels(cleanedLabels);
+      setExamTabLabels(cleanedLabels);
       setShowSettings(false);
     } catch (e) {
       console.error('설정 저장 실패:', e);
@@ -364,7 +383,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
             </div>
             <div className="flex items-center gap-3">
               <div className="text-sm text-gray-500 mr-1">
-                {activeExamTab === 'all' ? '전체 검사 보기' : (getExamTypeInfo(activeExamTab as ExamType)?.name || activeExamTab)}
+                {activeExamTab === 'all' ? '전체 검사 보기' : getExamLabel(activeExamTab)}
               </div>
 
               {/* 추이 분석 버튼 */}
@@ -387,7 +406,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                           className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-2"
                         >
                           <i className={`fas ${info?.icon || 'fa-file'} text-gray-400`}></i>
-                          {info?.name || type}
+                          {getExamLabel(type)}
                         </button>
                       );
                     })}
@@ -415,7 +434,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                           className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 flex items-center gap-2"
                         >
                           <i className={`fas ${info?.icon || 'fa-file'} text-gray-400`}></i>
-                          {info?.name || type}
+                          {getExamLabel(type)}
                         </button>
                       );
                     })}
@@ -465,7 +484,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                     onClick={() => setActiveExamTab(type.code)}
                     className={`w-full text-left px-3 py-2 rounded-lg mb-2 text-base flex items-center justify-between ${isActive ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100 text-gray-700'}`}
                   >
-                    <span className="truncate pr-2">{type.name}</span>
+                    <span className="truncate pr-2">{getExamLabel(type.code)}</span>
                     <span className="text-sm">{count}</span>
                   </button>
                 );
@@ -477,7 +496,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <h3 className="text-base font-semibold text-gray-800">빠른등록 - {getExamTypeInfo(activeExamType)?.name || activeExamType}</h3>
+                      <h3 className="text-base font-semibold text-gray-800">빠른등록 - {getExamLabel(activeExamType)}</h3>
                       <p className="text-sm text-gray-500">파일의 날짜/시간(lastModified)으로 자동 등록됩니다.</p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -608,7 +627,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                                 {thumbnail ? (
                                   <img
                                     src={getThumbnailUrl(thumbnail)}
-                                    alt={typeInfo?.name || exam.exam_type}
+                                    alt={getExamLabel(exam.exam_type)}
                                     className="w-full h-full object-cover"
                                   />
                                 ) : (
@@ -620,7 +639,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
 
                               <div className="flex items-center gap-2">
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-sm font-medium ${typeStyles.badge}`}>
-                                  {typeInfo?.name || exam.exam_type}
+                                  {getExamLabel(exam.exam_type)}
                                 </span>
                                 {(exam.attachments?.length || 0) > 1 && (
                                   <span className="text-sm text-gray-500">
@@ -675,11 +694,20 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                     onDragEnd={() => setDraggingTab(null)}
                     className={`flex items-center justify-between border rounded-lg px-3 py-2 cursor-move ${isDragging ? 'border-blue-300 bg-blue-50 opacity-70' : 'border-gray-200 bg-white'}`}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
                       <i className="fas fa-grip-vertical text-gray-400"></i>
-                      <span className="text-base text-gray-700">{info?.name || code}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-400 mb-1">기본: {info?.name || code}</p>
+                        <input
+                          value={examTabLabels[code] ?? ''}
+                          onChange={(e) => setExamTabLabels((prev) => ({ ...prev, [code]: e.target.value }))}
+                          onClick={(e) => e.stopPropagation()}
+                          placeholder="표시 이름 수정"
+                          className="w-full px-2 py-1 border border-gray-200 rounded text-sm"
+                        />
+                      </div>
                     </div>
-                    <span className="text-xs text-gray-400">드래그</span>
+                    <span className="text-xs text-gray-400 ml-2">드래그</span>
                   </div>
                 );
               })}
