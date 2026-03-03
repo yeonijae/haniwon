@@ -277,10 +277,10 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
             <aside className="w-64 border-r border-gray-200 bg-gray-50 p-3 overflow-y-auto">
               <button
                 onClick={() => setActiveExamTab('all')}
-                className={`w-full text-left px-3 py-2 rounded-lg mb-2 text-sm flex items-center justify-between ${activeExamTab === 'all' ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100 text-gray-700'}`}
+                className={`w-full text-left px-3 py-2 rounded-lg mb-2 text-base flex items-center justify-between ${activeExamTab === 'all' ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100 text-gray-700'}`}
               >
                 <span>전체</span>
-                <span className="text-xs">{allExams.length}</span>
+                <span className="text-sm">{allExams.length}</span>
               </button>
               {EXAM_TYPES.map((type) => {
                 const count = examTypeCounts[type.code] || 0;
@@ -289,10 +289,10 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                   <button
                     key={type.code}
                     onClick={() => setActiveExamTab(type.code)}
-                    className={`w-full text-left px-3 py-2 rounded-lg mb-2 text-sm flex items-center justify-between ${isActive ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100 text-gray-700'}`}
+                    className={`w-full text-left px-3 py-2 rounded-lg mb-2 text-base flex items-center justify-between ${isActive ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-100 text-gray-700'}`}
                   >
                     <span className="truncate pr-2">{type.name}</span>
-                    <span className="text-xs">{count}</span>
+                    <span className="text-sm">{count}</span>
                   </button>
                 );
               })}
@@ -352,11 +352,11 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                               </div>
 
                               <div className="flex items-center gap-2">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${typeStyles.badge}`}>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-sm font-medium ${typeStyles.badge}`}>
                                   {typeInfo?.name || exam.exam_type}
                                 </span>
                                 {(exam.attachments?.length || 0) > 1 && (
-                                  <span className="text-xs text-gray-500">
+                                  <span className="text-sm text-gray-500">
                                     +{(exam.attachments?.length || 1) - 1}
                                   </span>
                                 )}

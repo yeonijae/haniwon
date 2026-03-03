@@ -13,7 +13,8 @@ export type ExamType =
   | 'omnifit'            // 뇌파+자율신경검사 (옴니핏)
   | 'tongue'             // 설진검사
   | 'pulse_dayo'         // 맥진검사 (대요맥진기)
-  | 'balance';           // 평형검사
+  | 'balance'            // 평형검사
+  | 'skin';              // 피부사진
 
 // 검사 유형 정보
 export interface ExamTypeInfo {
@@ -37,6 +38,7 @@ export const EXAM_TYPES: ExamTypeInfo[] = [
   { code: 'tongue', name: '설진검사', icon: 'fa-mouth-open', color: 'pink' },
   { code: 'pulse_dayo', name: '맥진검사 (대요맥진기)', icon: 'fa-heart-pulse', color: 'rose', hasValues: true },
   { code: 'balance', name: '평형검사', icon: 'fa-scale-balanced', color: 'gray', hasValues: true },
+  { code: 'skin', name: '피부사진', icon: 'fa-camera', color: 'teal', multiplePerDay: true },
 ];
 
 // 검사 유형 코드로 정보 조회

@@ -234,4 +234,5 @@ export const EXAM_ANALYSIS_HINTS: Record<ExamType, string> = {
   tongue: '설질, 설태, 설하맥 특징을 분석합니다.',
   pulse_dayo: '맥상, 맥력, 맥률 및 변동성을 분석합니다.',
   balance: '평형 감각과 무게중심 분포를 분석합니다.',
+  skin: '피부 상태, 색조, 질감을 분석합니다.',
 };
