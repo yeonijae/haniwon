@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { PortalUser } from '@shared/types';
 import type { SurveyTemplate, SurveySession, SurveyQuestion, SurveyAnswer, SurveyResponse, SurveyQuestionType } from '../../types';
+import '../call-center/OutboundCallCenter.css';
 import { searchLocalPatients, searchAndSyncPatients, type LocalPatient } from '../../lib/patientSync';
 import {
   getTemplates, createTemplate, updateTemplate, deleteTemplate, duplicateTemplate,
@@ -394,19 +395,23 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
   };
 
   return (
-    <div style={{ padding: 20, height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ padding: '0 12px 12px', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* ===== 헤더 ===== */}
-      <div style={H.header}>
-        <div style={H.left}>
-          <span style={{ fontSize: 18, fontWeight: 700 }}>📝 설문 관리</span>
+      <div className="occ-header-bar">
+        <div className="occ-date-nav">
+          <span style={{ fontSize: 15, fontWeight: 700, marginRight: 8 }}>📝 설문 관리</span>
           {viewMode === 'sessions' && (
-            <div style={H.dateNav}>
-              <button style={H.navBtn} onClick={() => moveDate(-1)}>◀</button>
-              <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} style={H.dateInput} />
-              <span style={{ fontSize: 14, color: '#374151', fontWeight: 500 }}>{formatDate(selectedDate)}</span>
-              <button style={H.navBtn} onClick={() => moveDate(1)}>▶</button>
-              {!isToday && <button style={H.todayBtn} onClick={goToday}>오늘</button>}
-              <div style={H.rangeFilterGroup}>
+            <>
+              <button className="occ-date-btn" onClick={() => moveDate(-1)}>◀</button>
+              <div className="occ-date-wrap">
+                <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="occ-date-hidden" id="survey-date-picker" />
+                <button className="occ-date-display" onClick={() => { (document.getElementById('survey-date-picker') as HTMLInputElement)?.showPicker?.(); }}>
+                  {formatDate(selectedDate)}
+                </button>
+              </div>
+              <button className="occ-date-btn" onClick={() => moveDate(1)}>▶</button>
+              {!isToday && <button className="occ-today-btn" onClick={goToday}>오늘</button>}
+              <div className="occ-filter-group">
                 {([
                   ['day', '1일'],
                   ['1w', '1주일'],
@@ -416,22 +421,22 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
                   <button
                     key={key}
                     onClick={() => setRangeMode(key)}
-                    style={{ ...H.filterBtn, ...(rangeMode === key ? H.filterActive : {}) }}
+                    className={`occ-filter-btn ${rangeMode === key ? 'active' : ''}`}
                   >
                     {label}
                   </button>
                 ))}
               </div>
-            </div>
+            </>
           )}
         </div>
 
-        <div style={H.right}>
+        <div className="occ-header-actions">
           {viewMode === 'sessions' && (
             <>
-              <div style={{ display: 'flex', gap: 4 }}>
+              <div className="occ-filter-group occ-filter-patient">
                 {(['all', 'waiting', 'completed'] as StatusFilter[]).map(s => (
-                  <button key={s} onClick={() => setStatusFilter(s)} style={{ ...H.filterBtn, ...(statusFilter === s ? H.filterActive : {}) }}>
+                  <button key={s} onClick={() => setStatusFilter(s)} className={`occ-filter-btn ${statusFilter === s ? 'active' : ''}`}>
                     {{ all: '전체', waiting: '대기중', completed: '작성완료' }[s]}
                   </button>
                 ))}
@@ -443,7 +448,7 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
           )}
           <button
             onClick={() => setViewMode(viewMode === 'sessions' ? 'templates' : 'sessions')}
-            style={H.modeBtn}
+            className="occ-refresh-btn"
           >
             {viewMode === 'sessions' ? '⚙️ 템플릿 관리' : '📋 세션 관리'}
           </button>
@@ -452,7 +457,7 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
 
       {/* ===== 세션 관리 뷰 ===== */}
       {viewMode === 'sessions' && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
           {/* 2단 본문 */}
           <div style={H.sessionSplitWrap}>
             {/* 좌측: 세션 목록 */}
@@ -860,7 +865,7 @@ const H = {
   modeBtn: { padding: '6px 14px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 } as React.CSSProperties,
   formLabel: { display: 'block', fontSize: 12, marginBottom: 3, color: '#64748b' } as React.CSSProperties,
   formInput: { width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, boxSizing: 'border-box' as const, outline: 'none' } as React.CSSProperties,
-  createBtn: { padding: '7px 20px', borderRadius: 6, border: 'none', background: '#4f46e5', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13, height: 36 } as React.CSSProperties,
+  createBtn: { padding: '5px 16px', borderRadius: 6, border: 'none', background: '#3b82f6', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13 } as React.CSSProperties,
   dropdown: { position: 'absolute' as const, top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #d1d5db', borderRadius: 8, maxHeight: 200, overflowY: 'auto' as const, zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' } as React.CSSProperties,
   modalOverlay: { position: 'fixed' as const, inset: 0, background: 'rgba(15, 23, 42, 0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 } as React.CSSProperties,
   modalCard: { width: 'min(560px, 92vw)', background: '#fff', borderRadius: 12, boxShadow: '0 20px 50px rgba(15, 23, 42, 0.3)', display: 'flex', flexDirection: 'column' } as React.CSSProperties,
