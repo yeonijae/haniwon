@@ -66,6 +66,8 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | ''>('');
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
 
   // Template editor (inline for templates view)
   const [selectedTemplateForEdit, setSelectedTemplateForEdit] = useState<SurveyTemplate | null>(null);
@@ -203,9 +205,30 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
   const goToday = () => setSelectedDate(toDateStr(new Date()));
   const isToday = selectedDate === toDateStr(new Date());
 
+  const resetCreateSessionForm = useCallback(() => {
+    setSelectedPatient(null);
+    setPatientQuery('');
+    setPatientResults([]);
+    setShowPatientDropdown(false);
+    setSelectedDoctor('');
+    setSelectedTemplateId(templates.length > 0 ? templates[0].id : '');
+  }, [templates]);
+
+  const closeCreateSessionModal = useCallback(() => {
+    if (isCreatingSession) return;
+    setIsCreateModalOpen(false);
+    resetCreateSessionForm();
+  }, [isCreatingSession, resetCreateSessionForm]);
+
   // Session CRUD
   const handleCreateSession = async () => {
-    if (!selectedPatient || !selectedTemplateId) return alert('환자와 템플릿을 선택해주세요.');
+    if (isCreatingSession) return;
+    if (!selectedPatient || !selectedTemplateId) {
+      alert('환자와 템플릿을 선택해주세요.');
+      return;
+    }
+
+    setIsCreatingSession(true);
     try {
       await createSession({
         patient_id: selectedPatient.mssql_id || selectedPatient.id,
@@ -217,9 +240,15 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
         doctor_name: selectedDoctor || undefined,
         created_by: user.name,
       });
-      setSelectedPatient(null); setPatientQuery(''); setSelectedDoctor('');
-      loadSessions();
-    } catch (e) { console.error(e); alert('세션 생성 실패'); }
+      await loadSessions();
+      setIsCreateModalOpen(false);
+      resetCreateSessionForm();
+    } catch (e) {
+      console.error(e);
+      alert('세션 생성 실패');
+    } finally {
+      setIsCreatingSession(false);
+    }
   };
 
   const handleDeleteSession = async (id: number) => {
@@ -399,13 +428,18 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
 
         <div style={H.right}>
           {viewMode === 'sessions' && (
-            <div style={{ display: 'flex', gap: 4 }}>
-              {(['all', 'waiting', 'completed'] as StatusFilter[]).map(s => (
-                <button key={s} onClick={() => setStatusFilter(s)} style={{ ...H.filterBtn, ...(statusFilter === s ? H.filterActive : {}) }}>
-                  {{ all: '전체', waiting: '대기중', completed: '작성완료' }[s]}
-                </button>
-              ))}
-            </div>
+            <>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {(['all', 'waiting', 'completed'] as StatusFilter[]).map(s => (
+                  <button key={s} onClick={() => setStatusFilter(s)} style={{ ...H.filterBtn, ...(statusFilter === s ? H.filterActive : {}) }}>
+                    {{ all: '전체', waiting: '대기중', completed: '작성완료' }[s]}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => { resetCreateSessionForm(); setIsCreateModalOpen(true); }} style={H.createBtn}>
+                설문지 생성
+              </button>
+            </>
           )}
           <button
             onClick={() => setViewMode(viewMode === 'sessions' ? 'templates' : 'sessions')}
@@ -419,52 +453,6 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
       {/* ===== 세션 관리 뷰 ===== */}
       {viewMode === 'sessions' && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
-          {/* 세션 생성 폼 */}
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 16 }}>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <div style={{ position: 'relative', flex: '1 1 200px' }}>
-                <label style={H.formLabel}>환자</label>
-                <input
-                  value={selectedPatient ? `${selectedPatient.name} (${selectedPatient.chart_number || ''})` : patientQuery}
-                  onChange={e => { setPatientQuery(e.target.value); setSelectedPatient(null); }}
-                  onFocus={() => patientResults.length > 0 && setShowPatientDropdown(true)}
-                  placeholder="이름/차트번호"
-                  style={H.formInput}
-                />
-                {showPatientDropdown && patientResults.length > 0 && (
-                  <div style={H.dropdown}>
-                    {patientResults.map(p => (
-                      <div key={p.id} onClick={() => { setSelectedPatient(p); setShowPatientDropdown(false); setPatientQuery(''); }}
-                        style={H.dropdownItem}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#f1f5f9')}
-                        onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
-                        <strong>{p.name}</strong> <span style={{ color: '#64748b' }}>({p.chart_number || '-'})</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div style={{ flex: '0 1 140px' }}>
-                <label style={H.formLabel}>담당의</label>
-                <select value={selectedDoctor} onChange={e => setSelectedDoctor(e.target.value)} style={H.formInput}>
-                  <option value="">선택</option>
-                  {doctors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-                </select>
-              </div>
-              <div style={{ flex: '0 1 180px' }}>
-                <label style={H.formLabel}>템플릿</label>
-                <select value={selectedTemplateId} onChange={e => setSelectedTemplateId(Number(e.target.value))} style={H.formInput}>
-                  <option value="">선택</option>
-                  {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </div>
-              <button onClick={handleCreateSession} disabled={!selectedPatient || !selectedTemplateId}
-                style={{ ...H.createBtn, opacity: selectedPatient && selectedTemplateId ? 1 : 0.4 }}>
-                생성
-              </button>
-            </div>
-          </div>
-
           {/* 2단 본문 */}
           <div style={H.sessionSplitWrap}>
             {/* 좌측: 세션 목록 */}
@@ -594,6 +582,82 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCreateModalOpen && (
+        <div style={H.modalOverlay} onClick={closeCreateSessionModal} role="dialog" aria-modal="true" aria-labelledby="survey-create-modal-title">
+          <div style={H.modalCard} onClick={e => e.stopPropagation()}>
+            <div style={H.modalHeader}>
+              <h3 id="survey-create-modal-title" style={H.modalTitle}>설문지 생성</h3>
+              <button
+                onClick={closeCreateSessionModal}
+                style={H.modalCloseBtn}
+                disabled={isCreatingSession}
+                aria-label="설문지 생성 모달 닫기"
+              >
+                ×
+              </button>
+            </div>
+            <div style={H.modalBody}>
+              <div style={{ position: 'relative' }}>
+                <label style={H.formLabel}>환자</label>
+                <input
+                  value={selectedPatient ? `${selectedPatient.name} (${selectedPatient.chart_number || ''})` : patientQuery}
+                  onChange={e => { setPatientQuery(e.target.value); setSelectedPatient(null); }}
+                  onFocus={() => patientResults.length > 0 && setShowPatientDropdown(true)}
+                  placeholder="이름/차트번호"
+                  style={H.formInput}
+                  autoFocus
+                />
+                {showPatientDropdown && patientResults.length > 0 && (
+                  <div style={H.dropdown}>
+                    {patientResults.map(p => (
+                      <div
+                        key={p.id}
+                        onClick={() => { setSelectedPatient(p); setShowPatientDropdown(false); setPatientQuery(''); }}
+                        style={H.dropdownItem}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#f1f5f9')}
+                        onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
+                      >
+                        <strong>{p.name}</strong> <span style={{ color: '#64748b' }}>({p.chart_number || '-'})</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label style={H.formLabel}>담당의</label>
+                <select value={selectedDoctor} onChange={e => setSelectedDoctor(e.target.value)} style={H.formInput}>
+                  <option value="">선택</option>
+                  {doctors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={H.formLabel}>템플릿</label>
+                <select value={selectedTemplateId} onChange={e => setSelectedTemplateId(Number(e.target.value))} style={H.formInput}>
+                  <option value="">선택</option>
+                  {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={H.modalFooter}>
+              <button
+                onClick={closeCreateSessionModal}
+                style={H.modalCancelBtn}
+                disabled={isCreatingSession}
+              >
+                취소
+              </button>
+              <button
+                onClick={handleCreateSession}
+                disabled={!selectedPatient || !selectedTemplateId || isCreatingSession}
+                style={{ ...H.createBtn, opacity: selectedPatient && selectedTemplateId && !isCreatingSession ? 1 : 0.5 }}
+              >
+                {isCreatingSession ? '생성 중...' : '생성'}
+              </button>
             </div>
           </div>
         </div>
@@ -798,6 +862,14 @@ const H = {
   formInput: { width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13, boxSizing: 'border-box' as const, outline: 'none' } as React.CSSProperties,
   createBtn: { padding: '7px 20px', borderRadius: 6, border: 'none', background: '#4f46e5', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13, height: 36 } as React.CSSProperties,
   dropdown: { position: 'absolute' as const, top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #d1d5db', borderRadius: 8, maxHeight: 200, overflowY: 'auto' as const, zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' } as React.CSSProperties,
+  modalOverlay: { position: 'fixed' as const, inset: 0, background: 'rgba(15, 23, 42, 0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 } as React.CSSProperties,
+  modalCard: { width: 'min(560px, 92vw)', background: '#fff', borderRadius: 12, boxShadow: '0 20px 50px rgba(15, 23, 42, 0.3)', display: 'flex', flexDirection: 'column' } as React.CSSProperties,
+  modalHeader: { padding: '14px 18px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' } as React.CSSProperties,
+  modalTitle: { margin: 0, fontSize: 16, fontWeight: 700, color: '#111827' } as React.CSSProperties,
+  modalCloseBtn: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 24, color: '#64748b', lineHeight: 1 } as React.CSSProperties,
+  modalBody: { padding: 18, display: 'flex', flexDirection: 'column', gap: 12 } as React.CSSProperties,
+  modalFooter: { padding: '14px 18px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 8 } as React.CSSProperties,
+  modalCancelBtn: { padding: '7px 16px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#374151', cursor: 'pointer', fontSize: 13 } as React.CSSProperties,
   dropdownItem: { padding: '7px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: 13 } as React.CSSProperties,
   smallBtn: { padding: '2px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 11 } as React.CSSProperties,
   moveBtn: { background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 10, padding: '1px 3px' } as React.CSSProperties,
