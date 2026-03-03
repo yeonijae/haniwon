@@ -27,6 +27,20 @@ const formatDate = (s: string) => {
 
 const GENDER_MAP: Record<string, string> = { M: '남', F: '여', 남: '남', 여: '여' };
 
+const formatSessionDate = (dateTime?: string) => {
+  if (!dateTime) return '-';
+  const d = new Date(dateTime);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+};
+
+const formatSessionTime = (dateTime?: string) => {
+  if (!dateTime) return '-';
+  const d = new Date(dateTime);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+};
+
 export default function SurveyManagementView({ user }: SurveyManagementViewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('sessions');
   const [selectedDate, setSelectedDate] = useState(toDateStr(new Date()));
@@ -456,45 +470,54 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
             {/* 좌측: 세션 목록 */}
             <div style={H.sessionListPanel}>
               <div style={H.panelTitle}>검색 결과 ({sessions.length})</div>
-              <div style={{ flex: 1, overflow: 'auto' }}>
+              <div style={H.sessionListBody}>
                 {loading ? <p style={{ textAlign: 'center', color: '#94a3b8', padding: 40 }}>로딩 중...</p> : sessions.length === 0 ? (
                   <p style={{ textAlign: 'center', color: '#94a3b8', padding: 40 }}>세션이 없습니다</p>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {sessions.map(s => {
-                      const active = s.id === selectedSessionId;
-                      return (
-                        <div
-                          key={s.id}
-                          onClick={() => handleSelectSession(s)}
-                          style={{ ...H.sessionItem, ...(active ? H.sessionItemActive : {}) }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                            <strong style={{ fontSize: 14 }}>{s.patient_name || '-'}</strong>
-                            {statusBadge(s.status)}
-                          </div>
-                          <div style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>
-                            {(s.chart_number || '-')}
-                            {' · '}
-                            {[s.age != null ? `${s.age}세` : '', s.gender ? (GENDER_MAP[s.gender] || s.gender) : ''].filter(Boolean).join('/') || '-'}
-                          </div>
-                          <div style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>{s.template_name || '-'}</div>
-                          <div style={{ marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                              {s.created_at ? new Date(s.created_at).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}
+                  <div style={H.sessionTableWrap}>
+                    <div style={H.sessionTableHead}>
+                      <span style={{ ...H.sessionCol, ...H.colName }}>환자이름</span>
+                      <span style={{ ...H.sessionCol, ...H.colChart }}>차트</span>
+                      <span style={{ ...H.sessionCol, ...H.colAge }}>나이</span>
+                      <span style={{ ...H.sessionCol, ...H.colGender }}>성별</span>
+                      <span style={{ ...H.sessionCol, ...H.colTemplate }}>설문지 종류</span>
+                      <span style={{ ...H.sessionCol, ...H.colDate }}>작성 날짜</span>
+                      <span style={{ ...H.sessionCol, ...H.colTime }}>작성 시간</span>
+                      <span style={{ ...H.sessionCol, ...H.colStatus }}>상태</span>
+                      <span style={{ ...H.sessionCol, ...H.colAction }}>관리</span>
+                    </div>
+                    <div style={H.sessionTableBody}>
+                      {sessions.map(s => {
+                        const active = s.id === selectedSessionId;
+                        return (
+                          <div
+                            key={s.id}
+                            onClick={() => handleSelectSession(s)}
+                            style={{ ...H.sessionRow, ...(active ? H.sessionRowActive : {}) }}
+                            title={`${s.patient_name || '-'} / ${s.template_name || '-'} / ${formatSessionDate(s.created_at)} ${formatSessionTime(s.created_at)}`}
+                          >
+                            <span style={{ ...H.sessionCol, ...H.colName }} title={s.patient_name || '-'}>{s.patient_name || '-'}</span>
+                            <span style={{ ...H.sessionCol, ...H.colChart }} title={s.chart_number || '-'}>{s.chart_number || '-'}</span>
+                            <span style={{ ...H.sessionCol, ...H.colAge }}>{s.age != null ? `${s.age}세` : '-'}</span>
+                            <span style={{ ...H.sessionCol, ...H.colGender }}>{s.gender ? (GENDER_MAP[s.gender] || s.gender) : '-'}</span>
+                            <span style={{ ...H.sessionCol, ...H.colTemplate }} title={s.template_name || '-'}>{s.template_name || '-'}</span>
+                            <span style={{ ...H.sessionCol, ...H.colDate }}>{formatSessionDate(s.created_at)}</span>
+                            <span style={{ ...H.sessionCol, ...H.colTime }}>{formatSessionTime(s.created_at)}</span>
+                            <span style={{ ...H.sessionCol, ...H.colStatus }}>{statusBadge(s.status)}</span>
+                            <span style={{ ...H.sessionCol, ...H.colAction }}>
+                              {s.status === 'waiting' && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleDeleteSession(s.id); }}
+                                  style={{ ...H.smallBtn, color: '#ef4444', borderColor: '#fca5a5' }}
+                                >
+                                  삭제
+                                </button>
+                              )}
                             </span>
-                            {s.status === 'waiting' && (
-                              <button
-                                onClick={e => { e.stopPropagation(); handleDeleteSession(s.id); }}
-                                style={{ ...H.smallBtn, color: '#ef4444', borderColor: '#fca5a5' }}
-                              >
-                                삭제
-                              </button>
-                            )}
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -783,8 +806,22 @@ const H = {
   sessionListPanel: { flex: '1 1 340px', minWidth: 320, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, display: 'flex', flexDirection: 'column', minHeight: 360 } as React.CSSProperties,
   sessionDetailPanel: { flex: '1.3 1 440px', minWidth: 360, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, display: 'flex', flexDirection: 'column', minHeight: 360 } as React.CSSProperties,
   panelTitle: { padding: '12px 14px', borderBottom: '1px solid #e5e7eb', fontSize: 13, fontWeight: 600, color: '#334155' } as React.CSSProperties,
-  sessionItem: { padding: '12px 14px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: '#fff' } as React.CSSProperties,
-  sessionItemActive: { background: '#eff6ff', borderLeft: '3px solid #3b82f6' } as React.CSSProperties,
+  sessionListBody: { flex: 1, overflow: 'auto' as const } as React.CSSProperties,
+  sessionTableWrap: { minWidth: 880, display: 'flex', flexDirection: 'column' } as React.CSSProperties,
+  sessionTableHead: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid #e5e7eb', background: '#f8fafc', position: 'sticky' as const, top: 0, zIndex: 1 } as React.CSSProperties,
+  sessionTableBody: { display: 'flex', flexDirection: 'column' } as React.CSSProperties,
+  sessionRow: { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: '#fff' } as React.CSSProperties,
+  sessionRowActive: { background: '#eff6ff', boxShadow: 'inset 3px 0 0 #3b82f6' } as React.CSSProperties,
+  sessionCol: { fontSize: 12, color: '#334155', whiteSpace: 'nowrap' as const, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const } as React.CSSProperties,
+  colName: { flex: '0 0 110px', fontWeight: 600, fontSize: 13 } as React.CSSProperties,
+  colChart: { flex: '0 0 80px', color: '#64748b' } as React.CSSProperties,
+  colAge: { flex: '0 0 56px', textAlign: 'right' as const } as React.CSSProperties,
+  colGender: { flex: '0 0 52px', textAlign: 'center' as const } as React.CSSProperties,
+  colTemplate: { flex: '1 1 220px' } as React.CSSProperties,
+  colDate: { flex: '0 0 110px', color: '#64748b' } as React.CSSProperties,
+  colTime: { flex: '0 0 66px', color: '#64748b' } as React.CSSProperties,
+  colStatus: { flex: '0 0 70px', textAlign: 'center' as const } as React.CSSProperties,
+  colAction: { flex: '0 0 52px', textAlign: 'right' as const } as React.CSSProperties,
   detailHeader: { padding: '12px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const } as React.CSSProperties,
   emptyState: { height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13 } as React.CSSProperties,
 
