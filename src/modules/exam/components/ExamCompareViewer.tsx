@@ -541,6 +541,14 @@ const ExamCompareViewer: React.FC<ExamCompareViewerProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black z-[60] flex flex-col">
+      <button
+        onClick={onClose}
+        className="absolute top-3 right-3 z-[70] w-10 h-10 rounded-full bg-black/70 border border-gray-600 text-white hover:bg-black"
+        title="닫기"
+      >
+        <i className="fas fa-times"></i>
+      </button>
+
       {/* 상단 툴바 */}
       <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-700">
         <div className="flex items-center gap-3">
