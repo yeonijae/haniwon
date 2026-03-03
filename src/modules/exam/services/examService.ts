@@ -486,3 +486,40 @@ export async function saveExamTabLabels(labels: Record<string, string>): Promise
 
   return true;
 }
+
+export interface ExamNavigationPatient {
+  patient_id: number;
+  patient_name: string;
+  chart_number: string | null;
+}
+
+export async function getExamNavigationPatients(baseDate: string, rangeDays: 7 | 30 | 90, doctorName?: string): Promise<ExamNavigationPatient[]> {
+  const escapedDoctor = (doctorName || '').replace(/'/g, "''");
+  const doctorWhere = doctorName ? `AND COALESCE(er.doctor_name, '') = '${escapedDoctor}'` : '';
+
+  return query<ExamNavigationPatient>(`
+    SELECT
+      er.patient_id,
+      COALESCE(p.name, CONCAT('환자#', er.patient_id::text)) AS patient_name,
+      p.chart_number
+    FROM exam_results er
+    LEFT JOIN patients p ON p.id = er.patient_id
+    WHERE er.exam_date BETWEEN (DATE '${baseDate}' - INTERVAL '${rangeDays - 1} day') AND DATE '${baseDate}'
+      ${doctorWhere}
+    GROUP BY er.patient_id, p.name, p.chart_number
+    ORDER BY MAX(er.exam_date) DESC, patient_name ASC
+  `);
+}
+
+export async function getExamDoctors(baseDate: string, rangeDays: 7 | 30 | 90): Promise<string[]> {
+  const rows = await query<{ doctor_name: string }>(`
+    SELECT DISTINCT doctor_name
+    FROM exam_results
+    WHERE exam_date BETWEEN (DATE '${baseDate}' - INTERVAL '${rangeDays - 1} day') AND DATE '${baseDate}'
+      AND doctor_name IS NOT NULL
+      AND doctor_name <> ''
+    ORDER BY doctor_name ASC
+  `);
+
+  return rows.map((r) => r.doctor_name);
+}
