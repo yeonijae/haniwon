@@ -293,12 +293,18 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     }
   };
 
-  const addQuickFiles = async (fileList: FileList) => {
-    const allowed = ['image/', 'application/pdf'];
-    const candidates = Array.from(fileList).filter((file) => allowed.some((type) => file.type.startsWith(type)));
+  const addQuickFiles = async (fileList: FileList | File[]) => {
+    const allowedExt = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
+    const files = Array.from(fileList as File[]);
+    const candidates = files.filter((file) => {
+      const byMime = file.type.startsWith('image/') || file.type === 'application/pdf';
+      const lower = file.name.toLowerCase();
+      const byExt = allowedExt.some((ext) => lower.endsWith(ext));
+      return byMime || byExt;
+    });
 
     if (candidates.length === 0) {
-      alert('이미지(JPG/PNG) 또는 PDF 파일만 등록할 수 있습니다.');
+      alert('이미지(JPG/PNG/WEBP) 또는 PDF 파일만 등록할 수 있습니다.');
       return;
     }
 
@@ -337,9 +343,69 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   };
 
-  const handleQuickDrop = (e: React.DragEvent) => {
+  const collectDroppedFiles = async (items: DataTransferItemList): Promise<File[]> => {
+    const out: File[] = [];
+
+    const walkEntry = async (entry: any, path = ''): Promise<void> => {
+      if (!entry) return;
+      if (entry.isFile) {
+        await new Promise<void>((resolve) => {
+          entry.file((file: File) => {
+            out.push(file);
+            resolve();
+          }, () => resolve());
+        });
+        return;
+      }
+      if (entry.isDirectory) {
+        const reader = entry.createReader();
+        await new Promise<void>((resolve) => {
+          const readBatch = () => {
+            reader.readEntries(async (entries: any[]) => {
+              if (!entries.length) {
+                resolve();
+                return;
+              }
+              for (const child of entries) {
+                await walkEntry(child, `${path}/${child.name}`);
+              }
+              readBatch();
+            }, () => resolve());
+          };
+          readBatch();
+        });
+      }
+    };
+
+    const hasEntries = Array.from(items).some((item: any) => !!item.webkitGetAsEntry);
+    if (hasEntries) {
+      for (const item of Array.from(items) as any[]) {
+        const entry = item.webkitGetAsEntry?.();
+        if (entry) await walkEntry(entry);
+      }
+      return out;
+    }
+
+    for (const item of Array.from(items)) {
+      const file = item.getAsFile();
+      if (file) out.push(file);
+    }
+    return out;
+  };
+
+  const handleQuickDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setQuickDragOver(false);
+
+    const dtItems = e.dataTransfer.items;
+    if (dtItems && dtItems.length > 0) {
+      const droppedFiles = await collectDroppedFiles(dtItems);
+      if (droppedFiles.length > 0) {
+        await addQuickFiles(droppedFiles);
+        return;
+      }
+    }
+
     if (e.dataTransfer.files.length > 0) void addQuickFiles(e.dataTransfer.files);
   };
 
