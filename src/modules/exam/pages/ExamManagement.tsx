@@ -45,6 +45,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   const [showBookGenerator, setShowBookGenerator] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [examTabOrder, setExamTabOrder] = useState<ExamType[]>(EXAM_TYPES.map((t) => t.code));
+  const [draggingTab, setDraggingTab] = useState<ExamType | null>(null);
 
   // 빠른 등록 상태
   const [quickFiles, setQuickFiles] = useState<QuickUploadFile[]>([]);
@@ -318,12 +319,16 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     }
   };
 
-  const moveExamTab = (index: number, dir: -1 | 1) => {
-    const target = index + dir;
-    if (target < 0 || target >= examTabOrder.length) return;
+  const handleDropExamTab = (targetCode: ExamType) => {
+    if (!draggingTab || draggingTab === targetCode) return;
     const next = [...examTabOrder];
-    [next[index], next[target]] = [next[target], next[index]];
+    const from = next.indexOf(draggingTab);
+    const to = next.indexOf(targetCode);
+    if (from < 0 || to < 0) return;
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
     setExamTabOrder(next);
+    setDraggingTab(null);
   };
 
   const handleSaveSettings = async () => {
@@ -657,29 +662,24 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
             </div>
             <div className="p-4 overflow-y-auto space-y-2">
               <p className="text-sm text-gray-500 mb-2">검사결과 탭 순서를 변경할 수 있습니다.</p>
-              {examTabOrder.map((code, idx) => {
+              {examTabOrder.map((code) => {
                 const info = getExamTypeInfo(code);
+                const isDragging = draggingTab === code;
                 return (
-                  <div key={code} className="flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2">
-                    <span className="text-base text-gray-700">{info?.name || code}</span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => moveExamTab(idx, -1)}
-                        disabled={idx === 0}
-                        className="w-8 h-8 rounded border border-gray-200 text-gray-600 disabled:opacity-30"
-                        title="위로"
-                      >
-                        <i className="fas fa-arrow-up"></i>
-                      </button>
-                      <button
-                        onClick={() => moveExamTab(idx, 1)}
-                        disabled={idx === examTabOrder.length - 1}
-                        className="w-8 h-8 rounded border border-gray-200 text-gray-600 disabled:opacity-30"
-                        title="아래로"
-                      >
-                        <i className="fas fa-arrow-down"></i>
-                      </button>
+                  <div
+                    key={code}
+                    draggable
+                    onDragStart={() => setDraggingTab(code)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => handleDropExamTab(code)}
+                    onDragEnd={() => setDraggingTab(null)}
+                    className={`flex items-center justify-between border rounded-lg px-3 py-2 cursor-move ${isDragging ? 'border-blue-300 bg-blue-50 opacity-70' : 'border-gray-200 bg-white'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <i className="fas fa-grip-vertical text-gray-400"></i>
+                      <span className="text-base text-gray-700">{info?.name || code}</span>
                     </div>
+                    <span className="text-xs text-gray-400">드래그</span>
                   </div>
                 );
               })}

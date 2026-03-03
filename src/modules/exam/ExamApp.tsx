@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { ROLE_LABELS } from '@shared/types';
 import HeaderPatientSearch from '@modules/cs/components/HeaderPatientSearch';
@@ -15,7 +15,6 @@ interface ExamAppProps {
 
 const ExamApp: React.FC<ExamAppProps> = ({ user }) => {
   useDocumentTitle('검사결과');
-  const navigate = useNavigate();
   const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
   const [selectedPatientName, setSelectedPatientName] = useState<string>('');
   const [settingsOpenSignal, setSettingsOpenSignal] = useState(0);
@@ -37,14 +36,7 @@ const ExamApp: React.FC<ExamAppProps> = ({ user }) => {
         <div className="exam-header-left">
           <span className="exam-logo">🔬</span>
           <span className="exam-title">검사결과</span>
-          <button
-            className="exam-portal-btn"
-            onClick={() => navigate('/')}
-            title="포털로 이동"
-          >
-            <i className="fas fa-th-large"></i>
-            포털
-          </button>
+
         </div>
 
         <div className="exam-header-center">
