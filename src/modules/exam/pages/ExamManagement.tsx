@@ -26,6 +26,7 @@ interface ExamManagementProps {
 interface QuickUploadFile {
   file: File;
   preview: string;
+  capturedAtMs: number;
 }
 
 const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, selectedPatientName, settingsOpenSignal = 0 }) => {
@@ -58,6 +59,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   const [quickViewMode, setQuickViewMode] = useState<'list' | 'card'>('card');
   const [isQuickSaving, setIsQuickSaving] = useState(false);
   const quickFileInputRef = useRef<HTMLInputElement>(null);
+  const quickFolderInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -238,18 +240,76 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
 
   const activeExamType = activeExamTab !== 'all' ? activeExamTab : null;
 
-  const addQuickFiles = (fileList: FileList) => {
-    const allowed = ['image/', 'application/pdf'];
-    const incoming = Array.from(fileList)
-      .filter((file) => allowed.some((type) => file.type.startsWith(type)))
-      .map((file) => ({
-        file,
-        preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
-      }));
+  const extractExifDateMs = async (file: File): Promise<number | null> => {
+    if (!file.type.startsWith('image/jpeg')) return null;
+    try {
+      const buffer = await file.arrayBuffer();
+      const view = new DataView(buffer);
+      let offset = 2;
+      while (offset + 4 < view.byteLength) {
+        if (view.getUint8(offset) !== 0xFF) break;
+        const marker = view.getUint8(offset + 1);
+        const size = view.getUint16(offset + 2, false);
+        if (marker === 0xE1) {
+          const exifStart = offset + 4;
+          if (view.getUint32(exifStart, false) !== 0x45786966) return null; // Exif
+          const tiffStart = exifStart + 6;
+          const little = view.getUint16(tiffStart, false) === 0x4949;
+          const get16 = (o: number) => view.getUint16(o, little);
+          const get32 = (o: number) => view.getUint32(o, little);
+          const ifd0 = tiffStart + get32(tiffStart + 4);
+          const count = get16(ifd0);
+          let exifIfdOffset = 0;
+          for (let i = 0; i < count; i++) {
+            const entry = ifd0 + 2 + i * 12;
+            if (get16(entry) === 0x8769) {
+              exifIfdOffset = get32(entry + 8);
+              break;
+            }
+          }
+          if (!exifIfdOffset) return null;
+          const exifIfd = tiffStart + exifIfdOffset;
+          const exifCount = get16(exifIfd);
+          for (let i = 0; i < exifCount; i++) {
+            const entry = exifIfd + 2 + i * 12;
+            if (get16(entry) === 0x9003) {
+              const len = get32(entry + 4);
+              const valOffset = tiffStart + get32(entry + 8);
+              let s = '';
+              for (let j = 0; j < len - 1; j++) s += String.fromCharCode(view.getUint8(valOffset + j));
+              const m = s.match(/(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+              if (!m) return null;
+              const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6]));
+              return dt.getTime();
+            }
+          }
+          return null;
+        }
+        offset += 2 + size;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
 
-    if (incoming.length === 0) {
+  const addQuickFiles = async (fileList: FileList) => {
+    const allowed = ['image/', 'application/pdf'];
+    const candidates = Array.from(fileList).filter((file) => allowed.some((type) => file.type.startsWith(type)));
+
+    if (candidates.length === 0) {
       alert('이미지(JPG/PNG) 또는 PDF 파일만 등록할 수 있습니다.');
       return;
+    }
+
+    const incoming: QuickUploadFile[] = [];
+    for (const file of candidates) {
+      const capturedAtMs = (await extractExifDateMs(file)) || file.lastModified;
+      incoming.push({
+        file,
+        preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
+        capturedAtMs,
+      });
     }
 
     setQuickFiles((prev) => [...prev, ...incoming]);
@@ -280,7 +340,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   const handleQuickDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setQuickDragOver(false);
-    if (e.dataTransfer.files.length > 0) addQuickFiles(e.dataTransfer.files);
+    if (e.dataTransfer.files.length > 0) void addQuickFiles(e.dataTransfer.files);
   };
 
   const handleQuickRegister = async () => {
@@ -294,7 +354,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     try {
       const grouped = new Map<string, QuickUploadFile[]>();
       for (const qf of quickFiles) {
-        const key = `${toExamDate(qf.file.lastModified)} ${toTimeLabel(qf.file.lastModified)}`;
+        const key = `${toExamDate(qf.capturedAtMs)} ${toTimeLabel(qf.capturedAtMs)}`;
         if (!grouped.has(key)) grouped.set(key, []);
         grouped.get(key)!.push(qf);
       }
@@ -528,7 +588,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                   <div className="flex items-center justify-between mb-3">
                     <div>
                       <h3 className="text-base font-semibold text-gray-800">빠른등록 - {getExamLabel(activeExamType)}</h3>
-                      <p className="text-sm text-gray-500">파일의 날짜/시간(lastModified)으로 자동 등록됩니다.</p>
+                      <p className="text-sm text-gray-500">촬영일(EXIF) 우선, 없으면 파일 날짜/시간으로 자동 등록됩니다.</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -555,11 +615,26 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                       multiple
                       accept="image/*,.pdf"
                       className="hidden"
-                      onChange={(e) => e.target.files && addQuickFiles(e.target.files)}
+                      onChange={(e) => e.target.files && void addQuickFiles(e.target.files)}
+                    />
+                    <input
+                      ref={quickFolderInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      {...({ webkitdirectory: '', directory: '' } as any)}
+                      onChange={(e) => e.target.files && void addQuickFiles(e.target.files)}
                     />
                     <i className="fas fa-cloud-upload-alt text-2xl text-gray-400 mb-2"></i>
                     <p className="text-base text-gray-700">파일을 드래그&드롭하거나 클릭해서 추가</p>
                     <p className="text-sm text-gray-500">JPG/PNG/PDF · 여러 파일 가능</p>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); quickFolderInputRef.current?.click(); }}
+                      className="mt-2 px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      폴더 통째로 선택(하위폴더 포함)
+                    </button>
                   </div>
 
                   {quickFiles.length > 0 && (
@@ -576,7 +651,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                             )}
                             <div className="flex-1 min-w-0 text-sm">
                               <p className="truncate font-medium text-gray-700">{qf.file.name}</p>
-                              <p className="text-gray-500">{toExamDate(qf.file.lastModified)} {toTimeLabel(qf.file.lastModified)} · {formatFileSize(qf.file.size)}</p>
+                              <p className="text-gray-500">{toExamDate(qf.capturedAtMs)} {toTimeLabel(qf.capturedAtMs)} · {formatFileSize(qf.file.size)}</p>
                             </div>
                             <button onClick={() => removeQuickFile(idx)} className="text-gray-400 hover:text-red-500">
                               <i className="fas fa-times"></i>
@@ -595,7 +670,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                                 )}
                               </div>
                               <p className="text-sm font-medium text-gray-700 truncate">{qf.file.name}</p>
-                              <p className="text-xs text-gray-500">{toExamDate(qf.file.lastModified)} {toTimeLabel(qf.file.lastModified)}</p>
+                              <p className="text-xs text-gray-500">{toExamDate(qf.capturedAtMs)} {toTimeLabel(qf.capturedAtMs)}</p>
                               <button onClick={() => removeQuickFile(idx)} className="mt-1 text-xs text-gray-500 hover:text-red-500">제거</button>
                             </div>
                           ))}
