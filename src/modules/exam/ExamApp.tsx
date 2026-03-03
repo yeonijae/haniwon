@@ -6,6 +6,7 @@ import { ROLE_LABELS } from '@shared/types';
 import HeaderPatientSearch from '@modules/cs/components/HeaderPatientSearch';
 import type { LocalPatient } from '@modules/cs/lib/patientSync';
 import ExamManagement from './pages/ExamManagement';
+import ExamComparePopup from './pages/ExamComparePopup';
 import ExamWaitingSidebar from './components/ExamWaitingSidebar';
 import './styles/exam.css';
 
@@ -77,6 +78,7 @@ const ExamApp: React.FC<ExamAppProps> = ({ user }) => {
                 settingsOpenSignal={settingsOpenSignal}
               />
             } />
+            <Route path="/compare-popup" element={<ExamComparePopup />} />
           </Routes>
         </section>
       </main>

@@ -233,8 +233,20 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
 
   // 비교 시작
   const handleStartCompare = (examType: ExamType) => {
-    setCompareExamType(examType);
-    setShowCompareViewer(true);
+    const exams = getExamsForCompare(examType);
+    if (exams.length < 2) return;
+
+    const key = `exam_compare_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    localStorage.setItem(key, JSON.stringify(exams));
+
+    const url = `/exam/compare-popup?key=${encodeURIComponent(key)}`;
+    const popup = window.open(url, '_blank', 'width=1700,height=1000,noopener,noreferrer');
+
+    if (!popup) {
+      // 팝업 차단 시 기존 모달 fallback
+      setCompareExamType(examType);
+      setShowCompareViewer(true);
+    }
   };
 
   // 추이 분석 시작
