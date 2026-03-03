@@ -4,15 +4,16 @@
 
 // 검사 유형 코드
 export type ExamType =
-  | 'thermography'  // 적외선 체열검사
-  | 'inbody'        // 인바디 체성분검사
-  | 'body_shape'    // 체형 검사
-  | 'balance'       // 평형 검사
-  | 'tongue'        // 설진 검사
-  | 'pulse'         // 맥진 검사
-  | 'eeg'           // 뇌파 검사
-  | 'ans'           // 자율신경 검사
-  | 'skin';         // 피부사진
+  | 'biochemistry'       // 생화학검사
+  | 'cbc'                // 혈구검사
+  | 'hormone'            // 호르몬검사
+  | 'inbody770'          // 체성분검사 (인바디 770)
+  | 'iris8000'           // 체열검사 (IRIS-8000)
+  | 'ibalance'           // 체형검사 (아이밸런스)
+  | 'omnifit'            // 뇌파+자율신경검사 (옴니핏)
+  | 'tongue'             // 설진검사
+  | 'pulse_dayo'         // 맥진검사 (대요맥진기)
+  | 'balance';           // 평형검사
 
 // 검사 유형 정보
 export interface ExamTypeInfo {
@@ -26,15 +27,16 @@ export interface ExamTypeInfo {
 
 // 검사 유형 목록
 export const EXAM_TYPES: ExamTypeInfo[] = [
-  { code: 'thermography', name: '적외선 체열', icon: 'fa-temperature-high', color: 'red' },
-  { code: 'inbody', name: '인바디', icon: 'fa-weight-scale', color: 'blue', hasValues: true },
-  { code: 'body_shape', name: '체형검사', icon: 'fa-person', color: 'green' },
-  { code: 'balance', name: '평형검사', icon: 'fa-scale-balanced', color: 'purple', hasValues: true },
-  { code: 'tongue', name: '설진', icon: 'fa-mouth-open', color: 'pink' },
-  { code: 'pulse', name: '맥진', icon: 'fa-heart-pulse', color: 'rose', hasValues: true },
-  { code: 'eeg', name: '뇌파', icon: 'fa-brain', color: 'indigo' },
-  { code: 'ans', name: '자율신경', icon: 'fa-heart', color: 'orange', hasValues: true },
-  { code: 'skin', name: '피부사진', icon: 'fa-camera', color: 'teal', multiplePerDay: true },
+  { code: 'biochemistry', name: '생화학검사', icon: 'fa-flask', color: 'blue', hasValues: true },
+  { code: 'cbc', name: '혈구검사', icon: 'fa-droplet', color: 'red', hasValues: true },
+  { code: 'hormone', name: '호르몬검사', icon: 'fa-vial-circle-check', color: 'purple', hasValues: true },
+  { code: 'inbody770', name: '체성분검사 (인바디 770)', icon: 'fa-weight-scale', color: 'indigo', hasValues: true },
+  { code: 'iris8000', name: '체열검사 (IRIS-8000)', icon: 'fa-temperature-high', color: 'orange' },
+  { code: 'ibalance', name: '체형검사 (아이밸런스)', icon: 'fa-person', color: 'green' },
+  { code: 'omnifit', name: '뇌파+자율신경검사 (옴니핏)', icon: 'fa-brain', color: 'teal', hasValues: true },
+  { code: 'tongue', name: '설진검사', icon: 'fa-mouth-open', color: 'pink' },
+  { code: 'pulse_dayo', name: '맥진검사 (대요맥진기)', icon: 'fa-heart-pulse', color: 'rose', hasValues: true },
+  { code: 'balance', name: '평형검사', icon: 'fa-scale-balanced', color: 'gray', hasValues: true },
 ];
 
 // 검사 유형 코드로 정보 조회
