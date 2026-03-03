@@ -3,25 +3,6 @@ import { query, getCurrentDate } from '@shared/lib/postgres';
 
 const MSSQL_API_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
-const calculateAgeFromBirthYear = (birthYear: number) => {
-  const currentYear = new Date().getFullYear();
-  // 기존 대기실 API 연령 표기(한국식 나이)에 맞춰 표시
-  return currentYear - birthYear + 1;
-};
-
-const DEV_WAITING_PATIENT = {
-  id: 6748,
-  patient_id: 6748,
-  chart_no: '6748',
-  patient_name: '이재은',
-  age: calculateAgeFromBirthYear(1987),
-  sex: 'F',
-  waiting_since: new Date().toISOString(),
-  doctor: '',
-  status: 'waiting',
-  progress: '',
-};
-
 // 상담 유형 정의
 export const CONSULTATION_TYPES = [
   { code: 'herb_new', label: '약초진', icon: '💊' },
@@ -101,11 +82,6 @@ function CSSidebar({ onPatientRightClick, onPatientClick }: CSSidebarProps) {
         const data = await mssqlResponse.json();
         mssqlWaiting = data.waiting || [];
         setIsConnected(true);
-      }
-
-      // 개발/테스트 환경에서만 상담대기 더미 1건 주입 (운영 DB 미영향)
-      if (import.meta.env.DEV) {
-        mssqlWaiting = [...mssqlWaiting, DEV_WAITING_PATIENT as MssqlWaitingPatient];
       }
 
       // 2. PostgreSQL daily_acting_records에서 오늘 액팅 조회
