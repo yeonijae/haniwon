@@ -394,7 +394,7 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
   const statusBadge = (status: string) => {
     const c: Record<string, string> = { waiting: '#f59e0b', in_progress: '#3b82f6', completed: '#10b981' };
     const l: Record<string, string> = { waiting: '대기', in_progress: '작성중', completed: '완료' };
-    return <span style={{ background: c[status] || '#9ca3af', color: '#fff', padding: '2px 8px', borderRadius: 12, fontSize: 12, fontWeight: 600 }}>{l[status] || status}</span>;
+    return <span style={{ background: c[status] || '#9ca3af', color: '#fff', padding: '3px 10px', borderRadius: 12, fontSize: 14, fontWeight: 600, lineHeight: 1.3 }}>{l[status] || status}</span>;
   };
 
   return (
@@ -526,8 +526,8 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
                 <>
                   <div style={H.detailHeader}>
                     <div>
-                      <div style={{ fontSize: 16, fontWeight: 700 }}>{selectedSession.patient_name || '-'}</div>
-                      <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.35 }}>{selectedSession.patient_name || '-'}</div>
+                      <div style={{ marginTop: 2, color: '#64748b', fontSize: 14, lineHeight: 1.4 }}>
                         {selectedSession.chart_number || '-'} · {selectedSession.template_name || '-'}
                         {selectedSession.doctor_name ? ` · ${selectedSession.doctor_name}` : ''}
                       </div>
@@ -566,17 +566,17 @@ export default function SurveyManagementView({ user }: SurveyManagementViewProps
                             <div key={q.id} style={H.qCard}>
                               <button style={H.qHeader} onClick={() => toggle(q.id)}>
                                 <div style={{ flex: 1, textAlign: 'left' }}>
-                                  <span style={{ color: '#94a3b8', fontSize: 12, marginRight: 6 }}>Q{i + 1}.</span>
-                                  <span style={{ fontWeight: 500, fontSize: 14 }}>{q.question_text}</span>
+                                  <span style={{ color: '#94a3b8', fontSize: 14, marginRight: 6 }}>Q{i + 1}.</span>
+                                  <span style={{ fontWeight: 500, fontSize: 16, lineHeight: 1.4 }}>{q.question_text}</span>
                                 </div>
-                                <span style={{ color: '#94a3b8', fontSize: 12 }}>{expanded ? '▲' : '▼'}</span>
+                                <span style={{ color: '#94a3b8', fontSize: 14 }}>{expanded ? '▲' : '▼'}</span>
                               </button>
                               {expanded && (
                                 <div style={H.qBody}>
-                                  <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+                                  <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 4 }}>
                                     {{ text: '주관식', single_choice: '단일선택', multiple_choice: '복수선택', scale: '척도' }[q.question_type]}
                                   </div>
-                                  <div style={{ fontSize: 14, color: answer ? '#1e293b' : '#94a3b8', fontStyle: answer ? 'normal' : 'italic' }}>
+                                  <div style={{ fontSize: 16, lineHeight: 1.55, color: answer ? '#1e293b' : '#94a3b8', fontStyle: answer ? 'normal' : 'italic' }}>
                                     {fmtAnswer(answer)}
                                   </div>
                                 </div>
@@ -878,21 +878,21 @@ const H = {
   modalFooter: { padding: '14px 18px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 8 } as React.CSSProperties,
   modalCancelBtn: { padding: '7px 16px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', color: '#374151', cursor: 'pointer', fontSize: 13 } as React.CSSProperties,
   dropdownItem: { padding: '7px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: 13 } as React.CSSProperties,
-  smallBtn: { padding: '2px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 11 } as React.CSSProperties,
+  smallBtn: { padding: '3px 8px', borderRadius: 4, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 13, lineHeight: 1.3 } as React.CSSProperties,
   moveBtn: { background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 10, padding: '1px 3px' } as React.CSSProperties,
 
   sessionSplitWrap: { flex: 1, display: 'flex', gap: 12, minHeight: 0, flexWrap: 'wrap' as const } as React.CSSProperties,
   sessionListPanel: { flex: '1 1 340px', minWidth: 320, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, display: 'flex', flexDirection: 'column', minHeight: 360 } as React.CSSProperties,
   sessionDetailPanel: { flex: '1.3 1 440px', minWidth: 360, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, display: 'flex', flexDirection: 'column', minHeight: 360 } as React.CSSProperties,
-  panelTitle: { padding: '12px 14px', borderBottom: '1px solid #e5e7eb', fontSize: 13, fontWeight: 600, color: '#334155' } as React.CSSProperties,
+  panelTitle: { padding: '12px 14px', borderBottom: '1px solid #e5e7eb', fontSize: 15, fontWeight: 600, color: '#334155', lineHeight: 1.35 } as React.CSSProperties,
   sessionListBody: { flex: 1, overflow: 'auto' as const } as React.CSSProperties,
   sessionTableWrap: { minWidth: 860, display: 'flex', flexDirection: 'column' } as React.CSSProperties,
-  sessionTableHead: { display: 'flex', alignItems: 'center', gap: 4, padding: '8px 12px', borderBottom: '1px solid #e5e7eb', background: '#f8fafc', position: 'sticky' as const, top: 0, zIndex: 1 } as React.CSSProperties,
+  sessionTableHead: { display: 'flex', alignItems: 'center', gap: 4, padding: '9px 12px', borderBottom: '1px solid #e5e7eb', background: '#f8fafc', position: 'sticky' as const, top: 0, zIndex: 1, lineHeight: 1.35 } as React.CSSProperties,
   sessionTableBody: { display: 'flex', flexDirection: 'column' } as React.CSSProperties,
-  sessionRow: { display: 'flex', alignItems: 'center', gap: 4, padding: '9px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: '#fff', lineHeight: 1.35 } as React.CSSProperties,
+  sessionRow: { display: 'flex', alignItems: 'center', gap: 4, padding: '10px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: '#fff', lineHeight: 1.45 } as React.CSSProperties,
   sessionRowActive: { background: '#eff6ff', boxShadow: 'inset 3px 0 0 #3b82f6' } as React.CSSProperties,
-  sessionCol: { fontSize: 13, color: '#334155', whiteSpace: 'nowrap' as const, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const } as React.CSSProperties,
-  colName: { flex: '0 0 108px', fontWeight: 600, fontSize: 14 } as React.CSSProperties,
+  sessionCol: { fontSize: 15, color: '#334155', whiteSpace: 'nowrap' as const, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const, lineHeight: 1.35 } as React.CSSProperties,
+  colName: { flex: '0 0 108px', fontWeight: 600, fontSize: 16, lineHeight: 1.35 } as React.CSSProperties,
   colChart: { flex: '0 0 78px', color: '#64748b' } as React.CSSProperties,
   colAge: { flex: '0 0 52px', textAlign: 'right' as const } as React.CSSProperties,
   colGender: { flex: '0 0 44px', textAlign: 'center' as const } as React.CSSProperties,
@@ -901,15 +901,15 @@ const H = {
   colTime: { flex: '0 0 58px', color: '#64748b' } as React.CSSProperties,
   colStatus: { flex: '0 0 60px', textAlign: 'center' as const } as React.CSSProperties,
   colAction: { flex: '0 0 42px', textAlign: 'right' as const } as React.CSSProperties,
-  detailHeader: { padding: '12px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const } as React.CSSProperties,
+  detailHeader: { padding: '13px 14px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const } as React.CSSProperties,
   emptyState: { height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13 } as React.CSSProperties,
 
   toggleWrap: { display: 'flex', background: '#f1f5f9', borderRadius: 6, padding: 2 } as React.CSSProperties,
-  toggleBtn: { padding: '4px 10px', borderRadius: 4, border: 'none', background: 'transparent', fontSize: 12, cursor: 'pointer', color: '#64748b', fontWeight: 500 } as React.CSSProperties,
+  toggleBtn: { padding: '5px 10px', borderRadius: 4, border: 'none', background: 'transparent', fontSize: 14, cursor: 'pointer', color: '#64748b', fontWeight: 500, lineHeight: 1.3 } as React.CSSProperties,
   toggleActive: { background: '#fff', color: '#1e293b', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } as React.CSSProperties,
-  copyBtn: { padding: '6px 12px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 500 } as React.CSSProperties,
+  copyBtn: { padding: '7px 12px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 500, lineHeight: 1.3 } as React.CSSProperties,
   copyDone: { background: '#dcfce7', color: '#16a34a', borderColor: '#86efac' } as React.CSSProperties,
-  summaryBox: { margin: 0, background: '#f8fafc', borderRadius: 8, padding: 16, fontFamily: 'monospace', fontSize: 13, whiteSpace: 'pre-wrap' as const, lineHeight: 1.7, color: '#334155' } as React.CSSProperties,
+  summaryBox: { margin: 0, background: '#f8fafc', borderRadius: 8, padding: 16, fontFamily: 'monospace', fontSize: 15, whiteSpace: 'pre-wrap' as const, lineHeight: 1.75, color: '#334155' } as React.CSSProperties,
 
   qCard: { border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' } as React.CSSProperties,
   qHeader: { width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', border: 'none', cursor: 'pointer' } as React.CSSProperties,
