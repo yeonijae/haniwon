@@ -46,9 +46,10 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   const [trendExamType, setTrendExamType] = useState<ExamType | null>(null);
   const [showBookGenerator, setShowBookGenerator] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [examTabOrder, setExamTabOrder] = useState<ExamType[]>(EXAM_TYPES.map((t) => t.code));
+  const [examTabOrder, setExamTabOrder] = useState<string[]>(EXAM_TYPES.map((t) => t.code));
   const [examTabLabels, setExamTabLabels] = useState<Record<string, string>>({});
-  const [draggingTab, setDraggingTab] = useState<ExamType | null>(null);
+  const [draggingTab, setDraggingTab] = useState<string | null>(null);
+  const [newExamName, setNewExamName] = useState('');
 
   // 빠른 등록 상태
   const [quickFiles, setQuickFiles] = useState<QuickUploadFile[]>([]);
@@ -62,9 +63,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
       try {
         const saved = await getExamTabOrder();
         if (saved.length > 0) {
-          const valid = saved.filter((code): code is ExamType => EXAM_TYPES.some((t) => t.code === code as ExamType));
-          const missing = EXAM_TYPES.map((t) => t.code).filter((code) => !valid.includes(code));
-          setExamTabOrder([...(valid as ExamType[]), ...missing]);
+          setExamTabOrder(saved);
         }
 
         const labels = await getExamTabLabels();
@@ -188,11 +187,12 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
   }, [allExams]);
 
   const orderedExamTypes = useMemo(() => {
-    const map = new Map(EXAM_TYPES.map((type) => [type.code, type]));
-    const ordered = examTabOrder.map((code) => map.get(code)).filter(Boolean) as typeof EXAM_TYPES;
-    const rest = EXAM_TYPES.filter((type) => !examTabOrder.includes(type.code));
-    return [...ordered, ...rest];
-  }, [examTabOrder]);
+    const fromOrder = examTabOrder.map((code) => ({ code }));
+    const unknownFromData = Object.keys(examTypeCounts)
+      .filter((code) => !examTabOrder.includes(code))
+      .map((code) => ({ code }));
+    return [...fromOrder, ...unknownFromData];
+  }, [examTabOrder, examTypeCounts]);
 
   // 검사 기간 계산
   const examDateRange = useMemo(() => {
@@ -235,7 +235,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     return getExamTypeInfo(code as ExamType)?.name || code;
   };
 
-  const activeExamType = activeExamTab !== 'all' ? activeExamTab as ExamType : null;
+  const activeExamType = activeExamTab !== 'all' ? activeExamTab : null;
 
   const addQuickFiles = (fileList: FileList) => {
     const allowed = ['image/', 'application/pdf'];
@@ -303,12 +303,12 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
         const examId = await createExamResult({
           patient_id: selectedPatient.id,
           exam_date: examDate,
-          exam_type: activeExamType,
+          exam_type: activeExamType as ExamType,
           memo: `빠른등록 (${timeLabel})`,
         });
 
         for (let i = 0; i < files.length; i++) {
-          const uploaded = await uploadExamFile(files[i].file, selectedPatient.id, activeExamType);
+          const uploaded = await uploadExamFile(files[i].file, selectedPatient.id, activeExamType as ExamType);
           await addExamAttachment(examId, {
             file_name: uploaded.original_name,
             file_path: uploaded.file_path,
@@ -331,7 +331,7 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     }
   };
 
-  const handleDropExamTab = (targetCode: ExamType) => {
+  const handleDropExamTab = (targetCode: string) => {
     if (!draggingTab || draggingTab === targetCode) return;
     const next = [...examTabOrder];
     const from = next.indexOf(draggingTab);
@@ -341,6 +341,36 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
     next.splice(to, 0, moved);
     setExamTabOrder(next);
     setDraggingTab(null);
+  };
+
+  const handleAddExamItem = () => {
+    const name = newExamName.trim();
+    if (!name) return;
+
+    const base = name
+      .toLowerCase()
+      .replace(/[^a-z0-9가-힣]+/g, '_')
+      .replace(/^_+|_+$/g, '') || `custom_${Date.now()}`;
+
+    let code = base;
+    let seq = 2;
+    while (examTabOrder.includes(code)) {
+      code = `${base}_${seq++}`;
+    }
+
+    setExamTabOrder((prev) => [...prev, code]);
+    setExamTabLabels((prev) => ({ ...prev, [code]: name }));
+    setNewExamName('');
+  };
+
+  const handleDeleteExamItem = (code: string) => {
+    setExamTabOrder((prev) => prev.filter((c) => c !== code));
+    setExamTabLabels((prev) => {
+      const next = { ...prev };
+      delete next[code];
+      return next;
+    });
+    if (activeExamTab === code) setActiveExamTab('all');
   };
 
   const handleSaveSettings = async () => {
@@ -680,9 +710,20 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
               </button>
             </div>
             <div className="p-4 overflow-y-auto space-y-2">
-              <p className="text-sm text-gray-500 mb-2">검사결과 탭 순서를 변경할 수 있습니다.</p>
+              <p className="text-sm text-gray-500 mb-2">검사항목을 추가/수정/삭제하고 드래그로 순서를 변경할 수 있습니다.</p>
+
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  value={newExamName}
+                  onChange={(e) => setNewExamName(e.target.value)}
+                  placeholder="새 검사항목 이름"
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                />
+                <button onClick={handleAddExamItem} className="px-3 py-2 bg-slate-700 text-white rounded-lg text-sm">추가</button>
+              </div>
+
               {examTabOrder.map((code) => {
-                const info = getExamTypeInfo(code);
+                const info = getExamTypeInfo(code as ExamType);
                 const isDragging = draggingTab === code;
                 return (
                   <div
@@ -707,7 +748,16 @@ const ExamManagement: React.FC<ExamManagementProps> = ({ selectedPatientId, sele
                         />
                       </div>
                     </div>
-                    <span className="text-xs text-gray-400 ml-2">드래그</span>
+                    <div className="ml-2 flex items-center gap-2">
+                      <span className="text-xs text-gray-400">드래그</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteExamItem(code); }}
+                        className="w-7 h-7 rounded border border-red-200 text-red-500 hover:bg-red-50"
+                        title="항목 삭제"
+                      >
+                        <i className="fas fa-trash text-xs"></i>
+                      </button>
+                    </div>
                   </div>
                 );
               })}
