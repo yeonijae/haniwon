@@ -168,3 +168,134 @@
   color: #94a3b8;
   font-size: 16px;
 }
+
+.decoction-herb-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.decoction-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.decoction-card h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: #0f172a;
+}
+
+.decoction-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.decoction-table th,
+.decoction-table td {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 8px;
+  text-align: left;
+}
+
+.decoction-table input,
+.decoction-table select,
+.decoction-form-grid input,
+.decoction-order-row input,
+.decoction-order-row select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.decoction-form-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 10px;
+}
+
+.decoction-check-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.decoction-btn {
+  border: none;
+  background: #1d4ed8;
+  color: #fff;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.decoction-btn.ghost {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.decoction-btn.mini {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.decoction-order-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr auto;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.decoction-inline-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.decoction-order-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.decoction-order-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.decoction-badge {
+  background: #e0e7ff;
+  color: #3730a3;
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+.decoction-table.compact th,
+.decoction-table.compact td {
+  padding: 6px;
+}
+
+.decoction-shortage {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.decoction-muted-row {
+  opacity: 0.5;
+}
+
+.decoction-empty {
+  margin: 0;
+  color: #64748b;
+}

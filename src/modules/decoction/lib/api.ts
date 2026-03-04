@@ -1,5 +1,16 @@
 import { query, execute, insert, escapeString, isTableInitialized, markTableInitialized } from '@shared/lib/postgres';
-import type { HerbMaster, DecoctionQueue, ReadyMedicine, PurchaseRequest, DecoctionCapacity } from '../types';
+import type {
+  HerbMaster,
+  HerbDashboardRow,
+  HerbOrder,
+  HerbOrderDetail,
+  HerbOrderItem,
+  DecoctionQueue,
+  ReadyMedicine,
+  PurchaseRequest,
+  DecoctionCapacity,
+  HerbOrderStatus,
+} from '../types';
 
 const INIT_KEY = 'decoction_tables';
 
@@ -19,6 +30,9 @@ export async function ensureDecoctionTables(): Promise<void> {
       updated_at TIMESTAMPTZ DEFAULT now()
     )
   `);
+
+  await execute(`ALTER TABLE herb_master ADD COLUMN IF NOT EXISTS default_supplier TEXT`);
+  await execute(`ALTER TABLE herb_master ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`);
 
   await execute(`
     CREATE TABLE IF NOT EXISTS herb_price_history (
@@ -42,6 +56,9 @@ export async function ensureDecoctionTables(): Promise<void> {
       created_at TIMESTAMPTZ DEFAULT now()
     )
   `);
+
+  await execute(`ALTER TABLE herb_orders ADD COLUMN IF NOT EXISTS expected_arrival_date DATE`);
+  await execute(`ALTER TABLE herb_orders ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ`);
 
   await execute(`
     CREATE TABLE IF NOT EXISTS herb_order_items (
@@ -130,8 +147,214 @@ export async function ensureDecoctionTables(): Promise<void> {
   markTableInitialized(INIT_KEY);
 }
 
+function esc(val: string): string {
+  return val.replace(/'/g, "''");
+}
+
 export async function getHerbList(): Promise<HerbMaster[]> {
   return query<HerbMaster>('SELECT * FROM herb_master ORDER BY name');
+}
+
+export async function getHerbDashboardRows(): Promise<HerbDashboardRow[]> {
+  return query<HerbDashboardRow>(`
+    SELECT
+      h.id AS herb_id,
+      h.name AS herb_name,
+      COALESCE(h.unit, 'g') AS unit,
+      COALESCE(h.current_stock, 0)::float AS current_stock,
+      (
+        COALESCE(h.current_stock, 0) +
+        COALESCE((
+          SELECT SUM(COALESCE(i.quantity, 0) - COALESCE(i.received_qty, 0))
+          FROM herb_order_items i
+          JOIN herb_orders o ON o.id = i.order_id
+          WHERE i.herb_id = h.id
+            AND o.status IN ('draft', 'ordered', 'partial_received')
+        ), 0)
+      )::float AS expected_stock,
+      GREATEST(COALESCE(h.safety_stock, 0) - (
+        COALESCE(h.current_stock, 0) +
+        COALESCE((
+          SELECT SUM(COALESCE(i.quantity, 0) - COALESCE(i.received_qty, 0))
+          FROM herb_order_items i
+          JOIN herb_orders o ON o.id = i.order_id
+          WHERE i.herb_id = h.id
+            AND o.status IN ('draft', 'ordered', 'partial_received')
+        ), 0)
+      ), 0)::float AS shortage_qty,
+      GREATEST(COALESCE(h.safety_stock, 0) * 2 - (
+        COALESCE(h.current_stock, 0) +
+        COALESCE((
+          SELECT SUM(COALESCE(i.quantity, 0) - COALESCE(i.received_qty, 0))
+          FROM herb_order_items i
+          JOIN herb_orders o ON o.id = i.order_id
+          WHERE i.herb_id = h.id
+            AND o.status IN ('draft', 'ordered', 'partial_received')
+        ), 0)
+      ), 0)::float AS recommended_order_qty,
+      h.default_supplier,
+      COALESCE(h.is_active, true) AS is_active
+    FROM herb_master h
+    ORDER BY h.name
+  `);
+}
+
+export async function createHerb(input: {
+  name: string;
+  unit?: string;
+  currentStock?: number;
+  safetyStock?: number;
+  defaultSupplier?: string;
+  isActive?: boolean;
+}): Promise<number> {
+  return insert(`
+    INSERT INTO herb_master (name, unit, current_stock, safety_stock, default_supplier, is_active, updated_at)
+    VALUES (
+      ${escapeString(input.name)},
+      ${escapeString(input.unit || 'g')},
+      ${input.currentStock ?? 0},
+      ${input.safetyStock ?? 0},
+      ${escapeString(input.defaultSupplier || null)},
+      ${input.isActive === false ? 'false' : 'true'},
+      now()
+    )
+  `);
+}
+
+export async function updateHerbMeta(
+  herbId: number,
+  input: { defaultSupplier?: string; isActive?: boolean; safetyStock?: number }
+): Promise<void> {
+  const updates: string[] = ['updated_at = now()'];
+
+  if (input.defaultSupplier !== undefined) {
+    updates.push(`default_supplier = ${escapeString(input.defaultSupplier || null)}`);
+  }
+  if (input.isActive !== undefined) {
+    updates.push(`is_active = ${input.isActive ? 'true' : 'false'}`);
+  }
+  if (input.safetyStock !== undefined) {
+    updates.push(`safety_stock = ${input.safetyStock}`);
+  }
+
+  await execute(`UPDATE herb_master SET ${updates.join(', ')} WHERE id = ${herbId}`);
+}
+
+export async function adjustHerbStock(
+  herbId: number,
+  qty: number,
+  reason: string,
+  referenceId?: number
+): Promise<void> {
+  await execute(`
+    UPDATE herb_master
+    SET current_stock = COALESCE(current_stock, 0) + (${qty}), updated_at = now()
+    WHERE id = ${herbId}
+  `);
+
+  await execute(`
+    INSERT INTO herb_stock_log (herb_id, change_qty, reason, reference_id)
+    VALUES (${herbId}, ${qty}, ${escapeString(reason)}, ${referenceId ?? 'NULL'})
+  `);
+}
+
+export async function getHerbOrders(): Promise<HerbOrder[]> {
+  return query<HerbOrder>(`SELECT * FROM herb_orders ORDER BY created_at DESC`);
+}
+
+export async function getHerbOrderDetails(orderId: number): Promise<HerbOrderDetail | null> {
+  const orders = await query<HerbOrder>(`SELECT * FROM herb_orders WHERE id = ${orderId}`);
+  const order = orders[0];
+  if (!order) return null;
+
+  const items = await query<any>(`
+    SELECT i.*, h.name AS herb_name, COALESCE(h.unit, 'g') AS unit
+    FROM herb_order_items i
+    JOIN herb_master h ON h.id = i.herb_id
+    WHERE i.order_id = ${orderId}
+    ORDER BY h.name
+  `);
+
+  return {
+    ...order,
+    items: items.map((item) => ({
+      ...item,
+      quantity: Number(item.quantity || 0),
+      price: Number(item.price || 0),
+      received_qty: Number(item.received_qty || 0),
+    })),
+  };
+}
+
+export async function createHerbOrder(input: {
+  supplier?: string;
+  memo?: string;
+  createdBy?: string;
+  expectedArrivalDate?: string;
+  items: Array<{ herbId: number; quantity: number; price?: number }>;
+}): Promise<number> {
+  const orderId = await insert(`
+    INSERT INTO herb_orders (order_date, supplier, status, memo, created_by, expected_arrival_date)
+    VALUES (
+      CURRENT_DATE,
+      ${escapeString(input.supplier || null)},
+      'ordered',
+      ${escapeString(input.memo || null)},
+      ${escapeString(input.createdBy || null)},
+      ${escapeString(input.expectedArrivalDate || null)}
+    )
+  `);
+
+  for (const item of input.items) {
+    await insert(`
+      INSERT INTO herb_order_items (order_id, herb_id, quantity, price, received_qty)
+      VALUES (${orderId}, ${item.herbId}, ${item.quantity}, ${item.price ?? 0}, 0)
+    `);
+  }
+
+  return orderId;
+}
+
+export async function updateHerbOrderStatus(orderId: number, status: HerbOrderStatus): Promise<void> {
+  await execute(`UPDATE herb_orders SET status = '${esc(status)}' WHERE id = ${orderId}`);
+}
+
+export async function receiveHerbOrder(
+  orderId: number,
+  items: Array<{ itemId: number; receivedQty: number }>
+): Promise<void> {
+  for (const item of items) {
+    await execute(`
+      UPDATE herb_order_items
+      SET received_qty = COALESCE(received_qty, 0) + ${item.receivedQty}
+      WHERE id = ${item.itemId}
+    `);
+
+    const target = await query<HerbOrderItem>(`SELECT * FROM herb_order_items WHERE id = ${item.itemId}`);
+    const row = target[0];
+    if (row) {
+      await adjustHerbStock(row.herb_id, item.receivedQty, '입고 처리', orderId);
+    }
+  }
+
+  const summary = await query<{ total_qty: number; total_received: number }>(`
+    SELECT
+      COALESCE(SUM(COALESCE(quantity, 0)), 0)::float AS total_qty,
+      COALESCE(SUM(COALESCE(received_qty, 0)), 0)::float AS total_received
+    FROM herb_order_items
+    WHERE order_id = ${orderId}
+  `);
+
+  const totalQty = Number(summary[0]?.total_qty || 0);
+  const totalReceived = Number(summary[0]?.total_received || 0);
+  const nextStatus: HerbOrderStatus = totalReceived >= totalQty ? 'received' : 'partial_received';
+
+  await execute(`
+    UPDATE herb_orders
+    SET status = '${nextStatus}',
+        received_at = CASE WHEN '${nextStatus}' = 'received' THEN now() ELSE received_at END
+    WHERE id = ${orderId}
+  `);
 }
 
 export async function getDecoctionQueue(): Promise<DecoctionQueue[]> {
@@ -153,10 +376,6 @@ export async function getDecoctionCapacity(): Promise<DecoctionCapacity[]> {
 }
 
 // === 탕전관리 큐 API ===
-
-function esc(val: string): string {
-  return val.replace(/'/g, "''");
-}
 
 /** 탕전 대기목록: herbal_drafts에서 아직 decoction_queue에 배정되지 않은 건 조회 */
 export interface WaitingDraft {

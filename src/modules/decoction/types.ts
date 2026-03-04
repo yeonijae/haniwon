@@ -6,6 +6,9 @@ export interface HerbMaster {
   current_stock: number;
   safety_stock: number;
   safety_stock_auto: boolean;
+  expected_stock?: number;
+  default_supplier?: string | null;
+  is_active?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -19,13 +22,17 @@ export interface HerbPriceHistory {
   created_at: string;
 }
 
+export type HerbOrderStatus = 'draft' | 'ordered' | 'partial_received' | 'received' | 'cancelled';
+
 export interface HerbOrder {
   id: number;
   order_date: string;
   supplier: string | null;
-  status: string;
+  status: HerbOrderStatus;
   memo: string | null;
   created_by: string | null;
+  expected_arrival_date?: string | null;
+  received_at?: string | null;
   created_at: string;
 }
 
@@ -96,4 +103,31 @@ export interface HerbStockLog {
   reason: string | null;
   reference_id: number | null;
   created_at: string;
+}
+
+export interface HerbDashboardRow {
+  herb_id: number;
+  herb_name: string;
+  unit: string;
+  current_stock: number;
+  expected_stock: number;
+  shortage_qty: number;
+  recommended_order_qty: number;
+  default_supplier: string | null;
+  is_active: boolean;
+}
+
+export interface HerbOrderItemDetail {
+  id: number;
+  order_id: number;
+  herb_id: number;
+  herb_name: string;
+  unit: string;
+  quantity: number;
+  price: number;
+  received_qty: number;
+}
+
+export interface HerbOrderDetail extends HerbOrder {
+  items: HerbOrderItemDetail[];
 }
