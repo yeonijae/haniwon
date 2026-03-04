@@ -1,13 +1,12 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { medicinesApi } from '../api/medicines'
+import { useMutation } from '@tanstack/react-query'
+import { createMedicineInventory } from '../../cs/lib/api'
 
 interface NewMedicineFormProps {
   onSuccess: () => void
 }
 
 function NewMedicineForm({ onSuccess }: NewMedicineFormProps) {
-  const queryClient = useQueryClient()
   const [formData, setFormData] = useState({
     name: '',
     category: '',
@@ -20,9 +19,22 @@ function NewMedicineForm({ onSuccess }: NewMedicineFormProps) {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => medicinesApi.create(data),
+    mutationFn: (data: {
+      prescription_id: number | null
+      name: string
+      alias: string | null
+      category: string
+      total_stock: number
+      current_stock: number
+      doses_per_batch: number
+      packs_per_batch: number
+      unit: string
+      is_active: boolean
+      sort_order: number
+      memo: string | null
+      last_decoction_date: string | null
+    }) => createMedicineInventory(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ready-medicines'] })
       alert('상비약이 등록되었습니다.')
       onSuccess()
     },
@@ -39,35 +51,20 @@ function NewMedicineForm({ onSuccess }: NewMedicineFormProps) {
       return
     }
 
-    // 코드 자동 생성
-    const code = `M${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`
-
-    // description에 탕전 관련 정보 저장
-    const descriptionParts: string[] = []
-    if (formData.decoction_doses) {
-      descriptionParts.push(`탕전시 첩수: ${formData.decoction_doses}첩`)
-    }
-    if (formData.decoction_packs) {
-      descriptionParts.push(`탕전시 팩수: ${formData.decoction_packs}팩`)
-    }
-    if (formData.last_decoction_date) {
-      descriptionParts.push(`최근탕전일: ${formData.last_decoction_date}`)
-    }
-    if (formData.accumulated_usage && parseFloat(formData.accumulated_usage) > 0) {
-      descriptionParts.push(`누적사용량: ${formData.accumulated_usage}`)
-    }
-
     createMutation.mutate({
-      code,
+      prescription_id: null,
       name: formData.name,
-      category: formData.category || '',
-      unit: '개',
+      alias: null,
+      category: formData.category || '상비약',
+      total_stock: parseFloat(formData.accumulated_usage) || 0,
       current_stock: parseFloat(formData.current_stock) || 0,
-      min_stock: 0,
-      unit_cost: 0,
-      selling_price: 0,
+      doses_per_batch: parseInt(formData.decoction_doses) || 20,
+      packs_per_batch: parseInt(formData.decoction_packs) || 30,
+      unit: '팩',
       is_active: formData.is_active,
-      description: descriptionParts.join(' / ')
+      sort_order: 0,
+      memo: null,
+      last_decoction_date: formData.last_decoction_date || null,
     })
   }
 
@@ -224,7 +221,7 @@ function NewMedicineForm({ onSuccess }: NewMedicineFormProps) {
         <div className="flex items-start">
           <i className="fa-solid fa-circle-info text-gray-400 mr-2 mt-0.5"></i>
           <p className="text-sm text-gray-600">
-            상비약 코드는 자동으로 생성됩니다. 탕전 관련 정보는 상비약 설명에 자동 저장됩니다.
+            입력한 값은 상비약 재고 테이블에 직접 저장됩니다. 탕전시 첩수/팩수는 입고 기본값으로 사용됩니다.
           </p>
         </div>
       </div>
