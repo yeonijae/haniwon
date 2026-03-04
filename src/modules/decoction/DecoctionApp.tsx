@@ -74,11 +74,11 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
       case 'herb':
         return (
           <>
-            <nav className="decoction-tabs" style={{ marginBottom: 12 }}>
+            <nav className="decoction-subtabs" style={{ marginBottom: 12 }}>
               {HERB_TABS.map((tab) => (
                 <button
                   key={tab.id}
-                  className={`decoction-tab ${herbTab === tab.id ? 'active' : ''}`}
+                  className={`decoction-subtab ${herbTab === tab.id ? 'active' : ''}`}
                   onClick={() => setHerbTab(tab.id)}
                 >
                   {tab.label}

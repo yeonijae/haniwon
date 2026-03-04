@@ -101,6 +101,37 @@
   padding: 24px;
 }
 
+/* 약재 내부 서브탭 */
+.decoction-subtabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.decoction-subtab {
+  padding: 7px 14px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.decoction-subtab:hover {
+  background: #eef2ff;
+  border-color: #a5b4fc;
+  color: #3730a3;
+}
+
+.decoction-subtab.active {
+  background: #fbbf24;
+  border-color: #f59e0b;
+  color: #1e3a8a;
+}
+
 /* 사이드바 */
 .decoction-sidebar {
   flex: 1;
