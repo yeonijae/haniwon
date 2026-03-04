@@ -226,7 +226,7 @@ export default function HerbInventoryView() {
 
   return (
     <div className="decoction-view decoction-herb-view">
-      <h2>🌿 약재관리</h2>
+      <h2>🌿 약재</h2>
 
       {loading ? (
         <div className="decoction-placeholder"><p>로딩 중...</p></div>

@@ -33,6 +33,8 @@ export interface HerbOrder {
   created_by: string | null;
   expected_arrival_date?: string | null;
   received_at?: string | null;
+  is_applied?: boolean;
+  applied_at?: string | null;
   created_at: string;
 }
 
@@ -130,4 +132,12 @@ export interface HerbOrderItemDetail {
 
 export interface HerbOrderDetail extends HerbOrder {
   items: HerbOrderItemDetail[];
+}
+
+export interface HerbUsageStatRow {
+  herb_id: number;
+  herb_name: string;
+  unit: string;
+  used_qty: number;
+  used_cost: number;
 }

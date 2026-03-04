@@ -10,6 +10,7 @@ import type {
   PurchaseRequest,
   DecoctionCapacity,
   HerbOrderStatus,
+  HerbUsageStatRow,
 } from '../types';
 
 const INIT_KEY = 'decoction_tables';
@@ -59,6 +60,8 @@ export async function ensureDecoctionTables(): Promise<void> {
 
   await execute(`ALTER TABLE herb_orders ADD COLUMN IF NOT EXISTS expected_arrival_date DATE`);
   await execute(`ALTER TABLE herb_orders ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ`);
+  await execute(`ALTER TABLE herb_orders ADD COLUMN IF NOT EXISTS is_applied BOOLEAN DEFAULT false`);
+  await execute(`ALTER TABLE herb_orders ADD COLUMN IF NOT EXISTS applied_at TIMESTAMPTZ`);
 
   await execute(`
     CREATE TABLE IF NOT EXISTS herb_order_items (
@@ -298,7 +301,7 @@ export async function createHerbOrder(input: {
     VALUES (
       CURRENT_DATE,
       ${escapeString(input.supplier || null)},
-      'ordered',
+      'draft',
       ${escapeString(input.memo || null)},
       ${escapeString(input.createdBy || null)},
       ${escapeString(input.expectedArrivalDate || null)}
@@ -354,6 +357,76 @@ export async function receiveHerbOrder(
     SET status = '${nextStatus}',
         received_at = CASE WHEN '${nextStatus}' = 'received' THEN now() ELSE received_at END
     WHERE id = ${orderId}
+  `);
+}
+
+export async function updateHerbOrderMeta(orderId: number, input: { supplier?: string; memo?: string; status?: HerbOrderStatus }): Promise<void> {
+  const updates: string[] = [];
+  if (input.supplier !== undefined) updates.push(`supplier = ${escapeString(input.supplier || null)}`);
+  if (input.memo !== undefined) updates.push(`memo = ${escapeString(input.memo || null)}`);
+  if (input.status !== undefined) updates.push(`status = '${esc(input.status)}'`);
+  if (updates.length === 0) return;
+  await execute(`UPDATE herb_orders SET ${updates.join(', ')} WHERE id = ${orderId} AND COALESCE(is_applied, false) = false`);
+}
+
+export async function replaceHerbOrderItems(orderId: number, items: Array<{ herbId: number; quantity: number; price?: number }>): Promise<void> {
+  await execute(`DELETE FROM herb_order_items WHERE order_id = ${orderId}`);
+  for (const item of items) {
+    await insert(`
+      INSERT INTO herb_order_items (order_id, herb_id, quantity, price, received_qty)
+      VALUES (${orderId}, ${item.herbId}, ${item.quantity}, ${item.price ?? 0}, 0)
+    `);
+  }
+}
+
+export async function deleteHerbOrder(orderId: number): Promise<void> {
+  await execute(`DELETE FROM herb_order_items WHERE order_id = ${orderId}`);
+  await execute(`DELETE FROM herb_orders WHERE id = ${orderId} AND COALESCE(is_applied, false) = false`);
+}
+
+export async function applyHerbOrder(orderId: number): Promise<void> {
+  await execute(`UPDATE herb_orders SET is_applied = true, applied_at = now() WHERE id = ${orderId}`);
+}
+
+export async function rollbackHerbOrderApply(orderId: number): Promise<void> {
+  await execute(`UPDATE herb_orders SET is_applied = false, applied_at = NULL WHERE id = ${orderId}`);
+}
+
+export async function createHerbPriceHistory(input: { herbId: number; price: number; supplier?: string; effectiveDate?: string }): Promise<number> {
+  return insert(`
+    INSERT INTO herb_price_history (herb_id, price, supplier, effective_date)
+    VALUES (${input.herbId}, ${input.price}, ${escapeString(input.supplier || null)}, ${escapeString(input.effectiveDate || new Date().toISOString().slice(0, 10))})
+  `);
+}
+
+export async function getHerbPriceTrend(herbId: number): Promise<Array<{ id: number; price: number; supplier: string | null; effective_date: string }>> {
+  const rows = await query<any>(`SELECT id, price, supplier, effective_date FROM herb_price_history WHERE herb_id = ${herbId} ORDER BY effective_date DESC, id DESC LIMIT 20`);
+  return rows.map((row) => ({
+    ...row,
+    price: Number(row.price || 0),
+  }));
+}
+
+export async function getHerbUsageStats(startDate: string, endDate: string): Promise<HerbUsageStatRow[]> {
+  return query<HerbUsageStatRow>(`
+    SELECT
+      h.id AS herb_id,
+      h.name AS herb_name,
+      COALESCE(h.unit, 'g') AS unit,
+      COALESCE(SUM(CASE WHEN l.change_qty < 0 THEN -l.change_qty ELSE 0 END), 0)::float AS used_qty,
+      COALESCE(SUM(CASE WHEN l.change_qty < 0 THEN (-l.change_qty) * COALESCE(p.price, 0) ELSE 0 END), 0)::float AS used_cost
+    FROM herb_master h
+    LEFT JOIN herb_stock_log l ON l.herb_id = h.id AND l.created_at::date BETWEEN '${esc(startDate)}' AND '${esc(endDate)}'
+    LEFT JOIN LATERAL (
+      SELECT ph.price
+      FROM herb_price_history ph
+      WHERE ph.herb_id = h.id
+        AND ph.effective_date <= l.created_at::date
+      ORDER BY ph.effective_date DESC, ph.id DESC
+      LIMIT 1
+    ) p ON true
+    GROUP BY h.id, h.name, h.unit
+    ORDER BY used_cost DESC, used_qty DESC, h.name
   `);
 }
 

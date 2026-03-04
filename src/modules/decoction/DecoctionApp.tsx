@@ -3,27 +3,26 @@ import type { PortalUser } from '@shared/types';
 import { ensureDecoctionTables } from './lib/api';
 import DecoctionSidebar from './components/DecoctionSidebar';
 import HerbInventoryView from './components/HerbInventoryView';
-import ReadyMedicineView from './components/ReadyMedicineView';
-import DecoctionQueueView from './components/DecoctionQueueView';
-import PurchaseRequestView from './components/PurchaseRequestView';
-import WorkScheduleView from './components/WorkScheduleView';
+import HerbDashboardView from './components/HerbDashboardView';
+import HerbOrderManagementView from './components/HerbOrderManagementView';
+import HerbPriceManagementView from './components/HerbPriceManagementView';
+import HerbUsageStatsView from './components/HerbUsageStatsView';
 import SettingsModal from '../inventory/components/SettingsModal';
 import './styles/decoction.css';
 
-type TabType = 'herbs' | 'ready' | 'queue' | 'purchase' | 'schedule';
+type TabType = 'dashboard' | 'herbs' | 'orders' | 'prices' | 'usage';
 
 interface TabItem {
   id: TabType;
-  icon: string;
   label: string;
 }
 
 const TABS: TabItem[] = [
-  { id: 'herbs', icon: '🌿', label: '약재관리' },
-  { id: 'ready', icon: '💊', label: '상비약' },
-  { id: 'queue', icon: '🔥', label: '탕전관리' },
-  { id: 'purchase', icon: '📋', label: '구입요청' },
-  { id: 'schedule', icon: '📅', label: '근무표' },
+  { id: 'dashboard', label: '대시보드' },
+  { id: 'herbs', label: '약재관리' },
+  { id: 'orders', label: '주문서관리' },
+  { id: 'prices', label: '단가관리' },
+  { id: 'usage', label: '사용통계' },
 ];
 
 interface DecoctionAppProps {
@@ -31,7 +30,7 @@ interface DecoctionAppProps {
 }
 
 export default function DecoctionApp({ user }: DecoctionAppProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('herbs');
+  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
@@ -40,16 +39,16 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
 
   function renderContent() {
     switch (activeTab) {
+      case 'dashboard':
+        return <HerbDashboardView />;
       case 'herbs':
         return <HerbInventoryView />;
-      case 'ready':
-        return <ReadyMedicineView />;
-      case 'queue':
-        return <DecoctionQueueView user={user} />;
-      case 'purchase':
-        return <PurchaseRequestView />;
-      case 'schedule':
-        return <WorkScheduleView />;
+      case 'orders':
+        return <HerbOrderManagementView />;
+      case 'prices':
+        return <HerbPriceManagementView />;
+      case 'usage':
+        return <HerbUsageStatsView />;
       default:
         return null;
     }
@@ -76,7 +75,7 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
                   className={`decoction-tab ${activeTab === tab.id ? 'active' : ''}`}
                   onClick={() => setActiveTab(tab.id)}
                 >
-                  {tab.icon} {tab.label}
+                  {tab.label}
                 </button>
               ))}
             </nav>
