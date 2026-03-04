@@ -2,25 +2,39 @@ import { useState, useEffect } from 'react';
 import type { PortalUser } from '@shared/types';
 import { ensureDecoctionTables } from './lib/api';
 import DecoctionSidebar from './components/DecoctionSidebar';
-import HerbInventoryView from './components/HerbInventoryView';
+import ReadyMedicineView from './components/ReadyMedicineView';
+import DecoctionQueueView from './components/DecoctionQueueView';
 import HerbDashboardView from './components/HerbDashboardView';
+import HerbInventoryView from './components/HerbInventoryView';
 import HerbOrderManagementView from './components/HerbOrderManagementView';
 import HerbPriceManagementView from './components/HerbPriceManagementView';
 import HerbUsageStatsView from './components/HerbUsageStatsView';
 import SettingsModal from '../inventory/components/SettingsModal';
 import './styles/decoction.css';
 
-type TabType = 'dashboard' | 'herbs' | 'orders' | 'prices' | 'usage';
+type MainTabType = 'herb' | 'ready' | 'queue';
+type HerbTabType = 'dashboard' | 'manage' | 'orders' | 'prices' | 'usage';
 
-interface TabItem {
-  id: TabType;
+interface MainTabItem {
+  id: MainTabType;
   label: string;
 }
 
-const TABS: TabItem[] = [
+interface HerbTabItem {
+  id: HerbTabType;
+  label: string;
+}
+
+const MAIN_TABS: MainTabItem[] = [
+  { id: 'herb', label: '약재' },
+  { id: 'ready', label: '상비약' },
+  { id: 'queue', label: '탕전' },
+];
+
+const HERB_TABS: HerbTabItem[] = [
   { id: 'dashboard', label: '대시보드' },
-  { id: 'herbs', label: '약재관리' },
-  { id: 'orders', label: '주문서관리' },
+  { id: 'manage', label: '약재관리' },
+  { id: 'orders', label: '주문관리' },
   { id: 'prices', label: '단가관리' },
   { id: 'usage', label: '사용통계' },
 ];
@@ -30,18 +44,19 @@ interface DecoctionAppProps {
 }
 
 export default function DecoctionApp({ user }: DecoctionAppProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [mainTab, setMainTab] = useState<MainTabType>('herb');
+  const [herbTab, setHerbTab] = useState<HerbTabType>('dashboard');
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     ensureDecoctionTables().catch(console.error);
   }, []);
 
-  function renderContent() {
-    switch (activeTab) {
+  function renderHerbContent() {
+    switch (herbTab) {
       case 'dashboard':
         return <HerbDashboardView />;
-      case 'herbs':
+      case 'manage':
         return <HerbInventoryView />;
       case 'orders':
         return <HerbOrderManagementView />;
@@ -49,6 +64,34 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
         return <HerbPriceManagementView />;
       case 'usage':
         return <HerbUsageStatsView />;
+      default:
+        return null;
+    }
+  }
+
+  function renderMainContent() {
+    switch (mainTab) {
+      case 'herb':
+        return (
+          <>
+            <nav className="decoction-tabs" style={{ marginBottom: 12 }}>
+              {HERB_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  className={`decoction-tab ${herbTab === tab.id ? 'active' : ''}`}
+                  onClick={() => setHerbTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+            {renderHerbContent()}
+          </>
+        );
+      case 'ready':
+        return <ReadyMedicineView />;
+      case 'queue':
+        return <DecoctionQueueView user={user} />;
       default:
         return null;
     }
@@ -69,38 +112,29 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
         <div className="decoction-right">
           <header className="decoction-header">
             <nav className="decoction-tabs">
-              {TABS.map((tab) => (
+              {MAIN_TABS.map((tab) => (
                 <button
                   key={tab.id}
-                  className={`decoction-tab ${activeTab === tab.id ? 'active' : ''}`}
-                  onClick={() => setActiveTab(tab.id)}
+                  className={`decoction-tab ${mainTab === tab.id ? 'active' : ''}`}
+                  onClick={() => setMainTab(tab.id)}
                 >
                   {tab.label}
                 </button>
               ))}
-            </nav>
-            <div className="decoction-header-right" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button
+                className="decoction-tab"
                 onClick={() => setShowSettings(true)}
-                style={{
-                  border: '1px solid #e2e8f0',
-                  background: '#fff',
-                  borderRadius: 8,
-                  padding: '6px 10px',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: '#475569',
-                  cursor: 'pointer',
-                }}
                 title="재고관리 설정 열기"
               >
-                ⚙️ 설정
+                설정
               </button>
+            </nav>
+            <div className="decoction-header-right" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <span>👤 {user.name}</span>
             </div>
           </header>
           <div className="decoction-main">
-            {renderContent()}
+            {renderMainContent()}
           </div>
         </div>
       </div>
