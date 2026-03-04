@@ -70,37 +70,24 @@ export function DatabaseSelector({ dbType, database, onDbTypeChange, onDatabaseC
         </button>
       </div>
 
-      {/* Database 선택 (MSSQL만) */}
-      {dbType === 'mssql' && (
-        <select
-          className="db-select"
-          value={database}
-          onChange={(e) => onDatabaseChange(e.target.value)}
-          style={{ width: '100%' }}
-          disabled={loading}
-        >
-          {loading ? (
-            <option>Loading...</option>
-          ) : (
-            databases.map((db) => (
-              <option key={db.name} value={db.name}>
-                {db.name}
-              </option>
-            ))
-          )}
-        </select>
-      )}
-
-      {dbType === 'postgres' && (
-        <div style={{
-          padding: '8px 12px',
-          backgroundColor: 'var(--bg-tertiary)',
-          borderRadius: '6px',
-          fontSize: '14px'
-        }}>
-          haniwon
-        </div>
-      )}
+      {/* Database 선택 */}
+      <select
+        className="db-select"
+        value={database}
+        onChange={(e) => onDatabaseChange(e.target.value)}
+        style={{ width: '100%' }}
+        disabled={loading}
+      >
+        {loading ? (
+          <option>Loading...</option>
+        ) : (
+          databases.map((db) => (
+            <option key={db.name} value={db.name}>
+              {db.name}
+            </option>
+          ))
+        )}
+      </select>
     </div>
   );
 }

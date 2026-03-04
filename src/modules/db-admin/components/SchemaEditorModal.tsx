@@ -33,6 +33,7 @@ const PG_TYPES = [
 
 interface Props {
   tableName: string;
+  database?: string;
   columns: ColumnInfo[];
   onClose: () => void;
   onSchemaChange: () => void;
@@ -52,7 +53,7 @@ interface EditState {
   addDefault?: string;
 }
 
-export function SchemaEditorModal({ tableName, columns: propColumns, onClose, onSchemaChange }: Props) {
+export function SchemaEditorModal({ tableName, database, columns: propColumns, onClose, onSchemaChange }: Props) {
   const [editState, setEditState] = useState<EditState>({ mode: 'view' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +75,7 @@ export function SchemaEditorModal({ tableName, columns: propColumns, onClose, on
   const loadColumns = async () => {
     setColumnsLoading(true);
     try {
-      const cols = await getColumns('postgres', tableName);
+      const cols = await getColumns('postgres', tableName, database);
       setInternalColumns(cols);
     } catch (error) {
       console.error('Failed to load columns:', error);
@@ -147,7 +148,8 @@ export function SchemaEditorModal({ tableName, columns: propColumns, onClose, on
       editState.addName,
       editState.addType,
       editState.addNullable ?? true,
-      editState.addDefault
+      editState.addDefault,
+      database
     );
 
     setLoading(false);
@@ -170,7 +172,7 @@ export function SchemaEditorModal({ tableName, columns: propColumns, onClose, on
     setLoading(true);
     setError(null);
 
-    const result = await dropColumn(tableName, columnName);
+    const result = await dropColumn(tableName, columnName, database);
 
     setLoading(false);
 
@@ -197,7 +199,7 @@ export function SchemaEditorModal({ tableName, columns: propColumns, onClose, on
     setLoading(true);
     setError(null);
 
-    const result = await renameColumn(tableName, editState.targetColumn, editState.newName);
+    const result = await renameColumn(tableName, editState.targetColumn, editState.newName, database);
 
     setLoading(false);
 
@@ -220,7 +222,7 @@ export function SchemaEditorModal({ tableName, columns: propColumns, onClose, on
     setLoading(true);
     setError(null);
 
-    const result = await alterColumnType(tableName, editState.targetColumn, editState.newType);
+    const result = await alterColumnType(tableName, editState.targetColumn, editState.newType, database);
 
     setLoading(false);
 
@@ -243,7 +245,7 @@ export function SchemaEditorModal({ tableName, columns: propColumns, onClose, on
     setLoading(true);
     setError(null);
 
-    const result = await alterColumnNullable(tableName, column.name, !column.isNullable);
+    const result = await alterColumnNullable(tableName, column.name, !column.isNullable, database);
 
     setLoading(false);
 

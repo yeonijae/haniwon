@@ -16,7 +16,8 @@ const API_ENDPOINTS = {
  */
 export async function executeQuery(
   dbType: DbType,
-  sql: string
+  sql: string,
+  database?: string
 ): Promise<QueryResult> {
   const startTime = performance.now();
 
@@ -24,7 +25,10 @@ export async function executeQuery(
     const response = await fetch(`${API_ENDPOINTS[dbType]}/api/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sql }),
+      body: JSON.stringify({
+        sql,
+        ...(dbType === 'postgres' && database ? { database } : {}),
+      }),
     });
 
     const data = await response.json();
@@ -81,19 +85,21 @@ export async function executeQuery(
  * 데이터베이스 목록 조회 (MSSQL 전용)
  */
 export async function getDatabases(dbType: DbType): Promise<DatabaseInfo[]> {
-  if (dbType === 'postgres') {
-    // PostgreSQL은 단일 DB (haniwon)
-    return [{ name: 'haniwon' }];
-  }
+  const sql = dbType === 'postgres'
+    ? `
+      SELECT datname as name
+      FROM pg_database
+      WHERE datistemplate = false
+      ORDER BY datname
+    `
+    : `
+      SELECT name, database_id as id
+      FROM sys.databases
+      WHERE database_id > 4
+      ORDER BY name
+    `;
 
-  const sql = `
-    SELECT name, database_id as id
-    FROM sys.databases
-    WHERE database_id > 4
-    ORDER BY name
-  `;
-
-  const result = await executeQuery(dbType, sql);
+  const result = await executeQuery(dbType, sql, dbType === 'postgres' ? 'postgres' : undefined);
 
   if (result.error || !result.rows) {
     return [];
@@ -141,7 +147,7 @@ export async function getTables(
     `;
   }
 
-  const result = await executeQuery(dbType, sql);
+  const result = await executeQuery(dbType, sql, database);
 
   if (result.error || !result.rows) {
     return [];
@@ -208,7 +214,7 @@ export async function getColumns(
     `;
   }
 
-  const result = await executeQuery(dbType, sql);
+  const result = await executeQuery(dbType, sql, database);
 
   if (result.error || !result.rows) {
     return [];
@@ -266,7 +272,7 @@ export async function getTableData(
     `;
   }
 
-  return executeQuery(dbType, sql);
+  return executeQuery(dbType, sql, database);
 }
 
 /**
@@ -292,7 +298,7 @@ export async function getTableCount(
     sql = `SELECT COUNT(*) as cnt FROM "${tableName}" ${whereClause}`;
   }
 
-  const result = await executeQuery(dbType, sql);
+  const result = await executeQuery(dbType, sql, database);
 
   if (result.error || !result.rows || result.rows.length === 0) {
     return 0;
@@ -306,7 +312,8 @@ export async function getTableCount(
  */
 export async function executeCustomQuery(
   dbType: DbType,
-  sql: string
+  sql: string,
+  database?: string
 ): Promise<QueryResult> {
   // 보안: SELECT/WITH만 허용
   const trimmed = sql.trim().toUpperCase();
@@ -319,7 +326,7 @@ export async function executeCustomQuery(
     };
   }
 
-  return executeQuery(dbType, sql);
+  return executeQuery(dbType, sql, database);
 }
 
 /**
@@ -328,7 +335,8 @@ export async function executeCustomQuery(
 export async function updateCell(
   tableName: string,
   whereCondition: Record<string, any>,
-  setData: Record<string, any>
+  setData: Record<string, any>,
+  database?: string
 ): Promise<{ success: boolean; error?: string; affected_rows?: number }> {
   try {
     const response = await fetch(`${API_ENDPOINTS.postgres}/api/tables/${tableName}/update`, {
@@ -337,6 +345,7 @@ export async function updateCell(
       body: JSON.stringify({
         where: whereCondition,
         set: setData,
+        ...(database ? { database } : {}),
       }),
     });
 
@@ -363,7 +372,8 @@ export async function updateCell(
  */
 export async function deleteRow(
   tableName: string,
-  whereCondition: Record<string, any>
+  whereCondition: Record<string, any>,
+  database?: string
 ): Promise<{ success: boolean; error?: string; affected_rows?: number }> {
   try {
     const response = await fetch(`${API_ENDPOINTS.postgres}/api/tables/${tableName}/delete`, {
@@ -371,6 +381,7 @@ export async function deleteRow(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         where: whereCondition,
+        ...(database ? { database } : {}),
       }),
     });
 
@@ -396,13 +407,17 @@ export async function deleteRow(
  * DDL 쿼리 실행 (PostgreSQL 전용)
  */
 export async function executeDDL(
-  sql: string
+  sql: string,
+  database?: string
 ): Promise<{ success: boolean; error?: string; message?: string }> {
   try {
     const response = await fetch(`${API_ENDPOINTS.postgres}/api/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sql }),
+      body: JSON.stringify({
+        sql,
+        ...(database ? { database } : {}),
+      }),
     });
 
     const data = await response.json();
@@ -431,7 +446,8 @@ export async function addColumn(
   columnName: string,
   columnType: string,
   isNullable: boolean = true,
-  defaultValue?: string
+  defaultValue?: string,
+  database?: string
 ): Promise<{ success: boolean; error?: string }> {
   let sql = `ALTER TABLE "${tableName}" ADD COLUMN "${columnName}" ${columnType}`;
 
@@ -443,7 +459,7 @@ export async function addColumn(
     sql += ` DEFAULT ${defaultValue}`;
   }
 
-  return executeDDL(sql);
+  return executeDDL(sql, database);
 }
 
 /**
@@ -451,10 +467,11 @@ export async function addColumn(
  */
 export async function dropColumn(
   tableName: string,
-  columnName: string
+  columnName: string,
+  database?: string
 ): Promise<{ success: boolean; error?: string }> {
   const sql = `ALTER TABLE "${tableName}" DROP COLUMN "${columnName}"`;
-  return executeDDL(sql);
+  return executeDDL(sql, database);
 }
 
 /**
@@ -463,10 +480,11 @@ export async function dropColumn(
 export async function renameColumn(
   tableName: string,
   oldName: string,
-  newName: string
+  newName: string,
+  database?: string
 ): Promise<{ success: boolean; error?: string }> {
   const sql = `ALTER TABLE "${tableName}" RENAME COLUMN "${oldName}" TO "${newName}"`;
-  return executeDDL(sql);
+  return executeDDL(sql, database);
 }
 
 /**
@@ -475,10 +493,11 @@ export async function renameColumn(
 export async function alterColumnType(
   tableName: string,
   columnName: string,
-  newType: string
+  newType: string,
+  database?: string
 ): Promise<{ success: boolean; error?: string }> {
   const sql = `ALTER TABLE "${tableName}" ALTER COLUMN "${columnName}" TYPE ${newType} USING "${columnName}"::${newType}`;
-  return executeDDL(sql);
+  return executeDDL(sql, database);
 }
 
 /**
@@ -487,11 +506,12 @@ export async function alterColumnType(
 export async function alterColumnNullable(
   tableName: string,
   columnName: string,
-  isNullable: boolean
+  isNullable: boolean,
+  database?: string
 ): Promise<{ success: boolean; error?: string }> {
   const action = isNullable ? 'DROP NOT NULL' : 'SET NOT NULL';
   const sql = `ALTER TABLE "${tableName}" ALTER COLUMN "${columnName}" ${action}`;
-  return executeDDL(sql);
+  return executeDDL(sql, database);
 }
 
 /**
@@ -505,7 +525,8 @@ export async function createTable(
     isPrimary?: boolean;
     isNullable?: boolean;
     defaultValue?: string;
-  }[]
+  }[],
+  database?: string
 ): Promise<{ success: boolean; error?: string }> {
   if (!tableName || columns.length === 0) {
     return { success: false, error: '테이블명과 최소 1개의 컬럼이 필요합니다.' };
@@ -526,17 +547,18 @@ export async function createTable(
   });
 
   const sql = `CREATE TABLE "${tableName}" (\n  ${columnDefs.join(',\n  ')}\n)`;
-  return executeDDL(sql);
+  return executeDDL(sql, database);
 }
 
 /**
  * 테이블 삭제
  */
 export async function dropTable(
-  tableName: string
+  tableName: string,
+  database?: string
 ): Promise<{ success: boolean; error?: string }> {
   const sql = `DROP TABLE "${tableName}"`;
-  return executeDDL(sql);
+  return executeDDL(sql, database);
 }
 
 /**
@@ -544,8 +566,9 @@ export async function dropTable(
  */
 export async function renameTable(
   oldName: string,
-  newName: string
+  newName: string,
+  database?: string
 ): Promise<{ success: boolean; error?: string }> {
   const sql = `ALTER TABLE "${oldName}" RENAME TO "${newName}"`;
-  return executeDDL(sql);
+  return executeDDL(sql, database);
 }

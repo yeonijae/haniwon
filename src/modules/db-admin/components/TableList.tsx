@@ -72,7 +72,7 @@ export function TableList({
     }
 
     setActionLoading(true);
-    const result = await renameTable(oldName, newTableName);
+    const result = await renameTable(oldName, newTableName, database);
     setActionLoading(false);
 
     if (result.success) {
@@ -101,7 +101,7 @@ export function TableList({
     }
 
     setActionLoading(true);
-    const result = await dropTable(tableName);
+    const result = await dropTable(tableName, database);
     setActionLoading(false);
 
     if (result.success) {

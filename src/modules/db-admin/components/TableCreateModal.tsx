@@ -40,11 +40,12 @@ interface ColumnDef {
 }
 
 interface Props {
+  database?: string;
   onClose: () => void;
   onTableCreated: (tableName: string) => void;
 }
 
-export function TableCreateModal({ onClose, onTableCreated }: Props) {
+export function TableCreateModal({ database, onClose, onTableCreated }: Props) {
   const [tableName, setTableName] = useState('');
   const [columns, setColumns] = useState<ColumnDef[]>([
     { id: '1', name: 'id', type: 'SERIAL', isPrimary: true, isNullable: false, defaultValue: '' },
@@ -172,7 +173,8 @@ export function TableCreateModal({ onClose, onTableCreated }: Props) {
         isPrimary: col.isPrimary,
         isNullable: col.isNullable,
         defaultValue: col.defaultValue || undefined,
-      }))
+      })),
+      database
     );
 
     setLoading(false);

@@ -20,6 +20,7 @@ interface Props {
   // 인라인 편집용 props
   dbType?: DbType;
   tableName?: string | null;
+  database?: string;
   columnInfo?: ColumnInfo[];
   onDataUpdate?: () => void;
 }
@@ -31,6 +32,7 @@ export function DataTable({
   loading,
   dbType,
   tableName,
+  database,
   columnInfo = [],
   onDataUpdate,
 }: Props) {
@@ -101,7 +103,7 @@ export function DataTable({
     try {
       const result = await updateCell(tableName, whereCondition, {
         [editingCell.column]: newValue,
-      });
+      }, database);
 
       if (result.success) {
         // 데이터 새로고침
@@ -154,7 +156,7 @@ export function DataTable({
 
     setDeleting(rowIndex);
     try {
-      const result = await deleteRow(tableName, whereCondition);
+      const result = await deleteRow(tableName, whereCondition, database);
 
       if (result.success) {
         onDataUpdate?.();

@@ -270,6 +270,7 @@ function DbAdminContent() {
                   loading={loading}
                   dbType={dbType}
                   tableName={selectedTable}
+                  database={database}
                   columnInfo={columns}
                   onDataUpdate={loadData}
                 />
@@ -285,7 +286,7 @@ function DbAdminContent() {
                 )}
               </>
             ) : (
-              <SqlQueryPanel dbType={dbType} />
+              <SqlQueryPanel dbType={dbType} database={database} />
             )}
           </div>
         </main>
@@ -295,6 +296,7 @@ function DbAdminContent() {
       {showSchemaEditor && selectedTable && (
         <SchemaEditorModal
           tableName={selectedTable}
+          database={database}
           columns={columns}
           onClose={() => setShowSchemaEditor(false)}
           onSchemaChange={() => {
@@ -308,6 +310,7 @@ function DbAdminContent() {
       {schemaEditTable && (
         <SchemaEditorModal
           tableName={schemaEditTable}
+          database={database}
           columns={schemaEditTable === selectedTable ? columns : []}
           onClose={() => setSchemaEditTable(null)}
           onSchemaChange={() => {
@@ -323,6 +326,7 @@ function DbAdminContent() {
       {/* Table Create Modal */}
       {showCreateTable && (
         <TableCreateModal
+          database={database}
           onClose={() => setShowCreateTable(false)}
           onTableCreated={handleTableCreated}
         />

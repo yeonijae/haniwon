@@ -9,9 +9,10 @@ import { DataTable } from './DataTable';
 
 interface Props {
   dbType: DbType;
+  database?: string;
 }
 
-export function SqlQueryPanel({ dbType }: Props) {
+export function SqlQueryPanel({ dbType, database }: Props) {
   const [sql, setSql] = useState('');
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -21,7 +22,7 @@ export function SqlQueryPanel({ dbType }: Props) {
 
     setLoading(true);
     try {
-      const queryResult = await executeCustomQuery(dbType, sql);
+      const queryResult = await executeCustomQuery(dbType, sql, database);
       setResult(queryResult);
     } catch (error) {
       setResult({
