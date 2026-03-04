@@ -7,6 +7,7 @@ import ReadyMedicineView from './components/ReadyMedicineView';
 import DecoctionQueueView from './components/DecoctionQueueView';
 import PurchaseRequestView from './components/PurchaseRequestView';
 import WorkScheduleView from './components/WorkScheduleView';
+import SettingsModal from '../inventory/components/SettingsModal';
 import './styles/decoction.css';
 
 type TabType = 'herbs' | 'ready' | 'queue' | 'purchase' | 'schedule';
@@ -31,6 +32,7 @@ interface DecoctionAppProps {
 
 export default function DecoctionApp({ user }: DecoctionAppProps) {
   const [activeTab, setActiveTab] = useState<TabType>('herbs');
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     ensureDecoctionTables().catch(console.error);
@@ -78,7 +80,23 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
                 </button>
               ))}
             </nav>
-            <div className="decoction-header-right">
+            <div className="decoction-header-right" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button
+                onClick={() => setShowSettings(true)}
+                style={{
+                  border: '1px solid #e2e8f0',
+                  background: '#fff',
+                  borderRadius: 8,
+                  padding: '6px 10px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: '#475569',
+                  cursor: 'pointer',
+                }}
+                title="재고관리 설정 열기"
+              >
+                ⚙️ 설정
+              </button>
               <span>👤 {user.name}</span>
             </div>
           </header>
@@ -87,6 +105,10 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
           </div>
         </div>
       </div>
+
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)} />
+      )}
     </div>
   );
 }
