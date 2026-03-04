@@ -54,6 +54,9 @@ export async function ensureDecoctionTables(): Promise<void> {
     )
   `);
 
+  // ⚠️ ready_medicines 테이블은 탕전실 전용 레거시 스키마.
+  // 현재 상비약 탭 UI는 inventory 모듈의 cs_medicine_inventory를 사용함.
+  // 이 테이블을 직접 참조하기 전에 데이터 소스 통합 여부를 먼저 확인할 것.
   await execute(`
     CREATE TABLE IF NOT EXISTS ready_medicines (
       id SERIAL PRIMARY KEY,
@@ -135,6 +138,8 @@ export async function getDecoctionQueue(): Promise<DecoctionQueue[]> {
   return query<DecoctionQueue>('SELECT * FROM decoction_queue ORDER BY priority DESC, created_at');
 }
 
+// ⚠️ 현재 UI 미사용 — 상비약 탭은 inventory 모듈의 getMedicineInventory()를 사용 중.
+// 이 함수 호출 전 데이터 소스 통합 여부를 확인할 것.
 export async function getReadyMedicines(): Promise<ReadyMedicine[]> {
   return query<ReadyMedicine>('SELECT * FROM ready_medicines ORDER BY name');
 }
