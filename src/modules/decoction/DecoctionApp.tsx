@@ -115,7 +115,7 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
               <span className="decoction-logo">🏭</span>
               <span className="decoction-title">탕전실</span>
             </div>
-            <nav className="decoction-tabs" style={{ flex: 1 }}>
+            <nav className="decoction-tabs" style={{ flex: 1, marginLeft: 16 }}>
               {MAIN_TABS.map((tab) => (
                 <button
                   key={tab.id}
