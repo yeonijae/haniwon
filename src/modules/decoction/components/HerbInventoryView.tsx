@@ -226,15 +226,15 @@ export default function HerbInventoryView() {
 
   return (
     <div className="decoction-view decoction-herb-view">
-      <h2>🌿 약재</h2>
+      <h2 style={{ fontSize: 22 }}>🌿 약재</h2>
 
       {loading ? (
         <div className="decoction-placeholder"><p>로딩 중...</p></div>
       ) : (
         <>
           <section className="decoction-card">
-            <h3>약재 대시보드</h3>
-            <table className="decoction-table">
+            <h3 style={{ fontSize: 17 }}>약재 대시보드</h3>
+            <table className="decoction-table" style={{ fontSize: 15 }}>
               <thead>
                 <tr>
                   <th>약재명</th>
@@ -282,7 +282,7 @@ export default function HerbInventoryView() {
           </section>
 
           <section className="decoction-card">
-            <h3>약재 등록</h3>
+            <h3 style={{ fontSize: 17 }}>약재 등록</h3>
             <div className="decoction-form-grid">
               <input placeholder="약재명" value={newHerb.name} onChange={(e) => setNewHerb((prev) => ({ ...prev, name: e.target.value }))} />
               <input placeholder="단위(g)" value={newHerb.unit} onChange={(e) => setNewHerb((prev) => ({ ...prev, unit: e.target.value }))} />
@@ -298,7 +298,7 @@ export default function HerbInventoryView() {
           </section>
 
           <section className="decoction-card">
-            <h3>주문서 생성</h3>
+            <h3 style={{ fontSize: 17 }}>주문서 생성</h3>
             <div className="decoction-form-grid">
               <input placeholder="공급업체" value={newOrderSupplier} onChange={(e) => setNewOrderSupplier(e.target.value)} />
               <input placeholder="메모" value={newOrderMemo} onChange={(e) => setNewOrderMemo(e.target.value)} />
@@ -335,7 +335,7 @@ export default function HerbInventoryView() {
           </section>
 
           <section className="decoction-card">
-            <h3>주문서 관리</h3>
+            <h3 style={{ fontSize: 17 }}>주문서 관리</h3>
             {orders.length === 0 ? (
               <p className="decoction-empty">등록된 주문서가 없습니다.</p>
             ) : (
@@ -378,7 +378,7 @@ export default function HerbInventoryView() {
           </section>
 
           <section className="decoction-card">
-            <h3>재고 조정 (로스 반영)</h3>
+            <h3 style={{ fontSize: 17 }}>재고 조정 (로스 반영)</h3>
             <div className="decoction-order-row">
               <select value={adjustHerbId} onChange={(e) => setAdjustHerbId(Number(e.target.value))}>
                 <option value="">약재 선택</option>
