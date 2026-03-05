@@ -146,7 +146,7 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
               <span>👤 {user.name}</span>
             </div>
           </header>
-          <div className="decoction-main">
+          <div className="decoction-main" style={mainTab === 'herbStatus' ? { padding: 0 } : undefined}>
             {renderMainContent()}
           </div>
         </div>
