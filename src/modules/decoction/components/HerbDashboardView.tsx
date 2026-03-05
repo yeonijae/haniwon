@@ -56,9 +56,9 @@ export default function HerbDashboardView() {
                 <table className="decoction-table" style={{ marginBottom: 0, fontSize: 15 }}>
                   <thead>
                     <tr>
-                      <th style={{ padding: '6px 4px' }}>약재명</th>
-                      <th style={{ padding: '6px 4px' }}>현재</th>
-                      <th style={{ padding: '6px 4px' }}>예상</th>
+                      <th style={{ padding: '6px 1px' }}>약재명</th>
+                      <th style={{ padding: '6px 1px' }}>현재</th>
+                      <th style={{ padding: '6px 1px' }}>예상</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -66,9 +66,9 @@ export default function HerbDashboardView() {
                       const shortage = Number(row.shortage_qty || 0) > 0;
                       return (
                         <tr key={row.herb_id} style={shortage ? { background: '#fff7ed' } : undefined}>
-                          <td style={{ padding: '4px', whiteSpace: 'nowrap' }}>{row.herb_name}</td>
-                          <td style={{ padding: '4px', whiteSpace: 'nowrap' }}>{Math.round(Number(row.current_stock || 0))}</td>
-                          <td style={{ padding: '4px', whiteSpace: 'nowrap', color: shortage ? '#c2410c' : '#374151', fontWeight: shortage ? 700 : 500 }}>
+                          <td style={{ padding: '4px 1px', whiteSpace: 'nowrap' }}>{row.herb_name}</td>
+                          <td style={{ padding: '4px 1px', whiteSpace: 'nowrap' }}>{Math.round(Number(row.current_stock || 0))}</td>
+                          <td style={{ padding: '4px 1px', whiteSpace: 'nowrap', color: shortage ? '#c2410c' : '#374151', fontWeight: shortage ? 700 : 500 }}>
                             {Math.round(Number(row.recommended_order_qty || row.shortage_qty || 0))}
                           </td>
                         </tr>
