@@ -131,7 +131,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     const drafts = await query<UnlinkedHerbalDraftOption>(`
       SELECT id, created_at
       FROM cs_herbal_drafts
-      WHERE prescription_id IS NULL
+      WHERE (prescription_id IS NULL OR prescription_id = 0)
         AND (
           ${patientId ? `patient_id = ${patientId}` : 'FALSE'}
           ${patientId ? `OR patient_id IN (SELECT id FROM patients WHERE mssql_id = ${patientId})` : ''}
@@ -686,7 +686,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
       }
 
       // prescriptions 테이블에 저장 - PostgreSQL
-      const prescriptionId = await insert(`
+      const insertedPrescriptionId = await insert(`
         INSERT INTO prescriptions (
           prescription_number, prescription_date, patient_id, patient_name, chart_number,
           patient_age, patient_gender, source_type, source_id, formula,
@@ -724,15 +724,28 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
         )
       `);
 
+      // 일부 환경에서 insert RETURNING id가 0으로 떨어지는 경우 보정
+      let prescriptionId = insertedPrescriptionId;
+      if (!prescriptionId || prescriptionId <= 0) {
+        const insertedRow = await queryOne<{ id: number }>(`
+          SELECT id
+          FROM prescriptions
+          WHERE prescription_number = ${escapeString(prescriptionNumber)}
+          ORDER BY id DESC
+          LIMIT 1
+        `);
+        prescriptionId = insertedRow?.id || 0;
+      }
+
       // draft ↔ prescription 양방향 링크
-      if (targetDraftId) {
+      if (targetDraftId && prescriptionId > 0) {
         await execute(`
           UPDATE cs_herbal_drafts
           SET prescription_id = ${prescriptionId},
               prescription_linked_at = ${escapeString(nowTimestamp)},
               updated_at = ${escapeString(nowTimestamp)}
           WHERE id = ${targetDraftId}
-            AND (prescription_id IS NULL OR prescription_id = ${prescriptionId})
+            AND (prescription_id IS NULL OR prescription_id = 0 OR prescription_id = ${prescriptionId})
         `);
       }
 
