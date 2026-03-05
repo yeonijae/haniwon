@@ -607,7 +607,7 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
             기록 연결
           </h3>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className={`block text-sm font-medium mb-1 ${selectedHerbalDraftId ? 'text-gray-700' : 'text-red-500'}`}>
               처방전을 연결할 탕약기록을 선택해주세요.
             </label>
             <select
@@ -631,9 +631,6 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
                 </option>
               ))}
             </select>
-            {!selectedHerbalDraftId && (
-              <p className="mt-1 text-xs text-red-500">탕약기록을 선택하지 않았습니다.</p>
-            )}
           </div>
         </div>
 
