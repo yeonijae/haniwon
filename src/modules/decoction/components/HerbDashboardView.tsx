@@ -42,6 +42,10 @@ export default function HerbDashboardView() {
         <div style={{ display: 'flex', gap: 8, height: '100%' }}>
           <div style={{ width: 78, display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
             <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', borderRadius: 10, padding: '9px 4px', fontSize: 14, fontWeight: 500, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <i className="fa-solid fa-table-list" style={{ fontSize: 16 }}></i>
+              <span>현황</span>
+            </button>
+            <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', borderRadius: 10, padding: '9px 4px', fontSize: 14, fontWeight: 500, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
               <i className="fa-solid fa-sliders" style={{ fontSize: 16 }}></i>
               <span>관리</span>
             </button>
