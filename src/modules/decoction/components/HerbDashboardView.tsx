@@ -51,7 +51,7 @@ export default function HerbDashboardView() {
             {chunks.map((chunk, idx) => (
               <div
                 key={`chunk-${idx}`}
-                style={{ minWidth: 300, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', height: '100%' }}
+                style={{ minWidth: 295, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', height: '100%' }}
               >
                 <table className="decoction-table" style={{ marginBottom: 0, fontSize: 16 }}>
                   <thead>
