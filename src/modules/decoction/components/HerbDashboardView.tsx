@@ -40,11 +40,23 @@ export default function HerbDashboardView() {
     <div className="decoction-view decoction-herb-view" style={{ height: '100%' }}>
       <section className="decoction-card" style={{ paddingTop: 8, height: '100%' }}>
         <div style={{ display: 'flex', gap: 8, height: '100%' }}>
-          <div style={{ width: 74, display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
-            <button className="decoction-btn" style={{ padding: '8px 4px', fontSize: 12 }}><i className="fa-solid fa-sliders"></i><br />관리</button>
-            <button className="decoction-btn" style={{ padding: '8px 4px', fontSize: 12 }}><i className="fa-solid fa-file-invoice"></i><br />주문서</button>
-            <button className="decoction-btn" style={{ padding: '8px 4px', fontSize: 12 }}><i className="fa-solid fa-chart-column"></i><br />통계</button>
-            <button className="decoction-btn" style={{ padding: '8px 4px', fontSize: 12 }}><i className="fa-solid fa-won-sign"></i><br />단가</button>
+          <div style={{ width: 78, display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+            <button style={{ border: '1px solid #1e40af', background: '#1d4ed8', color: '#fff', borderRadius: 10, padding: '9px 4px', fontSize: 12, fontWeight: 700, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <i className="fa-solid fa-sliders"></i>
+              <span>관리</span>
+            </button>
+            <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#374151', borderRadius: 10, padding: '9px 4px', fontSize: 12, fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <i className="fa-solid fa-file-invoice"></i>
+              <span>주문서</span>
+            </button>
+            <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#374151', borderRadius: 10, padding: '9px 4px', fontSize: 12, fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <i className="fa-solid fa-chart-column"></i>
+              <span>통계</span>
+            </button>
+            <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#374151', borderRadius: 10, padding: '9px 4px', fontSize: 12, fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <i className="fa-solid fa-won-sign"></i>
+              <span>단가</span>
+            </button>
           </div>
 
           {displayRows.length === 0 ? (
