@@ -197,7 +197,7 @@ export default function HerbInventoryView() {
                             type="checkbox"
                             checked={!!row.is_active}
                             onChange={(e) => setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, is_active: e.target.checked } : item))}
-                            style={{ transform: 'scale(1.5)' }}
+                            style={{ transform: 'scale(1.5)', accentColor: '#9ca3af' }}
                           />
                         </td>
                       </tr>
