@@ -14,7 +14,7 @@ import DecoctionDashboardView from './components/DecoctionDashboardView';
 import SupplyList from '../inventory/pages/SupplyList';
 import './styles/decoction.css';
 
-type MainTabType = 'dashboard' | 'herb' | 'ready' | 'queue' | 'purchase';
+type MainTabType = 'dashboard' | 'herb' | 'ready' | 'queue' | 'purchase' | 'herbStatus';
 type HerbTabType = 'dashboard' | 'manage' | 'orders' | 'prices' | 'usage';
 
 interface MainTabItem {
@@ -95,6 +95,8 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
             {renderHerbContent()}
           </>
         );
+      case 'herbStatus':
+        return <HerbDashboardView />;
       case 'ready':
         return <ReadyMedicineView />;
       case 'queue':
@@ -127,10 +129,7 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
               ))}
               <button
                 className="decoction-tab"
-                onClick={() => {
-                  setMainTab('herb');
-                  setHerbTab('dashboard');
-                }}
+                onClick={() => setMainTab('herbStatus')}
                 title="약재 현황 보기"
               >
                 약재현황
