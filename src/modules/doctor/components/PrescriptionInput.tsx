@@ -602,7 +602,7 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
       <div className={`${compact ? 'w-full' : 'w-1/2'} bg-white rounded-lg shadow-sm p-4 flex flex-col overflow-hidden`}>
         {/* 기록 연결 */}
         <div className="mb-4">
-          <h3 className="text-sm font-semibold text-clinic-text-primary flex items-center mb-2">
+          <h3 className="text-lg font-semibold text-clinic-text-primary flex items-center mb-2">
             <i className="fas fa-link text-clinic-primary mr-2"></i>
             기록 연결
           </h3>
