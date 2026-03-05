@@ -27,6 +27,11 @@ export interface PrescriptionData {
   waterAmount: number; // 탕전 물양 (ml)
 }
 
+export interface UnlinkedHerbalDraftOption {
+  id: number;
+  created_at?: string;
+}
+
 // Props 타입
 export interface PrescriptionInputProps {
   onSave?: (data: PrescriptionData) => void;
@@ -47,6 +52,9 @@ export interface PrescriptionInputProps {
   initialDosesPerDay?: number;
   initialPackVolume?: number;
   compact?: boolean; // 컴팩트 모드 (미리보기 숨김)
+  unlinkedHerbalDrafts?: UnlinkedHerbalDraftOption[];
+  selectedHerbalDraftId?: number | null;
+  onSelectHerbalDraftId?: (draftId: number | null) => void;
 }
 
 // 합방(+) 처방 해결 함수 - 재귀적으로 처방 참조를 해결하고 약재를 merge
@@ -141,6 +149,9 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
   initialDosesPerDay = 2,
   initialPackVolume = 100,
   compact = false,
+  unlinkedHerbalDrafts = [],
+  selectedHerbalDraftId = null,
+  onSelectHerbalDraftId,
 }) => {
   const [templates, setTemplates] = useState<PrescriptionTemplate[]>([]);
   const [herbIdMap, setHerbIdMap] = useState<Map<string, number>>(new Map()); // 약재명 -> DB ID 매핑
@@ -247,6 +258,13 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
   // 외부에서 patientName을 제어하는 경우
   const patientName = externalPatientName !== undefined ? externalPatientName : internalPatientName;
   const setPatientName = onPatientNameChange || setInternalPatientName;
+
+  const formatDraftCreatedAt = (value?: string) => {
+    if (!value) return '';
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return '';
+    return dt.toLocaleString('ko-KR', { hour12: false });
+  };
 
   // 처방 템플릿 로드
   useEffect(() => {
@@ -618,6 +636,37 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
             />
           </div>
         )}
+
+        {/* 해당 환자의 탕약기록(처방전 미연결) */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            해당 환자의 탕약기록(처방전 미연결)
+          </label>
+          <select
+            value={selectedHerbalDraftId ?? ''}
+            onChange={(e) => {
+              if (!onSelectHerbalDraftId) return;
+              const raw = e.target.value;
+              if (!raw) {
+                onSelectHerbalDraftId(null);
+                return;
+              }
+              const next = Number(raw);
+              onSelectHerbalDraftId(Number.isFinite(next) ? next : null);
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-clinic-primary focus:ring-2 focus:ring-clinic-primary focus:ring-opacity-20"
+          >
+            <option value="">선택 안 함</option>
+            {unlinkedHerbalDrafts.map((draft) => (
+              <option key={draft.id} value={draft.id}>
+                {`#${draft.id}${formatDraftCreatedAt(draft.created_at) ? ` · ${formatDraftCreatedAt(draft.created_at)}` : ''}`}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500 mt-1">
+            현재 환자의 미연결 탕약기록만 표시됩니다.
+          </p>
+        </div>
 
         {/* 처방 공식 입력 */}
         <div className="mb-4">

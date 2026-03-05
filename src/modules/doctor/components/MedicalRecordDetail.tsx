@@ -20,6 +20,11 @@ interface ProgressEntry {
   created_at: string;
 }
 
+interface UnlinkedHerbalDraftOption {
+  id: number;
+  created_at?: string;
+}
+
 interface Props {
   recordId: number;
   patientName: string;
@@ -91,6 +96,8 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
   const [prescriptionFormula, setPrescriptionFormula] = useState(''); // 처방공식
   const [prescriptionSourceType, setPrescriptionSourceType] = useState<'initial_chart' | 'progress_note'>('initial_chart');
   const [prescriptionSourceId, setPrescriptionSourceId] = useState<number | null>(null);
+  const [unlinkedHerbalDrafts, setUnlinkedHerbalDrafts] = useState<UnlinkedHerbalDraftOption[]>([]);
+  const [selectedHerbalDraftId, setSelectedHerbalDraftId] = useState<number | null>(null);
 
   const getDraftIdFromUrl = (): number | null => {
     try {
@@ -110,9 +117,55 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS prescription_linked_at TIMESTAMPTZ`).catch(() => {});
   };
 
+  const loadUnlinkedHerbalDrafts = useCallback(async (patientId: number | null | undefined) => {
+    if (!patientId) {
+      setUnlinkedHerbalDrafts([]);
+      setSelectedHerbalDraftId(null);
+      return;
+    }
+
+    const drafts = await query<UnlinkedHerbalDraftOption>(`
+      SELECT id, created_at
+      FROM cs_herbal_drafts
+      WHERE patient_id = ${patientId}
+        AND prescription_id IS NULL
+      ORDER BY created_at DESC
+    `).catch(() => [] as UnlinkedHerbalDraftOption[]);
+
+    setUnlinkedHerbalDrafts(drafts || []);
+
+    const draftIdFromUrl = getDraftIdFromUrl();
+    if (draftIdFromUrl && (drafts || []).some((draft) => draft.id === draftIdFromUrl)) {
+      setSelectedHerbalDraftId(draftIdFromUrl);
+      return;
+    }
+
+    if ((drafts || []).length === 1) {
+      setSelectedHerbalDraftId(drafts[0].id);
+      return;
+    }
+
+    setSelectedHerbalDraftId(null);
+  }, []);
+
+  const requestClosePrescriptionInputModal = useCallback(() => {
+    if (selectedHerbalDraftId === null) {
+      const confirmed = window.confirm('탕약기록과 연결하지 않고 끝내시겠습니까?');
+      if (!confirmed) return;
+    }
+    setShowPrescriptionInputModal(false);
+    setSelectedHerbalDraftId(null);
+  }, [selectedHerbalDraftId]);
+
   useEffect(() => {
     loadData();
   }, [recordId]);
+
+  useEffect(() => {
+    if (showPrescriptionInputModal) {
+      loadUnlinkedHerbalDrafts(initialChart?.patient_id);
+    }
+  }, [showPrescriptionInputModal, initialChart?.patient_id, loadUnlinkedHerbalDrafts]);
 
   // autoOpenPrescription: 데이터 로드 후 처방 모달 자동 오픈
   const [autoOpenDone, setAutoOpenDone] = useState(false);
@@ -175,7 +228,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
       if (showDosageCreator) {
         setShowDosageCreator(false);
       } else if (showPrescriptionInputModal) {
-        setShowPrescriptionInputModal(false);
+        requestClosePrescriptionInputModal();
       } else if (showPrescriptionIssuedModal) {
         setShowPrescriptionIssuedModal(false);
       } else if (showDosageModal) {
@@ -192,7 +245,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [showDosageCreator, showPrescriptionInputModal, showPrescriptionIssuedModal, showDosageModal, showProgressModal, showDiagnosisModal, showPrescriptionModal]);
+  }, [showDosageCreator, showPrescriptionInputModal, showPrescriptionIssuedModal, showDosageModal, showProgressModal, showDiagnosisModal, showPrescriptionModal, requestClosePrescriptionInputModal, onClose]);
 
   // 자동 저장 (5초 디바운스)
   useEffect(() => {
@@ -615,20 +668,12 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
 
       await ensurePrescriptionLinkColumns();
 
-      // 1) URL draftId 우선 2) 환자 기준 단일 후보 자동 매칭
-      let targetDraftId = getDraftIdFromUrl();
-      if (!targetDraftId && initialChart?.patient_id) {
-        const candidates = await query<{ id: number }>(`
-          SELECT id
-          FROM cs_herbal_drafts
-          WHERE patient_id = ${initialChart.patient_id}
-            AND (prescription_id IS NULL)
-          ORDER BY created_at DESC
-          LIMIT 2
-        `).catch(() => [] as { id: number }[]);
+      let targetDraftId = selectedHerbalDraftId;
 
-        if (candidates.length === 1) {
-          targetDraftId = candidates[0].id;
+      if (targetDraftId === null) {
+        const confirmed = window.confirm('탕약기록과 연결하지 않고 끝내시겠습니까?');
+        if (!confirmed) {
+          return;
         }
       }
 
@@ -713,6 +758,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
       alert('처방전이 발급되었습니다');
       setShowPrescriptionInputModal(false);
       setPrescriptionSourceId(null);
+      setSelectedHerbalDraftId(null);
       await loadData(); // 목록 새로고침
     } catch (error: any) {
       console.error('처방전 발급 실패:', error);
@@ -1704,12 +1750,15 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
                 patientName={patientName}
                 patientChartNumber={patientInfo?.chartNumber}
                 patientAge={patientInfo?.age}
-                onClose={() => setShowPrescriptionInputModal(false)}
+                onClose={requestClosePrescriptionInputModal}
                 showPatientInput={false}
                 showNotesInput={true}
                 showSaveButton={true}
                 saveButtonText="저장"
                 initialFormula={prescriptionFormula}
+                unlinkedHerbalDrafts={unlinkedHerbalDrafts}
+                selectedHerbalDraftId={selectedHerbalDraftId}
+                onSelectHerbalDraftId={setSelectedHerbalDraftId}
               />
             </div>
         </div>
