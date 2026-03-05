@@ -631,6 +631,9 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
                 </option>
               ))}
             </select>
+            {!selectedHerbalDraftId && (
+              <p className="mt-1 text-xs text-red-500">탕약기록을 선택하지 않았습니다.</p>
+            )}
           </div>
         </div>
 
