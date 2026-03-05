@@ -893,7 +893,7 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-clinic-text-primary flex items-center">
               <i className="fas fa-eye text-clinic-primary mr-2"></i>
-              처방 미리보기
+              미리보기
               {finalHerbs.length > 0 && (
                 <span className="ml-2 px-2.5 py-0.5 bg-blue-500 text-white text-sm font-bold rounded-full">총 {finalHerbs.length}개</span>
               )}
