@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import type { PortalUser } from '@shared/types';
 import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { ensureDecoctionTables } from './lib/api';
-import DecoctionSidebar from './components/DecoctionSidebar';
 import ReadyMedicineView from './components/ReadyMedicineView';
 import DecoctionQueueView from './components/DecoctionQueueView';
 import HerbDashboardView from './components/HerbDashboardView';
@@ -110,16 +109,7 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
   return (
     <div className="decoction-app">
       <div className="decoction-body">
-        {/* 좌측: 사이드바 (로고+대기목록) */}
-        <div className="decoction-sidebar-wrap">
-          <div className="decoction-sidebar-logo">
-            <span className="decoction-logo">🏭</span>
-            <span className="decoction-title">탕전실</span>
-          </div>
-          <DecoctionSidebar />
-        </div>
-        {/* 우측: 탭+콘텐츠 */}
-        <div className="decoction-right">
+        <div className="decoction-right" style={{ width: '100%' }}>
           <header className="decoction-header">
             <nav className="decoction-tabs">
               {MAIN_TABS.map((tab) => (
