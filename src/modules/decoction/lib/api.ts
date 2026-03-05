@@ -40,6 +40,11 @@ export async function ensureDecoctionTables(): Promise<void> {
   await execute(`ALTER TABLE herb_master ADD COLUMN IF NOT EXISTS default_supplier TEXT`);
   await execute(`ALTER TABLE herb_master ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`);
 
+  // draft/prescription/dosage 양방향 링크 컬럼
+  await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS dosage_prescription_id INTEGER`).catch(() => {});
+  await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS dosage_linked_at TIMESTAMPTZ`).catch(() => {});
+  await execute(`ALTER TABLE prescriptions ADD COLUMN IF NOT EXISTS dosage_herbal_draft_id INTEGER`).catch(() => {});
+
   await execute(`
     CREATE TABLE IF NOT EXISTS herb_price_history (
       id SERIAL PRIMARY KEY,
@@ -460,7 +465,9 @@ export async function getDecoctionDashboardData(): Promise<DecoctionDashboardDat
       FROM cs_herbal_drafts d
       LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
       WHERE q.id IS NULL
-      ORDER BY d.created_at DESC
+        AND d.prescription_id IS NOT NULL
+        AND COALESCE(NULLIF(d.shipping_date, ''), NULLIF(d.decoction_date, '')) IS NOT NULL
+      ORDER BY COALESCE(NULLIF(d.shipping_date, ''), NULLIF(d.decoction_date, '')) ASC, d.created_at DESC
       LIMIT 50
     `),
     query<DashboardDraftItem>(`
@@ -478,7 +485,10 @@ export async function getDecoctionDashboardData(): Promise<DecoctionDashboardDat
       FROM cs_herbal_drafts d
       JOIN prescriptions p ON (p.herbal_draft_id = d.id OR d.prescription_id = p.id)
       LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
-      WHERE COALESCE(p.dosage_instruction_created, false) = false
+      WHERE d.prescription_id IS NOT NULL
+        AND d.dosage_prescription_id IS NULL
+        AND COALESCE(NULLIF(d.shipping_date, ''), NULLIF(d.decoction_date, '')) IS NOT NULL
+        AND COALESCE(p.dosage_instruction_created, false) = false
         AND (q.id IS NULL OR q.status <> 'completed')
       ORDER BY COALESCE(NULLIF(d.shipping_date, ''), NULLIF(d.decoction_date, '')) ASC, d.created_at DESC
       LIMIT 50

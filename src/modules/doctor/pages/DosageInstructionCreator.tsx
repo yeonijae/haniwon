@@ -624,13 +624,26 @@ const DosageInstructionCreator: React.FC<DosageCreatorProps> = ({ embedded = fal
       const now = new Date().toISOString();
       const dataJson = JSON.stringify(getDosageInstructionData());
 
+      await execute(`ALTER TABLE prescriptions ADD COLUMN IF NOT EXISTS dosage_herbal_draft_id INTEGER`).catch(() => {});
+      await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS dosage_prescription_id INTEGER`).catch(() => {});
+      await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS dosage_linked_at TIMESTAMPTZ`).catch(() => {});
+
       await execute(`
         UPDATE prescriptions SET
           dosage_instruction_created = 1,
           dosage_instruction_created_at = ${escapeString(now)},
-          dosage_instruction_data = ${escapeString(dataJson)}
+          dosage_instruction_data = ${escapeString(dataJson)},
+          dosage_herbal_draft_id = COALESCE(dosage_herbal_draft_id, herbal_draft_id)
         WHERE id = ${prescriptionId}
       `);
+
+      await execute(`
+        UPDATE cs_herbal_drafts d
+        SET dosage_prescription_id = ${prescriptionId},
+            dosage_linked_at = ${escapeString(now)},
+            updated_at = ${escapeString(now)}
+        WHERE d.id = (SELECT COALESCE(dosage_herbal_draft_id, herbal_draft_id) FROM prescriptions WHERE id = ${prescriptionId})
+      `).catch(() => {});
 
       alert('복용법이 저장되었습니다.');
       if (onSaved) onSaved();
@@ -653,9 +666,18 @@ const DosageInstructionCreator: React.FC<DosageCreatorProps> = ({ embedded = fal
         UPDATE prescriptions SET
           dosage_instruction_created = 1,
           dosage_instruction_created_at = ${escapeString(now)},
-          dosage_instruction_data = ${escapeString(dataJson)}
+          dosage_instruction_data = ${escapeString(dataJson)},
+          dosage_herbal_draft_id = COALESCE(dosage_herbal_draft_id, herbal_draft_id)
         WHERE id = ${prescriptionId}
       `);
+
+      await execute(`
+        UPDATE cs_herbal_drafts d
+        SET dosage_prescription_id = ${prescriptionId},
+            dosage_linked_at = ${escapeString(now)},
+            updated_at = ${escapeString(now)}
+        WHERE d.id = (SELECT COALESCE(dosage_herbal_draft_id, herbal_draft_id) FROM prescriptions WHERE id = ${prescriptionId})
+      `).catch(() => {});
     } catch (error) {
       console.error('처방전 복용법 상태 업데이트 실패:', error);
     }
