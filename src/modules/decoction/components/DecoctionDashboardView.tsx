@@ -22,7 +22,7 @@ const initialData: DecoctionDashboardData = {
 
 function ListBox({ title, badge, children }: { title: string; badge: string; children: ReactNode }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-full w-[250px] flex-shrink-0 flex flex-col">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-full flex-1 basis-0 min-w-0 flex flex-col">
       <div className="flex items-center justify-between mb-3">
         <h4 className="text-sm font-semibold text-gray-700">{title}</h4>
         <span className="inline-flex items-center justify-center min-w-8 px-2 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
@@ -72,7 +72,7 @@ export default function DecoctionDashboardView() {
 
   return (
     <div className="p-0 h-full overflow-auto">
-      <div className="flex gap-4 min-w-max h-full items-stretch">
+      <div className="flex gap-4 w-full h-full items-stretch">
         <ListBox title="처방전대기" badge={`${s.pendingPrescription}`}>
           {data.pendingPrescriptionDrafts.length === 0 ? <Empty /> : (
             <ul className="space-y-2 text-sm">
