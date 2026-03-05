@@ -233,7 +233,6 @@ export default function HerbInventoryView() {
       ) : (
         <>
           <section className="decoction-card">
-            <h3 style={{ fontSize: 17 }}>약재 대시보드</h3>
             <table className="decoction-table" style={{ fontSize: 15 }}>
               <thead>
                 <tr>
