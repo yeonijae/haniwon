@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getHerbDashboardRows } from '../lib/api';
 import type { HerbDashboardRow } from '../types';
 
-const CHUNK_SIZE = 25;
+const CHUNK_SIZE = 22;
 
 export default function HerbDashboardView() {
   const [rows, setRows] = useState<HerbDashboardRow[]>([]);
@@ -53,7 +53,7 @@ export default function HerbDashboardView() {
                 key={`chunk-${idx}`}
                 style={{ minWidth: 300, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', height: '100%' }}
               >
-                <table className="decoction-table" style={{ marginBottom: 0, fontSize: 15 }}>
+                <table className="decoction-table" style={{ marginBottom: 0, fontSize: 16 }}>
                   <thead>
                     <tr>
                       <th style={{ padding: '6px 1px' }}>약재명</th>
