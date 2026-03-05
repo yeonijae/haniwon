@@ -110,8 +110,12 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
     <div className="decoction-app">
       <div className="decoction-body">
         <div className="decoction-right" style={{ width: '100%' }}>
-          <header className="decoction-header">
-            <nav className="decoction-tabs">
+          <header className="decoction-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 12 }}>
+              <span className="decoction-logo">🏭</span>
+              <span className="decoction-title">탕전실</span>
+            </div>
+            <nav className="decoction-tabs" style={{ flex: 1 }}>
               {MAIN_TABS.map((tab) => (
                 <button
                   key={tab.id}
