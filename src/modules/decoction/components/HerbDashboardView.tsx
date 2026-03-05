@@ -54,7 +54,7 @@ export default function HerbDashboardView() {
                       const shortage = Number(row.shortage_qty || 0) > 0;
                       return (
                         <tr key={row.herb_id} style={shortage ? { background: '#fff7ed' } : undefined}>
-                          <td style={{ padding: '4px 1px', whiteSpace: 'nowrap' }}>{row.herb_name}</td>
+                          <td style={{ padding: '4px 1px 4px 2px', whiteSpace: 'nowrap' }}>{row.herb_name}</td>
                           <td style={{ padding: '4px 1px', whiteSpace: 'nowrap' }}>{Math.round(Number(row.current_stock || 0))}</td>
                           <td style={{ padding: '4px 1px', whiteSpace: 'nowrap', color: shortage ? '#c2410c' : '#374151', fontWeight: shortage ? 700 : 500 }}>
                             {Math.round(Number(row.recommended_order_qty || row.shortage_qty || 0))}
