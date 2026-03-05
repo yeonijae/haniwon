@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getHerbDashboardRows } from '../lib/api';
 import type { HerbDashboardRow } from '../types';
 
-const CHUNK_SIZE = 22;
+const CHUNK_SIZE = 24;
 
 export default function HerbDashboardView() {
   const [rows, setRows] = useState<HerbDashboardRow[]>([]);
