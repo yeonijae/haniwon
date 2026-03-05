@@ -167,8 +167,16 @@ export default function HerbInventoryView() {
                     </tr>
                   </thead>
                   <tbody>
-                    {columnRows.map((row) => (
-                      <tr key={row.herb_id} className={!row.is_active ? 'decoction-muted-row' : ''}>
+                    {columnRows.map((row) => {
+                      const prev = baselineRows.find((b) => b.herb_id === row.herb_id);
+                      const isChanged = !!prev && (
+                        Number(prev.current_stock || 0) !== Number(row.current_stock || 0) ||
+                        (prev.default_supplier || '') !== (row.default_supplier || '') ||
+                        !!prev.is_active !== !!row.is_active
+                      );
+
+                      return (
+                      <tr key={row.herb_id} className={!row.is_active ? 'decoction-muted-row' : ''} style={isChanged ? { background: '#fef9c3' } : undefined}>
                         <td>{row.herb_name}</td>
                         <td>
                           <input
@@ -201,7 +209,8 @@ export default function HerbInventoryView() {
                           />
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
