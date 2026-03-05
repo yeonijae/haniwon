@@ -631,9 +631,6 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
                 </option>
               ))}
             </select>
-            <p className="text-xs text-gray-500 mt-1">
-              현재 환자의 미연결 탕약기록만 표시됩니다.
-            </p>
           </div>
         </div>
 
