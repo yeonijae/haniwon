@@ -270,57 +270,60 @@ export default function HerbInventoryView() {
       ) : (
         <>
           <section className="decoction-card">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
               {dashboardColumns.map((columnRows, colIdx) => (
-                <table key={`col-${colIdx}`} className="decoction-table" style={{ fontSize: 15 }}>
-                  <thead>
-                    <tr>
-                      <th>약재명</th>
-                      <th>현재재고</th>
-                      <th>공급업체</th>
-                      <th>사용여부</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {columnRows.map((row) => (
-                      <tr key={row.herb_id} className={!row.is_active ? 'decoction-muted-row' : ''}>
-                        <td>{row.herb_name}</td>
-                        <td>
-                          <input
-                            value={Math.round(Number(row.current_stock || 0))}
-                            onChange={(e) => {
-                              const n = Number(e.target.value);
-                              const stock = Number.isFinite(n) ? n : 0;
-                              setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, current_stock: stock } : item));
-                            }}
-                            style={{ width: 68 }}
-                          /> {row.unit}
-                        </td>
-                        <td>
-                          <input
-                            value={row.default_supplier || ''}
-                            onChange={(e) => {
-                              const supplier = e.target.value;
-                              setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, default_supplier: supplier } : item));
-                            }}
-                            placeholder="업체명"
-                            style={{ width: 50 }}
-                          />
-                        </td>
-                        <td>
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={!!row.is_active}
-                              onChange={(e) => setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, is_active: e.target.checked } : item))}
-                            />
-                            사용
-                          </label>
-                        </td>
+                <div key={`col-${colIdx}`} style={{ minWidth: 360, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}>
+                  <div style={{ padding: '6px 8px', borderBottom: '1px solid #e5e7eb', fontSize: 13, fontWeight: 700 }}>목록 {colIdx + 1}</div>
+                  <table className="decoction-table" style={{ fontSize: 15 }}>
+                    <thead>
+                      <tr>
+                        <th>약재명</th>
+                        <th>현재재고</th>
+                        <th>공급업체</th>
+                        <th>사용여부</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {columnRows.map((row) => (
+                        <tr key={row.herb_id} className={!row.is_active ? 'decoction-muted-row' : ''}>
+                          <td>{row.herb_name}</td>
+                          <td>
+                            <input
+                              value={Math.round(Number(row.current_stock || 0))}
+                              onChange={(e) => {
+                                const n = Number(e.target.value);
+                                const stock = Number.isFinite(n) ? n : 0;
+                                setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, current_stock: stock } : item));
+                              }}
+                              style={{ width: 68 }}
+                            /> {row.unit}
+                          </td>
+                          <td>
+                            <input
+                              value={row.default_supplier || ''}
+                              onChange={(e) => {
+                                const supplier = e.target.value;
+                                setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, default_supplier: supplier } : item));
+                              }}
+                              placeholder="업체명"
+                              style={{ width: 50 }}
+                            />
+                          </td>
+                          <td>
+                            <label>
+                              <input
+                                type="checkbox"
+                                checked={!!row.is_active}
+                                onChange={(e) => setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, is_active: e.target.checked } : item))}
+                              />
+                              사용
+                            </label>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ))}
             </div>
             <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
