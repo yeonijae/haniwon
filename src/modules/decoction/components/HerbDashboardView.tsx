@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { createHerbOrder, getHerbDashboardRows } from '../lib/api';
 import type { HerbDashboardRow } from '../types';
 
+const CHUNK_SIZE = 20;
+
 export default function HerbDashboardView() {
   const [rows, setRows] = useState<HerbDashboardRow[]>([]);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
@@ -15,7 +17,11 @@ export default function HerbDashboardView() {
 
   async function load() {
     const data = await getHerbDashboardRows();
-    const normalized = data.map((row) => ({ ...row, shortage_qty: Number(row.shortage_qty || 0), recommended_order_qty: Number(row.recommended_order_qty || 0) }));
+    const normalized = data.map((row) => ({
+      ...row,
+      shortage_qty: Number(row.shortage_qty || 0),
+      recommended_order_qty: Number(row.recommended_order_qty || 0),
+    }));
     setRows(normalized);
   }
 
@@ -23,6 +29,14 @@ export default function HerbDashboardView() {
     () => rows.filter((row) => row.is_active && row.shortage_qty > 0),
     [rows]
   );
+
+  const chunks = useMemo(() => {
+    const arr: HerbDashboardRow[][] = [];
+    for (let i = 0; i < lowStockRows.length; i += CHUNK_SIZE) {
+      arr.push(lowStockRows.slice(i, i + CHUNK_SIZE));
+    }
+    return arr;
+  }, [lowStockRows]);
 
   async function handleCreateOrder() {
     const items = lowStockRows
@@ -57,34 +71,44 @@ export default function HerbDashboardView() {
         {lowStockRows.length === 0 ? (
           <p className="decoction-empty">현재 부족 약재가 없습니다.</p>
         ) : (
-          <table className="decoction-table">
-            <thead>
-              <tr>
-                <th>선택</th>
-                <th>약재명</th>
-                <th>현재재고</th>
-                <th>부족량</th>
-                <th>추천주문수량</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lowStockRows.map((row) => (
-                <tr key={row.herb_id}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={!!selected[row.herb_id]}
-                      onChange={(e) => setSelected((prev) => ({ ...prev, [row.herb_id]: e.target.checked }))}
-                    />
-                  </td>
-                  <td>{row.herb_name}</td>
-                  <td>{Number(row.current_stock || 0).toFixed(1)} {row.unit}</td>
-                  <td className="decoction-shortage">{Number(row.shortage_qty || 0).toFixed(1)} {row.unit}</td>
-                  <td>{Number(row.recommended_order_qty || 0).toFixed(1)} {row.unit}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 4 }}>
+            {chunks.map((chunk, idx) => (
+              <div
+                key={`chunk-${idx}`}
+                style={{ minWidth: 320, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}
+              >
+                <div style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontWeight: 600, fontSize: 13 }}>
+                  목록 {idx + 1}
+                </div>
+                <table className="decoction-table" style={{ marginBottom: 0 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 52 }}>선택</th>
+                      <th>약재명</th>
+                      <th>현재</th>
+                      <th>예상</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {chunk.map((row) => (
+                      <tr key={row.herb_id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={!!selected[row.herb_id]}
+                            onChange={(e) => setSelected((prev) => ({ ...prev, [row.herb_id]: e.target.checked }))}
+                          />
+                        </td>
+                        <td>{row.herb_name}</td>
+                        <td>{Number(row.current_stock || 0).toFixed(1)} {row.unit}</td>
+                        <td>{Number(row.recommended_order_qty || row.shortage_qty || 0).toFixed(1)} {row.unit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 
