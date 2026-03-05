@@ -178,7 +178,7 @@ export default function HerbInventoryView() {
                               const stock = Number.isFinite(n) ? n : 0;
                               setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, current_stock: stock } : item));
                             }}
-                            style={{ width: 73, fontSize: 18 }}
+                            style={{ width: 78, fontSize: 18 }}
                           />
                         </td>
                         <td>
