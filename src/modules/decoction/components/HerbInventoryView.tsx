@@ -270,8 +270,7 @@ export default function HerbInventoryView() {
       ) : (
         <>
           <section className="decoction-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <h3 style={{ fontSize: 17, margin: 0 }}>약재관리</h3>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 8 }}>
               <button className="decoction-btn" disabled={saving} onClick={handleSaveManageChanges}>일괄저장</button>
             </div>
             <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
