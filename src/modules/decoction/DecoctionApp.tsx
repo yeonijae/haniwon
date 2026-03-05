@@ -29,7 +29,7 @@ interface HerbTabItem {
 
 const MAIN_TABS: MainTabItem[] = [
   { id: 'dashboard', label: '대시보드' },
-  { id: 'herb', label: '약재' },
+  { id: 'herbStatus', label: '약재현황' },
   { id: 'ready', label: '상비약' },
   { id: 'queue', label: '탕전' },
   { id: 'purchase', label: '구입' },
@@ -127,13 +127,6 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
                   {tab.label}
                 </button>
               ))}
-              <button
-                className={`decoction-tab ${mainTab === 'herbStatus' ? 'active' : ''}`}
-                onClick={() => setMainTab('herbStatus')}
-                title="약재 현황 보기"
-              >
-                약재현황
-              </button>
               <button
                 className="decoction-tab"
                 onClick={() => setShowSettings(true)}
