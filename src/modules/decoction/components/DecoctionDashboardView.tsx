@@ -22,7 +22,7 @@ const initialData: DecoctionDashboardData = {
 
 function ListBox({ title, badge, children }: { title: string; badge: string; children: ReactNode }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[calc(100vh-220px)] min-h-[420px] w-[320px] flex-shrink-0 flex flex-col">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-full w-[250px] flex-shrink-0 flex flex-col">
       <div className="flex items-center justify-between mb-3">
         <h4 className="text-sm font-semibold text-gray-700">{title}</h4>
         <span className="inline-flex items-center justify-center min-w-8 px-2 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
