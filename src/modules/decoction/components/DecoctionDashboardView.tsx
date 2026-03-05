@@ -55,19 +55,6 @@ function Empty() {
   return <div className="text-sm text-gray-400">항목이 없습니다.</div>;
 }
 
-function doctorNickname(name?: string | null): string {
-  if (!name) return '-';
-  const map: Record<string, string> = {
-    '김대현': '대현',
-    '강희종': '희종',
-    '임세열': '세열',
-    '전인재': '인재',
-  };
-  const normalized = name.replace(/\s+/g, '').replace('원장', '');
-  if (map[normalized]) return map[normalized];
-  return normalized.length >= 2 ? normalized.slice(-2) : normalized;
-}
-
 function formatVisitDate(v?: string | null): string {
   if (!v) return '-';
   const d = new Date(v);
@@ -116,7 +103,7 @@ export default function DecoctionDashboardView() {
             <ul className="space-y-2 text-[16px]">
               {data.pendingPrescriptionDrafts.map((d) => (
                 <li key={d.id} className="border rounded px-2 py-1">
-                  {d.patient_name} ({d.chart_number}) - {doctorNickname(d.doctor)} - {formatVisitDate(d.receipt_date)}
+                  {d.patient_name} ({d.chart_number}) - {d.doctor_alias || d.doctor || '-'} - {formatVisitDate(d.receipt_date)}
                 </li>
               ))}
             </ul>
@@ -128,7 +115,7 @@ export default function DecoctionDashboardView() {
             <ul className="space-y-2 text-[16px]">
               {data.waitingDrafts.map((d) => (
                 <li key={d.id} className="border rounded px-2 py-1">
-                  {d.patient_name} ({d.chart_number}) - {doctorNickname(d.doctor)} - {formatVisitDate(d.receipt_date)}
+                  {d.patient_name} ({d.chart_number}) - {d.doctor_alias || d.doctor || '-'} - {formatVisitDate(d.receipt_date)}
                 </li>
               ))}
             </ul>
@@ -140,7 +127,7 @@ export default function DecoctionDashboardView() {
             <ul className="space-y-2 text-[16px]">
               {data.pendingDosageDrafts.map((d) => (
                 <li key={d.id} className="border rounded px-2 py-1">
-                  {d.patient_name} ({d.chart_number}) - {doctorNickname(d.doctor)} - {formatVisitDate(d.receipt_date)}
+                  {d.patient_name} ({d.chart_number}) - {d.doctor_alias || d.doctor || '-'} - {formatVisitDate(d.receipt_date)}
                 </li>
               ))}
             </ul>
