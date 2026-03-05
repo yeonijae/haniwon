@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getHerbDashboardRows } from '../lib/api';
 import type { HerbDashboardRow } from '../types';
 
-const CHUNK_SIZE = 24;
+const CHUNK_SIZE = 23;
 
 export default function HerbDashboardView() {
   const [rows, setRows] = useState<HerbDashboardRow[]>([]);
@@ -49,13 +49,6 @@ export default function HerbDashboardView() {
                 style={{ minWidth: 295, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', height: '100%' }}
               >
                 <table className="decoction-table" style={{ marginBottom: 0, fontSize: 18 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ padding: '6px 1px' }}>약재명</th>
-                      <th style={{ padding: '6px 1px' }}>현재</th>
-                      <th style={{ padding: '6px 1px' }}>예상</th>
-                    </tr>
-                  </thead>
                   <tbody>
                     {chunk.map((row) => {
                       const shortage = Number(row.shortage_qty || 0) > 0;
