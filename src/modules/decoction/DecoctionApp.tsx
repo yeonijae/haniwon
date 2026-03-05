@@ -10,9 +10,11 @@ import HerbOrderManagementView from './components/HerbOrderManagementView';
 import HerbPriceManagementView from './components/HerbPriceManagementView';
 import HerbUsageStatsView from './components/HerbUsageStatsView';
 import SettingsModal from '../inventory/components/SettingsModal';
+import Dashboard from '../inventory/pages/Dashboard';
+import SupplyList from '../inventory/pages/SupplyList';
 import './styles/decoction.css';
 
-type MainTabType = 'herb' | 'ready' | 'queue';
+type MainTabType = 'dashboard' | 'herb' | 'ready' | 'queue' | 'purchase';
 type HerbTabType = 'dashboard' | 'manage' | 'orders' | 'prices' | 'usage';
 
 interface MainTabItem {
@@ -26,9 +28,11 @@ interface HerbTabItem {
 }
 
 const MAIN_TABS: MainTabItem[] = [
+  { id: 'dashboard', label: '대시보드' },
   { id: 'herb', label: '약재' },
   { id: 'ready', label: '상비약' },
   { id: 'queue', label: '탕전' },
+  { id: 'purchase', label: '구입' },
 ];
 
 const HERB_TABS: HerbTabItem[] = [
@@ -44,7 +48,7 @@ interface DecoctionAppProps {
 }
 
 export default function DecoctionApp({ user }: DecoctionAppProps) {
-  const [mainTab, setMainTab] = useState<MainTabType>('herb');
+  const [mainTab, setMainTab] = useState<MainTabType>('dashboard');
   const [herbTab, setHerbTab] = useState<HerbTabType>('dashboard');
   const [showSettings, setShowSettings] = useState(false);
 
@@ -71,6 +75,8 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
 
   function renderMainContent() {
     switch (mainTab) {
+      case 'dashboard':
+        return <Dashboard />;
       case 'herb':
         return (
           <>
@@ -92,6 +98,8 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
         return <ReadyMedicineView />;
       case 'queue':
         return <DecoctionQueueView user={user} />;
+      case 'purchase':
+        return <SupplyList />;
       default:
         return null;
     }
