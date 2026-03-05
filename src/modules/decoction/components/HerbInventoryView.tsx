@@ -250,10 +250,10 @@ export default function HerbInventoryView() {
                 {dashboardRows.map((row) => (
                   <tr key={row.herb_id} className={!row.is_active ? 'decoction-muted-row' : ''}>
                     <td>{row.herb_name}</td>
-                    <td>{row.current_stock.toFixed(1)} {row.unit}</td>
-                    <td>{row.expected_stock.toFixed(1)} {row.unit}</td>
-                    <td className={row.shortage_qty > 0 ? 'decoction-shortage' : ''}>{row.shortage_qty.toFixed(1)} {row.unit}</td>
-                    <td>{row.recommended_order_qty.toFixed(1)} {row.unit}</td>
+                    <td>{Math.round(row.current_stock)} {row.unit}</td>
+                    <td>{Math.round(row.expected_stock)} {row.unit}</td>
+                    <td className={row.shortage_qty > 0 ? 'decoction-shortage' : ''}>{Math.round(row.shortage_qty)} {row.unit}</td>
+                    <td>{Math.round(row.recommended_order_qty)} {row.unit}</td>
                     <td>
                       <input
                         value={row.default_supplier || ''}
@@ -366,8 +366,8 @@ export default function HerbInventoryView() {
                       {order.items.map((item) => (
                         <tr key={item.id}>
                           <td>{item.herb_name}</td>
-                          <td>{Number(item.quantity).toFixed(1)} {item.unit}</td>
-                          <td>{Number(item.received_qty || 0).toFixed(1)} {item.unit}</td>
+                          <td>{Math.round(Number(item.quantity))} {item.unit}</td>
+                          <td>{Math.round(Number(item.received_qty || 0))} {item.unit}</td>
                         </tr>
                       ))}
                     </tbody>
