@@ -128,7 +128,7 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
                 </button>
               ))}
               <button
-                className="decoction-tab"
+                className={`decoction-tab ${mainTab === 'herbStatus' ? 'active' : ''}`}
                 onClick={() => setMainTab('herbStatus')}
                 title="약재 현황 보기"
               >
