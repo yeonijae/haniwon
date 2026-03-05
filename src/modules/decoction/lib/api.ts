@@ -461,7 +461,7 @@ export async function getDecoctionCapacity(): Promise<DecoctionCapacity[]> {
 export async function getDecoctionDashboardData(): Promise<DecoctionDashboardData> {
   const [waitingDrafts, pendingPrescriptionDrafts, pendingDosageDrafts, lowReadyMedicines, outboundPendingList, outboundTodayRows, herbRows] = await Promise.all([
     query<DashboardDraftItem>(`
-      SELECT d.id, d.patient_name, d.chart_number, d.doctor, d.shipping_date, d.decoction_date, d.created_at
+      SELECT d.id, d.patient_name, d.chart_number, d.doctor, d.receipt_date, d.shipping_date, d.decoction_date, d.created_at
       FROM cs_herbal_drafts d
       LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
       WHERE q.id IS NULL
@@ -471,7 +471,7 @@ export async function getDecoctionDashboardData(): Promise<DecoctionDashboardDat
       LIMIT 50
     `),
     query<DashboardDraftItem>(`
-      SELECT d.id, d.patient_name, d.chart_number, d.doctor, d.shipping_date, d.decoction_date, d.created_at
+      SELECT d.id, d.patient_name, d.chart_number, d.doctor, d.receipt_date, d.shipping_date, d.decoction_date, d.created_at
       FROM cs_herbal_drafts d
       LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
       WHERE d.prescription_id IS NULL
@@ -481,7 +481,7 @@ export async function getDecoctionDashboardData(): Promise<DecoctionDashboardDat
       LIMIT 50
     `),
     query<DashboardDraftItem>(`
-      SELECT d.id, d.patient_name, d.chart_number, d.doctor, d.shipping_date, d.decoction_date, d.created_at
+      SELECT d.id, d.patient_name, d.chart_number, d.doctor, d.receipt_date, d.shipping_date, d.decoction_date, d.created_at
       FROM cs_herbal_drafts d
       LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
       WHERE d.prescription_id IS NOT NULL

@@ -55,6 +55,29 @@ function Empty() {
   return <div className="text-sm text-gray-400">항목이 없습니다.</div>;
 }
 
+function doctorNickname(name?: string | null): string {
+  if (!name) return '-';
+  const map: Record<string, string> = {
+    '김대현': '대현',
+    '강희종': '희종',
+    '임세열': '세열',
+    '전인재': '인재',
+  };
+  const normalized = name.replace(/\s+/g, '').replace('원장', '');
+  if (map[normalized]) return map[normalized];
+  return normalized.length >= 2 ? normalized.slice(-2) : normalized;
+}
+
+function formatVisitDate(v?: string | null): string {
+  if (!v) return '-';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '-';
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  return `${mm}/${dd}(${days[d.getDay()]})`;
+}
+
 export default function DecoctionDashboardView() {
   const [data, setData] = useState<DecoctionDashboardData>(initialData);
   const [loading, setLoading] = useState(true);
@@ -90,10 +113,10 @@ export default function DecoctionDashboardView() {
       <div className="flex gap-4 w-full h-full items-stretch">
         <ListBox title="처방전" badge={`${s.pendingPrescription}`}>
           {data.pendingPrescriptionDrafts.length === 0 ? <Empty /> : (
-            <ul className="space-y-2 text-sm">
+            <ul className="space-y-2 text-[16px]">
               {data.pendingPrescriptionDrafts.map((d) => (
                 <li key={d.id} className="border rounded px-2 py-1">
-                  {d.patient_name} ({d.chart_number}) · {d.shipping_date || d.decoction_date || '-'}
+                  {d.patient_name} ({d.chart_number}) - {doctorNickname(d.doctor)} - {formatVisitDate(d.receipt_date)}
                 </li>
               ))}
             </ul>
@@ -102,10 +125,10 @@ export default function DecoctionDashboardView() {
 
         <ListBox title="탕전" badge={`${s.waitingDecoction}`}>
           {data.waitingDrafts.length === 0 ? <Empty /> : (
-            <ul className="space-y-2 text-sm">
+            <ul className="space-y-2 text-[16px]">
               {data.waitingDrafts.map((d) => (
                 <li key={d.id} className="border rounded px-2 py-1">
-                  {d.patient_name} ({d.chart_number}) · {d.doctor || '-'}
+                  {d.patient_name} ({d.chart_number}) - {doctorNickname(d.doctor)} - {formatVisitDate(d.receipt_date)}
                 </li>
               ))}
             </ul>
@@ -114,10 +137,10 @@ export default function DecoctionDashboardView() {
 
         <ListBox title="복용법" badge={`${s.pendingDosage}`}>
           {data.pendingDosageDrafts.length === 0 ? <Empty /> : (
-            <ul className="space-y-2 text-sm">
+            <ul className="space-y-2 text-[16px]">
               {data.pendingDosageDrafts.map((d) => (
                 <li key={d.id} className="border rounded px-2 py-1">
-                  {d.patient_name} ({d.chart_number}) · {d.shipping_date || d.decoction_date || '-'}
+                  {d.patient_name} ({d.chart_number}) - {doctorNickname(d.doctor)} - {formatVisitDate(d.receipt_date)}
                 </li>
               ))}
             </ul>

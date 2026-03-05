@@ -157,6 +157,7 @@ export interface DashboardDraftItem {
   patient_name: string | null;
   chart_number: string | null;
   doctor: string | null;
+  receipt_date?: string | null;
   shipping_date: string | null;
   decoction_date?: string | null;
   created_at?: string;
