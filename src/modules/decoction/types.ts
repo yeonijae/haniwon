@@ -151,3 +151,39 @@ export interface DecoctionDashboardSummary {
   outboundPending: number;
   outboundToday: number;
 }
+
+export interface DashboardDraftItem {
+  id: number;
+  patient_name: string | null;
+  chart_number: string | null;
+  doctor: string | null;
+  shipping_date: string | null;
+  decoction_date?: string | null;
+  created_at?: string;
+}
+
+export interface DashboardReadyMedicineItem {
+  id: number;
+  name: string;
+  current_stock: number;
+  unit: string | null;
+}
+
+export interface DashboardQueueItem {
+  id: number;
+  patient_name: string | null;
+  chart_number: string | null;
+  assigned_date: string | null;
+  assigned_slot: string | null;
+  created_at: string;
+}
+
+export interface DecoctionDashboardData {
+  summary: DecoctionDashboardSummary;
+  waitingDrafts: DashboardDraftItem[];
+  pendingPrescriptionDrafts: DashboardDraftItem[];
+  pendingDosageDrafts: DashboardDraftItem[];
+  lowHerbs: HerbDashboardRow[];
+  lowReadyMedicines: DashboardReadyMedicineItem[];
+  outboundPendingList: DashboardQueueItem[];
+}

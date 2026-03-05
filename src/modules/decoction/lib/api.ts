@@ -12,6 +12,10 @@ import type {
   HerbOrderStatus,
   HerbUsageStatRow,
   DecoctionDashboardSummary,
+  DecoctionDashboardData,
+  DashboardDraftItem,
+  DashboardReadyMedicineItem,
+  DashboardQueueItem,
 } from '../types';
 
 const INIT_KEY = 'decoction_tables';
@@ -449,40 +453,50 @@ export async function getDecoctionCapacity(): Promise<DecoctionCapacity[]> {
   return query<DecoctionCapacity>('SELECT * FROM decoction_capacity ORDER BY date');
 }
 
-export async function getDecoctionDashboardSummary(): Promise<DecoctionDashboardSummary> {
-  const [waitingDraftRows, prescriptionRows, dosageRows, lowReadyRows, outboundPendingRows, outboundTodayRows, herbRows] = await Promise.all([
-    query<{ cnt: string }>(`
-      SELECT COUNT(*)::text AS cnt
+export async function getDecoctionDashboardData(): Promise<DecoctionDashboardData> {
+  const [waitingDrafts, pendingPrescriptionDrafts, pendingDosageDrafts, lowReadyMedicines, outboundPendingList, outboundTodayRows, herbRows] = await Promise.all([
+    query<DashboardDraftItem>(`
+      SELECT d.id, d.patient_name, d.chart_number, d.doctor, d.shipping_date, d.decoction_date, d.created_at
       FROM cs_herbal_drafts d
       LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
       WHERE q.id IS NULL
+      ORDER BY d.created_at DESC
+      LIMIT 50
     `),
-    query<{ cnt: string }>(`
-      SELECT COUNT(*)::text AS cnt
+    query<DashboardDraftItem>(`
+      SELECT d.id, d.patient_name, d.chart_number, d.doctor, d.shipping_date, d.decoction_date, d.created_at
       FROM cs_herbal_drafts d
       LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
-      WHERE (d.prescription_id IS NULL)
+      WHERE d.prescription_id IS NULL
         AND COALESCE(NULLIF(d.shipping_date, ''), NULLIF(d.decoction_date, '')) IS NOT NULL
         AND (q.id IS NULL OR q.status <> 'completed')
+      ORDER BY COALESCE(NULLIF(d.shipping_date, ''), NULLIF(d.decoction_date, '')) ASC, d.created_at DESC
+      LIMIT 50
     `),
-    query<{ cnt: string }>(`
-      SELECT COUNT(DISTINCT d.id)::text AS cnt
+    query<DashboardDraftItem>(`
+      SELECT DISTINCT d.id, d.patient_name, d.chart_number, d.doctor, d.shipping_date, d.decoction_date, d.created_at
       FROM cs_herbal_drafts d
       JOIN prescriptions p ON (p.herbal_draft_id = d.id OR d.prescription_id = p.id)
       LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
       WHERE COALESCE(p.dosage_instruction_created, false) = false
         AND (q.id IS NULL OR q.status <> 'completed')
+      ORDER BY COALESCE(NULLIF(d.shipping_date, ''), NULLIF(d.decoction_date, '')) ASC, d.created_at DESC
+      LIMIT 50
     `),
-    query<{ cnt: string }>(`
-      SELECT COUNT(*)::text AS cnt
+    query<DashboardReadyMedicineItem>(`
+      SELECT id, name, COALESCE(current_stock, 0)::float AS current_stock, unit
       FROM cs_medicine_inventory
       WHERE is_active = true
         AND COALESCE(current_stock, 0) <= 0
+      ORDER BY name
+      LIMIT 50
     `),
-    query<{ cnt: string }>(`
-      SELECT COUNT(*)::text AS cnt
+    query<DashboardQueueItem>(`
+      SELECT id, patient_name, chart_number, assigned_date, assigned_slot, created_at
       FROM decoction_queue
       WHERE status = 'assigned'
+      ORDER BY assigned_date NULLS LAST, assigned_slot NULLS LAST, created_at ASC
+      LIMIT 50
     `),
     query<{ cnt: string }>(`
       SELECT COUNT(*)::text AS cnt
@@ -493,15 +507,30 @@ export async function getDecoctionDashboardSummary(): Promise<DecoctionDashboard
     getHerbDashboardRows(),
   ]);
 
+  const lowHerbs = herbRows.filter((r) => r.is_active && Number(r.shortage_qty || 0) > 0);
+
   return {
-    waitingDecoction: parseInt(waitingDraftRows[0]?.cnt || '0', 10),
-    pendingPrescription: parseInt(prescriptionRows[0]?.cnt || '0', 10),
-    pendingDosage: parseInt(dosageRows[0]?.cnt || '0', 10),
-    lowHerbCount: herbRows.filter((r) => r.is_active && Number(r.shortage_qty || 0) > 0).length,
-    lowReadyMedicineCount: parseInt(lowReadyRows[0]?.cnt || '0', 10),
-    outboundPending: parseInt(outboundPendingRows[0]?.cnt || '0', 10),
-    outboundToday: parseInt(outboundTodayRows[0]?.cnt || '0', 10),
+    summary: {
+      waitingDecoction: waitingDrafts.length,
+      pendingPrescription: pendingPrescriptionDrafts.length,
+      pendingDosage: pendingDosageDrafts.length,
+      lowHerbCount: lowHerbs.length,
+      lowReadyMedicineCount: lowReadyMedicines.length,
+      outboundPending: outboundPendingList.length,
+      outboundToday: parseInt(outboundTodayRows[0]?.cnt || '0', 10),
+    },
+    waitingDrafts,
+    pendingPrescriptionDrafts,
+    pendingDosageDrafts,
+    lowHerbs,
+    lowReadyMedicines,
+    outboundPendingList,
   };
+}
+
+export async function getDecoctionDashboardSummary(): Promise<DecoctionDashboardSummary> {
+  const data = await getDecoctionDashboardData();
+  return data.summary;
 }
 
 // === 탕전관리 큐 API ===
