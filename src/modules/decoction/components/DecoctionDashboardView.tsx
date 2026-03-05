@@ -70,7 +70,7 @@ export default function DecoctionDashboardView() {
 
   return (
     <div className="p-4 h-full overflow-auto">
-      <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         <ListBox title="탕전대기" badge={`${s.waitingDecoction}`}>
           {data.waitingDrafts.length === 0 ? <Empty /> : (
             <ul className="space-y-2 text-sm">
