@@ -53,7 +53,7 @@ export default function HerbDashboardView() {
                 key={`chunk-${idx}`}
                 style={{ minWidth: 300, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', height: '100%' }}
               >
-                <table className="decoction-table" style={{ marginBottom: 0, fontSize: 14.4 }}>
+                <table className="decoction-table" style={{ marginBottom: 0, fontSize: 15 }}>
                   <thead>
                     <tr>
                       <th style={{ padding: '6px 4px' }}>약재명</th>
