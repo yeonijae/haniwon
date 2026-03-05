@@ -189,7 +189,7 @@ export default function HerbInventoryView() {
                               setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, default_supplier: supplier } : item));
                             }}
                             placeholder="업체명"
-                            style={{ width: 50 }}
+                            style={{ width: 60 }}
                           />
                         </td>
                         <td>
