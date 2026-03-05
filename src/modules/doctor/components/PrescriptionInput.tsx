@@ -912,7 +912,7 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
                   onClick={onClose}
                   className="px-4 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
                 >
-                  닫기
+                  <i className="fas fa-times mr-1"></i>닫기
                 </button>
               )}
             </div>
