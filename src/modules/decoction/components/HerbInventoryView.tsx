@@ -57,6 +57,11 @@ export default function HerbInventoryView() {
     [dashboardRows]
   );
 
+  const dashboardColumns = useMemo(() => {
+    const half = Math.ceil(dashboardRows.length / 2);
+    return [dashboardRows.slice(0, half), dashboardRows.slice(half)];
+  }, [dashboardRows]);
+
   useEffect(() => {
     loadAll().catch(console.error);
   }, []);
@@ -233,51 +238,55 @@ export default function HerbInventoryView() {
       ) : (
         <>
           <section className="decoction-card">
-            <table className="decoction-table" style={{ fontSize: 15 }}>
-              <thead>
-                <tr>
-                  <th>약재명</th>
-                  <th>현재재고</th>
-                  <th>예상재고</th>
-                  <th>부족량</th>
-                  <th>추천주문수량</th>
-                  <th>공급업체</th>
-                  <th>미사용</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dashboardRows.map((row) => (
-                  <tr key={row.herb_id} className={!row.is_active ? 'decoction-muted-row' : ''}>
-                    <td>{row.herb_name}</td>
-                    <td>{Math.round(row.current_stock)} {row.unit}</td>
-                    <td>{Math.round(row.expected_stock)} {row.unit}</td>
-                    <td className={row.shortage_qty > 0 ? 'decoction-shortage' : ''}>{Math.round(row.shortage_qty)} {row.unit}</td>
-                    <td>{Math.round(row.recommended_order_qty)} {row.unit}</td>
-                    <td>
-                      <input
-                        value={row.default_supplier || ''}
-                        onChange={(e) => {
-                          const supplier = e.target.value;
-                          setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, default_supplier: supplier } : item));
-                        }}
-                        onBlur={(e) => handleChangeSupplier(row, e.target.value)}
-                        placeholder="업체명"
-                      />
-                    </td>
-                    <td>
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={!row.is_active}
-                          onChange={(e) => handleToggleActive(row, !e.target.checked)}
-                        />
-                        미사용
-                      </label>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {dashboardColumns.map((columnRows, colIdx) => (
+                <table key={`col-${colIdx}`} className="decoction-table" style={{ fontSize: 15 }}>
+                  <thead>
+                    <tr>
+                      <th>약재명</th>
+                      <th>현재재고</th>
+                      <th>예상재고</th>
+                      <th>부족량</th>
+                      <th>추천주문수량</th>
+                      <th>공급업체</th>
+                      <th>미사용</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {columnRows.map((row) => (
+                      <tr key={row.herb_id} className={!row.is_active ? 'decoction-muted-row' : ''}>
+                        <td>{row.herb_name}</td>
+                        <td>{Math.round(row.current_stock)} {row.unit}</td>
+                        <td>{Math.round(row.expected_stock)} {row.unit}</td>
+                        <td className={row.shortage_qty > 0 ? 'decoction-shortage' : ''}>{Math.round(row.shortage_qty)} {row.unit}</td>
+                        <td>{Math.round(row.recommended_order_qty)} {row.unit}</td>
+                        <td>
+                          <input
+                            value={row.default_supplier || ''}
+                            onChange={(e) => {
+                              const supplier = e.target.value;
+                              setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, default_supplier: supplier } : item));
+                            }}
+                            onBlur={(e) => handleChangeSupplier(row, e.target.value)}
+                            placeholder="업체명"
+                          />
+                        </td>
+                        <td>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={!row.is_active}
+                              onChange={(e) => handleToggleActive(row, !e.target.checked)}
+                            />
+                            미사용
+                          </label>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ))}
+            </div>
           </section>
 
           <section className="decoction-card">
