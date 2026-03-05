@@ -48,7 +48,7 @@ export default function HerbDashboardView() {
                 key={`chunk-${idx}`}
                 style={{ minWidth: 285, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', height: '100%', paddingLeft: 4 }}
               >
-                <table className="decoction-table" style={{ marginBottom: 0, fontSize: 18 }}>
+                <table className="decoction-table" style={{ marginBottom: 0, fontSize: 16 }}>
                   <tbody>
                     {chunk.map((row) => {
                       const shortage = Number(row.shortage_qty || 0) > 0;
