@@ -488,7 +488,7 @@ export async function getDecoctionDashboardData(): Promise<DecoctionDashboardDat
       WHERE d.prescription_id IS NOT NULL
         AND d.dosage_prescription_id IS NULL
         AND COALESCE(NULLIF(d.shipping_date, ''), NULLIF(d.decoction_date, '')) IS NOT NULL
-        AND COALESCE(p.dosage_instruction_created, false) = false
+        AND COALESCE(p.dosage_instruction_created, 0) = 0
         AND (q.id IS NULL OR q.status <> 'completed')
       ORDER BY COALESCE(NULLIF(d.shipping_date, ''), NULLIF(d.decoction_date, '')) ASC, d.created_at DESC
       LIMIT 50
