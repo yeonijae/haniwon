@@ -178,7 +178,7 @@ export default function HerbInventoryView() {
                               const stock = Number.isFinite(n) ? n : 0;
                               setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, current_stock: stock } : item));
                             }}
-                            style={{ width: 68 }}
+                            style={{ width: 68, fontSize: 19 }}
                           />
                         </td>
                         <td>
@@ -189,7 +189,7 @@ export default function HerbInventoryView() {
                               setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, default_supplier: supplier } : item));
                             }}
                             placeholder="업체명"
-                            style={{ width: 60 }}
+                            style={{ width: 60, fontSize: 19 }}
                           />
                         </td>
                         <td>
