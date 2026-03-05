@@ -547,6 +547,7 @@ export interface WaitingDraft {
   memo: string | null;
   doctor: string | null;
   receipt_date: string | null;
+  prescription_id?: number | null;
   created_by: string | null;
   created_at: string;
 }
@@ -555,7 +556,7 @@ export async function getWaitingDrafts(): Promise<WaitingDraft[]> {
   return query<WaitingDraft>(`
     SELECT d.id, d.patient_id, d.patient_name, d.chart_number, d.consultation_type,
            d.delivery_method, d.shipping_date, d.memo, d.doctor, d.receipt_date,
-           d.created_by, d.created_at
+           d.prescription_id, d.created_by, d.created_at
     FROM cs_herbal_drafts d
     LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
     WHERE q.id IS NULL

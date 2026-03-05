@@ -78,9 +78,12 @@ export default function DecoctionSidebar({ onSelectItem, selectedId, refreshKey 
               {d.consultation_type && <span style={{ color: '#8b5cf6' }}>{TYPE_LABELS[d.consultation_type] || d.consultation_type}</span>}
               {d.doctor && <span style={{ color: '#1e40af' }}>{d.doctor}</span>}
             </div>
-            {/* TODO: 원장실 처방전 연동 후 조건부 표시 (현재는 항상 표시) */}
             <div style={{ marginTop: 3 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: '#fef3c7', color: '#b45309' }}>⚠ 처방전 대기</span>
+              {d.prescription_id ? (
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: '#dcfce7', color: '#166534' }}>✅ 처방 연결됨</span>
+              ) : (
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: '#fef3c7', color: '#b45309' }}>⚠ 처방전 대기</span>
+              )}
             </div>
             {d.memo && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.memo}</div>}
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
