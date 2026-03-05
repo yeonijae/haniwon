@@ -33,7 +33,7 @@ function ListBox({ title, badge, children }: { title: string; badge: string; chi
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex-1 basis-0 min-w-0 flex flex-col overflow-hidden">
-      <div className={`flex items-center justify-between px-3 py-2 border-b border-gray-100 ${s.headerBg}`}>
+      <div className={`flex items-center justify-between px-3 py-2 border-b border-gray-100 min-h-[45px] ${s.headerBg}`}>
         <div className="flex items-center gap-2 min-w-0">
           <span className={`inline-flex items-center justify-center w-6 h-6 rounded-md text-xs ${s.iconBg} ${s.iconFg}`}>
             <i className={s.iconClass}></i>
