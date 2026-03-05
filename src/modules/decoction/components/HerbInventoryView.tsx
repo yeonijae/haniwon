@@ -263,16 +263,16 @@ export default function HerbInventoryView() {
 
   return (
     <div className="decoction-view decoction-herb-view">
-      <h2 style={{ fontSize: 22 }}>🌿 약재관리</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ fontSize: 22, marginBottom: 0 }}>🌿 약재관리</h2>
+        <button className="decoction-btn" disabled={saving} onClick={handleSaveManageChanges}>일괄저장</button>
+      </div>
 
       {loading ? (
         <div className="decoction-placeholder"><p>로딩 중...</p></div>
       ) : (
         <>
           <section className="decoction-card">
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 8 }}>
-              <button className="decoction-btn" disabled={saving} onClick={handleSaveManageChanges}>일괄저장</button>
-            </div>
             <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
               {dashboardColumns.map((columnRows, colIdx) => (
                 <div key={`col-${colIdx}`} style={{ minWidth: 360, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}>
