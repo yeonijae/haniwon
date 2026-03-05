@@ -642,19 +642,6 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
               ({templates.length}개 처방)
             </span>
           </h2>
-          {showSaveButton && (
-            <button
-              onClick={handleSave}
-              disabled={mergedHerbs.length === 0}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                mergedHerbs.length > 0
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              <i className="fas fa-save mr-1"></i>저장
-            </button>
-          )}
         </div>
 
         {/* 환자명 */}
@@ -905,6 +892,19 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
                   className="px-4 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
                 >
                   <i className="fas fa-print mr-1"></i>인쇄
+                </button>
+              )}
+              {showSaveButton && (
+                <button
+                  onClick={handleSave}
+                  disabled={mergedHerbs.length === 0}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    mergedHerbs.length > 0
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  <i className="fas fa-save mr-1"></i>저장
                 </button>
               )}
               {onClose && (
