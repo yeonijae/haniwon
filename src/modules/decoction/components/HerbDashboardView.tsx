@@ -24,12 +24,7 @@ export default function HerbDashboardView() {
   const displayRows = useMemo(
     () => rows
       .filter((row) => row.is_active)
-      .sort((a, b) => {
-        const aShort = Number(a.shortage_qty || 0) > 0 ? 1 : 0;
-        const bShort = Number(b.shortage_qty || 0) > 0 ? 1 : 0;
-        if (aShort !== bShort) return bShort - aShort;
-        return String(a.herb_name || '').localeCompare(String(b.herb_name || ''), 'ko');
-      }),
+      .sort((a, b) => String(a.herb_name || '').localeCompare(String(b.herb_name || ''), 'ko')),
     [rows]
   );
 
