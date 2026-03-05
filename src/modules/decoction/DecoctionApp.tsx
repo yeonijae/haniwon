@@ -10,7 +10,7 @@ import HerbOrderManagementView from './components/HerbOrderManagementView';
 import HerbPriceManagementView from './components/HerbPriceManagementView';
 import HerbUsageStatsView from './components/HerbUsageStatsView';
 import SettingsModal from '../inventory/components/SettingsModal';
-import Dashboard from '../inventory/pages/Dashboard';
+import DecoctionDashboardView from './components/DecoctionDashboardView';
 import SupplyList from '../inventory/pages/SupplyList';
 import './styles/decoction.css';
 
@@ -76,7 +76,7 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
   function renderMainContent() {
     switch (mainTab) {
       case 'dashboard':
-        return <Dashboard />;
+        return <DecoctionDashboardView />;
       case 'herb':
         return (
           <>

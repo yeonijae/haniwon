@@ -141,3 +141,12 @@ export interface HerbUsageStatRow {
   used_qty: number;
   used_cost: number;
 }
+
+export interface DecoctionDashboardSummary {
+  waitingDecoction: number;
+  pendingDosage: number;
+  lowHerbCount: number;
+  lowReadyMedicineCount: number;
+  outboundPending: number;
+  outboundToday: number;
+}

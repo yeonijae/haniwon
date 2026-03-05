@@ -11,6 +11,7 @@ import type {
   DecoctionCapacity,
   HerbOrderStatus,
   HerbUsageStatRow,
+  DecoctionDashboardSummary,
 } from '../types';
 
 const INIT_KEY = 'decoction_tables';
@@ -446,6 +447,52 @@ export async function getPurchaseRequests(): Promise<PurchaseRequest[]> {
 
 export async function getDecoctionCapacity(): Promise<DecoctionCapacity[]> {
   return query<DecoctionCapacity>('SELECT * FROM decoction_capacity ORDER BY date');
+}
+
+export async function getDecoctionDashboardSummary(): Promise<DecoctionDashboardSummary> {
+  const [waitingDraftRows, dosageRows, lowReadyRows, outboundPendingRows, outboundTodayRows, herbRows] = await Promise.all([
+    query<{ cnt: string }>(`
+      SELECT COUNT(*)::text AS cnt
+      FROM cs_herbal_drafts d
+      LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
+      WHERE q.id IS NULL
+    `),
+    query<{ cnt: string }>(`
+      SELECT COUNT(DISTINCT d.id)::text AS cnt
+      FROM cs_herbal_drafts d
+      JOIN prescriptions p ON (p.herbal_draft_id = d.id OR d.prescription_id = p.id)
+      LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
+      WHERE COALESCE(p.dosage_instruction_created, false) = false
+        AND (q.id IS NULL OR q.status <> 'completed')
+    `),
+    query<{ cnt: string }>(`
+      SELECT COUNT(*)::text AS cnt
+      FROM cs_medicine_inventory
+      WHERE is_active = true
+        AND COALESCE(current_stock, 0) <= 0
+    `),
+    query<{ cnt: string }>(`
+      SELECT COUNT(*)::text AS cnt
+      FROM decoction_queue
+      WHERE status = 'assigned'
+    `),
+    query<{ cnt: string }>(`
+      SELECT COUNT(*)::text AS cnt
+      FROM decoction_queue
+      WHERE status = 'completed'
+        AND completed_at::date = CURRENT_DATE
+    `),
+    getHerbDashboardRows(),
+  ]);
+
+  return {
+    waitingDecoction: parseInt(waitingDraftRows[0]?.cnt || '0', 10),
+    pendingDosage: parseInt(dosageRows[0]?.cnt || '0', 10),
+    lowHerbCount: herbRows.filter((r) => r.is_active && Number(r.shortage_qty || 0) > 0).length,
+    lowReadyMedicineCount: parseInt(lowReadyRows[0]?.cnt || '0', 10),
+    outboundPending: parseInt(outboundPendingRows[0]?.cnt || '0', 10),
+    outboundToday: parseInt(outboundTodayRows[0]?.cnt || '0', 10),
+  };
 }
 
 // === 탕전관리 큐 API ===
