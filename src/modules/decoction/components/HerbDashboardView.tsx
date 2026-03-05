@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getHerbDashboardRows } from '../lib/api';
 import type { HerbDashboardRow } from '../types';
 
-const CHUNK_SIZE = 20;
+const CHUNK_SIZE = 25;
 
 export default function HerbDashboardView() {
   const [rows, setRows] = useState<HerbDashboardRow[]>([]);
@@ -42,18 +42,18 @@ export default function HerbDashboardView() {
   }, [displayRows]);
 
   return (
-    <div className="decoction-view decoction-herb-view">
-      <section className="decoction-card" style={{ paddingTop: 8 }}>
+    <div className="decoction-view decoction-herb-view" style={{ height: '100%' }}>
+      <section className="decoction-card" style={{ paddingTop: 8, height: '100%' }}>
         {displayRows.length === 0 ? (
           <p className="decoction-empty">표시할 약재가 없습니다.</p>
         ) : (
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2, height: '100%' }}>
             {chunks.map((chunk, idx) => (
               <div
                 key={`chunk-${idx}`}
-                style={{ minWidth: 300, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}
+                style={{ minWidth: 300, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', height: '100%' }}
               >
-                <table className="decoction-table" style={{ marginBottom: 0, fontSize: 12 }}>
+                <table className="decoction-table" style={{ marginBottom: 0, fontSize: 14.4 }}>
                   <thead>
                     <tr>
                       <th style={{ padding: '6px 4px' }}>약재명</th>
