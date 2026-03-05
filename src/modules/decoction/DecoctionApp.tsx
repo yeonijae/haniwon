@@ -36,7 +36,7 @@ const MAIN_TABS: MainTabItem[] = [
 ];
 
 const HERB_TABS: HerbTabItem[] = [
-  { id: 'dashboard', label: '대시보드' },
+  { id: 'dashboard', label: '약재현황' },
   { id: 'manage', label: '약재관리' },
   { id: 'orders', label: '주문관리' },
   { id: 'prices', label: '단가관리' },

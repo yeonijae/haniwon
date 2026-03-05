@@ -72,7 +72,7 @@ export default function HerbDashboardView() {
 
   return (
     <div className="decoction-view decoction-herb-view">
-      <h2>📊 대시보드</h2>
+      <h2>📊 약재현황</h2>
       <section className="decoction-card">
         <h3>약재 전체 현황</h3>
         {displayRows.length === 0 ? (
