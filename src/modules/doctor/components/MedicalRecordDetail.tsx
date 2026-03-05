@@ -717,6 +717,16 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
         }
       }
 
+      const previouslyLinked = prescriptionSourceId
+        ? await query<{ id: number; herbal_draft_id: number }>(`
+            SELECT id, herbal_draft_id
+            FROM prescriptions
+            WHERE source_type = ${escapeString(prescriptionSourceType)}
+              AND source_id = ${prescriptionSourceId}
+              AND herbal_draft_id IS NOT NULL
+          `).catch(() => [] as { id: number; herbal_draft_id: number }[])
+        : [];
+
       // prescriptions 테이블에 저장 - PostgreSQL
       const insertedPrescriptionId = await insert(`
         INSERT INTO prescriptions (
@@ -779,6 +789,31 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
           WHERE id = ${targetDraftId}
             AND (prescription_id IS NULL OR prescription_id = 0 OR prescription_id = ${prescriptionId})
         `);
+      }
+
+      // "선택 안 함" 저장 시 기존 연결 해제
+      if (targetDraftId === null && previouslyLinked.length > 0) {
+        const linkedDraftIds = Array.from(new Set(previouslyLinked.map((row) => row.herbal_draft_id))).filter((id) => Number.isFinite(id));
+        const linkedPrescriptionIds = Array.from(new Set(previouslyLinked.map((row) => row.id))).filter((id) => Number.isFinite(id));
+
+        if (linkedPrescriptionIds.length > 0) {
+          await execute(`
+            UPDATE prescriptions
+            SET herbal_draft_id = NULL,
+                updated_at = ${escapeString(nowTimestamp)}
+            WHERE id IN (${linkedPrescriptionIds.join(',')})
+          `);
+        }
+
+        if (linkedDraftIds.length > 0) {
+          await execute(`
+            UPDATE cs_herbal_drafts
+            SET prescription_id = NULL,
+                prescription_linked_at = NULL,
+                updated_at = ${escapeString(nowTimestamp)}
+            WHERE id IN (${linkedDraftIds.join(',')})
+          `);
+        }
       }
 
       // 처방발급 상태 업데이트 (초진차트 또는 경과기록)
