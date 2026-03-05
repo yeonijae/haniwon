@@ -269,6 +269,7 @@ export default function HerbInventoryView() {
                             }}
                             onBlur={(e) => handleChangeSupplier(row, e.target.value)}
                             placeholder="업체명"
+                            style={{ width: 50 }}
                           />
                         </td>
                         <td>
