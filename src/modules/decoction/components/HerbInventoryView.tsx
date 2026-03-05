@@ -276,13 +276,13 @@ export default function HerbInventoryView() {
             <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
               {dashboardColumns.map((columnRows, colIdx) => (
                 <div key={`col-${colIdx}`} style={{ minWidth: 360, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}>
-                  <table className="decoction-table" style={{ fontSize: 15 }}>
+                  <table className="decoction-table" style={{ fontSize: 17 }}>
                     <thead>
                       <tr>
                         <th>약재명</th>
                         <th>현재재고</th>
                         <th>공급업체</th>
-                        <th>사용여부</th>
+                        <th>사용</th>
                       </tr>
                     </thead>
                     <tbody>
