@@ -42,7 +42,7 @@ export default function HerbDashboardView() {
         {displayRows.length === 0 ? (
           <p className="decoction-empty">표시할 약재가 없습니다.</p>
         ) : (
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2, height: '100%' }}>
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 0, height: '100%' }}>
             {chunks.map((chunk, idx) => (
               <div
                 key={`chunk-${idx}`}
