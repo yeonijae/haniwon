@@ -73,24 +73,24 @@ export default function DecoctionDashboardView() {
   return (
     <div className="p-4 h-full overflow-auto">
       <div className="flex gap-4 min-w-max">
-        <ListBox title="탕전대기" badge={`${s.waitingDecoction}`}>
-          {data.waitingDrafts.length === 0 ? <Empty /> : (
-            <ul className="space-y-2 text-sm">
-              {data.waitingDrafts.map((d) => (
-                <li key={d.id} className="border rounded px-2 py-1">
-                  {d.patient_name} ({d.chart_number}) · {d.doctor || '-'}
-                </li>
-              ))}
-            </ul>
-          )}
-        </ListBox>
-
         <ListBox title="처방전대기" badge={`${s.pendingPrescription}`}>
           {data.pendingPrescriptionDrafts.length === 0 ? <Empty /> : (
             <ul className="space-y-2 text-sm">
               {data.pendingPrescriptionDrafts.map((d) => (
                 <li key={d.id} className="border rounded px-2 py-1">
                   {d.patient_name} ({d.chart_number}) · {d.shipping_date || d.decoction_date || '-'}
+                </li>
+              ))}
+            </ul>
+          )}
+        </ListBox>
+
+        <ListBox title="탕전대기" badge={`${s.waitingDecoction}`}>
+          {data.waitingDrafts.length === 0 ? <Empty /> : (
+            <ul className="space-y-2 text-sm">
+              {data.waitingDrafts.map((d) => (
+                <li key={d.id} className="border rounded px-2 py-1">
+                  {d.patient_name} ({d.chart_number}) · {d.doctor || '-'}
                 </li>
               ))}
             </ul>
