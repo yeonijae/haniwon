@@ -41,20 +41,20 @@ export default function HerbDashboardView() {
       <section className="decoction-card" style={{ paddingTop: 8, height: '100%' }}>
         <div style={{ display: 'flex', gap: 8, height: '100%' }}>
           <div style={{ width: 78, display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
-            <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#374151', borderRadius: 10, padding: '9px 4px', fontSize: 12, fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <i className="fa-solid fa-sliders"></i>
+            <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#374151', borderRadius: 10, padding: '9px 4px', fontSize: 14, fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <i className="fa-solid fa-sliders" style={{ fontSize: 16 }}></i>
               <span>관리</span>
             </button>
-            <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#374151', borderRadius: 10, padding: '9px 4px', fontSize: 12, fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <i className="fa-solid fa-file-invoice"></i>
+            <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#374151', borderRadius: 10, padding: '9px 4px', fontSize: 14, fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <i className="fa-solid fa-file-invoice" style={{ fontSize: 16 }}></i>
               <span>주문서</span>
             </button>
-            <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#374151', borderRadius: 10, padding: '9px 4px', fontSize: 12, fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <i className="fa-solid fa-chart-column"></i>
+            <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#374151', borderRadius: 10, padding: '9px 4px', fontSize: 14, fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <i className="fa-solid fa-chart-column" style={{ fontSize: 16 }}></i>
               <span>통계</span>
             </button>
-            <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#374151', borderRadius: 10, padding: '9px 4px', fontSize: 12, fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <i className="fa-solid fa-won-sign"></i>
+            <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#374151', borderRadius: 10, padding: '9px 4px', fontSize: 14, fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <i className="fa-solid fa-won-sign" style={{ fontSize: 16 }}></i>
               <span>단가</span>
             </button>
           </div>
