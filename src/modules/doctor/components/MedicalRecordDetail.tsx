@@ -120,6 +120,7 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
   const loadUnlinkedHerbalDrafts = useCallback(async (
     patientId: number | null | undefined,
     chartNumber?: string | null,
+    preselectedDraftId?: number | null,
   ) => {
     if (!patientId && !chartNumber) {
       setUnlinkedHerbalDrafts([]);
@@ -131,7 +132,8 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     const drafts = await query<UnlinkedHerbalDraftOption>(`
       SELECT id, created_at
       FROM cs_herbal_drafts
-      WHERE (prescription_id IS NULL OR prescription_id = 0)
+      WHERE ((prescription_id IS NULL OR prescription_id = 0)
+        OR ${preselectedDraftId ? `id = ${preselectedDraftId}` : 'FALSE'})
         AND (
           ${patientId ? `patient_id = ${patientId}` : 'FALSE'}
           ${patientId ? `OR patient_id IN (SELECT id FROM patients WHERE mssql_id = ${patientId})` : ''}
@@ -141,6 +143,11 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     `).catch(() => [] as UnlinkedHerbalDraftOption[]);
 
     setUnlinkedHerbalDrafts(drafts || []);
+
+    if (preselectedDraftId && (drafts || []).some((draft) => draft.id === preselectedDraftId)) {
+      setSelectedHerbalDraftId(preselectedDraftId);
+      return;
+    }
 
     const draftIdFromUrl = getDraftIdFromUrl();
     if (draftIdFromUrl && (drafts || []).some((draft) => draft.id === draftIdFromUrl)) {
@@ -170,10 +177,35 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
   }, [recordId]);
 
   useEffect(() => {
-    if (showPrescriptionInputModal) {
-      loadUnlinkedHerbalDrafts(initialChart?.patient_id, patientInfo?.chartNumber);
-    }
-  }, [showPrescriptionInputModal, initialChart?.patient_id, patientInfo?.chartNumber, loadUnlinkedHerbalDrafts]);
+    if (!showPrescriptionInputModal) return;
+
+    (async () => {
+      let preselectedDraftId: number | null = null;
+
+      if (prescriptionSourceId) {
+        const linked = await queryOne<{ herbal_draft_id: number | null }>(`
+          SELECT herbal_draft_id
+          FROM prescriptions
+          WHERE source_type = ${escapeString(prescriptionSourceType)}
+            AND source_id = ${prescriptionSourceId}
+            AND herbal_draft_id IS NOT NULL
+          ORDER BY created_at DESC
+          LIMIT 1
+        `).catch(() => null);
+
+        preselectedDraftId = linked?.herbal_draft_id || null;
+      }
+
+      await loadUnlinkedHerbalDrafts(initialChart?.patient_id, patientInfo?.chartNumber, preselectedDraftId);
+    })();
+  }, [
+    showPrescriptionInputModal,
+    initialChart?.patient_id,
+    patientInfo?.chartNumber,
+    prescriptionSourceType,
+    prescriptionSourceId,
+    loadUnlinkedHerbalDrafts,
+  ]);
 
   // autoOpenPrescription: 데이터 로드 후 처방 모달 자동 오픈
   const [autoOpenDone, setAutoOpenDone] = useState(false);
