@@ -855,6 +855,8 @@ export async function ensureReceiptTables(): Promise<void> {
         decoction_date TEXT,
         memo TEXT,
         status TEXT DEFAULT 'draft',
+        prescription_id INTEGER,
+        prescription_linked_at TIMESTAMPTZ,
         created_by TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
@@ -879,6 +881,8 @@ export async function ensureReceiptTables(): Promise<void> {
       execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS herbal_package_id INTEGER`).catch(() => {}),
       execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS nokryong_package_id INTEGER`).catch(() => {}),
       execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS shipping_date TEXT`).catch(() => {}),
+      execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS prescription_id INTEGER`).catch(() => {}),
+      execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS prescription_linked_at TIMESTAMPTZ`).catch(() => {}),
     ]);
     // 데이터 마이그레이션 (순차)
     await execute(`UPDATE cs_herbal_drafts SET receipt_date = TO_CHAR(created_at, 'YYYY-MM-DD') WHERE receipt_date IS NULL`).catch(() => {});

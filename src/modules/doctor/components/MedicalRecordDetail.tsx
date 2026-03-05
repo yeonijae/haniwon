@@ -92,6 +92,24 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
   const [prescriptionSourceType, setPrescriptionSourceType] = useState<'initial_chart' | 'progress_note'>('initial_chart');
   const [prescriptionSourceId, setPrescriptionSourceId] = useState<number | null>(null);
 
+  const getDraftIdFromUrl = (): number | null => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get('draftId');
+      if (!raw) return null;
+      const n = parseInt(raw, 10);
+      return Number.isFinite(n) ? n : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const ensurePrescriptionLinkColumns = async () => {
+    await execute(`ALTER TABLE prescriptions ADD COLUMN IF NOT EXISTS herbal_draft_id INTEGER`).catch(() => {});
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS prescription_id INTEGER`).catch(() => {});
+    await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS prescription_linked_at TIMESTAMPTZ`).catch(() => {});
+  };
+
   useEffect(() => {
     loadData();
   }, [recordId]);
@@ -595,14 +613,33 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
       const prescriptionNumber = `RX-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
       const prescriptionDate = getCurrentDate();
 
+      await ensurePrescriptionLinkColumns();
+
+      // 1) URL draftId 우선 2) 환자 기준 단일 후보 자동 매칭
+      let targetDraftId = getDraftIdFromUrl();
+      if (!targetDraftId && initialChart?.patient_id) {
+        const candidates = await query<{ id: number }>(`
+          SELECT id
+          FROM cs_herbal_drafts
+          WHERE patient_id = ${initialChart.patient_id}
+            AND (prescription_id IS NULL)
+          ORDER BY created_at DESC
+          LIMIT 2
+        `).catch(() => [] as { id: number }[]);
+
+        if (candidates.length === 1) {
+          targetDraftId = candidates[0].id;
+        }
+      }
+
       // prescriptions 테이블에 저장 - PostgreSQL
-      await insert(`
+      const prescriptionId = await insert(`
         INSERT INTO prescriptions (
           prescription_number, prescription_date, patient_id, patient_name, chart_number,
           patient_age, patient_gender, source_type, source_id, formula,
           merged_herbs, final_herbs, total_doses, days, doses_per_day,
           total_packs, pack_volume, water_amount, herb_adjustment, total_dosage,
-          final_total_amount, notes, status, issued_at, created_at, updated_at
+          final_total_amount, notes, status, issued_at, created_at, updated_at, herbal_draft_id
         ) VALUES (
           ${escapeString(prescriptionNumber)},
           ${escapeString(prescriptionDate)},
@@ -629,9 +666,22 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
           ${escapeString('issued')},
           ${escapeString(nowTimestamp)},
           ${escapeString(nowTimestamp)},
-          ${escapeString(nowTimestamp)}
+          ${escapeString(nowTimestamp)},
+          ${targetDraftId || 'NULL'}
         )
       `);
+
+      // draft ↔ prescription 양방향 링크
+      if (targetDraftId) {
+        await execute(`
+          UPDATE cs_herbal_drafts
+          SET prescription_id = ${prescriptionId},
+              prescription_linked_at = ${escapeString(nowTimestamp)},
+              updated_at = ${escapeString(nowTimestamp)}
+          WHERE id = ${targetDraftId}
+            AND (prescription_id IS NULL OR prescription_id = ${prescriptionId})
+        `);
+      }
 
       // 처방발급 상태 업데이트 (초진차트 또는 경과기록)
       if (prescriptionSourceType === 'initial_chart' && prescriptionSourceId) {
