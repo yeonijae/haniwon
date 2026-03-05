@@ -117,18 +117,26 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
     await execute(`ALTER TABLE cs_herbal_drafts ADD COLUMN IF NOT EXISTS prescription_linked_at TIMESTAMPTZ`).catch(() => {});
   };
 
-  const loadUnlinkedHerbalDrafts = useCallback(async (patientId: number | null | undefined) => {
-    if (!patientId) {
+  const loadUnlinkedHerbalDrafts = useCallback(async (
+    patientId: number | null | undefined,
+    chartNumber?: string | null,
+  ) => {
+    if (!patientId && !chartNumber) {
       setUnlinkedHerbalDrafts([]);
       setSelectedHerbalDraftId(null);
       return;
     }
 
+    const escapedChartNumber = chartNumber ? escapeString(chartNumber) : null;
     const drafts = await query<UnlinkedHerbalDraftOption>(`
       SELECT id, created_at
       FROM cs_herbal_drafts
-      WHERE patient_id = ${patientId}
-        AND prescription_id IS NULL
+      WHERE prescription_id IS NULL
+        AND (
+          ${patientId ? `patient_id = ${patientId}` : 'FALSE'}
+          ${patientId ? `OR patient_id IN (SELECT id FROM patients WHERE mssql_id = ${patientId})` : ''}
+          ${escapedChartNumber ? `OR chart_number = ${escapedChartNumber}` : ''}
+        )
       ORDER BY created_at DESC
     `).catch(() => [] as UnlinkedHerbalDraftOption[]);
 
@@ -163,9 +171,9 @@ const MedicalRecordDetail: React.FC<Props> = ({ recordId, patientName, patientIn
 
   useEffect(() => {
     if (showPrescriptionInputModal) {
-      loadUnlinkedHerbalDrafts(initialChart?.patient_id);
+      loadUnlinkedHerbalDrafts(initialChart?.patient_id, patientInfo?.chartNumber);
     }
-  }, [showPrescriptionInputModal, initialChart?.patient_id, loadUnlinkedHerbalDrafts]);
+  }, [showPrescriptionInputModal, initialChart?.patient_id, patientInfo?.chartNumber, loadUnlinkedHerbalDrafts]);
 
   // autoOpenPrescription: 데이터 로드 후 처방 모달 자동 오픈
   const [autoOpenDone, setAutoOpenDone] = useState(false);
