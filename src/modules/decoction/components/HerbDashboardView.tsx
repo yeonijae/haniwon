@@ -53,12 +53,17 @@ export default function HerbDashboardView() {
                 key={`chunk-${idx}`}
                 style={{ minWidth: 300, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', height: '100%' }}
               >
-                <table className="decoction-table" style={{ marginBottom: 0, fontSize: 16 }}>
+                <table className="decoction-table" style={{ marginBottom: 0, fontSize: 16, tableLayout: 'fixed' }}>
+                  <colgroup>
+                    <col style={{ width: '68%' }} />
+                    <col style={{ width: '16%' }} />
+                    <col style={{ width: '16%' }} />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th style={{ padding: '6px 1px' }}>약재명</th>
-                      <th style={{ padding: '6px 1px' }}>현재</th>
-                      <th style={{ padding: '6px 1px' }}>예상</th>
+                      <th style={{ padding: '6px 1px', textAlign: 'right' }}>현재</th>
+                      <th style={{ padding: '6px 1px', textAlign: 'right' }}>예상</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -66,9 +71,9 @@ export default function HerbDashboardView() {
                       const shortage = Number(row.shortage_qty || 0) > 0;
                       return (
                         <tr key={row.herb_id} style={shortage ? { background: '#fff7ed' } : undefined}>
-                          <td style={{ padding: '4px 1px', whiteSpace: 'nowrap' }}>{row.herb_name}</td>
-                          <td style={{ padding: '4px 1px', whiteSpace: 'nowrap' }}>{Math.round(Number(row.current_stock || 0))}</td>
-                          <td style={{ padding: '4px 1px', whiteSpace: 'nowrap', color: shortage ? '#c2410c' : '#374151', fontWeight: shortage ? 700 : 500 }}>
+                          <td style={{ padding: '4px 1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.herb_name}</td>
+                          <td style={{ padding: '4px 1px', whiteSpace: 'nowrap', textAlign: 'right' }}>{Math.round(Number(row.current_stock || 0))}</td>
+                          <td style={{ padding: '4px 1px', whiteSpace: 'nowrap', textAlign: 'right', color: shortage ? '#c2410c' : '#374151', fontWeight: shortage ? 700 : 500 }}>
                             {Math.round(Number(row.recommended_order_qty || row.shortage_qty || 0))}
                           </td>
                         </tr>
