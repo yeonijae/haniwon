@@ -72,7 +72,7 @@ export default function DecoctionDashboardView() {
 
   return (
     <div className="p-4 h-full overflow-auto">
-      <div className="flex gap-4 min-w-max">
+      <div className="flex gap-4 min-w-max h-full items-stretch">
         <ListBox title="처방전대기" badge={`${s.pendingPrescription}`}>
           {data.pendingPrescriptionDrafts.length === 0 ? <Empty /> : (
             <ul className="space-y-2 text-sm">
