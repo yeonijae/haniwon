@@ -22,14 +22,14 @@ const initialData: DecoctionDashboardData = {
 
 function ListBox({ title, badge, children }: { title: string; badge: string; children: ReactNode }) {
   const styleMap: Record<string, { iconClass: string; headerBg: string; iconBg: string; iconFg: string; badgeBg: string; badgeFg: string }> = {
-    처방전대기: { iconClass: 'fa-solid fa-file-prescription', headerBg: 'bg-blue-50', iconBg: 'bg-blue-500', iconFg: 'text-white', badgeBg: 'bg-blue-100', badgeFg: 'text-blue-700' },
-    탕전대기: { iconClass: 'fa-solid fa-fire-burner', headerBg: 'bg-orange-50', iconBg: 'bg-orange-500', iconFg: 'text-white', badgeBg: 'bg-orange-100', badgeFg: 'text-orange-700' },
-    복용법대기: { iconClass: 'fa-solid fa-notes-medical', headerBg: 'bg-indigo-50', iconBg: 'bg-indigo-500', iconFg: 'text-white', badgeBg: 'bg-indigo-100', badgeFg: 'text-indigo-700' },
-    약재관리: { iconClass: 'fa-solid fa-leaf', headerBg: 'bg-green-50', iconBg: 'bg-green-500', iconFg: 'text-white', badgeBg: 'bg-green-100', badgeFg: 'text-green-700' },
-    상비약관리: { iconClass: 'fa-solid fa-pills', headerBg: 'bg-purple-50', iconBg: 'bg-purple-500', iconFg: 'text-white', badgeBg: 'bg-purple-100', badgeFg: 'text-purple-700' },
-    출고관리: { iconClass: 'fa-solid fa-box', headerBg: 'bg-teal-50', iconBg: 'bg-teal-500', iconFg: 'text-white', badgeBg: 'bg-teal-100', badgeFg: 'text-teal-700' },
+    처방전: { iconClass: 'fa-solid fa-file-prescription', headerBg: 'bg-blue-50', iconBg: 'bg-blue-500', iconFg: 'text-white', badgeBg: 'bg-blue-100', badgeFg: 'text-blue-700' },
+    탕전: { iconClass: 'fa-solid fa-fire-burner', headerBg: 'bg-orange-50', iconBg: 'bg-orange-500', iconFg: 'text-white', badgeBg: 'bg-orange-100', badgeFg: 'text-orange-700' },
+    복용법: { iconClass: 'fa-solid fa-notes-medical', headerBg: 'bg-indigo-50', iconBg: 'bg-indigo-500', iconFg: 'text-white', badgeBg: 'bg-indigo-100', badgeFg: 'text-indigo-700' },
+    약재: { iconClass: 'fa-solid fa-leaf', headerBg: 'bg-green-50', iconBg: 'bg-green-500', iconFg: 'text-white', badgeBg: 'bg-green-100', badgeFg: 'text-green-700' },
+    상비약: { iconClass: 'fa-solid fa-pills', headerBg: 'bg-purple-50', iconBg: 'bg-purple-500', iconFg: 'text-white', badgeBg: 'bg-purple-100', badgeFg: 'text-purple-700' },
+    출고: { iconClass: 'fa-solid fa-box', headerBg: 'bg-teal-50', iconBg: 'bg-teal-500', iconFg: 'text-white', badgeBg: 'bg-teal-100', badgeFg: 'text-teal-700' },
   };
-  const s = styleMap[title] || styleMap['처방전대기'];
+  const s = styleMap[title] || styleMap['처방전'];
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex-1 basis-0 min-w-0 flex flex-col overflow-hidden">
@@ -88,7 +88,7 @@ export default function DecoctionDashboardView() {
   return (
     <div className="p-0 h-full overflow-auto">
       <div className="flex gap-4 w-full h-full items-stretch">
-        <ListBox title="처방전대기" badge={`${s.pendingPrescription}`}>
+        <ListBox title="처방전" badge={`${s.pendingPrescription}`}>
           {data.pendingPrescriptionDrafts.length === 0 ? <Empty /> : (
             <ul className="space-y-2 text-sm">
               {data.pendingPrescriptionDrafts.map((d) => (
@@ -100,7 +100,7 @@ export default function DecoctionDashboardView() {
           )}
         </ListBox>
 
-        <ListBox title="탕전대기" badge={`${s.waitingDecoction}`}>
+        <ListBox title="탕전" badge={`${s.waitingDecoction}`}>
           {data.waitingDrafts.length === 0 ? <Empty /> : (
             <ul className="space-y-2 text-sm">
               {data.waitingDrafts.map((d) => (
@@ -112,7 +112,7 @@ export default function DecoctionDashboardView() {
           )}
         </ListBox>
 
-        <ListBox title="복용법대기" badge={`${s.pendingDosage}`}>
+        <ListBox title="복용법" badge={`${s.pendingDosage}`}>
           {data.pendingDosageDrafts.length === 0 ? <Empty /> : (
             <ul className="space-y-2 text-sm">
               {data.pendingDosageDrafts.map((d) => (
@@ -124,7 +124,7 @@ export default function DecoctionDashboardView() {
           )}
         </ListBox>
 
-        <ListBox title="약재관리" badge={`${s.lowHerbCount}`}>
+        <ListBox title="약재" badge={`${s.lowHerbCount}`}>
           {data.lowHerbs.length === 0 ? <Empty /> : (
             <ul className="space-y-2 text-sm">
               {data.lowHerbs.map((h) => (
@@ -136,7 +136,7 @@ export default function DecoctionDashboardView() {
           )}
         </ListBox>
 
-        <ListBox title="상비약관리" badge={`${s.lowReadyMedicineCount}`}>
+        <ListBox title="상비약" badge={`${s.lowReadyMedicineCount}`}>
           {data.lowReadyMedicines.length === 0 ? <Empty /> : (
             <ul className="space-y-2 text-sm">
               {data.lowReadyMedicines.map((m) => (
@@ -148,7 +148,7 @@ export default function DecoctionDashboardView() {
           )}
         </ListBox>
 
-        <ListBox title="출고관리" badge={`${s.outboundPending} / 오늘 ${s.outboundToday}`}>
+        <ListBox title="출고" badge={`${s.outboundPending} / 오늘 ${s.outboundToday}`}>
           {data.outboundPendingList.length === 0 ? <Empty /> : (
             <ul className="space-y-2 text-sm">
               {data.outboundPendingList.map((q) => (
