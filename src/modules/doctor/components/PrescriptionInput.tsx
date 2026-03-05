@@ -898,10 +898,10 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
                 <button
                   onClick={handleSave}
                   disabled={mergedHerbs.length === 0}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                     mergedHerbs.length > 0
-                      ? 'text-blue-600 hover:text-blue-700'
-                      : 'text-gray-400 cursor-not-allowed'
+                      ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   }`}
                 >
                   <i className="fas fa-save mr-1"></i>저장
