@@ -127,6 +127,16 @@ export default function DecoctionApp({ user }: DecoctionAppProps) {
               ))}
               <button
                 className="decoction-tab"
+                onClick={() => {
+                  setMainTab('herb');
+                  setHerbTab('dashboard');
+                }}
+                title="약재 현황 보기"
+              >
+                약재현황
+              </button>
+              <button
+                className="decoction-tab"
                 onClick={() => setShowSettings(true)}
                 title="재고관리 설정 열기"
               >
