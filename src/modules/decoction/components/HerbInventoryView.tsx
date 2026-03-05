@@ -217,13 +217,24 @@ export default function HerbInventoryView() {
               <h3 style={{ margin: 0, fontSize: 18 }}>약재 등록</h3>
               <button className="decoction-btn decoction-btn-ghost" onClick={() => setShowCreateModal(false)}>닫기</button>
             </div>
-            <div className="decoction-form-grid">
-              <input placeholder="약재명" value={newHerb.name} onChange={(e) => setNewHerb((prev) => ({ ...prev, name: e.target.value }))} />
-              <input placeholder="단위(g)" value={newHerb.unit} onChange={(e) => setNewHerb((prev) => ({ ...prev, unit: e.target.value }))} />
-              <input placeholder="현재재고" value={newHerb.currentStock} onChange={(e) => setNewHerb((prev) => ({ ...prev, currentStock: e.target.value }))} />
-              <input placeholder="안전재고" value={newHerb.safetyStock} onChange={(e) => setNewHerb((prev) => ({ ...prev, safetyStock: e.target.value }))} />
-              <input placeholder="기본 공급업체" value={newHerb.defaultSupplier} onChange={(e) => setNewHerb((prev) => ({ ...prev, defaultSupplier: e.target.value }))} />
-              <label className="decoction-check-inline">
+            <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 10, alignItems: 'center' }}>
+              <label style={{ fontSize: 14, color: '#374151' }}>약재명</label>
+              <input value={newHerb.name} onChange={(e) => setNewHerb((prev) => ({ ...prev, name: e.target.value }))} />
+
+              <label style={{ fontSize: 14, color: '#374151' }}>단위</label>
+              <input value={newHerb.unit} onChange={(e) => setNewHerb((prev) => ({ ...prev, unit: e.target.value }))} />
+
+              <label style={{ fontSize: 14, color: '#374151' }}>현재재고</label>
+              <input value={newHerb.currentStock} onChange={(e) => setNewHerb((prev) => ({ ...prev, currentStock: e.target.value }))} />
+
+              <label style={{ fontSize: 14, color: '#374151' }}>안전재고</label>
+              <input value={newHerb.safetyStock} onChange={(e) => setNewHerb((prev) => ({ ...prev, safetyStock: e.target.value }))} />
+
+              <label style={{ fontSize: 14, color: '#374151' }}>기본 공급업체</label>
+              <input value={newHerb.defaultSupplier} onChange={(e) => setNewHerb((prev) => ({ ...prev, defaultSupplier: e.target.value }))} />
+
+              <label style={{ fontSize: 14, color: '#374151' }}>사용여부</label>
+              <label className="decoction-check-inline" style={{ margin: 0 }}>
                 <input type="checkbox" checked={!newHerb.isActive} onChange={(e) => setNewHerb((prev) => ({ ...prev, isActive: !e.target.checked }))} />
                 미사용으로 등록
               </label>
