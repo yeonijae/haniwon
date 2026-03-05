@@ -462,6 +462,7 @@ export async function getDecoctionDashboardSummary(): Promise<DecoctionDashboard
       FROM cs_herbal_drafts d
       LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
       WHERE (d.prescription_id IS NULL)
+        AND COALESCE(NULLIF(d.shipping_date, ''), NULLIF(d.decoction_date, '')) IS NOT NULL
         AND (q.id IS NULL OR q.status <> 'completed')
     `),
     query<{ cnt: string }>(`
