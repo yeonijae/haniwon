@@ -4,6 +4,7 @@ import type { DecoctionDashboardSummary } from '../types';
 
 const initialSummary: DecoctionDashboardSummary = {
   waitingDecoction: 0,
+  pendingPrescription: 0,
   pendingDosage: 0,
   lowHerbCount: 0,
   lowReadyMedicineCount: 0,
@@ -56,11 +57,12 @@ export default function DecoctionDashboardView() {
 
   return (
     <div className="p-4 h-full overflow-auto">
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
         <Card title="탕전대기" icon="⏳" main={`${summary.waitingDecoction}건`} sub="미배정 탕약초안" />
+        <Card title="처방전대기" icon="💊" main={`${summary.pendingPrescription}건`} sub="처방전 미연결 초안" />
         <Card title="복용법대기" icon="📝" main={`${summary.pendingDosage}건`} sub="처방 연결됨 · 복용법 미작성" />
         <Card title="약재관리" icon="🌿" main={`${summary.lowHerbCount}건`} sub="안전재고 미만 약재" />
-        <Card title="상비약관리" icon="💊" main={`${summary.lowReadyMedicineCount}건`} sub="재고 0개 항목" />
+        <Card title="상비약관리" icon="🏷️" main={`${summary.lowReadyMedicineCount}건`} sub="재고 0개 항목" />
         <Card title="출고관리" icon="📦" main={`${summary.outboundPending}건`} sub={`출고대기 · 오늘출고 ${summary.outboundToday}건`} />
       </div>
     </div>

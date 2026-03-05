@@ -144,6 +144,7 @@ export interface HerbUsageStatRow {
 
 export interface DecoctionDashboardSummary {
   waitingDecoction: number;
+  pendingPrescription: number;
   pendingDosage: number;
   lowHerbCount: number;
   lowReadyMedicineCount: number;

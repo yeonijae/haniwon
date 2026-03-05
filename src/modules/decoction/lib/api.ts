@@ -450,12 +450,19 @@ export async function getDecoctionCapacity(): Promise<DecoctionCapacity[]> {
 }
 
 export async function getDecoctionDashboardSummary(): Promise<DecoctionDashboardSummary> {
-  const [waitingDraftRows, dosageRows, lowReadyRows, outboundPendingRows, outboundTodayRows, herbRows] = await Promise.all([
+  const [waitingDraftRows, prescriptionRows, dosageRows, lowReadyRows, outboundPendingRows, outboundTodayRows, herbRows] = await Promise.all([
     query<{ cnt: string }>(`
       SELECT COUNT(*)::text AS cnt
       FROM cs_herbal_drafts d
       LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
       WHERE q.id IS NULL
+    `),
+    query<{ cnt: string }>(`
+      SELECT COUNT(*)::text AS cnt
+      FROM cs_herbal_drafts d
+      LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
+      WHERE (d.prescription_id IS NULL)
+        AND (q.id IS NULL OR q.status <> 'completed')
     `),
     query<{ cnt: string }>(`
       SELECT COUNT(DISTINCT d.id)::text AS cnt
@@ -487,6 +494,7 @@ export async function getDecoctionDashboardSummary(): Promise<DecoctionDashboard
 
   return {
     waitingDecoction: parseInt(waitingDraftRows[0]?.cnt || '0', 10),
+    pendingPrescription: parseInt(prescriptionRows[0]?.cnt || '0', 10),
     pendingDosage: parseInt(dosageRows[0]?.cnt || '0', 10),
     lowHerbCount: herbRows.filter((r) => r.is_active && Number(r.shortage_qty || 0) > 0).length,
     lowReadyMedicineCount: parseInt(lowReadyRows[0]?.cnt || '0', 10),
