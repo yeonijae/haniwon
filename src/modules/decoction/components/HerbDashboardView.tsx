@@ -109,9 +109,9 @@ export default function HerbDashboardView() {
                             />
                           </td>
                           <td style={{ padding: '4px', whiteSpace: 'nowrap' }}>{row.herb_name}</td>
-                          <td style={{ padding: '4px', whiteSpace: 'nowrap' }}>{Number(row.current_stock || 0).toFixed(1)} {row.unit}</td>
+                          <td style={{ padding: '4px', whiteSpace: 'nowrap' }}>{Math.round(Number(row.current_stock || 0))}</td>
                           <td style={{ padding: '4px', whiteSpace: 'nowrap', color: shortage ? '#c2410c' : '#374151', fontWeight: shortage ? 700 : 500 }}>
-                            {Number(row.recommended_order_qty || row.shortage_qty || 0).toFixed(1)} {row.unit}
+                            {Math.round(Number(row.recommended_order_qty || row.shortage_qty || 0))}
                           </td>
                         </tr>
                       );
