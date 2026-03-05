@@ -156,7 +156,7 @@ export default function HerbInventoryView() {
         <section className="decoction-card">
           <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
             {dashboardColumns.map((columnRows, colIdx) => (
-              <div key={`col-${colIdx}`} style={{ minWidth: 340, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}>
+              <div key={`col-${colIdx}`} style={{ minWidth: 340, borderRadius: 8, background: '#fff' }}>
                 <table className="decoction-table" style={{ fontSize: 17 }}>
                   <thead>
                     <tr>
