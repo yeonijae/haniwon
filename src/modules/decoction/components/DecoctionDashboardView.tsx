@@ -21,15 +21,28 @@ const initialData: DecoctionDashboardData = {
 };
 
 function ListBox({ title, badge, children }: { title: string; badge: string; children: ReactNode }) {
+  const styleMap: Record<string, { icon: string; headerBg: string; iconBg: string; iconFg: string; badgeBg: string; badgeFg: string }> = {
+    처방전대기: { icon: '💊', headerBg: 'bg-blue-50', iconBg: 'bg-blue-500', iconFg: 'text-white', badgeBg: 'bg-blue-100', badgeFg: 'text-blue-700' },
+    탕전대기: { icon: '🔥', headerBg: 'bg-orange-50', iconBg: 'bg-orange-500', iconFg: 'text-white', badgeBg: 'bg-orange-100', badgeFg: 'text-orange-700' },
+    복용법대기: { icon: '📝', headerBg: 'bg-indigo-50', iconBg: 'bg-indigo-500', iconFg: 'text-white', badgeBg: 'bg-indigo-100', badgeFg: 'text-indigo-700' },
+    약재관리: { icon: '🌿', headerBg: 'bg-green-50', iconBg: 'bg-green-500', iconFg: 'text-white', badgeBg: 'bg-green-100', badgeFg: 'text-green-700' },
+    상비약관리: { icon: '🏷️', headerBg: 'bg-purple-50', iconBg: 'bg-purple-500', iconFg: 'text-white', badgeBg: 'bg-purple-100', badgeFg: 'text-purple-700' },
+    출고관리: { icon: '📦', headerBg: 'bg-teal-50', iconBg: 'bg-teal-500', iconFg: 'text-white', badgeBg: 'bg-teal-100', badgeFg: 'text-teal-700' },
+  };
+  const s = styleMap[title] || styleMap['처방전대기'];
+
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-full flex-1 basis-0 min-w-0 flex flex-col">
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="text-sm font-semibold text-gray-700">{title}</h4>
-        <span className="inline-flex items-center justify-center min-w-8 px-2 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex-1 basis-0 min-w-0 flex flex-col overflow-hidden">
+      <div className={`flex items-center justify-between px-3 py-2 border-b border-gray-100 ${s.headerBg}`}>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`inline-flex items-center justify-center w-6 h-6 rounded-md text-xs ${s.iconBg} ${s.iconFg}`}>{s.icon}</span>
+          <h4 className="text-[18px] leading-none font-semibold text-gray-800 truncate">{title}</h4>
+        </div>
+        <span className={`inline-flex items-center justify-center min-w-8 px-2 h-6 rounded-full text-xs font-semibold ${s.badgeBg} ${s.badgeFg}`}>
           {badge}
         </span>
       </div>
-      <div className="flex-1 overflow-auto pr-1">
+      <div className="flex-1 overflow-auto p-3">
         {children}
       </div>
     </div>
