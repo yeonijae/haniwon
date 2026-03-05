@@ -20,23 +20,15 @@ const initialData: DecoctionDashboardData = {
   outboundPendingList: [],
 };
 
-function Card({ title, icon, main, sub }: { title: string; icon: string; main: string; sub: string }) {
+function ListBox({ title, badge, children }: { title: string; badge: string; children: ReactNode }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 min-h-[240px]">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-base font-semibold text-gray-800">{title}</h3>
-        <span className="text-xl">{icon}</span>
+        <h4 className="text-sm font-semibold text-gray-700">{title}</h4>
+        <span className="inline-flex items-center justify-center min-w-8 px-2 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+          {badge}
+        </span>
       </div>
-      <div className="text-2xl font-bold text-gray-900">{main}</div>
-      <div className="text-sm text-gray-500 mt-1">{sub}</div>
-    </div>
-  );
-}
-
-function ListBox({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 min-h-[220px]">
-      <h4 className="text-sm font-semibold text-gray-700 mb-3">{title}</h4>
       {children}
     </div>
   );
@@ -77,18 +69,21 @@ export default function DecoctionDashboardView() {
   const s = data.summary;
 
   return (
-    <div className="p-4 h-full overflow-auto space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
-        <Card title="탕전대기" icon="⏳" main={`${s.waitingDecoction}건`} sub="미배정 탕약초안" />
-        <Card title="처방전대기" icon="💊" main={`${s.pendingPrescription}건`} sub="일정 있음 · 처방전 미연결" />
-        <Card title="복용법대기" icon="📝" main={`${s.pendingDosage}건`} sub="처방 연결됨 · 복용법 미작성" />
-        <Card title="약재관리" icon="🌿" main={`${s.lowHerbCount}건`} sub="안전재고 미만" />
-        <Card title="상비약관리" icon="🏷️" main={`${s.lowReadyMedicineCount}건`} sub="재고 0개" />
-        <Card title="출고관리" icon="📦" main={`${s.outboundPending}건`} sub={`출고대기 · 오늘출고 ${s.outboundToday}건`} />
-      </div>
+    <div className="p-4 h-full overflow-auto">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <ListBox title="탕전대기" badge={`${s.waitingDecoction}`}>
+          {data.waitingDrafts.length === 0 ? <Empty /> : (
+            <ul className="space-y-2 text-sm">
+              {data.waitingDrafts.map((d) => (
+                <li key={d.id} className="border rounded px-2 py-1">
+                  {d.patient_name} ({d.chart_number}) · {d.doctor || '-'}
+                </li>
+              ))}
+            </ul>
+          )}
+        </ListBox>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-        <ListBox title="처방전대기 목록">
+        <ListBox title="처방전대기" badge={`${s.pendingPrescription}`}>
           {data.pendingPrescriptionDrafts.length === 0 ? <Empty /> : (
             <ul className="space-y-2 text-sm">
               {data.pendingPrescriptionDrafts.map((d) => (
@@ -100,7 +95,7 @@ export default function DecoctionDashboardView() {
           )}
         </ListBox>
 
-        <ListBox title="복용법대기 목록">
+        <ListBox title="복용법대기" badge={`${s.pendingDosage}`}>
           {data.pendingDosageDrafts.length === 0 ? <Empty /> : (
             <ul className="space-y-2 text-sm">
               {data.pendingDosageDrafts.map((d) => (
@@ -112,12 +107,36 @@ export default function DecoctionDashboardView() {
           )}
         </ListBox>
 
-        <ListBox title="탕전대기 목록">
-          {data.waitingDrafts.length === 0 ? <Empty /> : (
+        <ListBox title="약재관리" badge={`${s.lowHerbCount}`}>
+          {data.lowHerbs.length === 0 ? <Empty /> : (
             <ul className="space-y-2 text-sm">
-              {data.waitingDrafts.map((d) => (
-                <li key={d.id} className="border rounded px-2 py-1">
-                  {d.patient_name} ({d.chart_number}) · {d.doctor || '-'}
+              {data.lowHerbs.map((h) => (
+                <li key={h.herb_id} className="border rounded px-2 py-1">
+                  {h.herb_name} · 부족 {Number(h.shortage_qty || 0).toFixed(1)} {h.unit}
+                </li>
+              ))}
+            </ul>
+          )}
+        </ListBox>
+
+        <ListBox title="상비약관리" badge={`${s.lowReadyMedicineCount}`}>
+          {data.lowReadyMedicines.length === 0 ? <Empty /> : (
+            <ul className="space-y-2 text-sm">
+              {data.lowReadyMedicines.map((m) => (
+                <li key={m.id} className="border rounded px-2 py-1">
+                  {m.name} · 재고 {m.current_stock}{m.unit ? ` ${m.unit}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+        </ListBox>
+
+        <ListBox title="출고관리" badge={`${s.outboundPending} / 오늘 ${s.outboundToday}`}>
+          {data.outboundPendingList.length === 0 ? <Empty /> : (
+            <ul className="space-y-2 text-sm">
+              {data.outboundPendingList.map((q) => (
+                <li key={q.id} className="border rounded px-2 py-1">
+                  {q.patient_name} ({q.chart_number}) · {q.assigned_date || '-'} {q.assigned_slot || ''}
                 </li>
               ))}
             </ul>
