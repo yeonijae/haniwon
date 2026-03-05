@@ -245,11 +245,8 @@ export default function HerbInventoryView() {
                     <tr>
                       <th>약재명</th>
                       <th>현재재고</th>
-                      <th>예상재고</th>
-                      <th>부족량</th>
-                      <th>추천주문수량</th>
                       <th>공급업체</th>
-                      <th>미사용</th>
+                      <th>사용여부</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -257,9 +254,6 @@ export default function HerbInventoryView() {
                       <tr key={row.herb_id} className={!row.is_active ? 'decoction-muted-row' : ''}>
                         <td>{row.herb_name}</td>
                         <td>{Math.round(row.current_stock)} {row.unit}</td>
-                        <td>{Math.round(row.expected_stock)} {row.unit}</td>
-                        <td className={row.shortage_qty > 0 ? 'decoction-shortage' : ''}>{Math.round(row.shortage_qty)} {row.unit}</td>
-                        <td>{Math.round(row.recommended_order_qty)} {row.unit}</td>
                         <td>
                           <input
                             value={row.default_supplier || ''}
