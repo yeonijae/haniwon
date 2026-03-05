@@ -39,35 +39,44 @@ export default function HerbDashboardView() {
   return (
     <div className="decoction-view decoction-herb-view" style={{ height: '100%' }}>
       <section className="decoction-card" style={{ paddingTop: 8, height: '100%' }}>
-        {displayRows.length === 0 ? (
-          <p className="decoction-empty">표시할 약재가 없습니다.</p>
-        ) : (
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 0, height: '100%' }}>
-            {chunks.map((chunk, idx) => (
-              <div
-                key={`chunk-${idx}`}
-                style={{ minWidth: 280, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', height: '100%', paddingLeft: 4 }}
-              >
-                <table className="decoction-table" style={{ marginBottom: 0, fontSize: 16 }}>
-                  <tbody>
-                    {chunk.map((row) => {
-                      const shortage = Number(row.shortage_qty || 0) > 0;
-                      return (
-                        <tr key={row.herb_id} style={shortage ? { background: '#fff7ed' } : undefined}>
-                          <td style={{ padding: '4px 1px', whiteSpace: 'nowrap' }}>{row.herb_name}</td>
-                          <td style={{ padding: '4px 1px', whiteSpace: 'nowrap' }}>{Math.round(Number(row.current_stock || 0))}</td>
-                          <td style={{ padding: '4px 1px', whiteSpace: 'nowrap', color: shortage ? '#c2410c' : '#374151', fontWeight: shortage ? 700 : 500 }}>
-                            {Math.round(Number(row.recommended_order_qty || row.shortage_qty || 0))}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ))}
+        <div style={{ display: 'flex', gap: 8, height: '100%' }}>
+          <div style={{ width: 74, display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+            <button className="decoction-btn" style={{ padding: '8px 4px', fontSize: 12 }}><i className="fa-solid fa-sliders"></i><br />관리</button>
+            <button className="decoction-btn" style={{ padding: '8px 4px', fontSize: 12 }}><i className="fa-solid fa-file-invoice"></i><br />주문서</button>
+            <button className="decoction-btn" style={{ padding: '8px 4px', fontSize: 12 }}><i className="fa-solid fa-chart-column"></i><br />통계</button>
+            <button className="decoction-btn" style={{ padding: '8px 4px', fontSize: 12 }}><i className="fa-solid fa-won-sign"></i><br />단가</button>
           </div>
-        )}
+
+          {displayRows.length === 0 ? (
+            <p className="decoction-empty">표시할 약재가 없습니다.</p>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 0, height: '100%', flex: 1 }}>
+              {chunks.map((chunk, idx) => (
+                <div
+                  key={`chunk-${idx}`}
+                  style={{ minWidth: 280, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', height: '100%', paddingLeft: 4 }}
+                >
+                  <table className="decoction-table" style={{ marginBottom: 0, fontSize: 16 }}>
+                    <tbody>
+                      {chunk.map((row) => {
+                        const shortage = Number(row.shortage_qty || 0) > 0;
+                        return (
+                          <tr key={row.herb_id} style={shortage ? { background: '#fff7ed' } : undefined}>
+                            <td style={{ padding: '4px 1px', whiteSpace: 'nowrap' }}>{row.herb_name}</td>
+                            <td style={{ padding: '4px 1px', whiteSpace: 'nowrap' }}>{Math.round(Number(row.current_stock || 0))}</td>
+                            <td style={{ padding: '4px 1px', whiteSpace: 'nowrap', color: shortage ? '#c2410c' : '#374151', fontWeight: shortage ? 700 : 500 }}>
+                              {Math.round(Number(row.recommended_order_qty || row.shortage_qty || 0))}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );
