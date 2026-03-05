@@ -41,7 +41,7 @@ export default function HerbDashboardView() {
       <section className="decoction-card" style={{ paddingTop: 8, height: '100%' }}>
         <div style={{ display: 'flex', gap: 8, height: '100%' }}>
           <div style={{ width: 78, display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
-            <button style={{ border: '1px solid #1e40af', background: '#1d4ed8', color: '#fff', borderRadius: 10, padding: '9px 4px', fontSize: 12, fontWeight: 700, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <button style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#374151', borderRadius: 10, padding: '9px 4px', fontSize: 12, fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
               <i className="fa-solid fa-sliders"></i>
               <span>관리</span>
             </button>
