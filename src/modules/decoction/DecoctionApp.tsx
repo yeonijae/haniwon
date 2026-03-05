@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { PortalUser } from '@shared/types';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { ensureDecoctionTables } from './lib/api';
 import DecoctionSidebar from './components/DecoctionSidebar';
 import ReadyMedicineView from './components/ReadyMedicineView';
@@ -48,6 +49,7 @@ interface DecoctionAppProps {
 }
 
 export default function DecoctionApp({ user }: DecoctionAppProps) {
+  useDocumentTitle('탕전실|연이재한의원');
   const [mainTab, setMainTab] = useState<MainTabType>('dashboard');
   const [herbTab, setHerbTab] = useState<HerbTabType>('dashboard');
   const [showSettings, setShowSettings] = useState(false);
