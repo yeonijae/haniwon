@@ -608,7 +608,7 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
           </h3>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              해당 환자의 탕약기록(처방전 미연결)
+              처방전을 연결할 탕약기록을 선택해주세요.
             </label>
             <select
               value={selectedHerbalDraftId ?? ''}
