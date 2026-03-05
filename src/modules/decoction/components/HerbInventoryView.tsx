@@ -33,6 +33,7 @@ export default function HerbInventoryView() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dashboardRows, setDashboardRows] = useState<HerbDashboardRow[]>([]);
+  const [baselineRows, setBaselineRows] = useState<HerbDashboardRow[]>([]);
   const [orders, setOrders] = useState<HerbOrderDetail[]>([]);
 
   const [newHerb, setNewHerb] = useState<NewHerbForm>({
@@ -58,8 +59,8 @@ export default function HerbInventoryView() {
   );
 
   const dashboardColumns = useMemo(() => {
-    const half = Math.ceil(dashboardRows.length / 2);
-    return [dashboardRows.slice(0, half), dashboardRows.slice(half)];
+    const chunkSize = Math.ceil(dashboardRows.length / 4) || 1;
+    return Array.from({ length: 4 }, (_, idx) => dashboardRows.slice(idx * chunkSize, (idx + 1) * chunkSize));
   }, [dashboardRows]);
 
   useEffect(() => {
@@ -71,7 +72,9 @@ export default function HerbInventoryView() {
     try {
       const [rows, orderHeaders] = await Promise.all([getHerbDashboardRows(), getHerbOrders()]);
       const details = await Promise.all(orderHeaders.map((order) => getHerbOrderDetails(order.id)));
-      setDashboardRows(rows.map(normalizeDashboard));
+      const normalizedRows = rows.map(normalizeDashboard);
+      setDashboardRows(normalizedRows);
+      setBaselineRows(normalizedRows);
       setOrders(details.filter((item): item is HerbOrderDetail => !!item));
       if (newOrderRows.length === 0 && rows.length > 0) {
         setNewOrderRows([{ herbId: rows[0].herb_id, qty: '', price: '0' }]);
@@ -118,23 +121,52 @@ export default function HerbInventoryView() {
     }
   }
 
-  async function handleToggleActive(row: HerbDashboardRow, isActive: boolean) {
-    try {
-      await updateHerbMeta(row.herb_id, { isActive });
-      await loadAll();
-    } catch (error) {
-      console.error(error);
-      alert('미사용 플래그 변경 실패');
-    }
-  }
+  async function handleSaveManageChanges() {
+    const baselineMap = new Map(baselineRows.map((r) => [r.herb_id, r]));
+    const changedRows = dashboardRows.filter((row) => {
+      const prev = baselineMap.get(row.herb_id);
+      if (!prev) return false;
+      return (
+        Number(prev.current_stock || 0) !== Number(row.current_stock || 0) ||
+        (prev.default_supplier || '') !== (row.default_supplier || '') ||
+        !!prev.is_active !== !!row.is_active
+      );
+    });
 
-  async function handleChangeSupplier(row: HerbDashboardRow, supplier: string) {
+    if (changedRows.length === 0) {
+      alert('변경된 항목이 없습니다.');
+      return;
+    }
+
+    setSaving(true);
     try {
-      await updateHerbMeta(row.herb_id, { defaultSupplier: supplier });
+      for (const row of changedRows) {
+        const prev = baselineMap.get(row.herb_id);
+        if (!prev) continue;
+
+        const prevStock = Number(prev.current_stock || 0);
+        const nextStock = Number(row.current_stock || 0);
+        const diff = nextStock - prevStock;
+
+        if (diff !== 0) {
+          await adjustHerbStock(row.herb_id, diff, '관리 화면 일괄 수정');
+        }
+
+        if ((prev.default_supplier || '') !== (row.default_supplier || '') || !!prev.is_active !== !!row.is_active) {
+          await updateHerbMeta(row.herb_id, {
+            defaultSupplier: row.default_supplier || '',
+            isActive: !!row.is_active,
+          });
+        }
+      }
+
+      alert(`${changedRows.length}개 항목을 저장했습니다.`);
       await loadAll();
     } catch (error) {
       console.error(error);
-      alert('공급업체 저장 실패');
+      alert('일괄 저장 실패');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -253,7 +285,17 @@ export default function HerbInventoryView() {
                     {columnRows.map((row) => (
                       <tr key={row.herb_id} className={!row.is_active ? 'decoction-muted-row' : ''}>
                         <td>{row.herb_name}</td>
-                        <td>{Math.round(row.current_stock)} {row.unit}</td>
+                        <td>
+                          <input
+                            value={Math.round(Number(row.current_stock || 0))}
+                            onChange={(e) => {
+                              const n = Number(e.target.value);
+                              const stock = Number.isFinite(n) ? n : 0;
+                              setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, current_stock: stock } : item));
+                            }}
+                            style={{ width: 68 }}
+                          /> {row.unit}
+                        </td>
                         <td>
                           <input
                             value={row.default_supplier || ''}
@@ -261,7 +303,6 @@ export default function HerbInventoryView() {
                               const supplier = e.target.value;
                               setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, default_supplier: supplier } : item));
                             }}
-                            onBlur={(e) => handleChangeSupplier(row, e.target.value)}
                             placeholder="업체명"
                             style={{ width: 50 }}
                           />
@@ -270,10 +311,10 @@ export default function HerbInventoryView() {
                           <label>
                             <input
                               type="checkbox"
-                              checked={!row.is_active}
-                              onChange={(e) => handleToggleActive(row, !e.target.checked)}
+                              checked={!!row.is_active}
+                              onChange={(e) => setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, is_active: e.target.checked } : item))}
                             />
-                            미사용
+                            사용
                           </label>
                         </td>
                       </tr>
@@ -281,6 +322,9 @@ export default function HerbInventoryView() {
                   </tbody>
                 </table>
               ))}
+            </div>
+            <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="decoction-btn" disabled={saving} onClick={handleSaveManageChanges}>저장</button>
             </div>
           </section>
 
