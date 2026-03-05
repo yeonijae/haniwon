@@ -885,7 +885,7 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
                 <span className="ml-2 px-2.5 py-0.5 bg-blue-500 text-white text-sm font-bold rounded-full">총 {finalHerbs.length}개</span>
               )}
             </h2>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               {mergedHerbs.length > 0 && (
                 <button
                   onClick={handlePrint}
@@ -898,10 +898,10 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
                 <button
                   onClick={handleSave}
                   disabled={mergedHerbs.length === 0}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                     mergedHerbs.length > 0
-                      ? 'bg-blue-600 text-white hover:bg-blue-700'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      ? 'text-blue-600 hover:text-blue-700'
+                      : 'text-gray-400 cursor-not-allowed'
                   }`}
                 >
                   <i className="fas fa-save mr-1"></i>저장
