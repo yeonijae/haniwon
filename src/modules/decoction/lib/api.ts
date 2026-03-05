@@ -481,14 +481,18 @@ export async function getDecoctionDashboardData(): Promise<DecoctionDashboardDat
       LIMIT 50
     `),
     query<DashboardDraftItem>(`
-      SELECT DISTINCT d.id, d.patient_name, d.chart_number, d.doctor, d.shipping_date, d.decoction_date, d.created_at
+      SELECT d.id, d.patient_name, d.chart_number, d.doctor, d.shipping_date, d.decoction_date, d.created_at
       FROM cs_herbal_drafts d
-      JOIN prescriptions p ON (p.herbal_draft_id = d.id OR d.prescription_id = p.id)
       LEFT JOIN decoction_queue q ON q.source = 'draft' AND q.source_id = d.id
       WHERE d.prescription_id IS NOT NULL
         AND d.dosage_prescription_id IS NULL
         AND COALESCE(NULLIF(d.shipping_date, ''), NULLIF(d.decoction_date, '')) IS NOT NULL
-        AND COALESCE(p.dosage_instruction_created, 0) = 0
+        AND EXISTS (
+          SELECT 1
+          FROM prescriptions p
+          WHERE (p.herbal_draft_id = d.id OR d.prescription_id = p.id)
+            AND COALESCE(p.dosage_instruction_created, 0) = 0
+        )
         AND (q.id IS NULL OR q.status <> 'completed')
       ORDER BY COALESCE(NULLIF(d.shipping_date, ''), NULLIF(d.decoction_date, '')) ASC, d.created_at DESC
       LIMIT 50
