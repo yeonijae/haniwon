@@ -211,35 +211,35 @@ export default function HerbInventoryView() {
       )}
 
       {showCreateModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ width: 560, maxWidth: '92vw', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <h3 style={{ margin: 0, fontSize: 18 }}>약재 등록</h3>
+        <div className="fixed inset-0 z-[1000] bg-slate-900/45 flex items-center justify-center p-4">
+          <div className="w-[560px] max-w-[92vw] bg-white rounded-xl border border-slate-200 p-4 shadow-xl">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="m-0 text-lg font-semibold text-slate-800">약재 등록</h3>
               <button className="decoction-btn decoction-btn-ghost" onClick={() => setShowCreateModal(false)}>닫기</button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 10, alignItems: 'center' }}>
-              <label style={{ fontSize: 14, color: '#374151' }}>약재명</label>
-              <input value={newHerb.name} onChange={(e) => setNewHerb((prev) => ({ ...prev, name: e.target.value }))} />
+            <div className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-2 items-center">
+              <label className="text-sm text-slate-700">약재명</label>
+              <input className="h-9 px-3 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200" value={newHerb.name} onChange={(e) => setNewHerb((prev) => ({ ...prev, name: e.target.value }))} />
 
-              <label style={{ fontSize: 14, color: '#374151' }}>단위</label>
-              <input value={newHerb.unit} onChange={(e) => setNewHerb((prev) => ({ ...prev, unit: e.target.value }))} />
+              <label className="text-sm text-slate-700">단위</label>
+              <input className="h-9 px-3 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200" value={newHerb.unit} onChange={(e) => setNewHerb((prev) => ({ ...prev, unit: e.target.value }))} />
 
-              <label style={{ fontSize: 14, color: '#374151' }}>현재재고</label>
-              <input value={newHerb.currentStock} onChange={(e) => setNewHerb((prev) => ({ ...prev, currentStock: e.target.value }))} />
+              <label className="text-sm text-slate-700">현재재고</label>
+              <input className="h-9 px-3 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200" value={newHerb.currentStock} onChange={(e) => setNewHerb((prev) => ({ ...prev, currentStock: e.target.value }))} />
 
-              <label style={{ fontSize: 14, color: '#374151' }}>안전재고</label>
-              <input value={newHerb.safetyStock} onChange={(e) => setNewHerb((prev) => ({ ...prev, safetyStock: e.target.value }))} />
+              <label className="text-sm text-slate-700">안전재고</label>
+              <input className="h-9 px-3 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200" value={newHerb.safetyStock} onChange={(e) => setNewHerb((prev) => ({ ...prev, safetyStock: e.target.value }))} />
 
-              <label style={{ fontSize: 14, color: '#374151' }}>기본 공급업체</label>
-              <input value={newHerb.defaultSupplier} onChange={(e) => setNewHerb((prev) => ({ ...prev, defaultSupplier: e.target.value }))} />
+              <label className="text-sm text-slate-700">기본 공급업체</label>
+              <input className="h-9 px-3 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200" value={newHerb.defaultSupplier} onChange={(e) => setNewHerb((prev) => ({ ...prev, defaultSupplier: e.target.value }))} />
 
-              <label style={{ fontSize: 14, color: '#374151' }}>사용여부</label>
-              <label className="decoction-check-inline" style={{ margin: 0 }}>
+              <label className="text-sm text-slate-700">사용여부</label>
+              <label className="decoction-check-inline m-0 text-sm text-slate-700">
                 <input type="checkbox" checked={!newHerb.isActive} onChange={(e) => setNewHerb((prev) => ({ ...prev, isActive: !e.target.checked }))} />
                 미사용으로 등록
               </label>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+            <div className="flex justify-end mt-3">
               <button className="decoction-btn" disabled={saving} onClick={handleCreateHerb}>약재 등록</button>
             </div>
           </div>
