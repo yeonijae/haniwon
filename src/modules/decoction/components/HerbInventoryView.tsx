@@ -312,14 +312,12 @@ export default function HerbInventoryView() {
                             />
                           </td>
                           <td>
-                            <label>
-                              <input
-                                type="checkbox"
-                                checked={!!row.is_active}
-                                onChange={(e) => setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, is_active: e.target.checked } : item))}
-                              />
-                              사용
-                            </label>
+                            <input
+                              type="checkbox"
+                              checked={!!row.is_active}
+                              onChange={(e) => setDashboardRows((prev) => prev.map((item) => item.herb_id === row.herb_id ? { ...item, is_active: e.target.checked } : item))}
+                              style={{ transform: 'scale(1.5)' }}
+                            />
                           </td>
                         </tr>
                       ))}
