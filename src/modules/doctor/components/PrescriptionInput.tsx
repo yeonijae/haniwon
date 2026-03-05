@@ -634,7 +634,7 @@ const PrescriptionInput: React.FC<PrescriptionInputProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 mt-5">
           <h2 className="text-lg font-semibold text-clinic-text-primary flex items-center">
             <i className="fas fa-edit text-clinic-primary mr-2"></i>
             처방 입력
