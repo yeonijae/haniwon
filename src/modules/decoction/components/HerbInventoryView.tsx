@@ -33,8 +33,8 @@ export default function HerbInventoryView() {
   });
 
   const dashboardColumns = useMemo(() => {
-    const chunkSize = Math.ceil(dashboardRows.length / 4) || 1;
-    return Array.from({ length: 4 }, (_, idx) => dashboardRows.slice(idx * chunkSize, (idx + 1) * chunkSize));
+    const chunkSize = Math.ceil(dashboardRows.length / 5) || 1;
+    return Array.from({ length: 5 }, (_, idx) => dashboardRows.slice(idx * chunkSize, (idx + 1) * chunkSize));
   }, [dashboardRows]);
 
   useEffect(() => {
@@ -145,8 +145,8 @@ export default function HerbInventoryView() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ fontSize: 22, marginBottom: 0 }}>🌿 약재관리</h2>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="decoction-btn" onClick={() => setShowCreateModal(true)}>약재등록</button>
-          <button className="decoction-btn" disabled={saving} onClick={handleSaveManageChanges}>일괄저장</button>
+          <button className="decoction-btn" style={{ fontSize: 16 }} onClick={() => setShowCreateModal(true)}>약재등록</button>
+          <button className="decoction-btn" style={{ fontSize: 16 }} disabled={saving} onClick={handleSaveManageChanges}>일괄저장</button>
         </div>
       </div>
 
@@ -156,7 +156,7 @@ export default function HerbInventoryView() {
         <section className="decoction-card" style={{ border: 'none' }}>
           <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
             {dashboardColumns.map((columnRows, colIdx) => (
-              <div key={`col-${colIdx}`} style={{ minWidth: 340, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}>
+              <div key={`col-${colIdx}`} style={{ minWidth: 335, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}>
                 <table className="decoction-table" style={{ fontSize: 17 }}>
                   <thead>
                     <tr>
