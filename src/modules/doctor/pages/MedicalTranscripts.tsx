@@ -499,8 +499,46 @@ const MedicalTranscripts: React.FC = () => {
     return t.patient_name || byPatientId || byChartNumber || `환자 #${t.patient_id}`;
   };
 
+  // 백엔드 datetime 문자열을 타임존 변환 없이(로컬 기록 시각 그대로) 파싱
+  const parseClinicDateParts = (dateStr: string) => {
+    if (!dateStr) return null;
+
+    const iso = dateStr.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (iso) {
+      return {
+        year: Number(iso[1]),
+        month: Number(iso[2]),
+        day: Number(iso[3]),
+        hour: Number(iso[4]),
+        minute: Number(iso[5]),
+        second: Number(iso[6] || 0),
+      };
+    }
+
+    const rfc = dateStr.match(/\w{3},\s(\d{2})\s(\w{3})\s(\d{4})\s(\d{2}):(\d{2}):(\d{2})\sGMT/i);
+    if (rfc) {
+      const months: Record<string, number> = {
+        jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+        jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+      };
+      return {
+        year: Number(rfc[3]),
+        month: months[rfc[2].toLowerCase()] || 1,
+        day: Number(rfc[1]),
+        hour: Number(rfc[4]),
+        minute: Number(rfc[5]),
+        second: Number(rfc[6]),
+      };
+    }
+
+    return null;
+  };
+
   // 시간 포맷
   const formatTime = (dateStr: string) => {
+    const p = parseClinicDateParts(dateStr);
+    if (p) return `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
+
     try {
       if (!dateStr) return '--:--';
       return format(new Date(dateStr), 'HH:mm');
@@ -511,6 +549,18 @@ const MedicalTranscripts: React.FC = () => {
 
   // 날짜 포맷 (안전)
   const formatDate = (dateStr: string, formatStr: string = 'MM/dd') => {
+    const p = parseClinicDateParts(dateStr);
+    if (p) {
+      const MM = String(p.month).padStart(2, '0');
+      const dd = String(p.day).padStart(2, '0');
+      const HH = String(p.hour).padStart(2, '0');
+      const mm = String(p.minute).padStart(2, '0');
+      if (formatStr === 'MM/dd') return `${MM}/${dd}`;
+      if (formatStr === 'yyyy-MM-dd HH:mm') return `${p.year}-${MM}-${dd} ${HH}:${mm}`;
+      if (formatStr === 'yyyyMMdd_HHmm') return `${p.year}${MM}${dd}_${HH}${mm}`;
+      return `${MM}/${dd}`;
+    }
+
     try {
       if (!dateStr) return '--/--';
       return format(new Date(dateStr), formatStr);
