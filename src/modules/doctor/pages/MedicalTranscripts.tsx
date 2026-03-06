@@ -45,6 +45,7 @@ const MedicalTranscripts: React.FC = () => {
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [transcripts, setTranscripts] = useState<MedicalTranscript[]>([]);
   const [patientMap, setPatientMap] = useState<Map<number, PatientInfo>>(new Map());
+  const [chartNumberPatientMap, setChartNumberPatientMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(false);
   const [selectedTranscript, setSelectedTranscript] = useState<MedicalTranscript | null>(null);
 
@@ -78,10 +79,13 @@ const MedicalTranscripts: React.FC = () => {
       // 검색어 필터
       if (searchQuery) {
         const patient = patientMap.get(t.patient_id);
+        const chartFallbackName = t.chart_number ? chartNumberPatientMap.get(t.chart_number) : undefined;
         const searchLower = searchQuery.toLowerCase();
         const matchesSearch =
           t.transcript?.toLowerCase().includes(searchLower) ||
+          t.patient_name?.toLowerCase().includes(searchLower) ||
           patient?.patient_name?.toLowerCase().includes(searchLower) ||
+          chartFallbackName?.toLowerCase().includes(searchLower) ||
           t.doctor_name?.toLowerCase().includes(searchLower);
         if (!matchesSearch) return false;
       }
@@ -97,7 +101,7 @@ const MedicalTranscripts: React.FC = () => {
 
       return true;
     });
-  }, [transcripts, searchQuery, doctorFilter, actingTypeFilter, soapFilter, patientMap]);
+  }, [transcripts, searchQuery, doctorFilter, actingTypeFilter, soapFilter, patientMap, chartNumberPatientMap]);
 
   // 통계 계산
   const stats = useMemo(() => {
@@ -170,6 +174,12 @@ const MedicalTranscripts: React.FC = () => {
       if (patientIds.length > 0) {
         await fetchPatientInfo(patientIds);
       }
+
+      // chart_number 기반 fallback 이름 조회 (PG 공통키)
+      const chartNumbers = [...new Set(items.map((t) => t.chart_number).filter(Boolean) as string[])];
+      if (chartNumbers.length > 0) {
+        await fetchPatientInfoByChartNumbers(chartNumbers);
+      }
     } catch (error) {
       console.error('녹취록 조회 실패:', error);
       setTranscripts([]);
@@ -178,7 +188,7 @@ const MedicalTranscripts: React.FC = () => {
     }
   };
 
-  // 환자 정보 조회 (MSSQL)
+  // 환자 정보 조회 (MSSQL: patient_id 기준)
   const fetchPatientInfo = async (patientIds: number[]) => {
     try {
       const mssqlApiUrl = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
@@ -199,6 +209,44 @@ const MedicalTranscripts: React.FC = () => {
       }
     } catch (error) {
       console.error('환자 정보 조회 실패:', error);
+    }
+  };
+
+  // 환자 정보 조회 (PostgreSQL: chart_number 공통키 기준)
+  const fetchPatientInfoByChartNumbers = async (chartNumbers: string[]) => {
+    try {
+      const normalized = [...new Set(chartNumbers.map((c) => String(c).trim()).filter(Boolean))];
+      if (normalized.length === 0) return;
+
+      const inList = normalized.map((c) => `'${c.replace(/'/g, "''")}'`).join(',');
+      const response = await fetch(`${API_URL}/api/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sql: `SELECT chart_number, name FROM patients WHERE chart_number IN (${inList})`,
+        }),
+      });
+
+      const data = await response.json();
+      if (!data?.rows) return;
+
+      const rows = Array.isArray(data.rows[0]) && data.columns
+        ? data.rows.map((row: any[]) => {
+            const obj: any = {};
+            data.columns.forEach((col: string, idx: number) => {
+              obj[col] = row[idx];
+            });
+            return obj;
+          })
+        : data.rows;
+
+      const map = new Map<string, string>();
+      rows.forEach((r: any) => {
+        if (r.chart_number && r.name) map.set(String(r.chart_number), String(r.name));
+      });
+      setChartNumberPatientMap(map);
+    } catch (error) {
+      console.error('차트번호 기반 환자 정보 조회 실패:', error);
     }
   };
 
@@ -330,9 +378,10 @@ const MedicalTranscripts: React.FC = () => {
     if (!selectedTranscript) return;
 
     const patient = patientMap.get(selectedTranscript.patient_id);
+    const displayPatientName = getDisplayPatientName(selectedTranscript);
     let content = `녹취록 내보내기\n`;
     content += `================\n\n`;
-    content += `환자: ${selectedTranscript.patient_name || patient?.patient_name || `#${selectedTranscript.patient_id}`}\n`;
+    content += `환자: ${displayPatientName}\n`;
     content += `의료진: ${selectedTranscript.doctor_name}\n`;
     content += `진료유형: ${selectedTranscript.acting_type}\n`;
     content += `녹음시간: ${formatDuration(selectedTranscript.duration_sec)}\n`;
@@ -351,7 +400,7 @@ const MedicalTranscripts: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `녹취록_${patient?.patient_name || selectedTranscript.patient_id}_${formatDate(getDisplayDateTime(selectedTranscript), 'yyyyMMdd_HHmm')}.txt`;
+    a.download = `녹취록_${displayPatientName}_${formatDate(getDisplayDateTime(selectedTranscript), 'yyyyMMdd_HHmm')}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -442,6 +491,13 @@ const MedicalTranscripts: React.FC = () => {
 
   // 실제 진료/녹음 시각 우선, 없으면 생성 시각 fallback
   const getDisplayDateTime = (t: MedicalTranscript) => t.recording_date || t.created_at;
+
+  // 환자명 fallback: row.patient_name → patient_id 조회 → chart_number 공통키 조회
+  const getDisplayPatientName = (t: MedicalTranscript) => {
+    const byPatientId = patientMap.get(t.patient_id)?.patient_name;
+    const byChartNumber = t.chart_number ? chartNumberPatientMap.get(t.chart_number) : undefined;
+    return t.patient_name || byPatientId || byChartNumber || `환자 #${t.patient_id}`;
+  };
 
   // 시간 포맷
   const formatTime = (dateStr: string) => {
@@ -713,7 +769,7 @@ const MedicalTranscripts: React.FC = () => {
                     <div className="flex items-start justify-between mb-2">
                       <div>
                         <span className="font-medium text-gray-800">
-                          {t.patient_name || patient?.patient_name || `환자 #${t.patient_id}`}
+                          {getDisplayPatientName(t)}
                         </span>
                         {(t.chart_number || patient?.chart_no) && (
                           <span className="ml-2 text-xs text-gray-400">#{t.chart_number || patient?.chart_no}</span>
@@ -774,8 +830,7 @@ const MedicalTranscripts: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-lg font-semibold text-gray-800">
-                    {patientMap.get(selectedTranscript.patient_id)?.patient_name ||
-                      `환자 #${selectedTranscript.patient_id}`}
+                    {getDisplayPatientName(selectedTranscript)}
                   </span>
                   {getSoapStatusBadge(selectedTranscript.soap_status)}
                 </div>

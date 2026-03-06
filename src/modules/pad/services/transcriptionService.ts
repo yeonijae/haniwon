@@ -67,6 +67,7 @@ interface SaveTranscriptParams {
   transcript: string;
   diarizedTranscript?: string;
   durationSec: number;
+  recordingDate?: string;
 }
 
 /**
@@ -263,6 +264,7 @@ export async function saveMedicalTranscript(params: SaveTranscriptParams & {
     INSERT INTO medical_transcripts (
       acting_id, patient_id, doctor_id, doctor_name,
       acting_type, audio_path, transcript, diarized_transcript, duration_sec,
+      recording_date,
       soap_subjective, soap_objective, soap_assessment, soap_plan, soap_status
     ) VALUES (
       ${params.actingId},
@@ -274,6 +276,7 @@ export async function saveMedicalTranscript(params: SaveTranscriptParams & {
       ${escapeSql(params.transcript)},
       ${escapeSql(params.diarizedTranscript)},
       ${params.durationSec},
+      ${escapeSql(params.recordingDate || new Date().toISOString())},
       ${escapeSql(params.soapSubjective)},
       ${escapeSql(params.soapObjective)},
       ${escapeSql(params.soapAssessment)},

@@ -163,6 +163,7 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, chartId, st
       // 3. medical_transcripts 테이블에 저장 (음성파일 경로 + 텍스트)
       try {
         const { saveMedicalTranscript } = await import('@modules/pad/services/transcriptionService');
+        const recordingDate = new Date().toISOString();
         const transcriptId = await saveMedicalTranscript({
           actingId: 0,
           patientId,
@@ -173,6 +174,7 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, chartId, st
           transcript: transcript || '',
           diarizedTranscript: null,
           durationSec: recordingTime,
+          recordingDate,
         });
         console.log('[녹음] medical_transcripts 저장 완료, id:', transcriptId);
         // 환자명, 차트번호 업데이트
@@ -182,7 +184,7 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, chartId, st
           );
           if (patientInfo) {
             await execute(
-              `UPDATE medical_transcripts SET patient_name = ${escapeString(patientInfo.name)}, chart_number = ${escapeString(patientInfo.chart_number)}, created_at = NOW() WHERE id = ${transcriptId}`
+              `UPDATE medical_transcripts SET patient_name = ${escapeString(patientInfo.name)}, chart_number = ${escapeString(patientInfo.chart_number)} WHERE id = ${transcriptId}`
             );
           }
         }
