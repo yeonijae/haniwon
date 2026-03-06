@@ -8,6 +8,7 @@ interface MedicalTranscript {
   id: number;
   acting_id: number;
   patient_id: number;
+  recording_date?: string | null;
   patient_name: string | null;
   chart_number: string | null;
   doctor_id: number;
@@ -191,7 +192,8 @@ const MedicalTranscripts: React.FC = () => {
       if (data.patients) {
         const map = new Map<number, PatientInfo>();
         data.patients.forEach((p: any) => {
-          map.set(p.chartNo, { chart_no: p.chartNo, patient_name: p.patientName });
+          // mssql API 응답: { id, chart_no, name, ... }
+          map.set(p.id, { chart_no: p.chart_no, patient_name: p.name });
         });
         setPatientMap(map);
       }
@@ -334,7 +336,7 @@ const MedicalTranscripts: React.FC = () => {
     content += `의료진: ${selectedTranscript.doctor_name}\n`;
     content += `진료유형: ${selectedTranscript.acting_type}\n`;
     content += `녹음시간: ${formatDuration(selectedTranscript.duration_sec)}\n`;
-    content += `일시: ${formatDate(selectedTranscript.created_at, 'yyyy-MM-dd HH:mm')}\n\n`;
+    content += `일시: ${formatDate(getDisplayDateTime(selectedTranscript), 'yyyy-MM-dd HH:mm')}\n\n`;
     content += `[녹취 내용]\n${selectedTranscript.transcript}\n\n`;
 
     if (selectedTranscript.soap_status === 'completed') {
@@ -349,7 +351,7 @@ const MedicalTranscripts: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `녹취록_${patient?.patient_name || selectedTranscript.patient_id}_${formatDate(selectedTranscript.created_at, 'yyyyMMdd_HHmm')}.txt`;
+    a.download = `녹취록_${patient?.patient_name || selectedTranscript.patient_id}_${formatDate(getDisplayDateTime(selectedTranscript), 'yyyyMMdd_HHmm')}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -437,6 +439,9 @@ const MedicalTranscripts: React.FC = () => {
       setIsReprocessing(false);
     }
   };
+
+  // 실제 진료/녹음 시각 우선, 없으면 생성 시각 fallback
+  const getDisplayDateTime = (t: MedicalTranscript) => t.recording_date || t.created_at;
 
   // 시간 포맷
   const formatTime = (dateStr: string) => {
@@ -722,11 +727,11 @@ const MedicalTranscripts: React.FC = () => {
                     <div className="flex items-center gap-3 text-sm text-gray-500 mb-2">
                       <span>
                         <i className="fas fa-calendar-alt mr-1"></i>
-                        {formatDate(t.created_at)}
+                        {formatDate(getDisplayDateTime(t))}
                       </span>
                       <span>
                         <i className="fas fa-clock mr-1"></i>
-                        {formatTime(t.created_at)}
+                        {formatTime(getDisplayDateTime(t))}
                       </span>
                       <span>
                         <i className="fas fa-stopwatch mr-1"></i>
@@ -828,7 +833,7 @@ const MedicalTranscripts: React.FC = () => {
                   <div>
                     <span className="text-gray-500">일시</span>
                     <p className="font-medium text-gray-800">
-                      {formatDate(selectedTranscript.created_at, 'yyyy-MM-dd HH:mm')}
+                      {formatDate(getDisplayDateTime(selectedTranscript), 'yyyy-MM-dd HH:mm')}
                     </p>
                   </div>
                 </div>
