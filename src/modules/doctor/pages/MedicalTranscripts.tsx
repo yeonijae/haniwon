@@ -654,13 +654,13 @@ const MedicalTranscripts: React.FC = () => {
             </span>
           </div>
 
-          <div className="relative ml-auto" style={{ width: '100px' }}>
+          <div className="relative ml-auto" style={{ width: '220px' }}>
             <i className="fas fa-search absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="검색"
+              placeholder="환자명/차트번호/내용 검색"
               className="w-full pl-7 pr-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-1 focus:ring-clinic-primary focus:border-clinic-primary"
             />
           </div>
