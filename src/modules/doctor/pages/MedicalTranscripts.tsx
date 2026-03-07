@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { format, subDays, addDays, startOfMonth } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { diarizeTranscript, updateDiarizedTranscript } from '../../pad/services/transcriptionService';
 
 const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
@@ -34,15 +34,13 @@ interface PatientInfo {
   patient_name: string;
 }
 
-type ViewMode = 'day' | 'range' | 'all';
+type ViewMode = 'day' | '3weeks' | '3months' | 'all';
 type SoapFilter = 'all' | 'completed' | 'processing' | 'failed' | 'pending';
 
 const MedicalTranscripts: React.FC = () => {
   // 상태 관리
-  const [viewMode, setViewMode] = useState<ViewMode>('day');
-  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [viewMode, setViewMode] = useState<ViewMode>('all');
+  const [baseDate, setBaseDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [transcripts, setTranscripts] = useState<MedicalTranscript[]>([]);
   const [patientMap, setPatientMap] = useState<Map<number, PatientInfo>>(new Map());
   const [chartNumberPatientMap, setChartNumberPatientMap] = useState<Map<string, string>>(new Map());
@@ -51,7 +49,6 @@ const MedicalTranscripts: React.FC = () => {
 
   // 필터 상태
   const [searchQuery, setSearchQuery] = useState('');
-  const [doctorFilter, setDoctorFilter] = useState<string>('all');
   const [actingTypeFilter, setActingTypeFilter] = useState<string>('all');
   const [soapFilter, setSoapFilter] = useState<SoapFilter>('all');
 
@@ -62,12 +59,7 @@ const MedicalTranscripts: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDiarized, setShowDiarized] = useState(true); // 화자분리 보기 토글
 
-  // 고유 의사 목록, 진료 유형 목록
-  const uniqueDoctors = useMemo(() => {
-    const doctors = [...new Set(transcripts.map((t) => t.doctor_name))];
-    return doctors.filter(Boolean);
-  }, [transcripts]);
-
+  // 진료 유형 목록
   const uniqueActingTypes = useMemo(() => {
     const types = [...new Set(transcripts.map((t) => t.acting_type))];
     return types.filter(Boolean);
@@ -86,12 +78,10 @@ const MedicalTranscripts: React.FC = () => {
           t.patient_name?.toLowerCase().includes(searchLower) ||
           patient?.patient_name?.toLowerCase().includes(searchLower) ||
           chartFallbackName?.toLowerCase().includes(searchLower) ||
-          t.doctor_name?.toLowerCase().includes(searchLower);
+          t.doctor_name?.toLowerCase().includes(searchLower) ||
+          t.chart_number?.toLowerCase().includes(searchLower);
         if (!matchesSearch) return false;
       }
-
-      // 의사 필터
-      if (doctorFilter !== 'all' && t.doctor_name !== doctorFilter) return false;
 
       // 진료 유형 필터
       if (actingTypeFilter !== 'all' && t.acting_type !== actingTypeFilter) return false;
@@ -101,18 +91,19 @@ const MedicalTranscripts: React.FC = () => {
 
       return true;
     });
-  }, [transcripts, searchQuery, doctorFilter, actingTypeFilter, soapFilter, patientMap, chartNumberPatientMap]);
+  }, [transcripts, searchQuery, actingTypeFilter, soapFilter, patientMap, chartNumberPatientMap]);
 
-  // 통계 계산
-  const stats = useMemo(() => {
-    const total = filteredTranscripts.length;
-    const totalDuration = filteredTranscripts.reduce((acc, t) => acc + (t.duration_sec || 0), 0);
-    const completed = filteredTranscripts.filter((t) => t.soap_status === 'completed').length;
-    const failed = filteredTranscripts.filter((t) => t.soap_status === 'failed').length;
-    const processing = filteredTranscripts.filter((t) => t.soap_status === 'processing').length;
-
-    return { total, totalDuration, completed, failed, processing };
-  }, [filteredTranscripts]);
+  // 파이프라인 상태 배지 카운트 (전체 조회 결과 기준)
+  const pipelineStats = useMemo(() => {
+    const saving = transcripts.filter(t => t.processing_status === 'uploading').length;
+    const transcribing = transcripts.filter(t =>
+      t.processing_status === 'transcribing' || t.processing_status === 'processing'
+    ).length;
+    const done = transcripts.filter(t =>
+      (!t.processing_status || t.processing_status === 'completed') && t.soap_status === 'completed'
+    ).length;
+    return { saving, transcribing, done };
+  }, [transcripts]);
 
   // 녹취록 조회
   const fetchTranscripts = async () => {
@@ -124,20 +115,28 @@ const MedicalTranscripts: React.FC = () => {
       if (viewMode === 'day') {
         sql = `
           SELECT * FROM medical_transcripts
-          WHERE ${localDateExpr} = '${selectedDate}'
+          WHERE ${localDateExpr} = '${baseDate}'
           ORDER BY ${tsExpr} DESC
         `;
-      } else if (viewMode === 'range') {
+      } else if (viewMode === '3weeks') {
+        const rangeStart = format(subDays(new Date(baseDate), 20), 'yyyy-MM-dd');
         sql = `
           SELECT * FROM medical_transcripts
-          WHERE ${localDateExpr} >= '${startDate}' AND ${localDateExpr} <= '${endDate}'
+          WHERE ${localDateExpr} >= '${rangeStart}' AND ${localDateExpr} <= '${baseDate}'
+          ORDER BY ${tsExpr} DESC
+        `;
+      } else if (viewMode === '3months') {
+        // 3개월 = 90일 윈도우 (baseDate 포함 90일: baseDate-89 ~ baseDate)
+        const rangeStart = format(subDays(new Date(baseDate), 89), 'yyyy-MM-dd');
+        sql = `
+          SELECT * FROM medical_transcripts
+          WHERE ${localDateExpr} >= '${rangeStart}' AND ${localDateExpr} <= '${baseDate}'
           ORDER BY ${tsExpr} DESC
         `;
       } else {
         sql = `
           SELECT * FROM medical_transcripts
           ORDER BY ${tsExpr} DESC
-          LIMIT 100
         `;
       }
 
@@ -409,16 +408,7 @@ const MedicalTranscripts: React.FC = () => {
 
   useEffect(() => {
     fetchTranscripts();
-  }, [viewMode, selectedDate, startDate, endDate]);
-
-  // 날짜 변경
-  const changeDate = (days: number) => {
-    const newDate =
-      days > 0
-        ? addDays(new Date(selectedDate), days)
-        : subDays(new Date(selectedDate), Math.abs(days));
-    setSelectedDate(format(newDate, 'yyyy-MM-dd'));
-  };
+  }, [viewMode, baseDate]);
 
   // SOAP 상태 배지
   const getSoapStatusBadge = (status: string) => {
@@ -604,7 +594,6 @@ const MedicalTranscripts: React.FC = () => {
   // 필터 초기화
   const resetFilters = () => {
     setSearchQuery('');
-    setDoctorFilter('all');
     setActingTypeFilter('all');
     setSoapFilter('all');
   };
@@ -613,127 +602,65 @@ const MedicalTranscripts: React.FC = () => {
     <div className="h-full flex flex-col bg-gray-50">
       {/* 헤더 */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
+        {/* Row 1: 제목 + 파이프라인 배지 + 기준일자 */}
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-bold text-gray-800">
               <i className="fas fa-microphone-alt text-clinic-primary mr-2"></i>
               녹취록 관리
             </h1>
-
-            {/* 조회 모드 선택 */}
-            <div className="flex items-center bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => setViewMode('day')}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  viewMode === 'day'
-                    ? 'bg-white text-clinic-primary shadow-sm'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                일별
-              </button>
-              <button
-                onClick={() => setViewMode('range')}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  viewMode === 'range'
-                    ? 'bg-white text-clinic-primary shadow-sm'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                기간
-              </button>
-              <button
-                onClick={() => setViewMode('all')}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  viewMode === 'all'
-                    ? 'bg-white text-clinic-primary shadow-sm'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                전체
-              </button>
+            {/* 파이프라인 상태 배지 */}
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">
+                녹음 저장중 <span className="font-bold ml-0.5">{pipelineStats.saving}</span>
+              </span>
+              <span className="px-2.5 py-1 text-xs bg-yellow-100 text-yellow-700 rounded-full">
+                녹취 중 <span className="font-bold ml-0.5">{pipelineStats.transcribing}</span>
+              </span>
+              <span className="px-2.5 py-1 text-xs bg-green-100 text-green-700 rounded-full">
+                녹취 완료 <span className="font-bold ml-0.5">{pipelineStats.done}</span>
+              </span>
             </div>
           </div>
-
-          {/* 날짜 선택 */}
+          {/* 기준일자 선택 */}
           <div className="flex items-center gap-2">
-            {viewMode === 'day' && (
-              <>
-                <button
-                  onClick={() => changeDate(-1)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <i className="fas fa-chevron-left text-gray-600"></i>
-                </button>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                />
-                <button
-                  onClick={() => changeDate(1)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <i className="fas fa-chevron-right text-gray-600"></i>
-                </button>
-                <button
-                  onClick={() => setSelectedDate(format(new Date(), 'yyyy-MM-dd'))}
-                  className="px-3 py-1.5 text-sm text-clinic-primary hover:bg-clinic-primary/10 rounded-lg transition-colors"
-                >
-                  오늘
-                </button>
-              </>
-            )}
-            {viewMode === 'range' && (
-              <>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                />
-                <span className="text-gray-500">~</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                />
-              </>
-            )}
-            {viewMode === 'all' && (
-              <span className="text-sm text-gray-500">최근 100건 표시</span>
-            )}
+            <span className="text-sm text-gray-500">기준일자</span>
+            <input
+              type="date"
+              value={baseDate}
+              onChange={(e) => setBaseDate(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+            />
+            <button
+              onClick={() => setBaseDate(format(new Date(), 'yyyy-MM-dd'))}
+              className="px-3 py-1.5 text-sm text-clinic-primary hover:bg-clinic-primary/10 rounded-lg transition-colors"
+            >
+              오늘
+            </button>
           </div>
         </div>
 
-        {/* 통계 카드 */}
-        <div className="grid grid-cols-5 gap-4 mb-4">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4">
-            <div className="text-2xl font-bold text-blue-700">{stats.total}</div>
-            <div className="text-sm text-blue-600">총 녹취</div>
-          </div>
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4">
-            <div className="text-2xl font-bold text-purple-700">{formatDuration(stats.totalDuration)}</div>
-            <div className="text-sm text-purple-600">총 녹음시간</div>
-          </div>
-          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4">
-            <div className="text-2xl font-bold text-green-700">{stats.completed}</div>
-            <div className="text-sm text-green-600">SOAP 완료</div>
-          </div>
-          <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl p-4">
-            <div className="text-2xl font-bold text-yellow-700">{stats.processing}</div>
-            <div className="text-sm text-yellow-600">처리중</div>
-          </div>
-          <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-4">
-            <div className="text-2xl font-bold text-red-700">{stats.failed}</div>
-            <div className="text-sm text-red-600">실패</div>
-          </div>
-        </div>
-
-        {/* 검색 및 필터 */}
+        {/* Row 2: 조회 모드 + 검색/필터 */}
         <div className="flex items-center gap-3">
+          {/* 조회 모드 선택 */}
+          <div className="flex items-center bg-gray-100 rounded-lg p-1">
+            {([['day', '일별'], ['3weeks', '3주'], ['3months', '3개월'], ['all', '전체']] as [ViewMode, string][]).map(([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                  viewMode === mode
+                    ? 'bg-white text-clinic-primary shadow-sm'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="w-px h-6 bg-gray-300"></div>
+
           {/* 검색 */}
           <div className="relative flex-1 max-w-md">
             <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
@@ -741,24 +668,10 @@ const MedicalTranscripts: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="환자명, 녹취 내용 검색..."
+              placeholder="환자명, 차트번호, 녹취 내용, 의료진 검색..."
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
             />
           </div>
-
-          {/* 의사 필터 */}
-          <select
-            value={doctorFilter}
-            onChange={(e) => setDoctorFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-          >
-            <option value="all">모든 의료진</option>
-            {uniqueDoctors.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
 
           {/* 진료 유형 필터 */}
           <select
@@ -788,7 +701,7 @@ const MedicalTranscripts: React.FC = () => {
           </select>
 
           {/* 필터 초기화 */}
-          {(searchQuery || doctorFilter !== 'all' || actingTypeFilter !== 'all' || soapFilter !== 'all') && (
+          {(searchQuery || actingTypeFilter !== 'all' || soapFilter !== 'all') && (
             <button
               onClick={resetFilters}
               className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
