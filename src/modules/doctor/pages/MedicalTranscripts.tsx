@@ -87,8 +87,8 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     });
   }, [transcripts, searchQuery, pipelineFilter, patientMap, chartNumberPatientMap]);
 
-  // 파이프라인 카테고리 분류
-  const getPipelineCategory = (t: MedicalTranscript): PipelineCategory => {
+  // 파이프라인 카테고리 분류 (function 선언문으로 호이스팅 보장)
+  function getPipelineCategory(t: MedicalTranscript): PipelineCategory {
     // 실패: 어느 단계든 failed 이거나, 처리 완료인데 transcript가 없는 경우
     if (t.processing_status === 'failed' || t.soap_status === 'failed' ||
         (!t.transcript && t.processing_status === 'completed')) {
@@ -104,7 +104,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     }
     // 변환중: 나머지 진행 중인 상태
     return 'transcribing';
-  };
+  }
 
   // 파이프라인 상태 배지 카운트 (전체 조회 결과 기준)
   const pipelineStats = useMemo(() => {
