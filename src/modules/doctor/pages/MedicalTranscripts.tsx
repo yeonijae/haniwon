@@ -860,7 +860,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
               {/* 상단: 메타 + 파이프라인 + 액션 단일 행 */}
               <div className="flex items-center gap-2 flex-wrap text-[17px] py-0.5">
                 <span className="text-gray-800 whitespace-nowrap">
-                  <span className="font-semibold">{getDisplayPatientName(selectedTranscript)}</span>
+                  <span className="font-semibold text-[19px]">{getDisplayPatientName(selectedTranscript)}</span>
                   ({selectedTranscript.chart_number || patientMap.get(selectedTranscript.patient_id)?.chart_no || '-'})
                   <span className="ml-2">{formatCompactDate(getDisplayDateTime(selectedTranscript))}</span>
                   {' '}{formatTime(getDisplayDateTime(selectedTranscript))}
