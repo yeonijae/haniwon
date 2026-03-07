@@ -35,6 +35,7 @@ interface PatientInfo {
 }
 
 type ViewMode = 'day' | '3weeks' | '3months' | 'all';
+type PipelineCategory = 'saving' | 'transcribing' | 'done' | 'failed';
 
 interface MedicalTranscriptsProps {
   selectedDoctorName?: string;
@@ -52,6 +53,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
 
   // 필터 상태
   const [searchQuery, setSearchQuery] = useState('');
+  const [pipelineFilter, setPipelineFilter] = useState<PipelineCategory | null>(null);
 
   // 작업 상태
   const [isReprocessing, setIsReprocessing] = useState(false);
@@ -63,6 +65,9 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   // 필터링된 녹취록
   const filteredTranscripts = useMemo(() => {
     return transcripts.filter((t) => {
+      // 파이프라인 상태 필터
+      if (pipelineFilter && getPipelineCategory(t) !== pipelineFilter) return false;
+
       // 검색어 필터
       if (searchQuery) {
         const patient = patientMap.get(t.patient_id);
@@ -80,18 +85,32 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
 
       return true;
     });
-  }, [transcripts, searchQuery, patientMap, chartNumberPatientMap]);
+  }, [transcripts, searchQuery, pipelineFilter, patientMap, chartNumberPatientMap]);
+
+  // 파이프라인 카테고리 분류
+  const getPipelineCategory = (t: MedicalTranscript): PipelineCategory => {
+    // 실패: 어느 단계든 failed 이거나, 처리 완료인데 transcript가 없는 경우
+    if (t.processing_status === 'failed' || t.soap_status === 'failed' ||
+        (!t.transcript && t.processing_status === 'completed')) {
+      return 'failed';
+    }
+    // 저장중: 업로드 단계
+    if (t.processing_status === 'uploading') {
+      return 'saving';
+    }
+    // 완료: processing과 soap 모두 완료
+    if ((!t.processing_status || t.processing_status === 'completed') && t.soap_status === 'completed') {
+      return 'done';
+    }
+    // 변환중: 나머지 진행 중인 상태
+    return 'transcribing';
+  };
 
   // 파이프라인 상태 배지 카운트 (전체 조회 결과 기준)
   const pipelineStats = useMemo(() => {
-    const saving = transcripts.filter(t => t.processing_status === 'uploading').length;
-    const transcribing = transcripts.filter(t =>
-      t.processing_status === 'transcribing' || t.processing_status === 'processing'
-    ).length;
-    const done = transcripts.filter(t =>
-      (!t.processing_status || t.processing_status === 'completed') && t.soap_status === 'completed'
-    ).length;
-    return { saving, transcribing, done };
+    const counts = { saving: 0, transcribing: 0, done: 0, failed: 0 };
+    transcripts.forEach(t => { counts[getPipelineCategory(t)]++; });
+    return counts;
   }, [transcripts]);
 
   // 녹취록 조회
@@ -643,16 +662,21 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
             ))}
           </div>
 
-          <div className="flex ml-2 border border-gray-300 rounded-md overflow-hidden">
-            <span className="px-3 py-1 text-[13px] font-medium bg-gray-100 text-gray-500 border-r border-gray-300 whitespace-nowrap">
-              녹음 저장중 <span className="font-bold ml-0.5">{pipelineStats.saving}</span>
-            </span>
-            <span className="px-3 py-1 text-[13px] font-medium bg-yellow-50 text-yellow-700 border-r border-gray-300 whitespace-nowrap">
-              녹취 중 <span className="font-bold ml-0.5">{pipelineStats.transcribing}</span>
-            </span>
-            <span className="px-3 py-1 text-[13px] font-medium bg-green-50 text-green-700 whitespace-nowrap">
-              녹취 완료 <span className="font-bold ml-0.5">{pipelineStats.done}</span>
-            </span>
+          <div className="occ-filter-group occ-filter-patient">
+            {([
+              ['saving', '저장중', pipelineStats.saving],
+              ['transcribing', '변환중', pipelineStats.transcribing],
+              ['done', '완료', pipelineStats.done],
+              ['failed', '실패', pipelineStats.failed],
+            ] as [PipelineCategory, string, number][]).map(([key, label, count]) => (
+              <button
+                key={key}
+                onClick={() => setPipelineFilter(pipelineFilter === key ? null : key)}
+                className={`occ-filter-btn ${pipelineFilter === key ? 'active' : ''}`}
+              >
+                {label} <span className="font-bold ml-0.5">{count}</span>
+              </button>
+            ))}
           </div>
 
           <div className="relative ml-auto" style={{ width: '220px' }}>
