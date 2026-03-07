@@ -643,14 +643,14 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
             ))}
           </div>
 
-          <div className="flex items-center gap-2 ml-2">
-            <span className="px-2.5 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">
+          <div className="flex ml-2 border border-gray-300 rounded-md overflow-hidden">
+            <span className="px-3 py-1 text-[13px] font-medium bg-gray-100 text-gray-500 border-r border-gray-300 whitespace-nowrap">
               녹음 저장중 <span className="font-bold ml-0.5">{pipelineStats.saving}</span>
             </span>
-            <span className="px-2.5 py-1 text-xs bg-yellow-100 text-yellow-700 rounded-full">
+            <span className="px-3 py-1 text-[13px] font-medium bg-yellow-50 text-yellow-700 border-r border-gray-300 whitespace-nowrap">
               녹취 중 <span className="font-bold ml-0.5">{pipelineStats.transcribing}</span>
             </span>
-            <span className="px-2.5 py-1 text-xs bg-green-100 text-green-700 rounded-full">
+            <span className="px-3 py-1 text-[13px] font-medium bg-green-50 text-green-700 whitespace-nowrap">
               녹취 완료 <span className="font-bold ml-0.5">{pipelineStats.done}</span>
             </span>
           </div>
