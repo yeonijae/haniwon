@@ -175,6 +175,7 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, chartId, st
           diarizedTranscript: null,
           durationSec: recordingTime,
           recordingDate,
+          patientName: patientName || undefined,
         });
         console.log('[녹음] medical_transcripts 저장 완료, id:', transcriptId);
         // 환자명, 차트번호 업데이트

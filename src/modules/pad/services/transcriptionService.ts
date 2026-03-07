@@ -68,6 +68,8 @@ interface SaveTranscriptParams {
   diarizedTranscript?: string;
   durationSec: number;
   recordingDate?: string;
+  patientName?: string;
+  chartNumber?: string;
 }
 
 /**
@@ -265,7 +267,8 @@ export async function saveMedicalTranscript(params: SaveTranscriptParams & {
       acting_id, patient_id, doctor_id, doctor_name,
       acting_type, audio_path, transcript, diarized_transcript, duration_sec,
       recording_date,
-      soap_subjective, soap_objective, soap_assessment, soap_plan, soap_status
+      soap_subjective, soap_objective, soap_assessment, soap_plan, soap_status,
+      patient_name, chart_number
     ) VALUES (
       ${params.actingId},
       ${params.patientId},
@@ -281,7 +284,9 @@ export async function saveMedicalTranscript(params: SaveTranscriptParams & {
       ${escapeSql(params.soapObjective)},
       ${escapeSql(params.soapAssessment)},
       ${escapeSql(params.soapPlan)},
-      ${escapeSql(params.soapStatus || 'pending')}
+      ${escapeSql(params.soapStatus || 'pending')},
+      ${escapeSql(params.patientName)},
+      ${escapeSql(params.chartNumber)}
     )
   `;
 
