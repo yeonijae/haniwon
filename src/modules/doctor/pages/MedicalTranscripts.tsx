@@ -499,12 +499,30 @@ const MedicalTranscripts: React.FC = () => {
     return t.patient_name || byPatientId || byChartNumber || `환자 #${t.patient_id}`;
   };
 
-  // 백엔드 datetime 문자열을 타임존 변환 없이(로컬 기록 시각 그대로) 파싱
+  // 백엔드 datetime 문자열을 파싱하여 로컬 시각 부분을 반환
+  // - ISO with TZ (Z, +00:00 등): Date 객체로 변환하여 로컬(KST) 시각 추출
+  // - naive datetime (TZ 없음): 벽시계 시각 그대로 사용 (추가 변환 없음)
   const parseClinicDateParts = (dateStr: string) => {
     if (!dateStr) return null;
 
     const iso = dateStr.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
     if (iso) {
+      // 타임존 정보가 포함된 경우 (Z, +HH:MM, -HH:MM, +HHMM)
+      const hasTZ = /[Zz]|[+-]\d{2}:?\d{2}\s*$/.test(dateStr.trim());
+      if (hasTZ) {
+        const d = new Date(dateStr);
+        if (!isNaN(d.getTime())) {
+          return {
+            year: d.getFullYear(),
+            month: d.getMonth() + 1,
+            day: d.getDate(),
+            hour: d.getHours(),
+            minute: d.getMinutes(),
+            second: d.getSeconds(),
+          };
+        }
+      }
+      // naive datetime (TZ 없음) — 로컬 벽시계 시각 그대로 사용
       return {
         year: Number(iso[1]),
         month: Number(iso[2]),
@@ -515,20 +533,20 @@ const MedicalTranscripts: React.FC = () => {
       };
     }
 
-    const rfc = dateStr.match(/\w{3},\s(\d{2})\s(\w{3})\s(\d{4})\s(\d{2}):(\d{2}):(\d{2})\sGMT/i);
+    // RFC 형식 (GMT 포함) — Date로 파싱하여 로컬 시각 추출
+    const rfc = dateStr.match(/\w{3},\s\d{2}\s\w{3}\s\d{4}\s\d{2}:\d{2}:\d{2}\sGMT/i);
     if (rfc) {
-      const months: Record<string, number> = {
-        jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
-        jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
-      };
-      return {
-        year: Number(rfc[3]),
-        month: months[rfc[2].toLowerCase()] || 1,
-        day: Number(rfc[1]),
-        hour: Number(rfc[4]),
-        minute: Number(rfc[5]),
-        second: Number(rfc[6]),
-      };
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        return {
+          year: d.getFullYear(),
+          month: d.getMonth() + 1,
+          day: d.getDate(),
+          hour: d.getHours(),
+          minute: d.getMinutes(),
+          second: d.getSeconds(),
+        };
+      }
     }
 
     return null;
