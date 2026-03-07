@@ -36,6 +36,7 @@ interface PatientInfo {
 
 type ViewMode = 'day' | '3weeks' | '3months' | 'all';
 type PipelineCategory = 'saving' | 'transcribing' | 'done' | 'failed';
+type DetailTab = 'raw' | 'diarized' | 'soap';
 
 interface MedicalTranscriptsProps {
   selectedDoctorName?: string;
@@ -60,7 +61,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   const [isDiarizing, setIsDiarizing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showDiarized, setShowDiarized] = useState(true); // 화자분리 보기 토글
+  const [detailTab, setDetailTab] = useState<DetailTab>('raw');
 
   // 필터링된 녹취록
   const filteredTranscripts = useMemo(() => {
@@ -423,7 +424,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
       !!t.diarized_transcript && t.diarized_transcript.trim() !== '',
       t.soap_status === 'completed',
     ];
-    const labels = ['녹음 완료', '녹취 완료', '화자 완료', 'SOAP 완료'];
+    const labels = [`녹음 ${formatDuration(t.duration_sec)}`, '녹취', '화자', 'SOAP'];
     const hasFailed = t.processing_status === 'failed' || t.soap_status === 'failed';
     const firstPendingIdx = dones.findIndex(d => !d);
 
@@ -620,6 +621,22 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // 진료일자 포맷: 년. 월. 일. (요일)
+  const formatDateWithWeekday = (dateStr: string) => {
+    const days = ['일', '월', '화', '수', '목', '금', '토'];
+    const p = parseClinicDateParts(dateStr);
+    if (p) {
+      const d = new Date(p.year, p.month - 1, p.day);
+      return `${p.year}. ${String(p.month).padStart(2, '0')}. ${String(p.day).padStart(2, '0')}. (${days[d.getDay()]})`;
+    }
+    try {
+      const d = new Date(dateStr);
+      return `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}. (${days[d.getDay()]})`;
+    } catch {
+      return '--';
+    }
+  };
+
   const formatBaseDateDisplay = (dateStr: string) => {
     try {
       const d = new Date(`${dateStr}T00:00:00`);
@@ -810,17 +827,27 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
         {/* 상세 보기 */}
         <div className="flex-1 overflow-y-auto p-6">
           {selectedTranscript ? (
-            <div className="max-w-4xl mx-auto space-y-6">
-              {/* 상단 액션 바 */}
+            <div className="max-w-4xl mx-auto space-y-4">
+              {/* 상단: 환자 메타 한 줄 + 액션 */}
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3 text-sm">
                   <span className="text-lg font-semibold text-gray-800">
                     {getDisplayPatientName(selectedTranscript)}
                   </span>
-                  {getSoapStatusBadge(selectedTranscript.soap_status)}
+                  {(selectedTranscript.chart_number || patientMap.get(selectedTranscript.patient_id)?.chart_no) && (
+                    <span className="text-gray-400 text-xs">
+                      #{selectedTranscript.chart_number || patientMap.get(selectedTranscript.patient_id)?.chart_no}
+                    </span>
+                  )}
+                  <span className="text-gray-300">|</span>
+                  <span className="text-gray-600">
+                    {formatDateWithWeekday(getDisplayDateTime(selectedTranscript))}
+                  </span>
+                  <span className="text-gray-600">
+                    {formatTime(getDisplayDateTime(selectedTranscript))}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {/* 내보내기 */}
                   <button
                     onClick={handleExport}
                     className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
@@ -828,8 +855,6 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                     <i className="fas fa-download mr-1"></i>
                     내보내기
                   </button>
-
-                  {/* SOAP 재처리 */}
                   {(selectedTranscript.soap_status === 'failed' ||
                     selectedTranscript.soap_status === 'pending') && (
                     <button
@@ -841,8 +866,6 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                       {isReprocessing ? '처리중...' : 'SOAP 재처리'}
                     </button>
                   )}
-
-                  {/* 삭제 */}
                   <button
                     onClick={() => setShowDeleteConfirm(true)}
                     className="px-3 py-2 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
@@ -856,7 +879,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
               {/* 파이프라인 단계 표시기 */}
               <div className="flex items-center gap-1.5">
                 {getPipelineSteps(selectedTranscript).map((step, idx, arr) => (
-                  <Fragment key={step.label}>
+                  <Fragment key={idx}>
                     <span className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full ${
                       step.status === 'done' ? 'bg-green-100 text-green-700' :
                       step.status === 'in-progress' ? 'bg-blue-100 text-blue-700 animate-pulse' :
@@ -874,135 +897,45 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                 ))}
               </div>
 
-              {/* 메타 정보 */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                <div className="grid grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-500">의료진</span>
-                    <p className="font-medium text-gray-800">{selectedTranscript.doctor_name}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">진료유형</span>
-                    <p className="font-medium text-gray-800">{selectedTranscript.acting_type}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">녹음시간</span>
-                    <p className="font-medium text-gray-800">
-                      {formatDuration(selectedTranscript.duration_sec)}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">일시</span>
-                    <p className="font-medium text-gray-800">
-                      {formatDate(getDisplayDateTime(selectedTranscript), 'yyyy-MM-dd HH:mm')}
-                    </p>
-                  </div>
-                </div>
+              {/* 탭 바 */}
+              <div className="flex items-center border-b border-gray-200">
+                {([
+                  ['raw', '녹취원본'],
+                  ['diarized', '화자분리'],
+                  ['soap', 'SOAP'],
+                ] as [DetailTab, string][]).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setDetailTab(key)}
+                    className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                      detailTab === key
+                        ? 'border-clinic-primary text-clinic-primary'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
 
-              {/* 녹취록 */}
+              {/* 탭 컨텐츠 */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <h2 className="font-semibold text-gray-800">
-                      <i className="fas fa-file-audio text-clinic-primary mr-2"></i>
-                      녹취록
-                    </h2>
-                    {/* 화자분리 토글 */}
-                    {selectedTranscript.diarized_transcript && (
-                      <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-                        <button
-                          onClick={() => setShowDiarized(false)}
-                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                            !showDiarized
-                              ? 'bg-white text-gray-800 shadow-sm'
-                              : 'text-gray-500 hover:text-gray-700'
-                          }`}
-                        >
-                          원본
-                        </button>
-                        <button
-                          onClick={() => setShowDiarized(true)}
-                          className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                            showDiarized
-                              ? 'bg-white text-gray-800 shadow-sm'
-                              : 'text-gray-500 hover:text-gray-700'
-                          }`}
-                        >
-                          화자분리
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {/* 화자분리 버튼 */}
-                    {!selectedTranscript.diarized_transcript && (
+                {/* 녹취원본 탭 */}
+                {detailTab === 'raw' && (
+                  <>
+                    <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-end">
                       <button
-                        onClick={handleDiarize}
-                        disabled={isDiarizing}
-                        className="text-sm text-blue-500 hover:text-blue-700 disabled:opacity-50"
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedTranscript.transcript || '');
+                          alert('녹취 내용이 클립보드에 복사되었습니다.');
+                        }}
+                        className="text-sm text-gray-500 hover:text-gray-700"
                       >
-                        <i className={`fas fa-users mr-1 ${isDiarizing ? 'animate-pulse' : ''}`}></i>
-                        {isDiarizing ? '분리중...' : '화자분리'}
+                        <i className="fas fa-copy mr-1"></i>
+                        복사
                       </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        const content = showDiarized && selectedTranscript.diarized_transcript
-                          ? selectedTranscript.diarized_transcript
-                          : selectedTranscript.transcript;
-                        navigator.clipboard.writeText(content || '');
-                        alert('녹취 내용이 클립보드에 복사되었습니다.');
-                      }}
-                      className="text-sm text-gray-500 hover:text-gray-700"
-                    >
-                      <i className="fas fa-copy mr-1"></i>
-                      복사
-                    </button>
-                  </div>
-                </div>
-                <div className="p-6">
-                  {/* 화자분리 표시 또는 원본 표시 */}
-                  {showDiarized && selectedTranscript.diarized_transcript ? (
-                    <div className="space-y-3">
-                      {selectedTranscript.diarized_transcript.split('\n').map((line, idx) => {
-                        const trimmed = line.trim();
-                        if (!trimmed) return null;
-
-                        const isDoctor = trimmed.startsWith('[의사]');
-                        const isPatient = trimmed.startsWith('[환자]');
-                        const text = trimmed.replace(/^\[(의사|환자)\]\s*/, '');
-
-                        if (isDoctor) {
-                          return (
-                            <div key={idx} className="flex gap-3">
-                              <div className="flex-shrink-0 w-16 text-right">
-                                <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
-                                  의사
-                                </span>
-                              </div>
-                              <p className="flex-1 text-gray-700 text-sm leading-relaxed">{text}</p>
-                            </div>
-                          );
-                        } else if (isPatient) {
-                          return (
-                            <div key={idx} className="flex gap-3">
-                              <div className="flex-shrink-0 w-16 text-right">
-                                <span className="inline-block px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium">
-                                  환자
-                                </span>
-                              </div>
-                              <p className="flex-1 text-gray-700 text-sm leading-relaxed">{text}</p>
-                            </div>
-                          );
-                        }
-                        return (
-                          <p key={idx} className="text-gray-500 text-sm pl-[76px]">{trimmed}</p>
-                        );
-                      })}
                     </div>
-                  ) : (
-                    <>
+                    <div className="p-6">
                       <p className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm">
                         {selectedTranscript.transcript || '녹취 내용이 없습니다.'}
                       </p>
@@ -1018,96 +951,192 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                             className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 text-sm"
                           >
                             <i className={`fas fa-redo mr-1 ${isReprocessing ? 'animate-spin' : ''}`}></i>
-                            {isReprocessing ? '변환 중...' : '🎙️ 녹취 재시도'}
+                            {isReprocessing ? '변환 중...' : '녹취 재시도'}
                           </button>
                         </div>
                       )}
-                    </>
-                  )}
-                </div>
-                {selectedTranscript.audio_path && (
-                  <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
-                    <audio
-                      controls
-                      src={`${API_URL}/api/files/${selectedTranscript.audio_path}`}
-                      className="w-full h-10"
-                    />
-                  </div>
+                    </div>
+                    {selectedTranscript.audio_path && (
+                      <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
+                        <audio
+                          controls
+                          src={`${API_URL}/api/files/${selectedTranscript.audio_path}`}
+                          className="w-full h-10"
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* 화자분리 탭 */}
+                {detailTab === 'diarized' && (
+                  <>
+                    <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {!selectedTranscript.diarized_transcript && (
+                          <button
+                            onClick={handleDiarize}
+                            disabled={isDiarizing}
+                            className="text-sm text-blue-500 hover:text-blue-700 disabled:opacity-50"
+                          >
+                            <i className={`fas fa-users mr-1 ${isDiarizing ? 'animate-pulse' : ''}`}></i>
+                            {isDiarizing ? '분리중...' : '화자분리 실행'}
+                          </button>
+                        )}
+                      </div>
+                      {selectedTranscript.diarized_transcript && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedTranscript.diarized_transcript || '');
+                            alert('화자분리 내용이 클립보드에 복사되었습니다.');
+                          }}
+                          className="text-sm text-gray-500 hover:text-gray-700"
+                        >
+                          <i className="fas fa-copy mr-1"></i>
+                          복사
+                        </button>
+                      )}
+                    </div>
+                    <div className="p-6">
+                      {selectedTranscript.diarized_transcript ? (
+                        <div className="space-y-3">
+                          {selectedTranscript.diarized_transcript.split('\n').map((line, idx) => {
+                            const trimmed = line.trim();
+                            if (!trimmed) return null;
+                            const isDoctor = trimmed.startsWith('[의사]');
+                            const isPatient = trimmed.startsWith('[환자]');
+                            const text = trimmed.replace(/^\[(의사|환자)\]\s*/, '');
+                            if (isDoctor) {
+                              return (
+                                <div key={idx} className="flex gap-3">
+                                  <div className="flex-shrink-0 w-16 text-right">
+                                    <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
+                                      의사
+                                    </span>
+                                  </div>
+                                  <p className="flex-1 text-gray-700 text-sm leading-relaxed">{text}</p>
+                                </div>
+                              );
+                            } else if (isPatient) {
+                              return (
+                                <div key={idx} className="flex gap-3">
+                                  <div className="flex-shrink-0 w-16 text-right">
+                                    <span className="inline-block px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium">
+                                      환자
+                                    </span>
+                                  </div>
+                                  <p className="flex-1 text-gray-700 text-sm leading-relaxed">{text}</p>
+                                </div>
+                              );
+                            }
+                            return (
+                              <p key={idx} className="text-gray-500 text-sm pl-[76px]">{trimmed}</p>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-gray-400">
+                          <i className="fas fa-users text-3xl mb-2 block"></i>
+                          <p>화자분리 결과가 없습니다</p>
+                          <p className="text-xs mt-1">위 버튼을 눌러 화자분리를 실행하세요</p>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* SOAP 탭 */}
+                {detailTab === 'soap' && (
+                  <>
+                    {selectedTranscript.soap_status === 'completed' ? (
+                      <>
+                        <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-end">
+                          <button
+                            onClick={() => {
+                              const soap = `S: ${selectedTranscript.soap_subjective || '-'}\n\nO: ${selectedTranscript.soap_objective || '-'}\n\nA: ${selectedTranscript.soap_assessment || '-'}\n\nP: ${selectedTranscript.soap_plan || '-'}`;
+                              navigator.clipboard.writeText(soap);
+                              alert('SOAP 내용이 클립보드에 복사되었습니다.');
+                            }}
+                            className="text-sm text-gray-500 hover:text-gray-700"
+                          >
+                            <i className="fas fa-copy mr-1"></i>
+                            복사
+                          </button>
+                        </div>
+                        <div className="divide-y divide-gray-100">
+                          <div className="p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="w-7 h-7 flex items-center justify-center bg-blue-100 text-blue-700 rounded-lg font-bold text-sm">S</span>
+                              <span className="font-medium text-gray-700">Subjective (주관적 증상)</span>
+                            </div>
+                            <p className="text-gray-600 pl-9 whitespace-pre-wrap text-sm">
+                              {selectedTranscript.soap_subjective || '-'}
+                            </p>
+                          </div>
+                          <div className="p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="w-7 h-7 flex items-center justify-center bg-green-100 text-green-700 rounded-lg font-bold text-sm">O</span>
+                              <span className="font-medium text-gray-700">Objective (객관적 소견)</span>
+                            </div>
+                            <p className="text-gray-600 pl-9 whitespace-pre-wrap text-sm">
+                              {selectedTranscript.soap_objective || '-'}
+                            </p>
+                          </div>
+                          <div className="p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="w-7 h-7 flex items-center justify-center bg-yellow-100 text-yellow-700 rounded-lg font-bold text-sm">A</span>
+                              <span className="font-medium text-gray-700">Assessment (평가)</span>
+                            </div>
+                            <p className="text-gray-600 pl-9 whitespace-pre-wrap text-sm">
+                              {selectedTranscript.soap_assessment || '-'}
+                            </p>
+                          </div>
+                          <div className="p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="w-7 h-7 flex items-center justify-center bg-purple-100 text-purple-700 rounded-lg font-bold text-sm">P</span>
+                              <span className="font-medium text-gray-700">Plan (계획)</span>
+                            </div>
+                            <p className="text-gray-600 pl-9 whitespace-pre-wrap text-sm">
+                              {selectedTranscript.soap_plan || '-'}
+                            </p>
+                          </div>
+                        </div>
+                      </>
+                    ) : selectedTranscript.soap_status === 'processing' ? (
+                      <div className="p-6 text-center">
+                        <i className="fas fa-spinner fa-spin text-blue-500 text-2xl mb-2 block"></i>
+                        <p className="text-blue-700">SOAP 변환 중입니다...</p>
+                      </div>
+                    ) : selectedTranscript.soap_status === 'failed' ? (
+                      <div className="p-6 text-center">
+                        <i className="fas fa-exclamation-circle text-red-500 text-2xl mb-2 block"></i>
+                        <p className="text-red-700 mb-3">SOAP 변환에 실패했습니다</p>
+                        <button
+                          onClick={() => handleServerRetry(selectedTranscript.id)}
+                          disabled={isReprocessing}
+                          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                        >
+                          <i className={`fas fa-redo mr-1 ${isReprocessing ? 'animate-spin' : ''}`}></i>
+                          {isReprocessing ? '처리중...' : '서버 재처리'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="p-6 text-center">
+                        <i className="fas fa-clock text-gray-400 text-2xl mb-2 block"></i>
+                        <p className="text-gray-600 mb-3">SOAP 변환 대기 중</p>
+                        <button
+                          onClick={handleReprocessSoap}
+                          disabled={isReprocessing}
+                          className="px-4 py-2 bg-clinic-primary text-white rounded-lg hover:bg-clinic-primary/90 transition-colors disabled:opacity-50"
+                        >
+                          <i className={`fas fa-play mr-1 ${isReprocessing ? 'animate-spin' : ''}`}></i>
+                          {isReprocessing ? '처리중...' : 'SOAP 생성'}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
-
-              {/* SOAP */}
-              {selectedTranscript.soap_status === 'completed' && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                    <h2 className="font-semibold text-gray-800">
-                      <i className="fas fa-notes-medical text-green-600 mr-2"></i>
-                      SOAP 기록
-                    </h2>
-                    <button
-                      onClick={() => {
-                        const soap = `S: ${selectedTranscript.soap_subjective || '-'}\n\nO: ${selectedTranscript.soap_objective || '-'}\n\nA: ${selectedTranscript.soap_assessment || '-'}\n\nP: ${selectedTranscript.soap_plan || '-'}`;
-                        navigator.clipboard.writeText(soap);
-                        alert('SOAP 내용이 클립보드에 복사되었습니다.');
-                      }}
-                      className="text-sm text-gray-500 hover:text-gray-700"
-                    >
-                      <i className="fas fa-copy mr-1"></i>
-                      복사
-                    </button>
-                  </div>
-                  <div className="divide-y divide-gray-100">
-                    {/* Subjective */}
-                    <div className="p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="w-7 h-7 flex items-center justify-center bg-blue-100 text-blue-700 rounded-lg font-bold text-sm">
-                          S
-                        </span>
-                        <span className="font-medium text-gray-700">Subjective (주관적 증상)</span>
-                      </div>
-                      <p className="text-gray-600 pl-9 whitespace-pre-wrap text-sm">
-                        {selectedTranscript.soap_subjective || '-'}
-                      </p>
-                    </div>
-                    {/* Objective */}
-                    <div className="p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="w-7 h-7 flex items-center justify-center bg-green-100 text-green-700 rounded-lg font-bold text-sm">
-                          O
-                        </span>
-                        <span className="font-medium text-gray-700">Objective (객관적 소견)</span>
-                      </div>
-                      <p className="text-gray-600 pl-9 whitespace-pre-wrap text-sm">
-                        {selectedTranscript.soap_objective || '-'}
-                      </p>
-                    </div>
-                    {/* Assessment */}
-                    <div className="p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="w-7 h-7 flex items-center justify-center bg-yellow-100 text-yellow-700 rounded-lg font-bold text-sm">
-                          A
-                        </span>
-                        <span className="font-medium text-gray-700">Assessment (평가)</span>
-                      </div>
-                      <p className="text-gray-600 pl-9 whitespace-pre-wrap text-sm">
-                        {selectedTranscript.soap_assessment || '-'}
-                      </p>
-                    </div>
-                    {/* Plan */}
-                    <div className="p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="w-7 h-7 flex items-center justify-center bg-purple-100 text-purple-700 rounded-lg font-bold text-sm">
-                          P
-                        </span>
-                        <span className="font-medium text-gray-700">Plan (계획)</span>
-                      </div>
-                      <p className="text-gray-600 pl-9 whitespace-pre-wrap text-sm">
-                        {selectedTranscript.soap_plan || '-'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* 서버 사이드 처리 상태 */}
               {selectedTranscript.processing_status && selectedTranscript.processing_status !== 'completed' && (
@@ -1177,42 +1206,6 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                       </div>
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* SOAP 처리중/실패 상태 (processing_status가 없는 경우 기존 로직) */}
-              {(!selectedTranscript.processing_status || selectedTranscript.processing_status === 'completed') && selectedTranscript.soap_status === 'processing' && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 text-center">
-                  <i className="fas fa-spinner fa-spin text-blue-500 text-2xl mb-2"></i>
-                  <p className="text-blue-700">SOAP 변환 중입니다...</p>
-                </div>
-              )}
-              {(!selectedTranscript.processing_status || selectedTranscript.processing_status === 'completed') && selectedTranscript.soap_status === 'failed' && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-                  <i className="fas fa-exclamation-circle text-red-500 text-2xl mb-2"></i>
-                  <p className="text-red-700 mb-3">SOAP 변환에 실패했습니다</p>
-                  <button
-                    onClick={() => handleServerRetry(selectedTranscript.id)}
-                    disabled={isReprocessing}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-                  >
-                    <i className={`fas fa-redo mr-1 ${isReprocessing ? 'animate-spin' : ''}`}></i>
-                    {isReprocessing ? '처리중...' : '서버 재처리'}
-                  </button>
-                </div>
-              )}
-              {(!selectedTranscript.processing_status || selectedTranscript.processing_status === 'completed') && selectedTranscript.soap_status === 'pending' && (
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
-                  <i className="fas fa-clock text-gray-400 text-2xl mb-2"></i>
-                  <p className="text-gray-600 mb-3">SOAP 변환 대기 중</p>
-                  <button
-                    onClick={handleReprocessSoap}
-                    disabled={isReprocessing}
-                    className="px-4 py-2 bg-clinic-primary text-white rounded-lg hover:bg-clinic-primary/90 transition-colors disabled:opacity-50"
-                  >
-                    <i className={`fas fa-play mr-1 ${isReprocessing ? 'animate-spin' : ''}`}></i>
-                    {isReprocessing ? '처리중...' : 'SOAP 생성'}
-                  </button>
                 </div>
               )}
             </div>
