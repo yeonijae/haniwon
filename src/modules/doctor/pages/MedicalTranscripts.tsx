@@ -829,7 +829,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
           {selectedTranscript ? (
             <div className="max-w-4xl mx-auto space-y-4">
               {/* 상단: 메타 + 파이프라인 + 액션 단일 행 */}
-              <div className="flex items-center gap-2 flex-wrap text-sm">
+              <div className="flex items-center gap-2 flex-wrap text-[15px] py-0.5">
                 <span className="font-semibold text-gray-800 whitespace-nowrap">
                   {getDisplayPatientName(selectedTranscript)}
                   {(selectedTranscript.chart_number || patientMap.get(selectedTranscript.patient_id)?.chart_no) && (
@@ -854,7 +854,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                 <div className="flex items-center gap-1">
                   {getPipelineSteps(selectedTranscript).map((step, idx, arr) => (
                     <Fragment key={idx}>
-                      <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ${
+                      <span className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full ${
                         step.status === 'done' ? 'bg-green-100 text-green-700' :
                         step.status === 'in-progress' ? 'bg-blue-100 text-blue-700 animate-pulse' :
                         step.status === 'failed' ? 'bg-red-100 text-red-700' :
@@ -876,7 +876,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                     <button
                       onClick={handleReprocessSoap}
                       disabled={isReprocessing}
-                      className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                      className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
                       title={isReprocessing ? '처리중...' : 'SOAP 재처리'}
                     >
                       <i className={`fas fa-redo text-sm ${isReprocessing ? 'animate-spin' : ''}`}></i>
@@ -884,14 +884,14 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                   )}
                   <button
                     onClick={handleExport}
-                    className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                    className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
                     title="내보내기"
                   >
                     <i className="fas fa-download text-sm"></i>
                   </button>
                   <button
                     onClick={() => setShowDeleteConfirm(true)}
-                    className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
+                    className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
                     title="삭제"
                   >
                     <i className="fas fa-trash text-sm"></i>
