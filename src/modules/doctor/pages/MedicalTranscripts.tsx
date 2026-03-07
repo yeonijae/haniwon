@@ -828,73 +828,75 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
         <div className="flex-1 overflow-y-auto p-6">
           {selectedTranscript ? (
             <div className="max-w-4xl mx-auto space-y-4">
-              {/* 상단: 환자 메타 한 줄 + 액션 */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="text-lg font-semibold text-gray-800">
-                    {getDisplayPatientName(selectedTranscript)}
-                  </span>
+              {/* 상단: 메타 + 파이프라인 + 액션 단일 행 */}
+              <div className="flex items-center gap-2 flex-wrap text-sm">
+                <span className="font-semibold text-gray-800 whitespace-nowrap">
+                  {getDisplayPatientName(selectedTranscript)}
                   {(selectedTranscript.chart_number || patientMap.get(selectedTranscript.patient_id)?.chart_no) && (
-                    <span className="text-gray-400 text-xs">
-                      #{selectedTranscript.chart_number || patientMap.get(selectedTranscript.patient_id)?.chart_no}
+                    <span className="text-gray-400 text-xs ml-0.5">
+                      ({selectedTranscript.chart_number || patientMap.get(selectedTranscript.patient_id)?.chart_no})
                     </span>
                   )}
-                  <span className="text-gray-300">|</span>
-                  <span className="text-gray-600">
-                    {formatDateWithWeekday(getDisplayDateTime(selectedTranscript))}
-                  </span>
-                  <span className="text-gray-600">
-                    {formatTime(getDisplayDateTime(selectedTranscript))}
-                  </span>
+                </span>
+                <span className="text-gray-300">|</span>
+                <span className="text-gray-600 whitespace-nowrap">
+                  {formatDateWithWeekday(getDisplayDateTime(selectedTranscript))}
+                </span>
+                <span className="text-gray-300">|</span>
+                <span className="text-gray-600 whitespace-nowrap">
+                  {formatTime(getDisplayDateTime(selectedTranscript))}
+                </span>
+                <span className="text-gray-300">|</span>
+                <span className="text-gray-600 whitespace-nowrap">
+                  {selectedTranscript.doctor_name}
+                </span>
+                <span className="text-gray-300">|</span>
+                <div className="flex items-center gap-1">
+                  {getPipelineSteps(selectedTranscript).map((step, idx, arr) => (
+                    <Fragment key={idx}>
+                      <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ${
+                        step.status === 'done' ? 'bg-green-100 text-green-700' :
+                        step.status === 'in-progress' ? 'bg-blue-100 text-blue-700 animate-pulse' :
+                        step.status === 'failed' ? 'bg-red-100 text-red-700' :
+                        'bg-gray-100 text-gray-400'
+                      }`}>
+                        {step.status === 'done' && <i className="fas fa-check text-[10px] mr-1"></i>}
+                        {step.status === 'failed' && <i className="fas fa-times text-[10px] mr-1"></i>}
+                        {step.label}
+                      </span>
+                      {idx < arr.length - 1 && (
+                        <i className="fas fa-chevron-right text-[8px] text-gray-300"></i>
+                      )}
+                    </Fragment>
+                  ))}
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleExport}
-                    className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    <i className="fas fa-download mr-1"></i>
-                    내보내기
-                  </button>
+                <div className="flex items-center gap-1 ml-auto">
                   {(selectedTranscript.soap_status === 'failed' ||
                     selectedTranscript.soap_status === 'pending') && (
                     <button
                       onClick={handleReprocessSoap}
                       disabled={isReprocessing}
-                      className="px-3 py-2 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                      className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                      title={isReprocessing ? '처리중...' : 'SOAP 재처리'}
                     >
-                      <i className={`fas fa-redo mr-1 ${isReprocessing ? 'animate-spin' : ''}`}></i>
-                      {isReprocessing ? '처리중...' : 'SOAP 재처리'}
+                      <i className={`fas fa-redo text-sm ${isReprocessing ? 'animate-spin' : ''}`}></i>
                     </button>
                   )}
                   <button
-                    onClick={() => setShowDeleteConfirm(true)}
-                    className="px-3 py-2 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
+                    onClick={handleExport}
+                    className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="내보내기"
                   >
-                    <i className="fas fa-trash mr-1"></i>
-                    삭제
+                    <i className="fas fa-download text-sm"></i>
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="p-1.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
+                    title="삭제"
+                  >
+                    <i className="fas fa-trash text-sm"></i>
                   </button>
                 </div>
-              </div>
-
-              {/* 파이프라인 단계 표시기 */}
-              <div className="flex items-center gap-1.5">
-                {getPipelineSteps(selectedTranscript).map((step, idx, arr) => (
-                  <Fragment key={idx}>
-                    <span className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full ${
-                      step.status === 'done' ? 'bg-green-100 text-green-700' :
-                      step.status === 'in-progress' ? 'bg-blue-100 text-blue-700 animate-pulse' :
-                      step.status === 'failed' ? 'bg-red-100 text-red-700' :
-                      'bg-gray-100 text-gray-400'
-                    }`}>
-                      {step.status === 'done' && <i className="fas fa-check text-[10px] mr-1"></i>}
-                      {step.status === 'failed' && <i className="fas fa-times text-[10px] mr-1"></i>}
-                      {step.label}
-                    </span>
-                    {idx < arr.length - 1 && (
-                      <i className="fas fa-chevron-right text-[8px] text-gray-300"></i>
-                    )}
-                  </Fragment>
-                ))}
               </div>
 
               {/* 탭 바 */}
