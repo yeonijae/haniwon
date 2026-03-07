@@ -8043,7 +8043,7 @@
   grid-template-columns: 24px 40px 80px 32px 70px 55px 55px;
   /* #, 시간, 환자, 담당, 총수납, 본부금, 비급여 */
   gap: 4px;
-  padding: 6px 16px;
+  padding: 6px 4px;
   cursor: pointer;
   font-size: 13px;
   align-items: center;
