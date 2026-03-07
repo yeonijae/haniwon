@@ -35,7 +35,6 @@ interface PatientInfo {
 }
 
 type ViewMode = 'day' | '3weeks' | '3months' | 'all';
-type SoapFilter = 'all' | 'completed' | 'processing' | 'failed' | 'pending';
 
 const MedicalTranscripts: React.FC = () => {
   // 상태 관리
@@ -49,8 +48,6 @@ const MedicalTranscripts: React.FC = () => {
 
   // 필터 상태
   const [searchQuery, setSearchQuery] = useState('');
-  const [actingTypeFilter, setActingTypeFilter] = useState<string>('all');
-  const [soapFilter, setSoapFilter] = useState<SoapFilter>('all');
 
   // 작업 상태
   const [isReprocessing, setIsReprocessing] = useState(false);
@@ -58,12 +55,6 @@ const MedicalTranscripts: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDiarized, setShowDiarized] = useState(true); // 화자분리 보기 토글
-
-  // 진료 유형 목록
-  const uniqueActingTypes = useMemo(() => {
-    const types = [...new Set(transcripts.map((t) => t.acting_type))];
-    return types.filter(Boolean);
-  }, [transcripts]);
 
   // 필터링된 녹취록
   const filteredTranscripts = useMemo(() => {
@@ -83,15 +74,9 @@ const MedicalTranscripts: React.FC = () => {
         if (!matchesSearch) return false;
       }
 
-      // 진료 유형 필터
-      if (actingTypeFilter !== 'all' && t.acting_type !== actingTypeFilter) return false;
-
-      // SOAP 상태 필터
-      if (soapFilter !== 'all' && t.soap_status !== soapFilter) return false;
-
       return true;
     });
-  }, [transcripts, searchQuery, actingTypeFilter, soapFilter, patientMap, chartNumberPatientMap]);
+  }, [transcripts, searchQuery, patientMap, chartNumberPatientMap]);
 
   // 파이프라인 상태 배지 카운트 (전체 조회 결과 기준)
   const pipelineStats = useMemo(() => {
@@ -591,127 +576,95 @@ const MedicalTranscripts: React.FC = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // 필터 초기화
-  const resetFilters = () => {
-    setSearchQuery('');
-    setActingTypeFilter('all');
-    setSoapFilter('all');
+  const formatBaseDateDisplay = (dateStr: string) => {
+    try {
+      const d = new Date(`${dateStr}T00:00:00`);
+      const days = ['일', '월', '화', '수', '목', '금', '토'];
+      return `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}. (${days[d.getDay()]})`;
+    } catch {
+      return dateStr;
+    }
   };
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* 헤더 */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        {/* Row 1: 제목 + 파이프라인 배지 + 기준일자 */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold text-gray-800">
-              <i className="fas fa-microphone-alt text-clinic-primary mr-2"></i>
-              녹취록 관리
-            </h1>
-            {/* 파이프라인 상태 배지 */}
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">
-                녹음 저장중 <span className="font-bold ml-0.5">{pipelineStats.saving}</span>
-              </span>
-              <span className="px-2.5 py-1 text-xs bg-yellow-100 text-yellow-700 rounded-full">
-                녹취 중 <span className="font-bold ml-0.5">{pipelineStats.transcribing}</span>
-              </span>
-              <span className="px-2.5 py-1 text-xs bg-green-100 text-green-700 rounded-full">
-                녹취 완료 <span className="font-bold ml-0.5">{pipelineStats.done}</span>
-              </span>
-            </div>
-          </div>
-          {/* 기준일자 선택 */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">기준일자</span>
+      <div className="bg-white border-b border-gray-200 px-6 py-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setBaseDate(format(subDays(new Date(baseDate), 1), 'yyyy-MM-dd'))}
+            className="occ-date-btn"
+          >
+            ◀
+          </button>
+          <div className="occ-date-wrap" style={{ width: 'auto' }}>
             <input
               type="date"
               value={baseDate}
               onChange={(e) => setBaseDate(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+              className="occ-date-hidden"
+              id="transcript-base-date-picker"
             />
             <button
+              className="occ-date-display"
+              onClick={() => {
+                const el = document.getElementById('transcript-base-date-picker') as HTMLInputElement;
+                el?.showPicker?.();
+              }}
+            >
+              {formatBaseDateDisplay(baseDate)}
+            </button>
+          </div>
+          <button
+            onClick={() => setBaseDate(format(subDays(new Date(baseDate), -1), 'yyyy-MM-dd'))}
+            className="occ-date-btn"
+          >
+            ▶
+          </button>
+          {baseDate !== format(new Date(), 'yyyy-MM-dd') && (
+            <button
               onClick={() => setBaseDate(format(new Date(), 'yyyy-MM-dd'))}
-              className="px-3 py-1.5 text-sm text-clinic-primary hover:bg-clinic-primary/10 rounded-lg transition-colors"
+              className="occ-today-btn"
             >
               오늘
             </button>
-          </div>
-        </div>
+          )}
 
-        {/* Row 2: 조회 모드 + 검색/필터 */}
-        <div className="flex items-center gap-3">
-          {/* 조회 모드 선택 */}
-          <div className="flex items-center bg-gray-100 rounded-lg p-1">
+          <div className="occ-filter-group occ-filter-patient">
             {([['day', '일별'], ['3weeks', '3주'], ['3months', '3개월'], ['all', '전체']] as [ViewMode, string][]).map(([mode, label]) => (
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  viewMode === mode
-                    ? 'bg-white text-clinic-primary shadow-sm'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
+                className={`occ-filter-btn ${viewMode === mode ? 'active' : ''}`}
               >
                 {label}
               </button>
             ))}
           </div>
 
-          <div className="w-px h-6 bg-gray-300"></div>
+          <div className="flex items-center gap-2 ml-2">
+            <span className="px-2.5 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">
+              녹음 저장중 <span className="font-bold ml-0.5">{pipelineStats.saving}</span>
+            </span>
+            <span className="px-2.5 py-1 text-xs bg-yellow-100 text-yellow-700 rounded-full">
+              녹취 중 <span className="font-bold ml-0.5">{pipelineStats.transcribing}</span>
+            </span>
+            <span className="px-2.5 py-1 text-xs bg-green-100 text-green-700 rounded-full">
+              녹취 완료 <span className="font-bold ml-0.5">{pipelineStats.done}</span>
+            </span>
+          </div>
 
-          {/* 검색 */}
-          <div className="relative flex-1 max-w-md">
-            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+          <div className="relative ml-auto" style={{ width: '100px' }}>
+            <i className="fas fa-search absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="환자명, 차트번호, 녹취 내용, 의료진 검색..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-clinic-primary focus:border-clinic-primary"
+              placeholder="검색"
+              className="w-full pl-7 pr-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-1 focus:ring-clinic-primary focus:border-clinic-primary"
             />
           </div>
 
-          {/* 진료 유형 필터 */}
-          <select
-            value={actingTypeFilter}
-            onChange={(e) => setActingTypeFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-          >
-            <option value="all">모든 유형</option>
-            {uniqueActingTypes.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-
-          {/* SOAP 상태 필터 */}
-          <select
-            value={soapFilter}
-            onChange={(e) => setSoapFilter(e.target.value as SoapFilter)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-          >
-            <option value="all">모든 상태</option>
-            <option value="completed">완료</option>
-            <option value="processing">처리중</option>
-            <option value="failed">실패</option>
-            <option value="pending">대기</option>
-          </select>
-
-          {/* 필터 초기화 */}
-          {(searchQuery || actingTypeFilter !== 'all' || soapFilter !== 'all') && (
-            <button
-              onClick={resetFilters}
-              className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <i className="fas fa-times mr-1"></i>
-              초기화
-            </button>
-          )}
-
-          {/* 새로고침 */}
           <button
             onClick={fetchTranscripts}
             disabled={loading}
