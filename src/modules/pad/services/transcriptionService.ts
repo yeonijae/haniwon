@@ -490,6 +490,7 @@ export async function processRecording(
     actingType: string;
     patientInfo?: string;
     saveAudio?: boolean;
+    autoPipeline?: boolean; // 저장 후 자동 파이프라인 실행 (기본: true)
   }
 ): Promise<{
   success: boolean;
@@ -497,6 +498,8 @@ export async function processRecording(
   transcriptId?: number;
   error?: string;
 }> {
+  const autoPipeline = params.autoPipeline !== false; // 기본값 true
+
   try {
     // 1. 음성→텍스트 변환
     const result = await transcribeAudio(audioBlob, {
@@ -527,7 +530,7 @@ export async function processRecording(
       audioPath,
       transcript: result.transcript,
       durationSec: Math.floor(result.duration),
-      soapStatus: 'processing',
+      soapStatus: autoPipeline ? 'processing' : 'pending',
     });
 
     if (!transcriptId) {
@@ -538,36 +541,17 @@ export async function processRecording(
       };
     }
 
-    // 4. 백그라운드에서 화자 분리 + SOAP 변환 (비동기)
-    (async () => {
-      try {
-        // 4-1. 화자 분리
-        const diarizationResult = await diarizeTranscript(result.transcript, params.actingType);
-        if (diarizationResult.success && diarizationResult.formatted) {
-          await updateDiarizedTranscript(transcriptId, diarizationResult.formatted);
-        }
-
-        // 4-2. SOAP 변환
-        const soapResult = await convertToSoap(result.transcript, params.actingType, params.patientInfo);
-        if (soapResult.success) {
-          await updateSoapStatus(transcriptId, {
-            subjective: soapResult.subjective,
-            objective: soapResult.objective,
-            assessment: soapResult.assessment,
-            plan: soapResult.plan,
-            status: 'completed',
-          });
-        } else {
-          await updateSoapStatus(transcriptId, {
-            status: 'failed',
-          });
-        }
-      } catch {
-        await updateSoapStatus(transcriptId, {
-          status: 'failed',
-        });
-      }
-    })();
+    // 4. 자동 파이프라인: fire-and-forget (화자 분리 → SOAP)
+    if (autoPipeline) {
+      runTranscriptPipeline(
+        transcriptId,
+        result.transcript,
+        params.actingType,
+        { patientInfo: params.patientInfo }
+      ).catch(err => {
+        console.error(`[Pipeline] fire-and-forget 오류 (transcriptId=${transcriptId}):`, err);
+      });
+    }
 
     return {
       success: true,
@@ -581,6 +565,155 @@ export async function processRecording(
       transcript: '',
       error: error instanceof Error ? error.message : 'Unknown error',
     };
+  }
+}
+
+// ============ 자동 파이프라인 엔진 ============
+
+/**
+ * processing_status / processing_message 업데이트
+ */
+export async function updateProcessingStatus(
+  transcriptId: number,
+  status: 'uploading' | 'transcribing' | 'processing' | 'completed' | 'failed',
+  message?: string
+): Promise<boolean> {
+  const escapeSql = (str: string | null | undefined): string => {
+    if (str === null || str === undefined || str === '') return 'NULL';
+    return "'" + String(str).replace(/'/g, "''") + "'";
+  };
+
+  const sql = `
+    UPDATE medical_transcripts SET
+      processing_status = ${escapeSql(status)},
+      processing_message = ${escapeSql(message)},
+      updated_at = NOW()
+    WHERE id = ${transcriptId}
+  `;
+
+  try {
+    const response = await fetch(`${API_URL}/api/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql }),
+    });
+    const data = await response.json();
+    return data.success || data.rowcount > 0;
+  } catch (error) {
+    console.error('processing_status 업데이트 실패:', error);
+    return false;
+  }
+}
+
+// 동시 실행 방지용 Set
+const _runningPipelines = new Set<number>();
+
+/**
+ * 지수 백오프 재시도 헬퍼
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts: number = 3,
+  baseDelayMs: number = 1000
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts - 1) {
+        const delay = baseDelayMs * Math.pow(2, attempt); // 1s, 2s, 4s
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
+/**
+ * 녹취 자동 파이프라인: 화자 분리 → SOAP 생성
+ * - 중복 실행 방지 (transcriptId 기반)
+ * - 각 단계 실패 시 3회 재시도 (1s, 2s, 4s 백오프)
+ * - 상태를 processing_status / soap_status / processing_message에 기록
+ */
+export async function runTranscriptPipeline(
+  transcriptId: number,
+  transcript: string,
+  actingType: string,
+  options?: { patientInfo?: string }
+): Promise<void> {
+  // 중복 실행 방지
+  if (_runningPipelines.has(transcriptId)) {
+    console.warn(`[Pipeline] transcriptId=${transcriptId} 이미 실행 중 — 스킵`);
+    return;
+  }
+
+  // transcript 누락 시 안전하게 실패 처리
+  if (!transcript || transcript.trim() === '') {
+    console.warn(`[Pipeline] transcriptId=${transcriptId} transcript 텍스트 없음 — 스킵`);
+    await updateProcessingStatus(transcriptId, 'failed', '녹취 텍스트가 비어있어 파이프라인을 실행할 수 없습니다');
+    await updateSoapStatus(transcriptId, { status: 'failed' });
+    return;
+  }
+
+  _runningPipelines.add(transcriptId);
+
+  try {
+    // Step 1: 화자 분리 (diarization)
+    await updateProcessingStatus(transcriptId, 'processing', '화자 분리 진행 중...');
+
+    try {
+      const diarResult = await withRetry(async () => {
+        const r = await diarizeTranscript(transcript, actingType);
+        if (!r.success) throw new Error(r.error || 'Diarization failed');
+        return r;
+      });
+
+      if (diarResult.formatted) {
+        await updateDiarizedTranscript(transcriptId, diarResult.formatted);
+      }
+    } catch (diarError) {
+      const msg = diarError instanceof Error ? diarError.message : 'Unknown diarization error';
+      console.error(`[Pipeline] 화자 분리 3회 실패 (transcriptId=${transcriptId}):`, msg);
+      // 화자 분리 실패는 치명적이지 않음 — SOAP 진행
+      await updateProcessingStatus(transcriptId, 'processing', `화자 분리 실패(${msg}), SOAP 진행 중...`);
+    }
+
+    // Step 2: SOAP 생성
+    await updateSoapStatus(transcriptId, { status: 'processing' });
+
+    try {
+      const soapResult = await withRetry(async () => {
+        const r = await convertToSoap(transcript, actingType, options?.patientInfo);
+        if (!r.success) throw new Error(r.error || 'SOAP conversion failed');
+        return r;
+      });
+
+      await updateSoapStatus(transcriptId, {
+        subjective: soapResult.subjective,
+        objective: soapResult.objective,
+        assessment: soapResult.assessment,
+        plan: soapResult.plan,
+        status: 'completed',
+      });
+    } catch (soapError) {
+      const msg = soapError instanceof Error ? soapError.message : 'Unknown SOAP error';
+      console.error(`[Pipeline] SOAP 3회 실패 (transcriptId=${transcriptId}):`, msg);
+      await updateSoapStatus(transcriptId, { status: 'failed' });
+      await updateProcessingStatus(transcriptId, 'failed', `SOAP 변환 실패: ${msg}`);
+      return;
+    }
+
+    // 모든 단계 성공
+    await updateProcessingStatus(transcriptId, 'completed', null);
+    console.log(`[Pipeline] 완료 (transcriptId=${transcriptId})`);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown pipeline error';
+    console.error(`[Pipeline] 예기치 않은 오류 (transcriptId=${transcriptId}):`, msg);
+    await updateProcessingStatus(transcriptId, 'failed', msg);
+  } finally {
+    _runningPipelines.delete(transcriptId);
   }
 }
 

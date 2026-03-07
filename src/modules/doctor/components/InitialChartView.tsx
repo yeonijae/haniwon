@@ -160,9 +160,9 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, chartId, st
 
       const transcript = result.success ? result.transcript : '';
 
-      // 3. medical_transcripts 테이블에 저장 (음성파일 경로 + 텍스트)
+      // 3. medical_transcripts 테이블에 저장 + 자동 파이프라인
       try {
-        const { saveMedicalTranscript } = await import('@modules/pad/services/transcriptionService');
+        const { saveMedicalTranscript, runTranscriptPipeline } = await import('@modules/pad/services/transcriptionService');
         const recordingDate = new Date().toISOString();
         const transcriptId = await saveMedicalTranscript({
           actingId: 0,
@@ -176,6 +176,7 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, chartId, st
           durationSec: recordingTime,
           recordingDate,
           patientName: patientName || undefined,
+          soapStatus: transcript ? 'processing' : 'pending',
         });
         console.log('[녹음] medical_transcripts 저장 완료, id:', transcriptId);
         // 환자명, 차트번호 업데이트
@@ -187,6 +188,13 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, chartId, st
             await execute(
               `UPDATE medical_transcripts SET patient_name = ${escapeString(patientInfo.name)}, chart_number = ${escapeString(patientInfo.chart_number)} WHERE id = ${transcriptId}`
             );
+          }
+
+          // 자동 파이프라인: 화자 분리 → SOAP (fire-and-forget)
+          if (transcript) {
+            runTranscriptPipeline(transcriptId, transcript, 'initial_chart').catch(err => {
+              console.error('[녹음] 자동 파이프라인 오류:', err);
+            });
           }
         }
       } catch (saveErr) {
