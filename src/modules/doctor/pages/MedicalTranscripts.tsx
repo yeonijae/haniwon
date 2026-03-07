@@ -914,6 +914,17 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                 </div>
               </div>
 
+              {/* 녹음 듣기 */}
+              {selectedTranscript.audio_path && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 px-6 py-3">
+                  <audio
+                    controls
+                    src={`${API_URL}/api/files/${selectedTranscript.audio_path}`}
+                    className="w-full h-10"
+                  />
+                </div>
+              )}
+
               {/* 탭 바 */}
               <div className="flex items-center border-b border-gray-200">
                 {([
@@ -973,15 +984,6 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                         </div>
                       )}
                     </div>
-                    {selectedTranscript.audio_path && (
-                      <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
-                        <audio
-                          controls
-                          src={`${API_URL}/api/files/${selectedTranscript.audio_path}`}
-                          className="w-full h-10"
-                        />
-                      </div>
-                    )}
                   </>
                 )}
 
