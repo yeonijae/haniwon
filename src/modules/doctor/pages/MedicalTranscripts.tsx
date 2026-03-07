@@ -662,7 +662,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="환자명/차트번호/내용 검색"
-              className="w-full pl-7 pr-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-1 focus:ring-clinic-primary focus:border-clinic-primary"
+              className="w-full pl-7 pr-2 py-2 border border-gray-300 rounded-md text-xs focus:ring-1 focus:ring-clinic-primary focus:border-clinic-primary"
             />
           </div>
 
