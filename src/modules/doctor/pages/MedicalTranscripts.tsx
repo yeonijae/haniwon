@@ -862,7 +862,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                 <span className="text-gray-800 whitespace-nowrap">
                   <span className="font-semibold">{getDisplayPatientName(selectedTranscript)}</span>
                   ({selectedTranscript.chart_number || patientMap.get(selectedTranscript.patient_id)?.chart_no || '-'})
-                  {' '}{formatCompactDate(getDisplayDateTime(selectedTranscript))}
+                  <span className="ml-2">{formatCompactDate(getDisplayDateTime(selectedTranscript))}</span>
                   {' '}{formatTime(getDisplayDateTime(selectedTranscript))}
                   {' - '}{getDoctorShortName(selectedTranscript.doctor_name)}
                 </span>
