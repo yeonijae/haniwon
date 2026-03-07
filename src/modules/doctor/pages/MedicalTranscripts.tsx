@@ -36,7 +36,11 @@ interface PatientInfo {
 
 type ViewMode = 'day' | '3weeks' | '3months' | 'all';
 
-const MedicalTranscripts: React.FC = () => {
+interface MedicalTranscriptsProps {
+  selectedDoctorName?: string;
+}
+
+const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorName }) => {
   // 상태 관리
   const [viewMode, setViewMode] = useState<ViewMode>('all');
   const [baseDate, setBaseDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -97,33 +101,30 @@ const MedicalTranscripts: React.FC = () => {
       let sql = '';
       const tsExpr = `COALESCE(recording_date, NULLIF(created_at,'')::timestamp)`;
       const localDateExpr = `date(${tsExpr})`;
+      const conditions: string[] = [];
+
+      // 의사 필터
+      if (selectedDoctorName) {
+        conditions.push(`doctor_name = '${selectedDoctorName.replace(/'/g, "''")}'`);
+      }
+
       if (viewMode === 'day') {
-        sql = `
-          SELECT * FROM medical_transcripts
-          WHERE ${localDateExpr} = '${baseDate}'
-          ORDER BY ${tsExpr} DESC
-        `;
+        conditions.push(`${localDateExpr} = '${baseDate}'`);
       } else if (viewMode === '3weeks') {
         const rangeStart = format(subDays(new Date(baseDate), 20), 'yyyy-MM-dd');
-        sql = `
-          SELECT * FROM medical_transcripts
-          WHERE ${localDateExpr} >= '${rangeStart}' AND ${localDateExpr} <= '${baseDate}'
-          ORDER BY ${tsExpr} DESC
-        `;
+        conditions.push(`${localDateExpr} >= '${rangeStart}' AND ${localDateExpr} <= '${baseDate}'`);
       } else if (viewMode === '3months') {
         // 3개월 = 90일 윈도우 (baseDate 포함 90일: baseDate-89 ~ baseDate)
         const rangeStart = format(subDays(new Date(baseDate), 89), 'yyyy-MM-dd');
-        sql = `
-          SELECT * FROM medical_transcripts
-          WHERE ${localDateExpr} >= '${rangeStart}' AND ${localDateExpr} <= '${baseDate}'
-          ORDER BY ${tsExpr} DESC
-        `;
-      } else {
-        sql = `
-          SELECT * FROM medical_transcripts
-          ORDER BY ${tsExpr} DESC
-        `;
+        conditions.push(`${localDateExpr} >= '${rangeStart}' AND ${localDateExpr} <= '${baseDate}'`);
       }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+      sql = `
+        SELECT * FROM medical_transcripts
+        ${whereClause}
+        ORDER BY ${tsExpr} DESC
+      `;
 
       const response = await fetch(`${API_URL}/api/execute`, {
         method: 'POST',
@@ -393,7 +394,7 @@ const MedicalTranscripts: React.FC = () => {
 
   useEffect(() => {
     fetchTranscripts();
-  }, [viewMode, baseDate]);
+  }, [viewMode, baseDate, selectedDoctorName]);
 
   // SOAP 상태 배지
   const getSoapStatusBadge = (status: string) => {

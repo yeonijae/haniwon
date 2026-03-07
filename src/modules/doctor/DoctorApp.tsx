@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import { useFontScale } from '@shared/hooks/useFontScale';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import { fetchDoctorsWithDbStatus } from '@modules/staff/api/staffApi';
 import type { StaffMember } from '@modules/staff/types';
@@ -227,8 +227,18 @@ const ChartApp: React.FC<ChartAppProps> = ({ user }) => {
           <div className="doctor-content" style={{ zoom: scale }}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
-              <Route path="/treatment-records" element={<TreatmentHistory />} />
-              <Route path="/transcripts" element={<MedicalTranscripts />} />
+              <Route
+                path="/treatment-records"
+                element={(
+                  <TreatmentHistory
+                    user={user}
+                    selectedDoctorName={selectedDoctor?.name}
+                    onPatientClick={(pid, chart) => setChartModal({ patientId: pid, chartNumber: chart })}
+                  />
+                )}
+              />
+              <Route path="/receipt-records" element={<Navigate to="/doctor/treatment-records" replace />} />
+              <Route path="/transcripts" element={<MedicalTranscripts selectedDoctorName={selectedDoctor?.name} />} />
               <Route path="/feedback" element={<ConsultationFeedback />} />
               <Route path="/patients" element={<PatientList onPatientClick={(pid, chart) => setChartModal({ patientId: pid, chartNumber: chart })} />} />
               <Route path="/patients/:id" element={<PatientDetail />} />
