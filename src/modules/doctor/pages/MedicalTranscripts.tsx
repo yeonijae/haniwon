@@ -119,22 +119,23 @@ const MedicalTranscripts: React.FC = () => {
     setLoading(true);
     try {
       let sql = '';
+      const localDateExpr = `date(COALESCE(recording_date, created_at) AT TIME ZONE 'Asia/Seoul')`;
       if (viewMode === 'day') {
         sql = `
           SELECT * FROM medical_transcripts
-          WHERE date(created_at) = '${selectedDate}'
-          ORDER BY created_at DESC
+          WHERE ${localDateExpr} = '${selectedDate}'
+          ORDER BY COALESCE(recording_date, created_at) DESC
         `;
       } else if (viewMode === 'range') {
         sql = `
           SELECT * FROM medical_transcripts
-          WHERE date(created_at) >= '${startDate}' AND date(created_at) <= '${endDate}'
-          ORDER BY created_at DESC
+          WHERE ${localDateExpr} >= '${startDate}' AND ${localDateExpr} <= '${endDate}'
+          ORDER BY COALESCE(recording_date, created_at) DESC
         `;
       } else {
         sql = `
           SELECT * FROM medical_transcripts
-          ORDER BY created_at DESC
+          ORDER BY COALESCE(recording_date, created_at) DESC
           LIMIT 100
         `;
       }
