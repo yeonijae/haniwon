@@ -683,6 +683,7 @@ export async function ensureReceiptTables(): Promise<void> {
   await Promise.all([
     execute(`ALTER TABLE cs_medicine_usage ADD COLUMN IF NOT EXISTS inventory_id INTEGER`).catch(() => {}),
     execute(`ALTER TABLE cs_medicine_usage ADD COLUMN IF NOT EXISTS purpose TEXT DEFAULT '상비약'`).catch(() => {}),
+    execute(`ALTER TABLE cs_medicine_usage ADD COLUMN IF NOT EXISTS doctor_nickname TEXT`).catch(() => {}),
     execute(`ALTER TABLE cs_yakchim_usage_records ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {}),
     execute(`ALTER TABLE cs_medicine_usage ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {}),
     execute(`ALTER TABLE cs_herbal_dispensings ADD COLUMN IF NOT EXISTS mssql_detail_id INTEGER`).catch(() => {}),
@@ -2372,11 +2373,11 @@ export async function createMedicineUsage(data: Omit<MedicineUsage, 'id' | 'crea
   return insert(`
     INSERT INTO cs_medicine_usage (
       patient_id, chart_number, patient_name, receipt_id, usage_date,
-      medicine_name, quantity, mssql_detail_id, purpose, memo, created_at, updated_at
+      medicine_name, quantity, mssql_detail_id, purpose, doctor_nickname, memo, created_at, updated_at
     ) VALUES (
       ${data.patient_id}, ${escapeString(data.chart_number)}, ${toSqlValue(data.patient_name)},
       ${data.receipt_id || 'NULL'}, ${escapeString(data.usage_date)},
-      ${escapeString(data.medicine_name)}, ${data.quantity}, ${data.mssql_detail_id || 'NULL'}, ${toSqlValue(data.purpose)}, ${toSqlValue(data.memo)},
+      ${escapeString(data.medicine_name)}, ${data.quantity}, ${data.mssql_detail_id || 'NULL'}, ${toSqlValue(data.purpose)}, ${toSqlValue(data.doctor_nickname)}, ${toSqlValue(data.memo)},
       ${escapeString(now)}, ${escapeString(now)}
     )
   `);
@@ -2472,6 +2473,7 @@ export async function updateMedicineUsage(
   if (updates.quantity !== undefined) parts.push(`quantity = ${updates.quantity}`);
   if (updates.inventory_id !== undefined) parts.push(`inventory_id = ${updates.inventory_id}`);
   if (updates.purpose !== undefined) parts.push(`purpose = ${escapeString(updates.purpose)}`);
+  if (updates.doctor_nickname !== undefined) parts.push(`doctor_nickname = ${toSqlValue(updates.doctor_nickname)}`);
   if (updates.memo !== undefined) parts.push(`memo = ${toSqlValue(updates.memo)}`);
   if (updates.usage_date !== undefined) parts.push(`usage_date = ${escapeString(updates.usage_date)}`);
   parts.push(`updated_at = ${escapeString(getCurrentTimestamp())}`);
@@ -2661,7 +2663,8 @@ export async function useMedicineStock(
   purpose: string,
   usageDate: string,
   memo?: string,
-  receiptId?: number
+  receiptId?: number,
+  doctorNickname?: string
 ): Promise<number> {
   // 재고 조회
   const inventory = await getMedicineInventoryById(inventoryId);
@@ -2679,13 +2682,13 @@ export async function useMedicineStock(
   const usageId = await insert(`
     INSERT INTO cs_medicine_usage (
       patient_id, chart_number, patient_name, receipt_id, usage_date,
-      medicine_name, quantity, memo, inventory_id, purpose,
+      medicine_name, quantity, memo, inventory_id, purpose, doctor_nickname,
       created_at, updated_at
     ) VALUES (
       ${patientId}, ${escapeString(chartNumber)}, ${toSqlValue(patientName)},
       ${receiptId ?? 'NULL'}, ${escapeString(usageDate)},
       ${escapeString(inventory.name)}, ${quantity}, ${toSqlValue(memo)},
-      ${inventoryId}, ${escapeString(purpose)},
+      ${inventoryId}, ${escapeString(purpose)}, ${toSqlValue(doctorNickname)},
       ${escapeString(now)}, ${escapeString(now)}
     )
   `);

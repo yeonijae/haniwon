@@ -561,6 +561,7 @@ export interface MedicineUsage {
   amount?: number;           // 금액
   inventory_id?: number;     // 재고 관리 ID
   purpose?: string;          // 목적 (상비약, 치료약, 감기약, 증정, 보완)
+  doctor_nickname?: string;  // 담당의 별명
   memo?: string;             // 비고
   mssql_detail_id?: number;  // MSSQL Detail_PK (비급여 항목 연결)
   created_at?: string;
