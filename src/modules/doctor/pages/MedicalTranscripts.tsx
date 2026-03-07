@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { format, subDays } from 'date-fns';
 import { diarizeTranscript, updateDiarizedTranscript } from '../../pad/services/transcriptionService';
 
@@ -415,6 +415,30 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     fetchTranscripts();
   }, [viewMode, baseDate, selectedDoctorName]);
 
+  // 파이프라인 단계 표시기
+  const getPipelineSteps = (t: MedicalTranscript): { label: string; status: 'done' | 'in-progress' | 'not-started' | 'failed' }[] => {
+    const dones = [
+      !!t.audio_path,
+      !!t.transcript && t.transcript.trim() !== '',
+      !!t.diarized_transcript && t.diarized_transcript.trim() !== '',
+      t.soap_status === 'completed',
+    ];
+    const labels = ['녹음 완료', '녹취 완료', '화자 완료', 'SOAP 완료'];
+    const hasFailed = t.processing_status === 'failed' || t.soap_status === 'failed';
+    const firstPendingIdx = dones.findIndex(d => !d);
+
+    return labels.map((label, i) => ({
+      label,
+      status: dones[i]
+        ? 'done'
+        : hasFailed
+          ? 'failed'
+          : i === firstPendingIdx
+            ? 'in-progress'
+            : 'not-started',
+    }));
+  };
+
   // SOAP 상태 배지
   const getSoapStatusBadge = (status: string) => {
     switch (status) {
@@ -827,6 +851,27 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                     삭제
                   </button>
                 </div>
+              </div>
+
+              {/* 파이프라인 단계 표시기 */}
+              <div className="flex items-center gap-1.5">
+                {getPipelineSteps(selectedTranscript).map((step, idx, arr) => (
+                  <Fragment key={step.label}>
+                    <span className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full ${
+                      step.status === 'done' ? 'bg-green-100 text-green-700' :
+                      step.status === 'in-progress' ? 'bg-blue-100 text-blue-700 animate-pulse' :
+                      step.status === 'failed' ? 'bg-red-100 text-red-700' :
+                      'bg-gray-100 text-gray-400'
+                    }`}>
+                      {step.status === 'done' && <i className="fas fa-check text-[10px] mr-1"></i>}
+                      {step.status === 'failed' && <i className="fas fa-times text-[10px] mr-1"></i>}
+                      {step.label}
+                    </span>
+                    {idx < arr.length - 1 && (
+                      <i className="fas fa-chevron-right text-[8px] text-gray-300"></i>
+                    )}
+                  </Fragment>
+                ))}
               </div>
 
               {/* 메타 정보 */}
