@@ -637,6 +637,35 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     }
   };
 
+  // 담당의 축약: '원장' 접미사 제거 후 성 1글자
+  const getDoctorShortName = (name: string) => {
+    if (!name) return '-';
+    const stripped = name.replace(/원장$/, '');
+    return stripped.charAt(0) || name.charAt(0);
+  };
+
+  // 콤팩트 날짜: YY.MM.DD.(요일)
+  const formatCompactDate = (dateStr: string) => {
+    const days = ['일', '월', '화', '수', '목', '금', '토'];
+    const p = parseClinicDateParts(dateStr);
+    if (p) {
+      const yy = String(p.year).slice(-2);
+      const mm = String(p.month).padStart(2, '0');
+      const dd = String(p.day).padStart(2, '0');
+      const d = new Date(p.year, p.month - 1, p.day);
+      return `${yy}.${mm}.${dd}.(${days[d.getDay()]})`;
+    }
+    try {
+      const d = new Date(dateStr);
+      const yy = String(d.getFullYear()).slice(-2);
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yy}.${mm}.${dd}.(${days[d.getDay()]})`;
+    } catch {
+      return '--';
+    }
+  };
+
   const formatBaseDateDisplay = (dateStr: string) => {
     try {
       const d = new Date(`${dateStr}T00:00:00`);
@@ -830,27 +859,13 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
             <div className="max-w-4xl mx-auto space-y-4">
               {/* 상단: 메타 + 파이프라인 + 액션 단일 행 */}
               <div className="flex items-center gap-2 flex-wrap text-[15px] py-0.5">
-                <span className="font-semibold text-gray-800 whitespace-nowrap">
-                  {getDisplayPatientName(selectedTranscript)}
-                  {(selectedTranscript.chart_number || patientMap.get(selectedTranscript.patient_id)?.chart_no) && (
-                    <span className="text-gray-400 text-xs ml-0.5">
-                      ({selectedTranscript.chart_number || patientMap.get(selectedTranscript.patient_id)?.chart_no})
-                    </span>
-                  )}
+                <span className="text-gray-800 whitespace-nowrap">
+                  <span className="font-semibold">{getDisplayPatientName(selectedTranscript)}</span>
+                  ({selectedTranscript.chart_number || patientMap.get(selectedTranscript.patient_id)?.chart_no || '-'})
+                  {' '}{formatCompactDate(getDisplayDateTime(selectedTranscript))}
+                  {' '}{formatTime(getDisplayDateTime(selectedTranscript))}
+                  {' - '}{getDoctorShortName(selectedTranscript.doctor_name)}
                 </span>
-                <span className="text-gray-300">|</span>
-                <span className="text-gray-600 whitespace-nowrap">
-                  {formatDateWithWeekday(getDisplayDateTime(selectedTranscript))}
-                </span>
-                <span className="text-gray-300">|</span>
-                <span className="text-gray-600 whitespace-nowrap">
-                  {formatTime(getDisplayDateTime(selectedTranscript))}
-                </span>
-                <span className="text-gray-300">|</span>
-                <span className="text-gray-600 whitespace-nowrap">
-                  {selectedTranscript.doctor_name}
-                </span>
-                <span className="text-gray-300">|</span>
                 <div className="flex items-center gap-1">
                   {getPipelineSteps(selectedTranscript).map((step, idx, arr) => (
                     <Fragment key={idx}>
