@@ -110,10 +110,23 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
         SELECT TOP 1
           km.kcd3dxmdxcode as dx_code
         FROM kcd3dxmanage km
+        CROSS APPLY (
+          SELECT
+            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+              km.kcd3dxmdxname,' ',''),'(',''),')',''),N'（',''),N'）',''),',',''),N'，',''),N'·',''),N'・',''),N'　','') AS norm_km,
+            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+              d.DxName,' ',''),'(',''),')',''),N'（',''),N'）',''),',',''),N'，',''),N'·',''),N'・',''),N'　','') AS norm_dx
+        ) n
         WHERE km.kcd3dxmcustomerpk = d.Customer_PK
           AND CONVERT(varchar, km.kcd3dxmtxdate, 23) = CONVERT(varchar, d.TxDate, 23)
-          AND km.kcd3dxmdxname = d.DxName
-        ORDER BY km.kcd3dxmorder, km.kcd3dxmpk
+          AND (
+            n.norm_km = n.norm_dx
+            OR (n.norm_dx <> '' AND n.norm_km LIKE '%' + n.norm_dx + '%')
+            OR (n.norm_km <> '' AND n.norm_dx LIKE '%' + n.norm_km + '%')
+          )
+        ORDER BY
+          CASE WHEN n.norm_km = n.norm_dx THEN 0 ELSE 1 END,
+          km.kcd3dxmorder, km.kcd3dxmpk
       ) k
       WHERE d.Customer_PK = ${customerId}
       AND CONVERT(varchar, d.TxDate, 23) = '${normalizedDate}'
