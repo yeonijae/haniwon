@@ -28,6 +28,13 @@ interface MedicalTranscript {
   processing_status: 'uploading' | 'transcribing' | 'processing' | 'completed' | 'failed' | null;
   processing_message: string | null;
   coaching_text?: string | null;
+  coaching_model?: string | null;
+  coaching_input_tokens?: number | null;
+  coaching_output_tokens?: number | null;
+  coaching_total_tokens?: number | null;
+  coaching_elapsed_ms?: number | null;
+  coaching_estimated_cost_usd?: number | null;
+  coaching_estimated_cost_krw?: number | null;
   chart_text?: string | null;
   created_at: string;
   updated_at: string;
@@ -44,6 +51,8 @@ interface CoachingMeta {
   output_tokens?: number;
   total_tokens?: number;
   elapsed_ms?: number;
+  estimated_cost_usd?: number;
+  estimated_cost_krw?: number;
 }
 
 type AsyncJobStatus = 'pending' | 'running' | 'completed' | 'failed';
@@ -718,22 +727,39 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     return soapBlocks.join('\n\n');
   };
 
-  const persistCoachingText = async (transcriptId: number, text: string) => {
+  const persistCoachingText = async (transcriptId: number, text: string, meta?: CoachingMeta) => {
     const escaped = text.replace(/'/g, "''");
+    const modelSql = meta?.model ? `'${String(meta.model).replace(/'/g, "''")}'` : 'NULL';
+    const inputSql = Number.isFinite(meta?.input_tokens) ? String(meta?.input_tokens) : 'NULL';
+    const outputSql = Number.isFinite(meta?.output_tokens) ? String(meta?.output_tokens) : 'NULL';
+    const totalSql = Number.isFinite(meta?.total_tokens) ? String(meta?.total_tokens) : 'NULL';
+    const elapsedSql = Number.isFinite(meta?.elapsed_ms) ? String(meta?.elapsed_ms) : 'NULL';
+    const costUsdSql = Number.isFinite(meta?.estimated_cost_usd) ? String(meta?.estimated_cost_usd) : 'NULL';
+    const costKrwSql = Number.isFinite(meta?.estimated_cost_krw) ? String(meta?.estimated_cost_krw) : 'NULL';
+
     try {
       const response = await fetch(`${API_URL}/api/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sql: `UPDATE medical_transcripts SET coaching_text = '${escaped}', updated_at = NOW() WHERE id = ${transcriptId}`,
+          sql: `UPDATE medical_transcripts
+                SET coaching_text = '${escaped}',
+                    coaching_model = ${modelSql},
+                    coaching_input_tokens = ${inputSql},
+                    coaching_output_tokens = ${outputSql},
+                    coaching_total_tokens = ${totalSql},
+                    coaching_elapsed_ms = ${elapsedSql},
+                    coaching_estimated_cost_usd = ${costUsdSql},
+                    coaching_estimated_cost_krw = ${costKrwSql},
+                    updated_at = NOW()
+                WHERE id = ${transcriptId}`,
         }),
       });
       const data = await response.json();
       if (data?.error) throw new Error(String(data.error));
       return true;
     } catch (error) {
-      // TODO: DB 스키마에 coaching_text 컬럼 추가 후 영속 저장 경로를 고정하세요.
-      console.warn('coaching_text 영속 저장 실패, 메모리 fallback 사용:', error);
+      console.warn('coaching_text/meta 영속 저장 실패, 메모리 fallback 사용:', error);
       return false;
     }
   };
@@ -919,24 +945,48 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
 
           if (status === 'completed' && data.coaching_text) {
             const generatedCoaching = String(data.coaching_text);
+            const meta: CoachingMeta = {
+              model: data?.usage?.model,
+              input_tokens: data?.usage?.input_tokens,
+              output_tokens: data?.usage?.output_tokens,
+              total_tokens: data?.usage?.total_tokens,
+              elapsed_ms: data?.usage?.elapsed_ms,
+              estimated_cost_usd: data?.usage?.estimated_cost_usd,
+              estimated_cost_krw: data?.usage?.estimated_cost_krw,
+            };
+
             setCoachingMetaMemory((prev) => ({
               ...prev,
-              [transcriptId]: {
-                model: data?.usage?.model,
-                input_tokens: data?.usage?.input_tokens,
-                output_tokens: data?.usage?.output_tokens,
-                total_tokens: data?.usage?.total_tokens,
-                elapsed_ms: data?.usage?.elapsed_ms,
-              },
+              [transcriptId]: meta,
             }));
 
-            const persisted = await persistCoachingText(transcriptId, generatedCoaching);
+            const persisted = await persistCoachingText(transcriptId, generatedCoaching, meta);
             if (!persisted) {
               setCoachingTextMemory((prev) => ({ ...prev, [transcriptId]: generatedCoaching }));
             }
 
-            setTranscripts((prev) => prev.map((t) => (t.id === transcriptId ? { ...t, coaching_text: generatedCoaching } : t)));
-            setSelectedTranscript((prev) => (prev && prev.id === transcriptId ? { ...prev, coaching_text: generatedCoaching } : prev));
+            setTranscripts((prev) => prev.map((t) => (t.id === transcriptId ? {
+              ...t,
+              coaching_text: generatedCoaching,
+              coaching_model: meta.model ?? t.coaching_model,
+              coaching_input_tokens: meta.input_tokens ?? t.coaching_input_tokens,
+              coaching_output_tokens: meta.output_tokens ?? t.coaching_output_tokens,
+              coaching_total_tokens: meta.total_tokens ?? t.coaching_total_tokens,
+              coaching_elapsed_ms: meta.elapsed_ms ?? t.coaching_elapsed_ms,
+              coaching_estimated_cost_usd: meta.estimated_cost_usd ?? t.coaching_estimated_cost_usd,
+              coaching_estimated_cost_krw: meta.estimated_cost_krw ?? t.coaching_estimated_cost_krw,
+            } : t)));
+            setSelectedTranscript((prev) => (prev && prev.id === transcriptId ? {
+              ...prev,
+              coaching_text: generatedCoaching,
+              coaching_model: meta.model ?? prev.coaching_model,
+              coaching_input_tokens: meta.input_tokens ?? prev.coaching_input_tokens,
+              coaching_output_tokens: meta.output_tokens ?? prev.coaching_output_tokens,
+              coaching_total_tokens: meta.total_tokens ?? prev.coaching_total_tokens,
+              coaching_elapsed_ms: meta.elapsed_ms ?? prev.coaching_elapsed_ms,
+              coaching_estimated_cost_usd: meta.estimated_cost_usd ?? prev.coaching_estimated_cost_usd,
+              coaching_estimated_cost_krw: meta.estimated_cost_krw ?? prev.coaching_estimated_cost_krw,
+            } : prev));
           }
 
           if (status === 'failed') {
@@ -1282,6 +1332,25 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   const selectedCoachingJob = selectedTranscript ? coachingJobs[selectedTranscript.id] : undefined;
   const selectedSoapJob = selectedTranscript ? soapJobs[selectedTranscript.id] : undefined;
   const isCoachingRunning = Boolean(selectedCoachingJob);
+  const selectedCoachingMeta = selectedTranscript
+    ? (coachingMetaMemory[selectedTranscript.id] || {
+        model: selectedTranscript.coaching_model ?? undefined,
+        input_tokens: selectedTranscript.coaching_input_tokens ?? undefined,
+        output_tokens: selectedTranscript.coaching_output_tokens ?? undefined,
+        total_tokens: selectedTranscript.coaching_total_tokens ?? undefined,
+        elapsed_ms: selectedTranscript.coaching_elapsed_ms ?? undefined,
+        estimated_cost_usd: selectedTranscript.coaching_estimated_cost_usd ?? undefined,
+        estimated_cost_krw: selectedTranscript.coaching_estimated_cost_krw ?? undefined,
+      })
+    : undefined;
+  const hasSelectedCoachingMeta = Boolean(selectedCoachingMeta && (
+    selectedCoachingMeta.model ||
+    Number.isFinite(selectedCoachingMeta.input_tokens) ||
+    Number.isFinite(selectedCoachingMeta.output_tokens) ||
+    Number.isFinite(selectedCoachingMeta.total_tokens) ||
+    Number.isFinite(selectedCoachingMeta.elapsed_ms) ||
+    Number.isFinite(selectedCoachingMeta.estimated_cost_krw)
+  ));
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
@@ -1807,16 +1876,17 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                     </div>
 
                     <div className="p-6">
-                      {coachingMetaMemory[selectedTranscript.id] && (
+                      {hasSelectedCoachingMeta && selectedCoachingMeta && (
                         <div className="mb-3 text-xs text-gray-500">
                           {(() => {
-                            const meta = coachingMetaMemory[selectedTranscript.id];
+                            const meta = selectedCoachingMeta;
                             const seconds = typeof meta.elapsed_ms === 'number' ? (meta.elapsed_ms / 1000).toFixed(1) : null;
                             return [
                               meta.model ? `모델: ${meta.model}` : null,
                               typeof meta.input_tokens === 'number' ? `입력: ${meta.input_tokens.toLocaleString()} tok` : null,
                               typeof meta.output_tokens === 'number' ? `출력: ${meta.output_tokens.toLocaleString()} tok` : null,
                               typeof meta.total_tokens === 'number' ? `합계: ${meta.total_tokens.toLocaleString()} tok` : null,
+                              typeof meta.estimated_cost_krw === 'number' ? `예상비용: ${Math.round(meta.estimated_cost_krw).toLocaleString()}원` : null,
                               seconds ? `소요: ${seconds}s` : null,
                             ].filter(Boolean).join(' · ');
                           })()}
