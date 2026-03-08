@@ -7,6 +7,7 @@ import {
   type ReceiptHistoryItem,
 } from '../../manage/lib/api';
 import { getPatientMemoData, fetchPatientPreviousMemos } from '../lib/api';
+import { fetchPatientDetailComments } from '../../acting/api';
 import type {
   TreatmentPackage,
   HerbalPackage,
@@ -549,6 +550,23 @@ function ReceiptDetailModal({
   const coveredItems = receipt.treatments?.filter(t => t.is_covered) || [];
   const uncoveredItems = receipt.treatments?.filter(t => !t.is_covered) || [];
 
+  // 진료메모 (detail-comments) 로드
+  const [detailComment, setDetailComment] = useState<{ comment1: string; comment2: string } | null>(null);
+
+  useEffect(() => {
+    if (!receipt.patient_id || !receipt.receipt_date) return;
+    const targetDate = receipt.receipt_date.split('T')[0];
+    fetchPatientDetailComments(receipt.patient_id, 30)
+      .then((comments) => {
+        const match = comments.find((c) => {
+          const cDate = (c.date || '').split('T')[0];
+          return cDate === targetDate;
+        });
+        setDetailComment(match ? { comment1: match.comment1 || '', comment2: match.comment2 || '' } : { comment1: '', comment2: '' });
+      })
+      .catch(() => setDetailComment({ comment1: '', comment2: '' }));
+  }, [receipt.patient_id, receipt.receipt_date]);
+
   return (
     <div className="receipt-detail-modal-overlay" onClick={onClose}>
       <div className="receipt-detail-modal" onClick={(e) => e.stopPropagation()}>
@@ -563,79 +581,101 @@ function ReceiptDetailModal({
         </div>
 
         <div className="detail-modal-body">
-          {/* 급여 항목 */}
-          <div className="detail-section">
-            <h5 className="section-title insurance">
-              <i className="fa-solid fa-shield-halved"></i> 급여 항목
-            </h5>
-            {coveredItems.length > 0 ? (
-              <>
-                <div className="detail-items-grid">
-                  {coveredItems.map((item, idx) => (
-                    <div key={idx} className="detail-item">
-                      <span className="item-name">{item.name}</span>
-                      <span className="item-amount">{(item.amount || 0).toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="detail-subtotal insurance">
-                  <span>본인부담금</span>
-                  <span className="amount">{formatMoney(receipt.insurance_self)}원</span>
-                </div>
-              </>
-            ) : (
-              <div className="detail-empty">급여 항목 없음</div>
-            )}
+          {/* 좌측: 수납내역 */}
+          <div className="detail-modal-col detail-modal-col-left">
+            {/* 급여 항목 */}
+            <div className="detail-section">
+              <h5 className="section-title insurance">
+                <i className="fa-solid fa-shield-halved"></i> 급여 항목
+              </h5>
+              {coveredItems.length > 0 ? (
+                <>
+                  <div className="detail-items-grid">
+                    {coveredItems.map((item, idx) => (
+                      <div key={idx} className="detail-item">
+                        <span className="item-name">{item.name}</span>
+                        <span className="item-amount">{(item.amount || 0).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="detail-subtotal insurance">
+                    <span>본인부담금</span>
+                    <span className="amount">{formatMoney(receipt.insurance_self)}원</span>
+                  </div>
+                </>
+              ) : (
+                <div className="detail-empty">급여 항목 없음</div>
+              )}
+            </div>
+
+            {/* 비급여 항목 */}
+            <div className="detail-section">
+              <h5 className="section-title general">
+                <i className="fa-solid fa-receipt"></i> 비급여 항목
+              </h5>
+              {uncoveredItems.length > 0 ? (
+                <>
+                  <div className="detail-items-list">
+                    {uncoveredItems.map((item, idx) => (
+                      <div key={idx} className="detail-item-row">
+                        <span className="item-name">{item.name}</span>
+                        <span className="item-amount">{(item.amount || 0).toLocaleString()}원</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="detail-subtotal general">
+                    <span>비급여 합계</span>
+                    <span className="amount">{formatMoney(receipt.general_amount)}원</span>
+                  </div>
+                </>
+              ) : (
+                <div className="detail-empty">비급여 항목 없음</div>
+              )}
+            </div>
+
+            {/* 총합계 */}
+            <div className="detail-grand-total">
+              <span>총 수납액</span>
+              <span className="amount">{formatMoney(receipt.total_amount)}원</span>
+            </div>
+
+            {/* 결제 방식 */}
+            <div className="detail-payment-method">
+              {receipt.card > 0 && (
+                <span className="method card">
+                  <i className="fa-solid fa-credit-card"></i> 카드 {receipt.card.toLocaleString()}원
+                </span>
+              )}
+              {receipt.cash > 0 && (
+                <span className="method cash">
+                  <i className="fa-solid fa-money-bill"></i> 현금 {receipt.cash.toLocaleString()}원
+                </span>
+              )}
+              {receipt.transfer > 0 && (
+                <span className="method transfer">
+                  <i className="fa-solid fa-building-columns"></i> 이체 {receipt.transfer.toLocaleString()}원
+                </span>
+              )}
+            </div>
           </div>
 
-          {/* 비급여 항목 */}
-          <div className="detail-section">
-            <h5 className="section-title general">
-              <i className="fa-solid fa-receipt"></i> 비급여 항목
-            </h5>
-            {uncoveredItems.length > 0 ? (
-              <>
-                <div className="detail-items-list">
-                  {uncoveredItems.map((item, idx) => (
-                    <div key={idx} className="detail-item-row">
-                      <span className="item-name">{item.name}</span>
-                      <span className="item-amount">{(item.amount || 0).toLocaleString()}원</span>
-                    </div>
-                  ))}
+          {/* 우측: 진료메모 */}
+          <div className="detail-modal-col detail-modal-col-right">
+            <div className="detail-section">
+              <h5 className="section-title memo">
+                <i className="fa-solid fa-notes-medical"></i> 진료메모
+              </h5>
+              <div className="detail-memo-content">
+                <div className="detail-memo-row">
+                  <span className="detail-memo-label">진료메모1</span>
+                  <pre className="detail-memo-value">{detailComment?.comment1 || '-'}</pre>
                 </div>
-                <div className="detail-subtotal general">
-                  <span>비급여 합계</span>
-                  <span className="amount">{formatMoney(receipt.general_amount)}원</span>
+                <div className="detail-memo-row">
+                  <span className="detail-memo-label">진료메모2</span>
+                  <pre className="detail-memo-value">{detailComment?.comment2 || '-'}</pre>
                 </div>
-              </>
-            ) : (
-              <div className="detail-empty">비급여 항목 없음</div>
-            )}
-          </div>
-
-          {/* 총합계 */}
-          <div className="detail-grand-total">
-            <span>총 수납액</span>
-            <span className="amount">{formatMoney(receipt.total_amount)}원</span>
-          </div>
-
-          {/* 결제 방식 */}
-          <div className="detail-payment-method">
-            {receipt.card > 0 && (
-              <span className="method card">
-                <i className="fa-solid fa-credit-card"></i> 카드 {receipt.card.toLocaleString()}원
-              </span>
-            )}
-            {receipt.cash > 0 && (
-              <span className="method cash">
-                <i className="fa-solid fa-money-bill"></i> 현금 {receipt.cash.toLocaleString()}원
-              </span>
-            )}
-            {receipt.transfer > 0 && (
-              <span className="method transfer">
-                <i className="fa-solid fa-building-columns"></i> 이체 {receipt.transfer.toLocaleString()}원
-              </span>
-            )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
