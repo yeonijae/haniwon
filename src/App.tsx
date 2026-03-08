@@ -9,7 +9,7 @@ import Dashboard from '@portal/pages/Dashboard';
 import AdminPage from '@portal/pages/AdminPage';
 
 // Module placeholders (will be replaced with actual modules)
-import ManageApp from '@manage/ManageApp';
+import ManageLiteApp from './modules/manage/ManageLiteApp';
 import DoctorApp from '@doctor/DoctorApp';
 import InventoryApp from '@inventory/InventoryApp';
 import TreatmentApp from '@treatment/TreatmentApp';
@@ -109,7 +109,7 @@ function App() {
       {/* Manage Module Routes */}
       <Route
         path="/manage/*"
-        element={user ? <ManageApp user={user} /> : <Navigate to="/login" replace />}
+        element={user ? <ManageLiteApp user={user} /> : <Navigate to="/login" replace />}
       />
 
       {/* Doctor Module Routes (원장실) */}
