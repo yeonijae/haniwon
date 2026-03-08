@@ -17,6 +17,8 @@ export interface BillingReviewRow {
   doctor: string;
   /** 진단명(진단코드) */
   diagnosisItems: string;
+  /** 검출 사유 */
+  reasonText: string;
   /** 급여청구내역 (세부 항목 전체 문자열) */
   claimItems: string;
   /** 해당 규칙 ID 목록 */
@@ -112,9 +114,10 @@ function checkRule1(group: DayGroup): boolean {
   return !hasJarakOrYugwan;
 }
 
-function checkRule2(group: DayGroup): boolean {
-  // RULE2는 누락 방지를 위해 isInsurance 조건 없이 침술 항목 자체를 기준으로 판정
-  const acupunctureItems = group.items.filter((i) => !!getAcupunctureType(i.pxName));
+function evaluateRule2(group: DayGroup): { violates: boolean; acuTypeCount: number; dxCount: number } {
+  // RULE2는 급여 청구 기준으로 판정
+  const insuranceItems = group.items.filter((i) => i.isInsurance === 1);
+  const acupunctureItems = insuranceItems.filter((i) => !!getAcupunctureType(i.pxName));
 
   const acuTypes = new Set<string>();
   for (const item of acupunctureItems) {
@@ -122,20 +125,27 @@ function checkRule2(group: DayGroup): boolean {
     if (t) acuTypes.add(t);
   }
 
-  // 3종 이상이면 위반
-  if (acuTypes.size > 2) return true;
+  const uniqueDx = new Set(
+    acupunctureItems
+      .map((i) => (i.dxName || '').trim())
+      .filter((d) => d.length > 0)
+  );
 
-  // 2종이면 DxName 2개 이상 필요
-  if (acuTypes.size === 2) {
-    const uniqueDx = new Set(
-      acupunctureItems
-        .map((i) => i.dxName)
-        .filter((d): d is string => !!d && d.trim() !== '')
-    );
-    if (uniqueDx.size < 2) return true;
+  // 3종 이상이면 위반
+  if (acuTypes.size > 2) {
+    return { violates: true, acuTypeCount: acuTypes.size, dxCount: uniqueDx.size };
   }
 
-  return false;
+  // 2종이면 DxName 2개 이상 필요
+  if (acuTypes.size === 2 && uniqueDx.size < 2) {
+    return { violates: true, acuTypeCount: acuTypes.size, dxCount: uniqueDx.size };
+  }
+
+  return { violates: false, acuTypeCount: acuTypes.size, dxCount: uniqueDx.size };
+}
+
+function checkRule2(group: DayGroup): boolean {
+  return evaluateRule2(group).violates;
 }
 
 function checkRule3(group: DayGroup): boolean {
@@ -300,12 +310,24 @@ export async function fetchBillingReviewData(
         .filter((d) => d.length > 0)
     );
 
+    const reasonParts: string[] = [];
+    for (const ruleId of matched) {
+      if (ruleId === 'RULE2') {
+        const r2 = evaluateRule2(group);
+        reasonParts.push(`RULE2: 침술종류 ${r2.acuTypeCount}개, Dx ${r2.dxCount}개`);
+      } else {
+        const label = BILLING_RULES.find((r) => r.id === ruleId)?.label || ruleId;
+        reasonParts.push(`${ruleId}: ${label}`);
+      }
+    }
+
     result.push({
       txDate: group.txDate,
       patientName: group.patientName,
       chartNo: group.chartNo,
       doctor: group.doctor,
       diagnosisItems: diagnosisSet.size > 0 ? Array.from(diagnosisSet).join(', ') : '-',
+      reasonText: reasonParts.join(' | '),
       claimItems: claimParts.join(' | '),
       matchedRules: matched,
       customerPk: group.customerPk,
