@@ -402,7 +402,7 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
     const seen = new Set<string>();
     const result: { name: string; code: string | null }[] = [];
     detailItems
-      .filter((item) => (item.is_insurance === true) || ((item.tx_item || '').trim() === '보험치료'))
+      .filter((item) => !!item.is_insurance || ((item.tx_item || '').trim() === '보험치료'))
       .forEach((item) => {
         const name = (item.dx_name || '').trim();
         if (!name || seen.has(name)) return;
