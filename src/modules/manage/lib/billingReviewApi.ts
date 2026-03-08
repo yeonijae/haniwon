@@ -139,7 +139,7 @@ function evaluateRule2(
 
   const acuClaimCount = acupunctureItems.length;
   const uniqueDxWithCode = new Set(
-    acupunctureItems
+    insuranceItems
       .map((i) => (i.dxName || '').trim())
       .filter((d) => d.length > 0 && !!diagnosisCodeMap.get(d))
   );
