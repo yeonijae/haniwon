@@ -15,6 +15,8 @@ export interface BillingReviewRow {
   chartNo: string;
   /** 담당의 */
   doctor: string;
+  /** 진단명(진단코드) */
+  diagnosisItems: string;
   /** 급여청구내역 (세부 항목 전체 문자열) */
   claimItems: string;
   /** 해당 규칙 ID 목록 */
@@ -292,11 +294,18 @@ export async function fetchBillingReviewData(
       claimParts.push(`[비급여] ${nonInsuranceItemNames.join(', ')}`);
     }
 
+    const diagnosisSet = new Set(
+      group.items
+        .map((i) => (i.dxName || '').trim())
+        .filter((d) => d.length > 0)
+    );
+
     result.push({
       txDate: group.txDate,
       patientName: group.patientName,
       chartNo: group.chartNo,
       doctor: group.doctor,
+      diagnosisItems: diagnosisSet.size > 0 ? Array.from(diagnosisSet).join(', ') : '-',
       claimItems: claimParts.join(' | '),
       matchedRules: matched,
       customerPk: group.customerPk,
