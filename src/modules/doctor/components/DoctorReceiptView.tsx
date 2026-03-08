@@ -87,7 +87,7 @@ import { fetchDoctors, fetchReservationsByDateRange } from '@modules/reservation
 import type { Doctor, Reservation } from '@modules/reservation/types';
 // manage 모듈의 API 사용
 import { fetchReceiptHistory, fetchPatientReceiptHistory, type ReceiptHistoryItem } from '@modules/manage/lib/api';
-import { hasBillingError } from '@modules/doctor/lib/billingErrorCheck';
+import { hasBillingError, getBillingErrorReasons } from '@modules/doctor/lib/billingErrorCheck';
 import YakchimModal from '@modules/cs/components/YakchimModal';
 import { MedicineModal } from '@modules/cs/components/MedicineModal';
 import MemoInputPanel from '@modules/cs/components/MemoInputPanel';
@@ -2376,6 +2376,17 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                           <i className="fa-solid fa-shield-halved"></i> 급여 항목 - {getDoctorShortName(selectedReceipt)}
                           <span className="insurance-self-inline">{formatMoney(selectedReceipt.insurance_self)}원</span>
                         </h4>
+                        {(() => {
+                          const errorReasons = getBillingErrorReasons(selectedReceipt.treatments);
+                          return errorReasons.length > 0 ? (
+                            <div className="billing-error-reasons">
+                              <span className="billing-error-label">청구오류:</span>
+                              {errorReasons.map((reason, i) => (
+                                <span key={i} className="billing-error-reason">{reason}</span>
+                              ))}
+                            </div>
+                          ) : null;
+                        })()}
                         <div className="insurance-items-grid">
                           <div className="insurance-item" style={{ gridColumn: '1 / -1' }}>
                             <span className="item-name">진단명</span>

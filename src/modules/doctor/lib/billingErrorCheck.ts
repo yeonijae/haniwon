@@ -64,3 +64,13 @@ export function hasBillingError(treatments: ReceiptTreatment[] | undefined): boo
   if (!treatments || treatments.length === 0) return false;
   return checkRule1(treatments) || checkRule2(treatments) || checkRule3(treatments);
 }
+
+/** RULE1~3 위반 사유 목록 반환 (위반 없으면 빈 배열) */
+export function getBillingErrorReasons(treatments: ReceiptTreatment[] | undefined): string[] {
+  if (!treatments || treatments.length === 0) return [];
+  const reasons: string[] = [];
+  if (checkRule1(treatments)) reasons.push('일회용부항컵 사용 시 자락관법/유관법 필요');
+  if (checkRule2(treatments)) reasons.push('침술 2종 초과 또는 2종 시 진단명 2개 이상 필요');
+  if (checkRule3(treatments)) reasons.push('경피경근온열/한랭은 급여 청구 불가');
+  return reasons;
+}

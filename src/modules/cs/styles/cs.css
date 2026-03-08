@@ -8050,6 +8050,29 @@
   background: #fef2f2;
 }
 
+/* 청구오류 사유 블록 (상세 패널) */
+.billing-error-reasons {
+  background: #fef2f2;
+  border-left: 3px solid #ef4444;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.billing-error-reasons .billing-error-label {
+  color: #dc2626;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.billing-error-reasons .billing-error-reason {
+  color: #dc2626;
+  display: block;
+  padding-left: 2px;
+}
+
 /* 2행 항목의 각 행 */
 .receipt-item-2row .receipt-row-1,
 .receipt-item-2row .receipt-row-2 {
