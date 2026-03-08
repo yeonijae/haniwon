@@ -183,7 +183,7 @@ export async function fetchBillingReviewData(
     JOIN Customer c ON d.Customer_PK = c.Customer_PK
     WHERE CONVERT(varchar, d.TxDate, 23) >= '${startDate}'
       AND CONVERT(varchar, d.TxDate, 23) <= '${endDate}'
-    ORDER BY d.TxDate, c.name, d.Detail_PK
+    ORDER BY d.TxDate, c.name
   `;
 
   const response = await fetch(`${MSSQL_API_BASE_URL}/api/execute`, {
@@ -193,7 +193,14 @@ export async function fetchBillingReviewData(
   });
 
   if (!response.ok) {
-    throw new Error(`MSSQL API 오류: ${response.status}`);
+    let serverMessage = '';
+    try {
+      const errJson = await response.json();
+      serverMessage = errJson?.error || errJson?.message || '';
+    } catch {
+      // ignore json parse error
+    }
+    throw new Error(`MSSQL API 오류: ${response.status}${serverMessage ? ` - ${serverMessage}` : ''}`);
   }
 
   const data = await response.json();
