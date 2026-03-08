@@ -413,16 +413,18 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
         const name = (item.dx_name || '').trim();
         if (!name || seen.has(name)) return;
         seen.add(name);
-        result.push({ name, code: item.dx_code || null });
+        const code = (item.dx_code ?? '').trim() || null;
+        result.push({ name, code });
       });
 
-    // 2차 fallback: 보험 항목에서 못 찾으면 전체 detail에서 첫 번째 유효 dx_name 사용
+    // 2차 fallback: 보험 항목에서 못 찾으면 전체 detail에서 유효 dx_name 사용
     if (result.length === 0) {
       for (const item of detailItems) {
         const name = (item.dx_name || '').trim();
         if (!name || seen.has(name)) continue;
         seen.add(name);
-        result.push({ name, code: item.dx_code || null });
+        const code = (item.dx_code ?? '').trim() || null;
+        result.push({ name, code });
       }
     }
 

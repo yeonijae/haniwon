@@ -134,19 +134,54 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
       throw new Error(data.error);
     }
 
-    // columns + rows 형식을 객체 배열로 변환
+    // MSSQL API 응답 → ReceiptDetailItem[] 변환
+    // SQL alias (dx_name) 와 원본 컬럼명(DxName) 모두 허용
+    const aliasMap: Record<string, keyof ReceiptDetailItem> = {
+      detail_id: 'detail_id', Detail_PK: 'detail_id',
+      tx_item: 'tx_item', TxItem: 'tx_item',
+      item_name: 'item_name', PxName: 'item_name',
+      dx_name: 'dx_name', DxName: 'dx_name',
+      amount: 'amount', TxMoney: 'amount',
+      days: 'days', TxCount: 'days',
+      daily_dose: 'daily_dose', DAYTU: 'daily_dose',
+      is_insurance: 'is_insurance', InsuYes: 'is_insurance',
+      doctor: 'doctor', TxDoctor: 'doctor',
+      bonin_percent: 'bonin_percent', BoninPercent: 'bonin_percent',
+      detail_text: 'detail_text',
+    };
+
+    const mapRow = (raw: Record<string, any>): ReceiptDetailItem => {
+      const obj: any = { dx_code: null };
+      for (const [key, val] of Object.entries(raw)) {
+        const mapped = aliasMap[key];
+        if (mapped) obj[mapped] = val;
+      }
+      // dx_name null/whitespace 방어
+      if (obj.dx_name != null && typeof obj.dx_name === 'string') {
+        obj.dx_name = obj.dx_name.trim() || null;
+      }
+      return obj as ReceiptDetailItem;
+    };
+
     let details: ReceiptDetailItem[];
-    if (data.columns && data.rows) {
-      details = data.rows.map((row: any[]) => {
-        const obj: any = {};
-        data.columns.forEach((col: string, i: number) => {
+    const rawRows: any[] = data.rows || [];
+    if (data.columns && rawRows.length > 0 && Array.isArray(rawRows[0])) {
+      // columns + rows(배열) 형식
+      details = rawRows.map((row: any[]) => {
+        const obj: Record<string, any> = {};
+        (data.columns as string[]).forEach((col: string, i: number) => {
           obj[col] = row[i];
         });
-        obj.dx_code = null;
-        return obj as ReceiptDetailItem;
+        return mapRow(obj);
       });
     } else {
-      details = (data.rows || []).map((r: any) => ({ ...r, dx_code: null })) as ReceiptDetailItem[];
+      // 객체 배열 형식
+      details = rawRows.map((r: any) => mapRow(r));
+    }
+
+    // 파싱 결과 디버그 (dx_name 누락 감지)
+    if (details.length > 0 && details.every(d => d.dx_name == null)) {
+      console.warn('[fetchReceiptDetails] 모든 row에서 dx_name이 null입니다. MSSQL 응답 컬럼:', data.columns, '첫 번째 raw row:', rawRows[0]);
     }
 
     // PG diagnosis_code_map에서 dx_code 매핑
