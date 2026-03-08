@@ -46,6 +46,20 @@ interface CoachingMeta {
   elapsed_ms?: number;
 }
 
+type AsyncJobStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+interface AsyncJobTracker {
+  transcriptId: number;
+  jobId: string;
+  status: AsyncJobStatus;
+  message?: string;
+  startedAt?: string;
+  finishedAt?: string;
+}
+
+const COACHING_JOBS_STORAGE_KEY = 'medical_transcripts_coaching_jobs';
+const SOAP_JOBS_STORAGE_KEY = 'medical_transcripts_soap_jobs';
+
 type ViewMode = 'day' | '3weeks' | '3months' | 'all';
 type PipelineCategory = 'saving' | 'transcribing' | 'done' | 'failed';
 type DetailTab = 'raw' | 'diarized' | 'soap' | 'coaching';
@@ -392,6 +406,8 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   const [coachingError, setCoachingError] = useState<string | null>(null);
   const [coachingTextMemory, setCoachingTextMemory] = useState<Record<number, string>>({});
   const [coachingMetaMemory, setCoachingMetaMemory] = useState<Record<number, CoachingMeta>>({});
+  const [coachingJobs, setCoachingJobs] = useState<Record<number, AsyncJobTracker>>({});
+  const [soapJobs, setSoapJobs] = useState<Record<number, AsyncJobTracker>>({});
 
   // 필터링된 녹취록
   const filteredTranscripts = useMemo(() => {
@@ -587,6 +603,25 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     }
   };
 
+  const persistJobMap = (key: string, jobs: Record<number, AsyncJobTracker>) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(jobs));
+    } catch (error) {
+      console.warn('job map localStorage 저장 실패:', error);
+    }
+  };
+
+  const loadJobMap = (key: string): Record<number, AsyncJobTracker> => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+
   // 화자 분리 실행
   const handleDiarize = async () => {
     if (!selectedTranscript) return;
@@ -621,64 +656,43 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
 
     setIsReprocessing(true);
     try {
-      // SOAP 상태 초기화
-      await fetch(`${API_URL}/api/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sql: `UPDATE medical_transcripts SET soap_status = 'processing', updated_at = NOW() WHERE id = ${selectedTranscript.id}`,
-        }),
-      });
-
-      // SOAP 변환 요청
-      const soapResponse = await fetch(`${API_URL}/api/gpt/soap`, {
+      const soapResponse = await fetch(`${API_URL}/api/gpt/soap/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           transcript: selectedTranscript.transcript,
           acting_type: selectedTranscript.acting_type,
+          transcript_id: selectedTranscript.id,
         }),
       });
 
       const soapData = await soapResponse.json();
-
-      if (soapData.subjective || soapData.objective || soapData.assessment || soapData.plan) {
-        // SOAP 저장
-        const escapeStr = (str: string | null) =>
-          str ? `'${str.replace(/'/g, "''")}'` : 'NULL';
-
-        await fetch(`${API_URL}/api/execute`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sql: `UPDATE medical_transcripts SET
-              soap_subjective = ${escapeStr(soapData.subjective)},
-              soap_objective = ${escapeStr(soapData.objective)},
-              soap_assessment = ${escapeStr(soapData.assessment)},
-              soap_plan = ${escapeStr(soapData.plan)},
-              soap_status = 'completed',
-              updated_at = NOW()
-            WHERE id = ${selectedTranscript.id}`,
-          }),
-        });
-
-        alert('SOAP 재처리가 완료되었습니다.');
-        fetchTranscripts();
-      } else {
-        throw new Error('SOAP 변환 실패');
+      if (!soapData?.success || !soapData?.job_id) {
+        throw new Error(soapData?.error || 'SOAP 작업 시작 실패');
       }
+
+      setSoapJobs((prev) => ({
+        ...prev,
+        [selectedTranscript.id]: {
+          transcriptId: selectedTranscript.id,
+          jobId: soapData.job_id,
+          status: soapData.status || 'pending',
+          message: soapData.message || 'SOAP 작업 대기 중',
+          startedAt: soapData.started_at,
+        },
+      }));
+
+      setTranscripts((prev) => prev.map((t) => (
+        t.id === selectedTranscript.id
+          ? { ...t, soap_status: 'processing', processing_message: soapData.message || 'SOAP 작업 대기 중' }
+          : t
+      )));
+      setSelectedTranscript((prev) => (
+        prev ? { ...prev, soap_status: 'processing', processing_message: soapData.message || 'SOAP 작업 대기 중' } : prev
+      ));
     } catch (error) {
       console.error('SOAP 재처리 실패:', error);
       alert('SOAP 재처리에 실패했습니다.');
-
-      // 실패 상태 업데이트
-      await fetch(`${API_URL}/api/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sql: `UPDATE medical_transcripts SET soap_status = 'failed', updated_at = NOW() WHERE id = ${selectedTranscript.id}`,
-        }),
-      });
     } finally {
       setIsReprocessing(false);
     }
@@ -742,7 +756,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
       .replace('{{transcriptText}}', transcriptText);
 
     try {
-      const response = await fetch(`${API_URL}/api/gpt/chart-analysis`, {
+      const response = await fetch(`${API_URL}/api/gpt/chart-analysis/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -752,39 +766,25 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
           prompt_version: 'v2',
           response_mode: 'coaching_only',
           model: 'gpt-5.4',
+          transcript_id: selectedTranscript.id,
         }),
       });
       const data = await response.json();
 
-      const generatedCoaching = (data?.coaching || data?.result || data?.text || '').toString().trim();
-      if (!generatedCoaching) {
-        throw new Error(data?.error || '코칭 결과가 비어 있습니다.');
+      if (!data?.success || !data?.job_id) {
+        throw new Error(data?.error || '코칭 작업 시작 실패');
       }
 
-      setCoachingMetaMemory((prev) => ({
+      setCoachingJobs((prev) => ({
         ...prev,
         [selectedTranscript.id]: {
-          model: data?.model,
-          input_tokens: typeof data?.input_tokens === 'number' ? data.input_tokens : undefined,
-          output_tokens: typeof data?.output_tokens === 'number' ? data.output_tokens : undefined,
-          total_tokens: typeof data?.total_tokens === 'number' ? data.total_tokens : undefined,
-          elapsed_ms: typeof data?.elapsed_ms === 'number' ? data.elapsed_ms : undefined,
+          transcriptId: selectedTranscript.id,
+          jobId: data.job_id,
+          status: data.status || 'pending',
+          message: data.message || '코칭 작업 대기 중',
+          startedAt: data.started_at,
         },
       }));
-
-      const persisted = await persistCoachingText(selectedTranscript.id, generatedCoaching);
-      if (!persisted) {
-        setCoachingTextMemory((prev) => ({ ...prev, [selectedTranscript.id]: generatedCoaching }));
-      }
-
-      setTranscripts((prev) => prev.map((t) => (
-        t.id === selectedTranscript.id
-          ? { ...t, coaching_text: generatedCoaching }
-          : t
-      )));
-      setSelectedTranscript((prev) => (
-        prev ? { ...prev, coaching_text: generatedCoaching } : prev
-      ));
       setDetailTab('coaching');
     } catch (error: any) {
       console.error('상담코칭 생성 실패:', error);
@@ -853,8 +853,171 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   };
 
   useEffect(() => {
+    setCoachingJobs(loadJobMap(COACHING_JOBS_STORAGE_KEY));
+    setSoapJobs(loadJobMap(SOAP_JOBS_STORAGE_KEY));
+  }, []);
+
+  useEffect(() => {
+    persistJobMap(COACHING_JOBS_STORAGE_KEY, coachingJobs);
+  }, [coachingJobs]);
+
+  useEffect(() => {
+    persistJobMap(SOAP_JOBS_STORAGE_KEY, soapJobs);
+  }, [soapJobs]);
+
+  useEffect(() => {
     fetchTranscripts();
   }, [viewMode, baseDate, selectedDoctorName]);
+
+  useEffect(() => {
+    const hasProcessingTranscript = transcripts.some((t) =>
+      t.processing_status && t.processing_status !== 'completed' && t.processing_status !== 'failed'
+    );
+    const hasAsyncJobs = Object.keys(coachingJobs).length > 0 || Object.keys(soapJobs).length > 0;
+    if (!hasProcessingTranscript && !hasAsyncJobs) return;
+
+    const timer = window.setInterval(() => {
+      fetchTranscripts();
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+  }, [transcripts, coachingJobs, soapJobs]);
+
+  useEffect(() => {
+    if (Object.keys(coachingJobs).length === 0 && Object.keys(soapJobs).length === 0) return;
+
+    const timer = window.setInterval(async () => {
+      for (const [transcriptIdStr, job] of Object.entries(coachingJobs)) {
+        if (!job?.jobId) continue;
+        if (job.status === 'completed' || job.status === 'failed') continue;
+
+        try {
+          const resp = await fetch(`${API_URL}/api/gpt/chart-analysis/status/${job.jobId}`);
+          const data = await resp.json();
+          if (!data?.success) continue;
+
+          const transcriptId = Number(transcriptIdStr);
+          const status = (data.status || 'pending') as AsyncJobStatus;
+
+          setCoachingJobs((prev) => {
+            const current = prev[transcriptId];
+            if (!current) return prev;
+            const next = {
+              ...prev,
+              [transcriptId]: {
+                ...current,
+                status,
+                message: data.message,
+                finishedAt: data.finished_at,
+              },
+            };
+            if (status === 'completed' || status === 'failed') {
+              delete next[transcriptId];
+            }
+            return next;
+          });
+
+          if (status === 'completed' && data.coaching_text) {
+            const generatedCoaching = String(data.coaching_text);
+            setCoachingMetaMemory((prev) => ({
+              ...prev,
+              [transcriptId]: {
+                model: data?.usage?.model,
+                input_tokens: data?.usage?.input_tokens,
+                output_tokens: data?.usage?.output_tokens,
+                total_tokens: data?.usage?.total_tokens,
+                elapsed_ms: data?.usage?.elapsed_ms,
+              },
+            }));
+
+            const persisted = await persistCoachingText(transcriptId, generatedCoaching);
+            if (!persisted) {
+              setCoachingTextMemory((prev) => ({ ...prev, [transcriptId]: generatedCoaching }));
+            }
+
+            setTranscripts((prev) => prev.map((t) => (t.id === transcriptId ? { ...t, coaching_text: generatedCoaching } : t)));
+            setSelectedTranscript((prev) => (prev && prev.id === transcriptId ? { ...prev, coaching_text: generatedCoaching } : prev));
+          }
+
+          if (status === 'failed') {
+            setCoachingError(data?.error || data?.message || '상담코칭 생성 중 오류가 발생했습니다.');
+          }
+        } catch (error) {
+          console.error('코칭 job polling 실패:', error);
+        }
+      }
+
+      for (const [transcriptIdStr, job] of Object.entries(soapJobs)) {
+        if (!job?.jobId) continue;
+        if (job.status === 'completed' || job.status === 'failed') continue;
+
+        try {
+          const resp = await fetch(`${API_URL}/api/gpt/soap/status/${job.jobId}`);
+          const data = await resp.json();
+          if (!data?.success) continue;
+
+          const transcriptId = Number(transcriptIdStr);
+          const status = (data.status || 'pending') as AsyncJobStatus;
+
+          setSoapJobs((prev) => {
+            const current = prev[transcriptId];
+            if (!current) return prev;
+            const next = {
+              ...prev,
+              [transcriptId]: {
+                ...current,
+                status,
+                message: data.message,
+                finishedAt: data.finished_at,
+              },
+            };
+            if (status === 'completed' || status === 'failed') {
+              delete next[transcriptId];
+            }
+            return next;
+          });
+
+          if (status === 'completed') {
+            setTranscripts((prev) => prev.map((t) => (
+              t.id === transcriptId
+                ? {
+                    ...t,
+                    soap_subjective: data.subjective ?? t.soap_subjective,
+                    soap_objective: data.objective ?? t.soap_objective,
+                    soap_assessment: data.assessment ?? t.soap_assessment,
+                    soap_plan: data.plan ?? t.soap_plan,
+                    soap_status: 'completed',
+                    processing_message: data.message || 'SOAP 생성 완료',
+                  }
+                : t
+            )));
+            setSelectedTranscript((prev) => (
+              prev && prev.id === transcriptId
+                ? {
+                    ...prev,
+                    soap_subjective: data.subjective ?? prev.soap_subjective,
+                    soap_objective: data.objective ?? prev.soap_objective,
+                    soap_assessment: data.assessment ?? prev.soap_assessment,
+                    soap_plan: data.plan ?? prev.soap_plan,
+                    soap_status: 'completed',
+                    processing_message: data.message || 'SOAP 생성 완료',
+                  }
+                : prev
+            ));
+          }
+
+          if (status === 'failed') {
+            setTranscripts((prev) => prev.map((t) => (t.id === transcriptId ? { ...t, soap_status: 'failed', processing_message: data.message } : t)));
+            setSelectedTranscript((prev) => (prev && prev.id === transcriptId ? { ...prev, soap_status: 'failed', processing_message: data.message } : prev));
+          }
+        } catch (error) {
+          console.error('SOAP job polling 실패:', error);
+        }
+      }
+    }, 2500);
+
+    return () => window.clearInterval(timer);
+  }, [coachingJobs, soapJobs]);
 
   // 파이프라인 단계 표시기
   const getPipelineSteps = (t: MedicalTranscript): { label: string; status: 'done' | 'in-progress' | 'not-started' | 'failed' }[] => {
@@ -1116,6 +1279,10 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     }
   };
 
+  const selectedCoachingJob = selectedTranscript ? coachingJobs[selectedTranscript.id] : undefined;
+  const selectedSoapJob = selectedTranscript ? soapJobs[selectedTranscript.id] : undefined;
+  const isCoachingRunning = Boolean(selectedCoachingJob);
+
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* 헤더 */}
@@ -1333,11 +1500,11 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                     selectedTranscript.soap_status === 'pending') && (
                     <button
                       onClick={handleReprocessSoap}
-                      disabled={isReprocessing}
+                      disabled={isReprocessing || Boolean(selectedSoapJob)}
                       className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-                      title={isReprocessing ? '처리중...' : 'SOAP 재처리'}
+                      title={(isReprocessing || Boolean(selectedSoapJob)) ? '처리중...' : 'SOAP 재처리'}
                     >
-                      <i className={`fas fa-redo text-sm ${isReprocessing ? 'animate-spin' : ''}`}></i>
+                      <i className={`fas fa-redo text-sm ${(isReprocessing || Boolean(selectedSoapJob)) ? 'animate-spin' : ''}`}></i>
                     </button>
                   )}
                   <button
@@ -1565,10 +1732,13 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                           </div>
                         </div>
                       </>
-                    ) : selectedTranscript.soap_status === 'processing' ? (
+                    ) : (selectedTranscript.soap_status === 'processing' || Boolean(selectedSoapJob)) ? (
                       <div className="p-6 text-center">
                         <i className="fas fa-spinner fa-spin text-blue-500 text-2xl mb-2 block"></i>
                         <p className="text-blue-700">SOAP 변환 중입니다...</p>
+                        {(selectedSoapJob?.message || selectedTranscript.processing_message) && (
+                          <p className="text-xs mt-1 text-blue-500">{selectedSoapJob?.message || selectedTranscript.processing_message}</p>
+                        )}
                       </div>
                     ) : selectedTranscript.soap_status === 'failed' ? (
                       <div className="p-6 text-center">
@@ -1589,11 +1759,11 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                         <p className="text-gray-600 mb-3">SOAP 변환 대기 중</p>
                         <button
                           onClick={handleReprocessSoap}
-                          disabled={isReprocessing}
+                          disabled={isReprocessing || Boolean(selectedSoapJob)}
                           className="px-4 py-2 bg-clinic-primary text-white rounded-lg hover:bg-clinic-primary/90 transition-colors disabled:opacity-50"
                         >
-                          <i className={`fas fa-play mr-1 ${isReprocessing ? 'animate-spin' : ''}`}></i>
-                          {isReprocessing ? '처리중...' : 'SOAP 생성'}
+                          <i className={`fas fa-play mr-1 ${(isReprocessing || Boolean(selectedSoapJob)) ? 'animate-spin' : ''}`}></i>
+                          {(isReprocessing || Boolean(selectedSoapJob)) ? '처리중...' : 'SOAP 생성'}
                         </button>
                       </div>
                     )}
@@ -1623,11 +1793,11 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                         )}
                         <button
                           onClick={handleGenerateCoaching}
-                          disabled={isGeneratingCoaching || !getTranscriptSourceText(selectedTranscript)}
+                          disabled={isGeneratingCoaching || isCoachingRunning || !getTranscriptSourceText(selectedTranscript)}
                           className="px-3 py-1.5 text-sm bg-clinic-primary text-white rounded-lg hover:bg-clinic-primary/90 transition-colors disabled:opacity-50"
                         >
-                          <i className={`fas ${isGeneratingCoaching ? 'fa-spinner fa-spin' : 'fa-lightbulb'} mr-1`}></i>
-                          {isGeneratingCoaching
+                          <i className={`fas ${(isGeneratingCoaching || isCoachingRunning) ? 'fa-spinner fa-spin' : 'fa-lightbulb'} mr-1`}></i>
+                          {(isGeneratingCoaching || isCoachingRunning)
                             ? '코칭 생성 중...'
                             : (selectedTranscript.coaching_text || coachingTextMemory[selectedTranscript.id])
                               ? '다시 생성'
@@ -1664,10 +1834,11 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                           <p className="font-medium mb-1">상담코칭 생성에 실패했습니다.</p>
                           <p className="text-sm">{coachingError}</p>
                         </div>
-                      ) : isGeneratingCoaching ? (
+                      ) : isCoachingRunning ? (
                         <div className="text-center py-10 text-blue-700">
                           <i className="fas fa-spinner fa-spin text-2xl mb-2 block"></i>
                           <p>상담코칭을 생성하고 있습니다...</p>
+                          {selectedCoachingJob?.message && <p className="text-xs mt-1 text-blue-500">{selectedCoachingJob.message}</p>}
                         </div>
                       ) : (selectedTranscript.coaching_text || coachingTextMemory[selectedTranscript.id]) ? (
                         <div className="bg-white border border-gray-200 rounded-lg p-4">
