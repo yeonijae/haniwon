@@ -60,7 +60,7 @@ export interface ReceiptDetailItem {
   is_insurance: boolean | number | string;  // InsuYes (MSSQL returns 0/1, '1'/'0', or boolean)
   doctor: string;         // TxDoctor
   bonin_percent: number;  // BoninPercent
-  detail_text: string | null; // DText (부항술 부위명/상세 등)
+  detail_text: string | null; // subdetail.PointName 집계 (부항술 부위명/혈명)
 }
 
 /**
@@ -105,7 +105,14 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
         d.InsuYes as is_insurance,
         d.TxDoctor as doctor,
         d.BoninPercent as bonin_percent,
-        d.DText as detail_text
+        STUFF((
+          SELECT ', ' + sd.PointName
+          FROM masterDB.dbo.subdetail sd
+          WHERE sd.Detail_PK = d.Detail_PK
+            AND sd.PointName IS NOT NULL
+            AND sd.PointName <> ''
+          FOR XML PATH(''), TYPE
+        ).value('.', 'nvarchar(max)'), 1, 2, '') as detail_text
       FROM Detail d
       WHERE d.Customer_PK = ${customerId}
       AND CONVERT(varchar, d.TxDate, 23) = '${normalizedDate}'
