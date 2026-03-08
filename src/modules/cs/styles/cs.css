@@ -13752,6 +13752,26 @@
   line-height: 1.4;
 }
 
+/* 수납이력 버튼 */
+.side-panel-header .status-badge.receipt-history-btn {
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid #c4b5fd;
+  background: #f5f3ff;
+  color: #7c3aed;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.side-panel-header .status-badge.receipt-history-btn:hover {
+  background: #ede9fe;
+  border-color: #a78bfa;
+}
+
 .side-panel-header .status-badge.insurance-btn {
   padding: 4px 10px;
   font-size: 12px;
