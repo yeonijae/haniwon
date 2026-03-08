@@ -79,6 +79,29 @@ export function getBillingErrorReasons(treatments: ReceiptTreatment[] | undefine
 
 // ── 진료메모2 필수 토큰 검증 ─────────────────────────────────────
 
+/**
+ * 토큰 뒤에 실질적 내용이 있는지 검증
+ * - 같은 줄에서 토큰 뒤에 한글/영문/숫자가 1자 이상 있거나
+ *   구두점·공백을 제외한 텍스트 길이가 2 이상이면 유효
+ * - 예: '투자)' → 실패, '투자) L3-4' → 성공, '기기구) -' → 실패
+ */
+function hasContentAfterToken(text: string, token: string): boolean {
+  const idx = text.indexOf(token);
+  if (idx === -1) return false;
+
+  // 토큰 뒤 같은 줄의 텍스트 추출
+  const afterToken = text.substring(idx + token.length);
+  const lineEnd = afterToken.indexOf('\n');
+  const restOfLine = lineEnd === -1 ? afterToken : afterToken.substring(0, lineEnd);
+
+  // 한글/영문/숫자가 1자 이상 포함되면 유효
+  if (/[가-힣a-zA-Z0-9]/.test(restOfLine)) return true;
+
+  // 구두점·공백·기호 제외 후 길이 2 이상이면 유효
+  const stripped = restOfLine.replace(/[\s\-_.,;:!?'"()\[\]{}/<>@#$%^&*+=~`|\\]/g, '');
+  return stripped.length >= 2;
+}
+
 /** 치료 항목 → 메모2 필수 토큰 매핑 */
 const MEMO2_RULES: { match: string; covered: boolean; token: string | string[]; label: string }[] = [
   { match: '추나', covered: true,  token: '[추나]',    label: '추나 → [추나]' },
@@ -107,7 +130,8 @@ export function getMemo2Warnings(
       t.name.includes(rule.match) && (rule.covered ? t.is_covered : !t.is_covered),
     );
     const tokens = Array.isArray(rule.token) ? rule.token : [rule.token];
-    if (hasTreatment && !tokens.some(t => text.includes(t))) {
+    // 토큰 존재 + 토큰 뒤 실질적 내용까지 검증
+    if (hasTreatment && !tokens.some(t => hasContentAfterToken(text, t))) {
       reasons.push(rule.label);
     }
   }
@@ -126,7 +150,8 @@ export function hasMemo2Warning(
       t.name.includes(rule.match) && (rule.covered ? t.is_covered : !t.is_covered),
     );
     const tokens = Array.isArray(rule.token) ? rule.token : [rule.token];
-    if (hasTreatment && !tokens.some(t => text.includes(t))) return true;
+    // 토큰 존재 + 토큰 뒤 실질적 내용까지 검증
+    if (hasTreatment && !tokens.some(t => hasContentAfterToken(text, t))) return true;
   }
   return false;
 }
