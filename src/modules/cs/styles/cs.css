@@ -8036,6 +8036,20 @@
   background: #dcfce7;
 }
 
+/* 청구 오류 행 (RULE1~3 위반) */
+.receipt-item-2row.billing-error {
+  background: #fef2f2;
+  border-left: 3px solid #ef4444;
+}
+
+.receipt-item-2row.billing-error:hover:not(.selected) {
+  background: #fee2e2;
+}
+
+.receipt-item-2row.billing-error.completed {
+  background: #fef2f2;
+}
+
 /* 2행 항목의 각 행 */
 .receipt-item-2row .receipt-row-1,
 .receipt-item-2row .receipt-row-2 {

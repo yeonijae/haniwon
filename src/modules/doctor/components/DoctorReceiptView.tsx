@@ -87,6 +87,7 @@ import { fetchDoctors, fetchReservationsByDateRange } from '@modules/reservation
 import type { Doctor, Reservation } from '@modules/reservation/types';
 // manage 모듈의 API 사용
 import { fetchReceiptHistory, fetchPatientReceiptHistory, type ReceiptHistoryItem } from '@modules/manage/lib/api';
+import { hasBillingError } from '@modules/doctor/lib/billingErrorCheck';
 import YakchimModal from '@modules/cs/components/YakchimModal';
 import { MedicineModal } from '@modules/cs/components/MedicineModal';
 import MemoInputPanel from '@modules/cs/components/MemoInputPanel';
@@ -2098,7 +2099,7 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
             <React.Fragment key={receipt.id}>
               {/* 2행 구조 수납 항목 */}
               <div
-                className={`receipt-item-2row ${receipt.isCompleted ? 'completed' : ''} ${selectedReceipt?.id === receipt.id ? 'selected' : ''}`}
+                className={`receipt-item-2row ${receipt.isCompleted ? 'completed' : ''} ${selectedReceipt?.id === receipt.id ? 'selected' : ''} ${hasBillingError(receipt.treatments) ? 'billing-error' : ''}`}
                 onClick={() => handleReceiptRowClick(receipt)}
               >
                 {/* 1행: 기본 정보 + 수납내역 + 비급여내역 + 임의메모 + 예약 */}
