@@ -2,6 +2,8 @@
  * 청구검토 API - MSSQL Detail/Customer 테이블 조회 및 규칙 필터링
  */
 
+import { query, escapeString } from '@shared/lib/postgres';
+
 const MSSQL_API_BASE_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.173:3100';
 
 // --- 타입 ---
@@ -104,6 +106,14 @@ interface DayGroup {
 
 function isInsuranceItem(v: number | boolean): boolean {
   return v === 1 || v === true;
+}
+
+function normalizeDxName(s: string): string {
+  let r = s;
+  for (const ch of [' ', '\u3000', '(', ')', '\uFF08', '\uFF09', ',', '\uFF0C', '\u00B7', '\u30FB', '\t', '\r', '\n']) {
+    r = r.split(ch).join('');
+  }
+  return r.trim().toLowerCase();
 }
 
 function checkRule1(group: DayGroup): boolean {
@@ -267,6 +277,37 @@ export async function fetchBillingReviewData(
     }
   }
 
+  // 진단명 -> 진단코드 매핑 (PostgreSQL diagnosis_code_map)
+  const diagnosisCodeMap = new Map<string, string>();
+  try {
+    const uniqueDxNames = [...new Set(
+      Array.from(groupMap.values())
+        .flatMap((g) => g.items.map((i) => (i.dxName || '').trim()))
+        .filter((name) => name.length > 0)
+    )];
+
+    const normNames = [...new Set(uniqueDxNames.map((name) => normalizeDxName(name)).filter(Boolean))];
+
+    if (normNames.length > 0) {
+      const inClause = normNames.map((n) => escapeString(n)).join(',');
+      const pgRows = await query<{ dx_name_norm: string; kcd_code: string }>(
+        `SELECT dx_name_norm, kcd_code FROM diagnosis_code_map WHERE dx_name_norm IN (${inClause}) AND is_active = true AND kcd_code IS NOT NULL`
+      );
+
+      const normToCode = new Map<string, string>();
+      for (const row of pgRows) {
+        normToCode.set(row.dx_name_norm, row.kcd_code);
+      }
+
+      for (const original of uniqueDxNames) {
+        const code = normToCode.get(normalizeDxName(original));
+        if (code) diagnosisCodeMap.set(original, code);
+      }
+    }
+  } catch (pgError) {
+    console.error('PG diagnosis_code_map 조회 오류:', pgError);
+  }
+
   // 규칙 필터링 적용
   const activeRules = selectedRules.length > 0 ? selectedRules : BILLING_RULES.map((r) => r.id);
 
@@ -308,6 +349,10 @@ export async function fetchBillingReviewData(
         .map((i) => (i.dxName || '').trim())
         .filter((d) => d.length > 0)
     );
+    const diagnosisDisplay = Array.from(diagnosisSet).map((name) => {
+      const code = diagnosisCodeMap.get(name);
+      return code ? `${name} (${code})` : name;
+    });
 
     const reasonParts: string[] = [];
     for (const ruleId of matched) {
@@ -325,7 +370,7 @@ export async function fetchBillingReviewData(
       patientName: group.patientName,
       chartNo: group.chartNo,
       doctor: group.doctor,
-      diagnosisItems: diagnosisSet.size > 0 ? Array.from(diagnosisSet).join(', ') : '-',
+      diagnosisItems: diagnosisDisplay.length > 0 ? diagnosisDisplay.join(', ') : '-',
       reasonText: reasonParts.join(' | '),
       claimItems: claimParts.join(' | '),
       matchedRules: matched,
