@@ -2395,19 +2395,6 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                         <pre className="etc-memo-content">{patientEtcMemo.replace(/[\r\n]+/g, '\n').replace(/(\n\s*){2,}/g, '\n').trim()}</pre>
                       </div>
                     )}
-                    {/* 당일 진료메모 (DetailComment) */}
-                    {detailComment && (detailComment.comment1 || detailComment.comment2) && (
-                      <div className="side-panel-detail-comment">
-                        <div className="detail-comment-row">
-                          <span className="detail-comment-label">진료메모1</span>
-                          <span className="detail-comment-value">{detailComment.comment1 || '-'}</span>
-                        </div>
-                        <div className="detail-comment-row">
-                          <span className="detail-comment-label">진료메모2</span>
-                          <span className="detail-comment-value">{detailComment.comment2 || '-'}</span>
-                        </div>
-                      </div>
-                    )}
                     {/* 급여 항목 (2단) */}
                     {selectedReceipt.treatments.filter(t => t.is_covered).length > 0 && (
                       <div className="receipt-detail-section">
@@ -2604,6 +2591,22 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                     </div>
                   )}
                 </div>
+
+                {/* 오른쪽 단: 진료메모 */}
+                {detailComment && (detailComment.comment1 || detailComment.comment2) && (
+                  <div className="comment-column">
+                    <div className="side-panel-detail-comment">
+                      <div className="detail-comment-row">
+                        <span className="detail-comment-label">진료메모1</span>
+                        <span className="detail-comment-value">{detailComment.comment1 || '-'}</span>
+                      </div>
+                      <div className="detail-comment-row">
+                        <span className="detail-comment-label">진료메모2</span>
+                        <span className="detail-comment-value">{detailComment.comment2 || '-'}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
               </div>
             </>

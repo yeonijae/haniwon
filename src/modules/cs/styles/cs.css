@@ -10640,18 +10640,28 @@
 /* 상세 패널 2단 레이아웃 */
 .side-panel-body.side-panel-two-column {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 8px;
   overflow: hidden;
 }
 
-/* 왼쪽 단: 진료상세내역 */
+/* 왼쪽 단: 기타보기 + 급여항목 + 비급여항목 */
 .side-panel-two-column .detail-column {
   flex: 1;
-  min-width: 0;
+  min-width: 280px;
   background: white;
   border-radius: 8px;
   padding: 4px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* 오른쪽 단: 진료메모 */
+.side-panel-two-column .comment-column {
+  flex: 0 0 220px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
