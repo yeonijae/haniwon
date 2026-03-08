@@ -846,6 +846,30 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
             </div>
           </main>
         } />
+
+        <Route path="/billing-review" element={
+          <main className="flex-grow p-6 bg-clinic-background">
+            <div className="max-w-5xl mx-auto bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <i className="fa-solid fa-file-invoice-dollar text-2xl text-clinic-primary"></i>
+                <h2 className="text-2xl font-bold text-clinic-primary">청구 검토</h2>
+              </div>
+              <p className="text-clinic-text-secondary">청구 검토 페이지입니다. 상세 기능은 이어서 확장 가능합니다.</p>
+            </div>
+          </main>
+        } />
+
+        <Route path="/charting-review" element={
+          <main className="flex-grow p-6 bg-clinic-background">
+            <div className="max-w-5xl mx-auto bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <i className="fa-solid fa-notes-medical text-2xl text-clinic-primary"></i>
+                <h2 className="text-2xl font-bold text-clinic-primary">차팅 검토</h2>
+              </div>
+              <p className="text-clinic-text-secondary">차팅 검토 페이지입니다. 상세 기능은 이어서 확장 가능합니다.</p>
+            </div>
+          </main>
+        } />
       </Routes>
 
       <Modal
