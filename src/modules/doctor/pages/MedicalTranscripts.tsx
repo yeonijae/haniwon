@@ -441,8 +441,24 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
-  const [coachingJobs, setCoachingJobs] = useState<Record<number, AsyncJobTracker>>({});
-  const [soapJobs, setSoapJobs] = useState<Record<number, AsyncJobTracker>>({});
+  const [coachingJobs, setCoachingJobs] = useState<Record<number, AsyncJobTracker>>(() => {
+    try {
+      const raw = localStorage.getItem(COACHING_JOBS_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+  const [soapJobs, setSoapJobs] = useState<Record<number, AsyncJobTracker>>(() => {
+    try {
+      const raw = localStorage.getItem(SOAP_JOBS_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
 
   // 필터링된 녹취록
   const filteredTranscripts = useMemo(() => {
@@ -643,17 +659,6 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
       localStorage.setItem(key, JSON.stringify(jobs));
     } catch (error) {
       console.warn('job map localStorage 저장 실패:', error);
-    }
-  };
-
-  const loadJobMap = (key: string): Record<number, AsyncJobTracker> => {
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-      return {};
     }
   };
 
@@ -935,11 +940,6 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   };
 
   useEffect(() => {
-    setCoachingJobs(loadJobMap(COACHING_JOBS_STORAGE_KEY));
-    setSoapJobs(loadJobMap(SOAP_JOBS_STORAGE_KEY));
-  }, []);
-
-  useEffect(() => {
     persistJobMap(COACHING_JOBS_STORAGE_KEY, coachingJobs);
   }, [coachingJobs]);
 
@@ -1152,8 +1152,9 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
       !!t.transcript && t.transcript.trim() !== '',
       !!t.diarized_transcript && t.diarized_transcript.trim() !== '',
       t.soap_status === 'completed',
+      !!t.coaching_text && t.coaching_text.trim() !== '',
     ];
-    const labels = [`녹음 ${formatDuration(t.duration_sec)}`, '녹취', '화자', 'SOAP'];
+    const labels = [`녹음 ${formatDuration(t.duration_sec)}`, '녹취', '화자', 'SOAP', '코칭'];
     const hasFailed = t.processing_status === 'failed' || t.soap_status === 'failed';
     const firstPendingIdx = dones.findIndex(d => !d);
 
@@ -1424,7 +1425,9 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
       typeof meta.input_tokens === 'number' ? `입력: ${meta.input_tokens.toLocaleString()} tok` : null,
       typeof meta.output_tokens === 'number' ? `출력: ${meta.output_tokens.toLocaleString()} tok` : null,
       typeof meta.total_tokens === 'number' ? `합계: ${meta.total_tokens.toLocaleString()} tok` : null,
-      typeof meta.estimated_cost_krw === 'number' ? `예상비용: ${Math.round(meta.estimated_cost_krw).toLocaleString()}원` : null,
+      typeof meta.estimated_cost_krw === 'number'
+        ? `예상비용: ${Math.round(meta.estimated_cost_krw).toLocaleString()}원`
+        : (typeof meta.estimated_cost_usd === 'number' ? `예상비용: $${meta.estimated_cost_usd.toFixed(6)}` : null),
       seconds ? `소요: ${seconds}s` : null,
     ].filter(Boolean).join(' · ');
   };
@@ -1435,7 +1438,8 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     Number.isFinite(meta.output_tokens) ||
     Number.isFinite(meta.total_tokens) ||
     Number.isFinite(meta.elapsed_ms) ||
-    Number.isFinite(meta.estimated_cost_krw)
+    Number.isFinite(meta.estimated_cost_krw) ||
+    Number.isFinite(meta.estimated_cost_usd)
   ));
 
   const selectedCoachingJob = selectedTranscript ? coachingJobs[selectedTranscript.id] : undefined;
