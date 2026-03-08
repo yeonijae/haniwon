@@ -389,6 +389,11 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
   // 진료상세내역 (오른쪽 패널 왼쪽 단)
   const [detailItems, setDetailItems] = useState<ReceiptDetailItem[]>([]);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const coveredDiagnosisName = useMemo(() => {
+    const insuranceTreatment = detailItems.find(item => (item.tx_item || '').trim() === '보험치료');
+    const dxName = insuranceTreatment?.dx_name?.trim();
+    return dxName || '-';
+  }, [detailItems]);
 
   // 리사이즈 핸들 상태
   const [listPanelWidth, setListPanelWidth] = useState<number | null>(null);
@@ -2361,6 +2366,10 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                           <span className="insurance-self-inline">{formatMoney(selectedReceipt.insurance_self)}원</span>
                         </h4>
                         <div className="insurance-items-grid">
+                          <div className="insurance-item">
+                            <span className="item-name">진단명</span>
+                            <span className="item-amount">{coveredDiagnosisName}</span>
+                          </div>
                           {selectedReceipt.treatments.filter(t => t.is_covered).map((item, idx) => (
                             <div key={idx} className="insurance-item">
                               <span className="item-name">{item.name}</span>

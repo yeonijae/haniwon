@@ -50,7 +50,9 @@ const MSSQL_API_BASE_URL = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168
 
 export interface ReceiptDetailItem {
   detail_id: number;      // Detail_PK (비급여 연결용)
+  tx_item: string;        // TxItem
   item_name: string;      // PxName
+  dx_name: string | null; // DxName
   amount: number;         // TxMoney
   days: number;           // TxCount (일수)
   daily_dose: number;     // DAYTU (일투)
@@ -69,7 +71,9 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
     const sql = `
       SELECT
         Detail_PK as detail_id,
+        TxItem as tx_item,
         PxName as item_name,
+        DxName as dx_name,
         TxMoney as amount,
         TxCount as days,
         DAYTU as daily_dose,
