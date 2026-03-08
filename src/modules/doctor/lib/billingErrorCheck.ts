@@ -147,7 +147,14 @@ export function getMemo2Warnings(
     const tokens = Array.isArray(rule.token) ? rule.token : [rule.token];
     // 토큰 존재 + 토큰 뒤 실질적 내용까지 검증
     if (hasTreatment && !tokens.some(t => hasContentAfterToken(text, t, rule.allowNextLine))) {
-      reasons.push(rule.label);
+      const normalized = text.replace(/^[ \t]+/gm, '');
+      const tokenExists = tokens.some(t => normalized.includes(t));
+      const displayToken = tokens[0];
+      if (tokenExists) {
+        reasons.push(`${displayToken} 내용 누락`);
+      } else {
+        reasons.push(`${displayToken} 누락`);
+      }
     }
   }
   return reasons;
