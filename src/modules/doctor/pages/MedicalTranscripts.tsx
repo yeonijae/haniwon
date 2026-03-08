@@ -78,6 +78,21 @@ interface UsageMeta {
 
 interface CoachingMeta extends UsageMeta {}
 
+interface CoachingHistoryItem {
+  id: number;
+  transcript_id: number;
+  coaching_text: string;
+  model?: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  total_tokens?: number | null;
+  elapsed_ms?: number | null;
+  estimated_cost_usd?: number | null;
+  estimated_cost_krw?: number | null;
+  prompt_version?: string | null;
+  created_at: string;
+}
+
 type AsyncJobStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 interface AsyncJobTracker {
@@ -438,6 +453,11 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   const [coachingError, setCoachingError] = useState<string | null>(null);
   const [coachingTextMemory, setCoachingTextMemory] = useState<Record<number, string>>({});
   const [coachingMetaMemory, setCoachingMetaMemory] = useState<Record<number, CoachingMeta>>({});
+  const [coachingHistoryMap, setCoachingHistoryMap] = useState<Record<number, CoachingHistoryItem[]>>({});
+  const [coachingHistoryLoading, setCoachingHistoryLoading] = useState(false);
+  const [coachingHistoryError, setCoachingHistoryError] = useState<string | null>(null);
+  const [showCoachingHistory, setShowCoachingHistory] = useState(false);
+  const [coachingHistoryLimit] = useState(20);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
@@ -825,6 +845,29 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     }
   };
 
+  const fetchCoachingHistory = async (transcriptId: number, limit: number = coachingHistoryLimit) => {
+    setCoachingHistoryLoading(true);
+    setCoachingHistoryError(null);
+    try {
+      const response = await fetch(`${API_URL}/api/gpt/chart-analysis/history/${transcriptId}?limit=${limit}`);
+      const data = await response.json();
+      if (!data?.success) {
+        throw new Error(data?.error || '히스토리 조회 실패');
+      }
+
+      const items = Array.isArray(data.items) ? data.items as CoachingHistoryItem[] : [];
+      setCoachingHistoryMap((prev) => ({
+        ...prev,
+        [transcriptId]: items,
+      }));
+    } catch (error: any) {
+      console.error('상담코칭 히스토리 조회 실패:', error);
+      setCoachingHistoryError(error?.message || '상담코칭 히스토리를 불러오지 못했습니다.');
+    } finally {
+      setCoachingHistoryLoading(false);
+    }
+  };
+
   const handleGenerateCoaching = async () => {
     if (!selectedTranscript) return;
 
@@ -873,6 +916,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
         },
       }));
       setDetailTab('coaching');
+      setShowCoachingHistory(false);
     } catch (error: any) {
       console.error('상담코칭 생성 실패:', error);
       setCoachingError(error?.message || '상담코칭 생성 중 오류가 발생했습니다.');
@@ -955,6 +999,15 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     setAudioCurrentTime(0);
     setAudioDuration(0);
   }, [selectedTranscript?.id]);
+
+  useEffect(() => {
+    if (!selectedTranscript?.id) return;
+    if (detailTab !== 'coaching') return;
+    if (!showCoachingHistory) return;
+
+    fetchCoachingHistory(selectedTranscript.id).catch(() => undefined);
+  }, [detailTab, selectedTranscript?.id, showCoachingHistory]);
+
 
   useEffect(() => {
     const hasProcessingTranscript = transcripts.some((t) =>
@@ -1048,6 +1101,8 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
               coaching_estimated_cost_usd: meta.estimated_cost_usd ?? prev.coaching_estimated_cost_usd,
               coaching_estimated_cost_krw: meta.estimated_cost_krw ?? prev.coaching_estimated_cost_krw,
             } : prev));
+
+            fetchCoachingHistory(transcriptId).catch(() => undefined);
           }
 
           if (status === 'failed') {
@@ -1457,6 +1512,8 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
       })
     : undefined;
   const hasSelectedCoachingMeta = hasUsageMeta(selectedCoachingMeta);
+  const selectedCoachingHistory = selectedTranscript ? (coachingHistoryMap[selectedTranscript.id] || []) : [];
+
   const selectedTranscribeMeta: UsageMeta | undefined = selectedTranscript ? {
     model: selectedTranscript.transcribe_model,
     input_tokens: selectedTranscript.transcribe_input_tokens,
@@ -2006,6 +2063,13 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                         화자분리 텍스트가 있으면 우선 사용하고, 없으면 녹취원본을 사용합니다.
                       </div>
                       <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setShowCoachingHistory((prev) => !prev)}
+                          className="text-sm text-gray-600 hover:text-gray-800"
+                        >
+                          <i className="fas fa-history mr-1"></i>
+                          히스토리
+                        </button>
                         {(selectedTranscript.coaching_text || coachingTextMemory[selectedTranscript.id]) && (
                           <button
                             onClick={() => {
@@ -2040,6 +2104,54 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                           {formatUsageMetaLine(selectedCoachingMeta)}
                         </div>
                       )}
+
+                      {showCoachingHistory && (
+                        <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-medium text-gray-700">상담코칭 히스토리</p>
+                            <button
+                              onClick={() => selectedTranscript?.id && fetchCoachingHistory(selectedTranscript.id)}
+                              className="text-xs text-gray-500 hover:text-gray-700"
+                            >
+                              <i className={`fas fa-sync-alt mr-1 ${coachingHistoryLoading ? 'animate-spin' : ''}`}></i>새로고침
+                            </button>
+                          </div>
+                          {coachingHistoryError ? (
+                            <p className="text-xs text-red-600">{coachingHistoryError}</p>
+                          ) : coachingHistoryLoading ? (
+                            <p className="text-xs text-blue-600">히스토리 불러오는 중...</p>
+                          ) : selectedCoachingHistory.length === 0 ? (
+                            <p className="text-xs text-gray-500">저장된 히스토리가 없습니다.</p>
+                          ) : (
+                            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                              {selectedCoachingHistory.map((item, idx) => (
+                                <div key={item.id} className="bg-white border border-gray-200 rounded p-3">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className={`text-[11px] px-2 py-0.5 rounded-full ${idx === 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                      {idx === 0 ? '최신본' : '이전본'}
+                                    </span>
+                                    <span className="text-[11px] text-gray-500">{formatDate(item.created_at, 'yyyy-MM-dd HH:mm')}</span>
+                                  </div>
+                                  <p className="text-[11px] text-gray-500 mb-2">
+                                    {formatUsageMetaLine({
+                                      model: item.model,
+                                      input_tokens: item.input_tokens,
+                                      output_tokens: item.output_tokens,
+                                      total_tokens: item.total_tokens,
+                                      elapsed_ms: item.elapsed_ms,
+                                      estimated_cost_usd: item.estimated_cost_usd,
+                                      estimated_cost_krw: item.estimated_cost_krw,
+                                    })}
+                                    {item.prompt_version ? ` · prompt: ${item.prompt_version}` : ''}
+                                  </p>
+                                  <p className="text-sm text-gray-700 whitespace-pre-wrap line-clamp-4">{item.coaching_text}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {!getTranscriptSourceText(selectedTranscript) ? (
                         <div className="text-center py-8 text-amber-600 bg-amber-50 border border-amber-200 rounded-lg">
                           <i className="fas fa-exclamation-triangle text-2xl mb-2 block"></i>
