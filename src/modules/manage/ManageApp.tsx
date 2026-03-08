@@ -698,6 +698,22 @@ const ManageApp: React.FC<ManageAppProps> = ({ user }) => {
             closeModal();
           }}
         />;
+      case 'billingReview':
+        return (
+          <div className="p-8 text-center text-clinic-text-secondary">
+            <i className="fa-solid fa-file-invoice-dollar text-4xl mb-4 block text-clinic-primary"></i>
+            <p className="text-lg font-semibold mb-2">청구 검토</p>
+            <p>청구 검토 기능이 준비 중입니다.</p>
+          </div>
+        );
+      case 'chartingReview':
+        return (
+          <div className="p-8 text-center text-clinic-text-secondary">
+            <i className="fa-solid fa-notes-medical text-4xl mb-4 block text-clinic-primary"></i>
+            <p className="text-lg font-semibold mb-2">차팅 검토</p>
+            <p>차팅 검토 기능이 준비 중입니다.</p>
+          </div>
+        );
       case 'stats':
         return <TreatmentStatsView />;
       case 'settings':

@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { User } from '../types';
 
-export type ModalType = 'reservation' | 'patientSearch' | 'stats' | 'settings' | 'payment' | 'dailyPayments' | 'consultationInfo' | 'paymentHistory';
+export type ModalType = 'reservation' | 'patientSearch' | 'stats' | 'settings' | 'payment' | 'dailyPayments' | 'consultationInfo' | 'paymentHistory' | 'billingReview' | 'chartingReview';
 
 interface HeaderProps {
   onOpenModal: (type: ModalType, title: string, wide?: boolean) => void;
@@ -56,6 +56,20 @@ const Header: React.FC<HeaderProps> = ({
       label: '수납현황',
       modalTitle: '일일 수납 현황',
       modalType: 'dailyPayments',
+      wide: true,
+    },
+    {
+      icon: 'fa-solid fa-file-invoice-dollar',
+      label: '청구 검토',
+      modalTitle: '청구 검토',
+      modalType: 'billingReview',
+      wide: true,
+    },
+    {
+      icon: 'fa-solid fa-notes-medical',
+      label: '차팅 검토',
+      modalTitle: '차팅 검토',
+      modalType: 'chartingReview',
       wide: true,
     },
     {
