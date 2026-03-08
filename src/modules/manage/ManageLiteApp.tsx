@@ -31,7 +31,7 @@ const ChartingReviewPage: React.FC = () => {
 };
 
 const ManageLiteApp: React.FC<ManageLiteAppProps> = () => {
-  useDocumentTitle('운영관리|연이재한의원');
+  useDocumentTitle('운영관리');
   const location = useLocation();
   const isBilling = location.pathname.includes('/billing-review');
   const isCharting = location.pathname.includes('/charting-review');
