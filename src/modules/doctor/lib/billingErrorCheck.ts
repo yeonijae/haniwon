@@ -85,7 +85,7 @@ export function getBillingErrorReasons(treatments: ReceiptTreatment[] | undefine
  *   구두점·공백을 제외한 텍스트 길이가 2 이상이면 유효
  * - 예: '투자)' → 실패, '투자) L3-4' → 성공, '기기구) -' → 실패
  */
-function hasContentAfterToken(text: string, token: string, allowNextLine = false): boolean {
+function hasContentAfterToken(text: string, token: string, allowNextLine = false, invalidContentPattern?: RegExp): boolean {
   // 각 줄의 앞 공백을 무시하여 ' [추나]' 등 변형도 매칭
   const normalized = text.replace(/^[ \t]+/gm, '');
   const idx = normalized.indexOf(token);
@@ -95,6 +95,9 @@ function hasContentAfterToken(text: string, token: string, allowNextLine = false
   const afterToken = normalized.substring(idx + token.length);
   const lineEnd = afterToken.indexOf('\n');
   const restOfLine = lineEnd === -1 ? afterToken : afterToken.substring(0, lineEnd);
+
+  // 토큰별 무효 콘텐츠 패턴 체크 (예: 적외선 템플릿 텍스트 '부위 10분')
+  if (invalidContentPattern && invalidContentPattern.test(restOfLine)) return false;
 
   // 한글/영문/숫자가 1자 이상 포함되면 유효
   if (/[가-힣a-zA-Z0-9]/.test(restOfLine)) return true;
@@ -118,7 +121,7 @@ function hasContentAfterToken(text: string, token: string, allowNextLine = false
 }
 
 /** 치료 항목 → 메모2 필수 토큰 매핑 */
-const MEMO2_RULES: { match: string; covered: boolean; token: string | string[]; label: string; allowNextLine?: boolean }[] = [
+const MEMO2_RULES: { match: string; covered: boolean; token: string | string[]; label: string; allowNextLine?: boolean; invalidContentPattern?: RegExp }[] = [
   { match: '추나', covered: true,  token: ['[추나]', '추나)'],    label: '추나 → [추나] 또는 추나)', allowNextLine: true },
   { match: '약침', covered: false, token: '약침)',     label: '약침 → 약침)' },
   { match: '기기구술', covered: true,  token: '기기구)',   label: '기기구술 → 기기구)' },
@@ -127,7 +130,7 @@ const MEMO2_RULES: { match: string; covered: boolean; token: string | string[]; 
   { match: '관절강침술', covered: true,  token: '관절)',   label: '관절강침술 → 관절)' },
   { match: '투자침술', covered: true,  token: '투자)',     label: '투자침술 → 투자)' },
   { match: '복강내침술', covered: true,  token: '복강)',   label: '복강내침술 → 복강)' },
-  { match: '경피적외선조사', covered: true, token: ['적외선)', '경피적외선)', '경피적외선요법)'], label: '경피적외선조사 → 적외선)/경피적외선)/경피적외선요법' },
+  { match: '경피적외선조사', covered: true, token: ['적외선)', '경피적외선)', '경피적외선요법)'], label: '경피적외선조사 → 적외선)/경피적외선)/경피적외선요법', invalidContentPattern: /^\s*부위\s*\d+분\s*$/ },
   { match: '유관법', covered: true,  token: '유관법)',   label: '유관법 → 유관법)' },
 ];
 
@@ -146,7 +149,7 @@ export function getMemo2Warnings(
     );
     const tokens = Array.isArray(rule.token) ? rule.token : [rule.token];
     // 토큰 존재 + 토큰 뒤 실질적 내용까지 검증
-    if (hasTreatment && !tokens.some(t => hasContentAfterToken(text, t, rule.allowNextLine))) {
+    if (hasTreatment && !tokens.some(t => hasContentAfterToken(text, t, rule.allowNextLine, rule.invalidContentPattern))) {
       const normalized = text.replace(/^[ \t]+/gm, '');
       const tokenExists = tokens.some(t => normalized.includes(t));
       const displayToken = tokens[0];
@@ -173,7 +176,7 @@ export function hasMemo2Warning(
     );
     const tokens = Array.isArray(rule.token) ? rule.token : [rule.token];
     // 토큰 존재 + 토큰 뒤 실질적 내용까지 검증
-    if (hasTreatment && !tokens.some(t => hasContentAfterToken(text, t, rule.allowNextLine))) return true;
+    if (hasTreatment && !tokens.some(t => hasContentAfterToken(text, t, rule.allowNextLine, rule.invalidContentPattern))) return true;
   }
   return false;
 }
