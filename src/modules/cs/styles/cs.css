@@ -10662,9 +10662,7 @@
 .side-panel-two-column .comment-column {
   flex: 1;
   min-width: 280px;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
+  position: relative;
 }
 
 .side-panel-two-column .detail-empty {
@@ -13770,8 +13768,14 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 6px;
   background: #ffffff;
+}
+/* comment-column 내부 스크롤 */
+.comment-column > .side-panel-detail-comment {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 4px;
 }
 .side-panel-detail-comment .detail-comment-row {
   display: flex;
