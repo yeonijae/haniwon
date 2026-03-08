@@ -10660,8 +10660,8 @@
 
 /* 오른쪽 단: 진료메모 */
 .side-panel-two-column .comment-column {
-  flex: 0 0 220px;
-  min-width: 0;
+  flex: 1;
+  min-width: 280px;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
