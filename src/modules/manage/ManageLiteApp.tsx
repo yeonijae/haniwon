@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
+import { useDocumentTitle } from '@shared/hooks/useDocumentTitle';
 import BillingReviewPage from './components/BillingReviewPage';
 
 interface ManageLiteAppProps {
@@ -30,6 +31,7 @@ const ChartingReviewPage: React.FC = () => {
 };
 
 const ManageLiteApp: React.FC<ManageLiteAppProps> = () => {
+  useDocumentTitle('운영관리|연이재한의원');
   const location = useLocation();
   const isBilling = location.pathname.includes('/billing-review');
   const isCharting = location.pathname.includes('/charting-review');
