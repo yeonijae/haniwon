@@ -98,7 +98,7 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
         d.TxItem as tx_item,
         d.PxName as item_name,
         d.DxName as dx_name,
-        k.dx_code as dx_code,
+        COALESCE(k.dx_code, k2.dx_code) as dx_code,
         d.TxMoney as amount,
         d.TxCount as days,
         d.DAYTU as daily_dose,
@@ -128,6 +128,26 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
           CASE WHEN n.norm_km = n.norm_dx THEN 0 ELSE 1 END,
           km.kcd3dxmorder, km.kcd3dxmpk
       ) k
+      OUTER APPLY (
+        SELECT TOP 1
+          km2.kcd3dxmdxcode as dx_code
+        FROM kcd3dxmanage km2
+        CROSS APPLY (
+          SELECT
+            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+              km2.kcd3dxmdxname,' ',''),'(',''),')',''),N'（',''),N'）',''),',',''),N'，',''),N'·',''),N'・',''),N'　','') AS norm_km2,
+            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+              d.DxName,' ',''),'(',''),')',''),N'（',''),N'）',''),',',''),N'，',''),N'·',''),N'・',''),N'　','') AS norm_dx2
+        ) n2
+        WHERE k.dx_code IS NULL
+          AND d.DxName IS NOT NULL AND d.DxName <> ''
+          AND (
+            n2.norm_km2 = n2.norm_dx2
+            OR (n2.norm_dx2 <> '' AND n2.norm_km2 LIKE '%' + n2.norm_dx2 + '%')
+            OR (n2.norm_km2 <> '' AND n2.norm_dx2 LIKE '%' + n2.norm_km2 + '%')
+          )
+        ORDER BY km2.kcd3dxmtxdate DESC, km2.kcd3dxmpk DESC
+      ) k2
       WHERE d.Customer_PK = ${customerId}
       AND CONVERT(varchar, d.TxDate, 23) = '${normalizedDate}'
       ORDER BY d.Detail_PK
