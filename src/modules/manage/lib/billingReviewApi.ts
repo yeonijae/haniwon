@@ -114,34 +114,29 @@ function checkRule1(group: DayGroup): boolean {
   return !hasJarakOrYugwan;
 }
 
-function evaluateRule2(group: DayGroup): { violates: boolean; acuTypeCount: number; dxCount: number } {
-  // RULE2는 급여 청구 기준으로 판정
+function evaluateRule2(group: DayGroup): { violates: boolean; acuClaimCount: number; dxCount: number } {
+  // RULE2는 급여 청구 기준 + "침술 청구 건수" 기준으로 판정
   const insuranceItems = group.items.filter((i) => i.isInsurance === 1);
   const acupunctureItems = insuranceItems.filter((i) => !!getAcupunctureType(i.pxName));
 
-  const acuTypes = new Set<string>();
-  for (const item of acupunctureItems) {
-    const t = getAcupunctureType(item.pxName);
-    if (t) acuTypes.add(t);
-  }
-
+  const acuClaimCount = acupunctureItems.length;
   const uniqueDx = new Set(
     acupunctureItems
       .map((i) => (i.dxName || '').trim())
       .filter((d) => d.length > 0)
   );
 
-  // 3종 이상이면 위반
-  if (acuTypes.size > 2) {
-    return { violates: true, acuTypeCount: acuTypes.size, dxCount: uniqueDx.size };
+  // 침술 청구 3건 이상이면 위반
+  if (acuClaimCount > 2) {
+    return { violates: true, acuClaimCount, dxCount: uniqueDx.size };
   }
 
-  // 2종이면 DxName 2개 이상 필요
-  if (acuTypes.size === 2 && uniqueDx.size < 2) {
-    return { violates: true, acuTypeCount: acuTypes.size, dxCount: uniqueDx.size };
+  // 침술 청구 2건이면 DxName 2개 이상 필요
+  if (acuClaimCount === 2 && uniqueDx.size < 2) {
+    return { violates: true, acuClaimCount, dxCount: uniqueDx.size };
   }
 
-  return { violates: false, acuTypeCount: acuTypes.size, dxCount: uniqueDx.size };
+  return { violates: false, acuClaimCount, dxCount: uniqueDx.size };
 }
 
 function checkRule2(group: DayGroup): boolean {
@@ -314,7 +309,7 @@ export async function fetchBillingReviewData(
     for (const ruleId of matched) {
       if (ruleId === 'RULE2') {
         const r2 = evaluateRule2(group);
-        reasonParts.push(`RULE2: 침술종류 ${r2.acuTypeCount}개, Dx ${r2.dxCount}개`);
+        reasonParts.push(`RULE2: 침술청구 ${r2.acuClaimCount}건, Dx ${r2.dxCount}개`);
       } else {
         const label = BILLING_RULES.find((r) => r.id === ruleId)?.label || ruleId;
         reasonParts.push(`${ruleId}: ${label}`);
