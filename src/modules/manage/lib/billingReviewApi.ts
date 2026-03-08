@@ -128,33 +128,33 @@ function checkRule1(group: DayGroup): boolean {
   return !hasJarakOrYugwan;
 }
 
-function evaluateRule2(group: DayGroup): { violates: boolean; acuClaimCount: number; dxCount: number } {
+function evaluateRule2(
+  group: DayGroup,
+  diagnosisCodeMap: Map<string, string>
+): { violates: boolean; acuClaimCount: number; dxCount: number } {
   // RULE2는 급여 청구 기준 + "침술 청구 건수" 기준으로 판정
+  // DX 개수는 "진단코드가 매핑된 진단명"만 카운트
   const insuranceItems = group.items.filter((i) => isInsuranceItem(i.isInsurance));
   const acupunctureItems = insuranceItems.filter((i) => !!getAcupunctureType(i.pxName));
 
   const acuClaimCount = acupunctureItems.length;
-  const uniqueDx = new Set(
+  const uniqueDxWithCode = new Set(
     acupunctureItems
       .map((i) => (i.dxName || '').trim())
-      .filter((d) => d.length > 0)
+      .filter((d) => d.length > 0 && !!diagnosisCodeMap.get(d))
   );
 
   // 침술 청구 3건 이상이면 위반
   if (acuClaimCount > 2) {
-    return { violates: true, acuClaimCount, dxCount: uniqueDx.size };
+    return { violates: true, acuClaimCount, dxCount: uniqueDxWithCode.size };
   }
 
-  // 침술 청구 2건이면 DxName 2개 이상 필요
-  if (acuClaimCount === 2 && uniqueDx.size < 2) {
-    return { violates: true, acuClaimCount, dxCount: uniqueDx.size };
+  // 침술 청구 2건이면 DX(코드있는 진단명) 2개 이상 필요
+  if (acuClaimCount === 2 && uniqueDxWithCode.size < 2) {
+    return { violates: true, acuClaimCount, dxCount: uniqueDxWithCode.size };
   }
 
-  return { violates: false, acuClaimCount, dxCount: uniqueDx.size };
-}
-
-function checkRule2(group: DayGroup): boolean {
-  return evaluateRule2(group).violates;
+  return { violates: false, acuClaimCount, dxCount: uniqueDxWithCode.size };
 }
 
 function checkRule3(group: DayGroup): boolean {
@@ -187,7 +187,6 @@ function checkRule4(group: DayGroup): boolean {
 
 const RULE_CHECKS: Record<string, (g: DayGroup) => boolean> = {
   RULE1: checkRule1,
-  RULE2: checkRule2,
   RULE3: checkRule3,
   RULE4: checkRule4,
 };
@@ -316,6 +315,13 @@ export async function fetchBillingReviewData(
   for (const group of groupMap.values()) {
     const matched: string[] = [];
     for (const ruleId of activeRules) {
+      if (ruleId === 'RULE2') {
+        if (evaluateRule2(group, diagnosisCodeMap).violates) {
+          matched.push(ruleId);
+        }
+        continue;
+      }
+
       const check = RULE_CHECKS[ruleId];
       if (check && check(group)) {
         matched.push(ruleId);
@@ -357,8 +363,8 @@ export async function fetchBillingReviewData(
     const reasonParts: string[] = [];
     for (const ruleId of matched) {
       if (ruleId === 'RULE2') {
-        const r2 = evaluateRule2(group);
-        reasonParts.push(`RULE2: 침술청구 ${r2.acuClaimCount}건, Dx ${r2.dxCount}개`);
+        const r2 = evaluateRule2(group, diagnosisCodeMap);
+        reasonParts.push(`RULE2: 침술청구 ${r2.acuClaimCount}건, DX(코드있음) ${r2.dxCount}개`);
       } else {
         const label = BILLING_RULES.find((r) => r.id === ruleId)?.label || ruleId;
         reasonParts.push(`${ruleId}: ${label}`);
