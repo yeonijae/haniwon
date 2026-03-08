@@ -110,9 +110,9 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
           FROM masterDB.dbo.subdetail sd
           WHERE sd.Detail_PK = d.Detail_PK
             AND sd.PointName IS NOT NULL
-            AND sd.PointName <> ''
-          FOR XML PATH(''), TYPE
-        ).value('.', 'nvarchar(max)'), 1, 2, '') as detail_text
+            AND LTRIM(RTRIM(sd.PointName)) <> ''
+          FOR XML PATH('')
+        ), 1, 2, '') as detail_text
       FROM Detail d
       WHERE d.Customer_PK = ${customerId}
       AND CONVERT(varchar, d.TxDate, 23) = '${normalizedDate}'
