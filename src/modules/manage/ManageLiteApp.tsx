@@ -37,7 +37,7 @@ const ManageLiteApp: React.FC<ManageLiteAppProps> = () => {
   return (
     <div className="cs-app-new">
       <header className="cs-top-header">
-        <div className="cs-top-header-left">
+        <div className="cs-top-header-left" style={{ marginRight: 0 }}>
           <span className="cs-logo">🖥️</span>
           <span className="cs-title">운영관리</span>
         </div>
