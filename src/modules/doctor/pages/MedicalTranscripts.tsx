@@ -2414,7 +2414,28 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
             </div>
 
             <div className="p-5 overflow-y-auto">
-              <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedCoachingHistoryItem.coaching_text}</p>
+              <div className="text-sm text-gray-800 leading-relaxed">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    h1: ({ children }) => <h1 className="text-xl font-bold mt-3 mb-2 text-gray-900">{children}</h1>,
+                    h2: ({ children }) => <h2 className="text-xl font-bold mt-5 mb-3 text-gray-900 border-b border-gray-200 pb-1">{children}</h2>,
+                    h3: ({ children }) => <h3 className="text-base font-semibold mt-2 mb-1 text-gray-900">{children}</h3>,
+                    p: ({ children }) => <p className="mb-2 whitespace-pre-wrap">{children}</p>,
+                    ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-1">{children}</ul>,
+                    ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-1">{children}</ol>,
+                    li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                    blockquote: ({ children }) => <blockquote className="border-l-4 border-gray-300 pl-3 italic my-2">{children}</blockquote>,
+                    code: ({ children }) => <code className="bg-gray-100 px-1 py-0.5 rounded">{children}</code>,
+                    hr: () => <hr className="my-3 border-gray-200" />,
+                    table: ({ children }) => <table className="w-full border-collapse my-2">{children}</table>,
+                    th: ({ children }) => <th className="border border-gray-200 px-2 py-1 text-left bg-gray-100">{children}</th>,
+                    td: ({ children }) => <td className="border border-gray-200 px-2 py-1 align-top">{children}</td>,
+                  }}
+                >
+                  {selectedCoachingHistoryItem.coaching_text}
+                </ReactMarkdown>
+              </div>
             </div>
 
             <div className="px-5 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-2">
