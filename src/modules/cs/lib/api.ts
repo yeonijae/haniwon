@@ -53,7 +53,7 @@ export interface ReceiptDetailItem {
   tx_item: string;        // TxItem
   item_name: string;      // PxName
   dx_name: string | null; // DxName
-  dx_code: string | null; // kcd3dxmanage.DxCode
+  dx_code: string | null; // InsuPx.dbo.kcd3.DxCode
   amount: number;         // TxMoney
   days: number;           // TxCount (일수)
   daily_dose: number;     // DAYTU (일투)
@@ -98,7 +98,7 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
         d.TxItem as tx_item,
         d.PxName as item_name,
         d.DxName as dx_name,
-        COALESCE(k.dx_code, k2.dx_code) as dx_code,
+        k.dx_code,
         d.TxMoney as amount,
         d.TxCount as days,
         d.DAYTU as daily_dose,
@@ -108,46 +108,25 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
       FROM Detail d
       OUTER APPLY (
         SELECT TOP 1
-          km.kcd3dxmdxcode as dx_code
-        FROM kcd3dxmanage km
+          kc.DxCode as dx_code
+        FROM InsuPx.dbo.kcd3 kc
         CROSS APPLY (
           SELECT
             REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-              km.kcd3dxmdxname,' ',''),'(',''),')',''),N'（',''),N'）',''),',',''),N'，',''),N'·',''),N'・',''),N'　','') AS norm_km,
+              kc.DxName,' ',''),'(',''),')',''),N'（',''),N'）',''),',',''),N'，',''),N'·',''),N'・',''),N'　','') AS norm_kc,
             REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
               d.DxName,' ',''),'(',''),')',''),N'（',''),N'）',''),',',''),N'，',''),N'·',''),N'・',''),N'　','') AS norm_dx
         ) n
-        WHERE km.kcd3dxmcustomerpk = d.Customer_PK
-          AND CONVERT(varchar, km.kcd3dxmtxdate, 23) = CONVERT(varchar, d.TxDate, 23)
+        WHERE d.DxName IS NOT NULL AND d.DxName <> ''
           AND (
-            n.norm_km = n.norm_dx
-            OR (n.norm_dx <> '' AND n.norm_km LIKE '%' + n.norm_dx + '%')
-            OR (n.norm_km <> '' AND n.norm_dx LIKE '%' + n.norm_km + '%')
+            n.norm_kc = n.norm_dx
+            OR (n.norm_dx <> '' AND n.norm_kc LIKE '%' + n.norm_dx + '%')
+            OR (n.norm_kc <> '' AND n.norm_dx LIKE '%' + n.norm_kc + '%')
           )
         ORDER BY
-          CASE WHEN n.norm_km = n.norm_dx THEN 0 ELSE 1 END,
-          km.kcd3dxmorder, km.kcd3dxmpk
+          CASE WHEN n.norm_kc = n.norm_dx THEN 0 ELSE 1 END,
+          kc.DxCode
       ) k
-      OUTER APPLY (
-        SELECT TOP 1
-          km2.kcd3dxmdxcode as dx_code
-        FROM kcd3dxmanage km2
-        CROSS APPLY (
-          SELECT
-            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-              km2.kcd3dxmdxname,' ',''),'(',''),')',''),N'（',''),N'）',''),',',''),N'，',''),N'·',''),N'・',''),N'　','') AS norm_km2,
-            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-              d.DxName,' ',''),'(',''),')',''),N'（',''),N'）',''),',',''),N'，',''),N'·',''),N'・',''),N'　','') AS norm_dx2
-        ) n2
-        WHERE k.dx_code IS NULL
-          AND d.DxName IS NOT NULL AND d.DxName <> ''
-          AND (
-            n2.norm_km2 = n2.norm_dx2
-            OR (n2.norm_dx2 <> '' AND n2.norm_km2 LIKE '%' + n2.norm_dx2 + '%')
-            OR (n2.norm_km2 <> '' AND n2.norm_dx2 LIKE '%' + n2.norm_km2 + '%')
-          )
-        ORDER BY km2.kcd3dxmtxdate DESC, km2.kcd3dxmpk DESC
-      ) k2
       WHERE d.Customer_PK = ${customerId}
       AND CONVERT(varchar, d.TxDate, 23) = '${normalizedDate}'
       ORDER BY d.Detail_PK
