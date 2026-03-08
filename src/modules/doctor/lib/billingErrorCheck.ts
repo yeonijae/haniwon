@@ -61,9 +61,9 @@ function checkRule3(treatments: ReceiptTreatment[]): boolean {
   );
 }
 
-/** 자락관법이체 급여 포함 여부 (점검 필요 항목) */
+/** 자락관법2부위 급여 포함 여부 (점검 필요 항목) */
 function checkJarakTransfer(treatments: ReceiptTreatment[]): boolean {
-  return treatments.some(t => t.is_covered && t.name.includes('자락관법이체'));
+  return treatments.some(t => t.is_covered && t.name.includes('자락관법2부위'));
 }
 
 /** RULE1~3 위반 또는 점검 필요 항목이 있으면 true */
@@ -79,7 +79,7 @@ export function getBillingErrorReasons(treatments: ReceiptTreatment[] | undefine
   if (checkRule1(treatments)) reasons.push('일회용부항컵 사용 시 자락관법/유관법 필요');
   if (checkRule2(treatments)) reasons.push('침술 2종 초과 또는 2종 시 진단명 2개 이상 필요');
   if (checkRule3(treatments)) reasons.push('경피경근온열/한랭은 급여 청구 불가');
-  if (checkJarakTransfer(treatments)) reasons.push('자락관법이체 점검 필요');
+  if (checkJarakTransfer(treatments)) reasons.push('자락관법2부위 점검 필요');
   return reasons;
 }
 
