@@ -401,14 +401,31 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
   const coveredDiagnosisList = useMemo(() => {
     const seen = new Set<string>();
     const result: { name: string; code: string | null }[] = [];
+
+    // 1차: 보험 항목(is_insurance truthy 또는 tx_item='보험치료')에서 dx_name 수집
+    const isInsurance = (item: ReceiptDetailItem) => {
+      const ins = item.is_insurance;
+      return ins === true || ins === 1 || ins === '1' || ins === 'true' || ins === 'Y';
+    };
     detailItems
-      .filter((item) => !!item.is_insurance || ((item.tx_item || '').trim() === '보험치료'))
+      .filter((item) => isInsurance(item) || ((item.tx_item || '').trim() === '보험치료'))
       .forEach((item) => {
         const name = (item.dx_name || '').trim();
         if (!name || seen.has(name)) return;
         seen.add(name);
         result.push({ name, code: item.dx_code || null });
       });
+
+    // 2차 fallback: 보험 항목에서 못 찾으면 전체 detail에서 첫 번째 유효 dx_name 사용
+    if (result.length === 0) {
+      for (const item of detailItems) {
+        const name = (item.dx_name || '').trim();
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        result.push({ name, code: item.dx_code || null });
+      }
+    }
+
     return result;
   }, [detailItems]);
 

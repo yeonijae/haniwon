@@ -57,7 +57,7 @@ export interface ReceiptDetailItem {
   amount: number;         // TxMoney
   days: number;           // TxCount (일수)
   daily_dose: number;     // DAYTU (일투)
-  is_insurance: boolean;  // InsuYes
+  is_insurance: boolean | number | string;  // InsuYes (MSSQL returns 0/1, '1'/'0', or boolean)
   doctor: string;         // TxDoctor
   bonin_percent: number;  // BoninPercent
   detail_text: string | null; // DText (부항술 부위명/상세 등)
