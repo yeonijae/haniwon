@@ -68,6 +68,29 @@ export interface ReceiptDetailItem {
  */
 export async function fetchReceiptDetails(customerId: number, txDate: string): Promise<ReceiptDetailItem[]> {
   try {
+    // 다양한 날짜 형식(YYYY-MM-DD / YY/MM/DD / YYYY.MM.DD 등) 보정
+    const normalizeDate = (dateStr: string): string => {
+      const raw = (dateStr || '').trim();
+      if (!raw) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+      // YY/MM/DD 또는 YY-MM-DD (예: 26/03/08)
+      let m = raw.match(/^(\d{2})[\/-](\d{2})[\/-](\d{2})$/);
+      if (m) {
+        const yy = Number(m[1]);
+        const yyyy = yy >= 70 ? 1900 + yy : 2000 + yy;
+        return `${yyyy}-${m[2]}-${m[3]}`;
+      }
+
+      // YYYY/MM/DD 또는 YYYY.MM.DD
+      m = raw.match(/^(\d{4})[\/.](\d{2})[\/.](\d{2})$/);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+
+      return raw;
+    };
+
+    const normalizedDate = normalizeDate(txDate);
+
     const sql = `
       SELECT
         Detail_PK as detail_id,
@@ -82,7 +105,7 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
         BoninPercent as bonin_percent
       FROM Detail
       WHERE Customer_PK = ${customerId}
-      AND CONVERT(varchar, TxDate, 23) = '${txDate}'
+      AND CONVERT(varchar, TxDate, 23) = '${normalizedDate}'
       ORDER BY Detail_PK
     `;
 
