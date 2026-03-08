@@ -104,7 +104,7 @@ function hasContentAfterToken(text: string, token: string): boolean {
 
 /** 치료 항목 → 메모2 필수 토큰 매핑 */
 const MEMO2_RULES: { match: string; covered: boolean; token: string | string[]; label: string }[] = [
-  { match: '추나', covered: true,  token: '[추나]',    label: '추나 → [추나]' },
+  { match: '추나', covered: true,  token: ['[추나]', '추나)'],    label: '추나 → [추나] 또는 추나)' },
   { match: '약침', covered: false, token: '약침)',     label: '약침 → 약침)' },
   { match: '기기구술', covered: true,  token: '기기구)',   label: '기기구술 → 기기구)' },
   { match: '자락관법', covered: true,  token: '습부)',     label: '자락관법 → 습부)' },
