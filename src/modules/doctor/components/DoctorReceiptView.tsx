@@ -97,7 +97,7 @@ import type { UncoveredItemType } from '@modules/cs/components/uncovered-modal/U
 import PackageManageModal from '@modules/cs/components/PackageManageModal';
 import PackageQuickAddModal from '@modules/cs/components/PackageQuickAddModal';
 import { PackageTimeline } from '@modules/cs/components/PackageTimeline';
-import InlineReceiptHistory from '@modules/cs/components/InlineReceiptHistory';
+import PatientReceiptHistoryModal from '@modules/cs/components/PatientReceiptHistoryModal';
 import TodayReceiptDetail from '@modules/cs/components/insurance-dashboard/TodayReceiptDetail';
 // import InsuranceDashboard from './insurance-dashboard/InsuranceDashboard';
 import PatientDashboard from '@modules/cs/components/PatientDashboard';
@@ -200,6 +200,9 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
 
   // 당일 진료메모 (DetailComment)
   const [detailComment, setDetailComment] = useState<{ comment1: string; comment2: string } | null>(null);
+
+  // 수납이력 모달 상태
+  const [showReceiptHistoryModal, setShowReceiptHistoryModal] = useState(false);
 
   // 환자 대시보드 모달 상태
   const [showDashboardModal, setShowDashboardModal] = useState(false);
@@ -2228,6 +2231,13 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                   </span>
                 </div>
                 <div className="header-status">
+                  <button
+                    className="status-badge receipt-history-btn"
+                    onClick={() => setShowReceiptHistoryModal(true)}
+                  >
+                    <i className="fa-solid fa-clock-rotate-left"></i>
+                    수납이력
+                  </button>
                   {!readOnly && (
                     <button
                       className={`status-badge complete ${selectedReceipt.isCompleted ? 'completed' : ''}`}
@@ -2595,19 +2605,6 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                   )}
                 </div>
 
-                {/* 오른쪽 단: 수납이력 */}
-                <div className="info-column">
-                  <InlineReceiptHistory
-                    patientId={selectedReceipt.patient_id}
-                    patientName={selectedReceipt.patient_name}
-                    chartNo={selectedReceipt.chart_no}
-                    currentDate={selectedDate}
-                    onNavigateToDate={(date) => {
-                      pendingPatientSelectRef.current = selectedReceipt?.patient_id ?? null;
-                      setSelectedDate(date);
-                    }}
-                  />
-                </div>
               </div>
             </>
           ) : (
@@ -2622,6 +2619,17 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
       </div>
 
 
+
+      {/* 수납이력 모달 */}
+      {selectedReceipt && (
+        <PatientReceiptHistoryModal
+          isOpen={showReceiptHistoryModal}
+          onClose={() => setShowReceiptHistoryModal(false)}
+          patientId={selectedReceipt.patient_id}
+          patientName={selectedReceipt.patient_name}
+          chartNo={selectedReceipt.chart_no}
+        />
+      )}
 
       {/* 예약 모달 */}
       <ReservationStep1Modal
