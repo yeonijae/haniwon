@@ -87,7 +87,7 @@ import { fetchDoctors, fetchReservationsByDateRange } from '@modules/reservation
 import type { Doctor, Reservation } from '@modules/reservation/types';
 // manage 모듈의 API 사용
 import { fetchReceiptHistory, fetchPatientReceiptHistory, type ReceiptHistoryItem } from '@modules/manage/lib/api';
-import { hasBillingError, getBillingErrorReasons } from '@modules/doctor/lib/billingErrorCheck';
+import { hasBillingError, getBillingErrorReasons, hasMemo2Warning, getMemo2Warnings } from '@modules/doctor/lib/billingErrorCheck';
 import YakchimModal from '@modules/cs/components/YakchimModal';
 import { MedicineModal } from '@modules/cs/components/MedicineModal';
 import MemoInputPanel from '@modules/cs/components/MemoInputPanel';
@@ -200,6 +200,8 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
 
   // 당일 진료메모 (DetailComment)
   const [detailComment, setDetailComment] = useState<{ comment1: string; comment2: string } | null>(null);
+  // 리스트 행 memo2 검증용: patientId -> comment2 매핑
+  const [detailCommentsMap, setDetailCommentsMap] = useState<Map<number, string>>(new Map());
 
   // 수납이력 모달 상태
   const [showReceiptHistoryModal, setShowReceiptHistoryModal] = useState(false);
@@ -990,6 +992,29 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
     } catch (err) {
       console.error('배치 메모 데이터 조회 실패:', err);
     }
+
+    // 3-1. 진료메모2 배치 조회 (memo2 검증용)
+    const uniquePatientIds = [...new Set(patientIds)];
+    const commentsMap = new Map<number, string>();
+    try {
+      const results = await Promise.all(
+        uniquePatientIds.map(pid =>
+          fetch(`${MSSQL_API_BASE}/api/patients/${pid}/detail-comments?limit=30`)
+            .then(r => r.ok ? r.json() : [])
+            .then((comments: any[]) => {
+              const match = comments.find((c: any) => (c.date || '').split('T')[0] === selectedDate);
+              return { pid, comment2: match?.comment2 || '' };
+            })
+            .catch(() => ({ pid, comment2: '' }))
+        )
+      );
+      for (const { pid, comment2 } of results) {
+        commentsMap.set(pid, comment2);
+      }
+    } catch {
+      // 실패 시 빈 맵 유지
+    }
+    setDetailCommentsMap(commentsMap);
 
     // 4. 각 환자의 메모 요약 + 다음 예약 매핑
     const updates = items.map((item) => {
@@ -2121,7 +2146,7 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
             <React.Fragment key={receipt.id}>
               {/* 2행 구조 수납 항목 */}
               <div
-                className={`receipt-item-2row ${receipt.isCompleted ? 'completed' : ''} ${selectedReceipt?.id === receipt.id ? 'selected' : ''} ${hasBillingError(receipt.treatments) ? 'billing-error' : ''}`}
+                className={`receipt-item-2row ${receipt.isCompleted ? 'completed' : ''} ${selectedReceipt?.id === receipt.id ? 'selected' : ''} ${hasBillingError(receipt.treatments) ? 'billing-error' : hasMemo2Warning(receipt.treatments, detailCommentsMap.get(receipt.patient_id)) ? 'memo2-warning' : ''}`}
                 onClick={() => handleReceiptRowClick(receipt)}
               >
                 {/* 1행: 기본 정보 + 수납내역 + 비급여내역 + 임의메모 + 예약 */}
@@ -2409,6 +2434,18 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                               <span className="billing-error-label">청구오류:</span>
                               {errorReasons.map((reason, i) => (
                                 <span key={i} className="billing-error-reason">{reason}</span>
+                              ))}
+                            </div>
+                          ) : null;
+                        })()}
+                        {(() => {
+                          const memo2Text = detailComment?.comment2 || detailCommentsMap.get(selectedReceipt.patient_id) || '';
+                          const memo2Reasons = getMemo2Warnings(selectedReceipt.treatments, memo2Text);
+                          return memo2Reasons.length > 0 ? (
+                            <div className="memo2-warning-reasons">
+                              <span className="memo2-warning-label">진료메모2 점검:</span>
+                              {memo2Reasons.map((reason, i) => (
+                                <span key={i} className="memo2-warning-reason">{reason}</span>
                               ))}
                             </div>
                           ) : null;

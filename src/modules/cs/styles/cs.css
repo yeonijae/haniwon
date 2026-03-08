@@ -8076,6 +8076,43 @@
   padding-left: 2px;
 }
 
+/* 진료메모2 경고 행 (amber/orange) */
+.receipt-item-2row.memo2-warning {
+  background: #fffbeb;
+  border-left: 3px solid #f59e0b;
+}
+
+.receipt-item-2row.memo2-warning:hover:not(.selected) {
+  background: #fef3c7;
+}
+
+.receipt-item-2row.memo2-warning.completed {
+  background: #fffbeb;
+}
+
+/* 진료메모2 점검 사유 블록 (상세 패널) */
+.memo2-warning-reasons {
+  background: #fffbeb;
+  border-left: 3px solid #f59e0b;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  border-radius: 4px;
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+.memo2-warning-reasons .memo2-warning-label {
+  color: #d97706;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.memo2-warning-reasons .memo2-warning-reason {
+  color: #d97706;
+  display: block;
+  padding-left: 2px;
+}
+
 /* 2행 항목의 각 행 */
 .receipt-item-2row .receipt-row-1,
 .receipt-item-2row .receipt-row-2 {

@@ -2,6 +2,8 @@
  * 청구 오류 판정 헬퍼 (RULE1~3만 적용)
  * manage/lib/billingReviewApi.ts의 규칙 로직을 최소화하여 포팅
  * RULE4는 분류용이므로 오류 배경 표시 대상 아님
+ *
+ * 진료메모2 필수 토큰 검증 (치료 항목별 메모2 기재 필수)
  */
 
 import type { ReceiptTreatment } from '@modules/manage/lib/api';
@@ -73,4 +75,56 @@ export function getBillingErrorReasons(treatments: ReceiptTreatment[] | undefine
   if (checkRule2(treatments)) reasons.push('침술 2종 초과 또는 2종 시 진단명 2개 이상 필요');
   if (checkRule3(treatments)) reasons.push('경피경근온열/한랭은 급여 청구 불가');
   return reasons;
+}
+
+// ── 진료메모2 필수 토큰 검증 ─────────────────────────────────────
+
+/** 치료 항목 → 메모2 필수 토큰 매핑 */
+const MEMO2_RULES: { match: string; covered: boolean; token: string; label: string }[] = [
+  { match: '추나', covered: true,  token: '[추나]',    label: '추나 → [추나]' },
+  { match: '약침', covered: false, token: '약침)',     label: '약침 → 약침)' },
+  { match: '기기구술', covered: true,  token: '기기구)',   label: '기기구술 → 기기구)' },
+  { match: '자락관법', covered: true,  token: '습부)',     label: '자락관법 → 습부)' },
+  { match: '척추침술', covered: true,  token: '척추)',     label: '척추침술 → 척추)' },
+  { match: '관절강침술', covered: true,  token: '관절)',   label: '관절강침술 → 관절)' },
+  { match: '투자침술', covered: true,  token: '투자)',     label: '투자침술 → 투자)' },
+  { match: '복강내침술', covered: true,  token: '복강)',   label: '복강내침술 → 복강)' },
+  { match: '경피적외선조사', covered: true, token: '적외선)', label: '경피적외선조사 → 적외선)' },
+  { match: '유관법', covered: true,  token: '유관법)',   label: '유관법 → 유관법)' },
+];
+
+/** 진료메모2 누락 토큰 사유 반환 (위반 없으면 빈 배열) */
+export function getMemo2Warnings(
+  treatments: ReceiptTreatment[] | undefined,
+  memo2: string | undefined,
+): string[] {
+  if (!treatments || treatments.length === 0) return [];
+  const text = memo2 || '';
+  const reasons: string[] = [];
+
+  for (const rule of MEMO2_RULES) {
+    const hasTreatment = treatments.some(t =>
+      t.name.includes(rule.match) && (rule.covered ? t.is_covered : !t.is_covered),
+    );
+    if (hasTreatment && !text.includes(rule.token)) {
+      reasons.push(rule.label);
+    }
+  }
+  return reasons;
+}
+
+/** 진료메모2 위반 여부 (빠른 판별) */
+export function hasMemo2Warning(
+  treatments: ReceiptTreatment[] | undefined,
+  memo2: string | undefined,
+): boolean {
+  if (!treatments || treatments.length === 0) return false;
+  const text = memo2 || '';
+  for (const rule of MEMO2_RULES) {
+    const hasTreatment = treatments.some(t =>
+      t.name.includes(rule.match) && (rule.covered ? t.is_covered : !t.is_covered),
+    );
+    if (hasTreatment && !text.includes(rule.token)) return true;
+  }
+  return false;
 }
