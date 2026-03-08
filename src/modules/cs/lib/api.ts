@@ -98,7 +98,6 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
         d.TxItem as tx_item,
         d.PxName as item_name,
         d.DxName as dx_name,
-        k.dx_code,
         d.TxMoney as amount,
         d.TxCount as days,
         d.DAYTU as daily_dose,
@@ -106,21 +105,6 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
         d.TxDoctor as doctor,
         d.BoninPercent as bonin_percent
       FROM Detail d
-      OUTER APPLY (
-        SELECT TOP 1
-          kc.DxCode as dx_code
-        FROM InsuPx.dbo.kcd3 kc
-        CROSS APPLY (
-          SELECT
-            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-              kc.DxName,' ',''),'(',''),')',''),N'（',''),N'）',''),',',''),N'，',''),N'·',''),N'・',''),N'　','') AS norm_kc,
-            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-              d.DxName,' ',''),'(',''),')',''),N'（',''),N'）',''),',',''),N'，',''),N'·',''),N'・',''),N'　','') AS norm_dx
-        ) n
-        WHERE d.DxName IS NOT NULL AND d.DxName <> ''
-          AND n.norm_kc = n.norm_dx
-        ORDER BY kc.DxCode
-      ) k
       WHERE d.Customer_PK = ${customerId}
       AND CONVERT(varchar, d.TxDate, 23) = '${normalizedDate}'
       ORDER BY d.Detail_PK
@@ -142,17 +126,71 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
     }
 
     // columns + rows 형식을 객체 배열로 변환
+    let details: ReceiptDetailItem[];
     if (data.columns && data.rows) {
-      return data.rows.map((row: any[]) => {
+      details = data.rows.map((row: any[]) => {
         const obj: any = {};
         data.columns.forEach((col: string, i: number) => {
           obj[col] = row[i];
         });
+        obj.dx_code = null;
         return obj as ReceiptDetailItem;
       });
+    } else {
+      details = (data.rows || []).map((r: any) => ({ ...r, dx_code: null })) as ReceiptDetailItem[];
     }
 
-    return data.rows || [];
+    // PG diagnosis_code_map에서 dx_code 매핑
+    const uniqueDxNames = [...new Set(
+      details
+        .map(d => d.dx_name)
+        .filter((n): n is string => n != null && n.trim() !== '')
+    )];
+
+    if (uniqueDxNames.length > 0) {
+      try {
+        const normalizeDxName = (s: string): string => {
+          let r = s;
+          for (const ch of [' ', '\u3000', '(', ')', '\uFF08', '\uFF09', ',', '\uFF0C', '\u00B7', '\u30FB', '\t', '\r', '\n']) {
+            r = r.replaceAll(ch, '');
+          }
+          return r.trim().toLowerCase();
+        };
+
+        const normToOriginal = new Map<string, string[]>();
+        for (const name of uniqueDxNames) {
+          const norm = normalizeDxName(name);
+          if (!norm) continue;
+          const list = normToOriginal.get(norm) || [];
+          list.push(name);
+          normToOriginal.set(norm, list);
+        }
+
+        const normNames = [...normToOriginal.keys()];
+        const inClause = normNames.map(n => escapeString(n)).join(',');
+        const pgRows = await query<{ dx_name_norm: string; kcd_code: string }>(
+          `SELECT dx_name_norm, kcd_code FROM diagnosis_code_map WHERE dx_name_norm IN (${inClause}) AND is_active = true AND kcd_code IS NOT NULL`
+        );
+
+        const normToCode = new Map<string, string>();
+        for (const row of pgRows) {
+          normToCode.set(row.dx_name_norm, row.kcd_code);
+        }
+
+        for (const detail of details) {
+          if (detail.dx_name) {
+            const norm = normalizeDxName(detail.dx_name);
+            const code = normToCode.get(norm);
+            if (code) detail.dx_code = code;
+          }
+        }
+      } catch (pgError) {
+        console.error('PG diagnosis_code_map 조회 오류:', pgError);
+        // dx_code는 null로 유지
+      }
+    }
+
+    return details;
   } catch (error) {
     console.error('진료상세내역 조회 오류:', error);
     return [];
