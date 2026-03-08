@@ -36,7 +36,7 @@ interface RawDetailRow {
   doctor: string;
   px_name: string;
   dx_name: string | null;
-  is_insurance: number;
+  is_insurance: number | boolean;
 }
 
 // --- 규칙 정의 ---
@@ -99,7 +99,11 @@ interface DayGroup {
   patientName: string;
   chartNo: string;
   doctor: string;
-  items: { pxName: string; dxName: string | null; isInsurance: number }[];
+  items: { pxName: string; dxName: string | null; isInsurance: number | boolean }[];
+}
+
+function isInsuranceItem(v: number | boolean): boolean {
+  return v === 1 || v === true;
 }
 
 function checkRule1(group: DayGroup): boolean {
@@ -116,7 +120,7 @@ function checkRule1(group: DayGroup): boolean {
 
 function evaluateRule2(group: DayGroup): { violates: boolean; acuClaimCount: number; dxCount: number } {
   // RULE2는 급여 청구 기준 + "침술 청구 건수" 기준으로 판정
-  const insuranceItems = group.items.filter((i) => i.isInsurance === 1);
+  const insuranceItems = group.items.filter((i) => isInsuranceItem(i.isInsurance));
   const acupunctureItems = insuranceItems.filter((i) => !!getAcupunctureType(i.pxName));
 
   const acuClaimCount = acupunctureItems.length;
@@ -157,7 +161,7 @@ function checkRule3(group: DayGroup): boolean {
 }
 
 function checkRule4(group: DayGroup): boolean {
-  const insuranceItems = group.items.filter((i) => i.isInsurance === 1);
+  const insuranceItems = group.items.filter((i) => isInsuranceItem(i.isInsurance));
   const acuTypes = new Set<string>();
   for (const item of insuranceItems) {
     const t = getAcupunctureType(item.pxName);
@@ -281,13 +285,13 @@ export async function fetchBillingReviewData(
 
     // 급여청구내역: 급여 항목의 PxName 전체 나열
     const insuranceItemNames = group.items
-      .filter((i) => i.isInsurance === 1)
+      .filter((i) => isInsuranceItem(i.isInsurance))
       .map((i) => i.pxName)
       .filter((n) => n);
 
     // 비급여 항목도 표시 (일회용부항컵 등)
     const nonInsuranceItemNames = group.items
-      .filter((i) => i.isInsurance !== 1)
+      .filter((i) => !isInsuranceItem(i.isInsurance))
       .map((i) => i.pxName)
       .filter((n) => n);
 
