@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Link, Navigate } from 'react-router-dom';
+import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import type { PortalUser } from '@shared/types';
 import BillingReviewPage from './components/BillingReviewPage';
 
@@ -30,34 +30,40 @@ const ChartingReviewPage: React.FC = () => {
 };
 
 const ManageLiteApp: React.FC<ManageLiteAppProps> = () => {
+  const location = useLocation();
+  const isBilling = location.pathname.includes('/billing-review');
+  const isCharting = location.pathname.includes('/charting-review');
+
   return (
-    <div className="min-h-screen bg-clinic-background">
-      <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
-        <h1 className="text-xl font-bold text-clinic-text-primary">운영관리</h1>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/manage/billing-review"
-            className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-clinic-text-primary hover:bg-gray-50 transition"
-          >
-            <i className="fa-solid fa-file-invoice-dollar text-clinic-primary"></i>
-            청구 검토
+    <div className="cs-app-new">
+      <header className="cs-top-header">
+        <div className="cs-top-header-left">
+          <span className="cs-logo">🖥️</span>
+          <span className="cs-title">운영관리</span>
+        </div>
+
+        <nav className="cs-top-nav">
+          <Link to="/manage/billing-review" className={`cs-top-nav-item no-underline ${isBilling ? 'active' : ''}`}>
+            <span className="cs-top-nav-icon"><i className="fa-solid fa-file-invoice-dollar"></i></span>
+            <span className="cs-top-nav-label">청구 검토</span>
           </Link>
-          <Link
-            to="/manage/charting-review"
-            className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-clinic-text-primary hover:bg-gray-50 transition"
-          >
-            <i className="fa-solid fa-notes-medical text-clinic-primary"></i>
-            차팅 검토
+          <Link to="/manage/charting-review" className={`cs-top-nav-item no-underline ${isCharting ? 'active' : ''}`}>
+            <span className="cs-top-nav-icon"><i className="fa-solid fa-notes-medical"></i></span>
+            <span className="cs-top-nav-label">차팅 검토</span>
           </Link>
+        </nav>
+      </header>
+
+      <div className="cs-main-new">
+        <div className="cs-content">
+          <Routes>
+            <Route path="/" element={<ManageHome />} />
+            <Route path="/billing-review" element={<BillingReviewPage />} />
+            <Route path="/charting-review" element={<ChartingReviewPage />} />
+            <Route path="*" element={<Navigate to="/manage" replace />} />
+          </Routes>
         </div>
       </div>
-
-      <Routes>
-        <Route path="/" element={<ManageHome />} />
-        <Route path="/billing-review" element={<BillingReviewPage />} />
-        <Route path="/charting-review" element={<ChartingReviewPage />} />
-        <Route path="*" element={<Navigate to="/manage" replace />} />
-      </Routes>
     </div>
   );
 };
