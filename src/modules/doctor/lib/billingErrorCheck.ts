@@ -85,7 +85,7 @@ export function getBillingErrorReasons(treatments: ReceiptTreatment[] | undefine
  *   구두점·공백을 제외한 텍스트 길이가 2 이상이면 유효
  * - 예: '투자)' → 실패, '투자) L3-4' → 성공, '기기구) -' → 실패
  */
-function hasContentAfterToken(text: string, token: string): boolean {
+function hasContentAfterToken(text: string, token: string, allowNextLine = false): boolean {
   // 각 줄의 앞 공백을 무시하여 ' [추나]' 등 변형도 매칭
   const normalized = text.replace(/^[ \t]+/gm, '');
   const idx = normalized.indexOf(token);
@@ -101,12 +101,25 @@ function hasContentAfterToken(text: string, token: string): boolean {
 
   // 구두점·공백·기호 제외 후 길이 2 이상이면 유효
   const stripped = restOfLine.replace(/[\s\-_.,;:!?'"()\[\]{}/<>@#$%^&*+=~`|\\]/g, '');
-  return stripped.length >= 2;
+  if (stripped.length >= 2) return true;
+
+  // 추나 예외: 같은 줄에 내용이 없으면 다음 비어있지 않은 줄에서 내용 검증
+  if (allowNextLine && lineEnd !== -1) {
+    const remainingLines = afterToken.substring(lineEnd + 1).split('\n');
+    const nextNonEmpty = remainingLines.find(l => l.trim().length > 0);
+    if (nextNonEmpty) {
+      if (/[가-힣a-zA-Z0-9]/.test(nextNonEmpty)) return true;
+      const strippedNext = nextNonEmpty.replace(/[\s\-_.,;:!?'"()\[\]{}/<>@#$%^&*+=~`|\\]/g, '');
+      return strippedNext.length >= 2;
+    }
+  }
+
+  return false;
 }
 
 /** 치료 항목 → 메모2 필수 토큰 매핑 */
-const MEMO2_RULES: { match: string; covered: boolean; token: string | string[]; label: string }[] = [
-  { match: '추나', covered: true,  token: ['[추나]', '추나)'],    label: '추나 → [추나] 또는 추나)' },
+const MEMO2_RULES: { match: string; covered: boolean; token: string | string[]; label: string; allowNextLine?: boolean }[] = [
+  { match: '추나', covered: true,  token: ['[추나]', '추나)'],    label: '추나 → [추나] 또는 추나)', allowNextLine: true },
   { match: '약침', covered: false, token: '약침)',     label: '약침 → 약침)' },
   { match: '기기구술', covered: true,  token: '기기구)',   label: '기기구술 → 기기구)' },
   { match: '자락관법', covered: true,  token: '습부)',     label: '자락관법 → 습부)' },
@@ -133,7 +146,7 @@ export function getMemo2Warnings(
     );
     const tokens = Array.isArray(rule.token) ? rule.token : [rule.token];
     // 토큰 존재 + 토큰 뒤 실질적 내용까지 검증
-    if (hasTreatment && !tokens.some(t => hasContentAfterToken(text, t))) {
+    if (hasTreatment && !tokens.some(t => hasContentAfterToken(text, t, rule.allowNextLine))) {
       reasons.push(rule.label);
     }
   }
@@ -153,7 +166,7 @@ export function hasMemo2Warning(
     );
     const tokens = Array.isArray(rule.token) ? rule.token : [rule.token];
     // 토큰 존재 + 토큰 뒤 실질적 내용까지 검증
-    if (hasTreatment && !tokens.some(t => hasContentAfterToken(text, t))) return true;
+    if (hasTreatment && !tokens.some(t => hasContentAfterToken(text, t, rule.allowNextLine))) return true;
   }
   return false;
 }
