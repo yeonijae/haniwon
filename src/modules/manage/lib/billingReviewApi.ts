@@ -71,17 +71,18 @@ export const BILLING_RULES: BillingRule[] = [
 const ACUPUNCTURE_TYPES = ['투자침술', '척추침술', '복강침술', '관절침술', '안와내침술', '복강내침술', '관절강침술', '흉복강침술'];
 
 function getAcupunctureType(pxName: string): string | null {
+  const name = (pxName || '').replace(/\s+/g, '');
   for (const t of ACUPUNCTURE_TYPES) {
-    if (pxName.includes(t)) return t;
+    if (name.includes(t.replace(/\s+/g, ''))) return t;
   }
   // 포괄 매칭: "투자", "척추", "복강", "관절", "안와" 포함 + "침술" 포함
-  if (pxName.includes('침술')) {
-    if (pxName.includes('투자')) return '투자침술';
-    if (pxName.includes('척추')) return '척추침술';
-    if (pxName.includes('복강')) return '복강침술';
-    if (pxName.includes('관절')) return '관절침술';
-    if (pxName.includes('안와')) return '안와내침술';
-    if (pxName.includes('흉복강')) return '흉복강침술';
+  if (name.includes('침술')) {
+    if (name.includes('투자')) return '투자침술';
+    if (name.includes('척추')) return '척추침술';
+    if (name.includes('복강')) return '복강침술';
+    if (name.includes('관절')) return '관절침술';
+    if (name.includes('안와')) return '안와내침술';
+    if (name.includes('흉복강')) return '흉복강침술';
   }
   return null;
 }
@@ -110,24 +111,28 @@ function checkRule1(group: DayGroup): boolean {
 }
 
 function checkRule2(group: DayGroup): boolean {
-  // 급여 항목 중 침술 종류 카운트
-  const insuranceItems = group.items.filter((i) => i.isInsurance === 1);
+  // RULE2는 누락 방지를 위해 isInsurance 조건 없이 침술 항목 자체를 기준으로 판정
+  const acupunctureItems = group.items.filter((i) => !!getAcupunctureType(i.pxName));
+
   const acuTypes = new Set<string>();
-  for (const item of insuranceItems) {
+  for (const item of acupunctureItems) {
     const t = getAcupunctureType(item.pxName);
     if (t) acuTypes.add(t);
   }
+
   // 3종 이상이면 위반
   if (acuTypes.size > 2) return true;
+
   // 2종이면 DxName 2개 이상 필요
   if (acuTypes.size === 2) {
     const uniqueDx = new Set(
-      insuranceItems
+      acupunctureItems
         .map((i) => i.dxName)
         .filter((d): d is string => !!d && d.trim() !== '')
     );
     if (uniqueDx.size < 2) return true;
   }
+
   return false;
 }
 
