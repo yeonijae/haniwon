@@ -86,11 +86,13 @@ export function getBillingErrorReasons(treatments: ReceiptTreatment[] | undefine
  * - 예: '투자)' → 실패, '투자) L3-4' → 성공, '기기구) -' → 실패
  */
 function hasContentAfterToken(text: string, token: string): boolean {
-  const idx = text.indexOf(token);
+  // 각 줄의 앞 공백을 무시하여 ' [추나]' 등 변형도 매칭
+  const normalized = text.replace(/^[ \t]+/gm, '');
+  const idx = normalized.indexOf(token);
   if (idx === -1) return false;
 
   // 토큰 뒤 같은 줄의 텍스트 추출
-  const afterToken = text.substring(idx + token.length);
+  const afterToken = normalized.substring(idx + token.length);
   const lineEnd = afterToken.indexOf('\n');
   const restOfLine = lineEnd === -1 ? afterToken : afterToken.substring(0, lineEnd);
 
