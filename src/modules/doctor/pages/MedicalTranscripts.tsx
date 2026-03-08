@@ -38,6 +38,14 @@ interface PatientInfo {
   patient_name: string;
 }
 
+interface CoachingMeta {
+  model?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  elapsed_ms?: number;
+}
+
 type ViewMode = 'day' | '3weeks' | '3months' | 'all';
 type PipelineCategory = 'saving' | 'transcribing' | 'done' | 'failed';
 type DetailTab = 'raw' | 'diarized' | 'soap' | 'coaching';
@@ -383,6 +391,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   const [isGeneratingCoaching, setIsGeneratingCoaching] = useState(false);
   const [coachingError, setCoachingError] = useState<string | null>(null);
   const [coachingTextMemory, setCoachingTextMemory] = useState<Record<number, string>>({});
+  const [coachingMetaMemory, setCoachingMetaMemory] = useState<Record<number, CoachingMeta>>({});
 
   // 필터링된 녹취록
   const filteredTranscripts = useMemo(() => {
@@ -751,6 +760,17 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
       if (!generatedCoaching) {
         throw new Error(data?.error || '코칭 결과가 비어 있습니다.');
       }
+
+      setCoachingMetaMemory((prev) => ({
+        ...prev,
+        [selectedTranscript.id]: {
+          model: data?.model,
+          input_tokens: typeof data?.input_tokens === 'number' ? data.input_tokens : undefined,
+          output_tokens: typeof data?.output_tokens === 'number' ? data.output_tokens : undefined,
+          total_tokens: typeof data?.total_tokens === 'number' ? data.total_tokens : undefined,
+          elapsed_ms: typeof data?.elapsed_ms === 'number' ? data.elapsed_ms : undefined,
+        },
+      }));
 
       const persisted = await persistCoachingText(selectedTranscript.id, generatedCoaching);
       if (!persisted) {
@@ -1617,6 +1637,21 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                     </div>
 
                     <div className="p-6">
+                      {coachingMetaMemory[selectedTranscript.id] && (
+                        <div className="mb-3 text-xs text-gray-500">
+                          {(() => {
+                            const meta = coachingMetaMemory[selectedTranscript.id];
+                            const seconds = typeof meta.elapsed_ms === 'number' ? (meta.elapsed_ms / 1000).toFixed(1) : null;
+                            return [
+                              meta.model ? `모델: ${meta.model}` : null,
+                              typeof meta.input_tokens === 'number' ? `입력: ${meta.input_tokens.toLocaleString()} tok` : null,
+                              typeof meta.output_tokens === 'number' ? `출력: ${meta.output_tokens.toLocaleString()} tok` : null,
+                              typeof meta.total_tokens === 'number' ? `합계: ${meta.total_tokens.toLocaleString()} tok` : null,
+                              seconds ? `소요: ${seconds}s` : null,
+                            ].filter(Boolean).join(' · ');
+                          })()}
+                        </div>
+                      )}
                       {!getTranscriptSourceText(selectedTranscript) ? (
                         <div className="text-center py-8 text-amber-600 bg-amber-50 border border-amber-200 rounded-lg">
                           <i className="fas fa-exclamation-triangle text-2xl mb-2 block"></i>
