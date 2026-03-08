@@ -457,6 +457,8 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   const [coachingHistoryLoading, setCoachingHistoryLoading] = useState(false);
   const [coachingHistoryError, setCoachingHistoryError] = useState<string | null>(null);
   const [showCoachingHistory, setShowCoachingHistory] = useState(false);
+  const [selectedCoachingHistoryItem, setSelectedCoachingHistoryItem] = useState<CoachingHistoryItem | null>(null);
+  const [isHistoryRestoreLoading, setIsHistoryRestoreLoading] = useState(false);
   const [coachingHistoryLimit] = useState(20);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
@@ -868,6 +870,79 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     }
   };
 
+  const handleCopyHistoryCoaching = async (item: CoachingHistoryItem) => {
+    try {
+      await navigator.clipboard.writeText(item.coaching_text || '');
+      alert('히스토리 코칭 내용이 클립보드에 복사되었습니다.');
+    } catch (error) {
+      console.error('히스토리 코칭 복사 실패:', error);
+      alert('클립보드 복사에 실패했습니다.');
+    }
+  };
+
+  const handleRestoreHistoryCoaching = async (item: CoachingHistoryItem) => {
+    if (!selectedTranscript) return;
+
+    setIsHistoryRestoreLoading(true);
+    setCoachingError(null);
+
+    const restoredText = item.coaching_text || '';
+    const restoredMeta: CoachingMeta = {
+      model: item.model,
+      input_tokens: item.input_tokens,
+      output_tokens: item.output_tokens,
+      total_tokens: item.total_tokens,
+      elapsed_ms: item.elapsed_ms,
+      estimated_cost_usd: item.estimated_cost_usd,
+      estimated_cost_krw: item.estimated_cost_krw,
+    };
+
+    try {
+      const persisted = await persistCoachingText(selectedTranscript.id, restoredText, restoredMeta);
+      if (!persisted) {
+        setCoachingTextMemory((prev) => ({ ...prev, [selectedTranscript.id]: restoredText }));
+      }
+
+      setCoachingMetaMemory((prev) => ({
+        ...prev,
+        [selectedTranscript.id]: restoredMeta,
+      }));
+
+      setTranscripts((prev) => prev.map((t) => (t.id === selectedTranscript.id ? {
+        ...t,
+        coaching_text: restoredText,
+        coaching_model: restoredMeta.model ?? t.coaching_model,
+        coaching_input_tokens: restoredMeta.input_tokens ?? t.coaching_input_tokens,
+        coaching_output_tokens: restoredMeta.output_tokens ?? t.coaching_output_tokens,
+        coaching_total_tokens: restoredMeta.total_tokens ?? t.coaching_total_tokens,
+        coaching_elapsed_ms: restoredMeta.elapsed_ms ?? t.coaching_elapsed_ms,
+        coaching_estimated_cost_usd: restoredMeta.estimated_cost_usd ?? t.coaching_estimated_cost_usd,
+        coaching_estimated_cost_krw: restoredMeta.estimated_cost_krw ?? t.coaching_estimated_cost_krw,
+      } : t)));
+
+      setSelectedTranscript((prev) => (prev && prev.id === selectedTranscript.id ? {
+        ...prev,
+        coaching_text: restoredText,
+        coaching_model: restoredMeta.model ?? prev.coaching_model,
+        coaching_input_tokens: restoredMeta.input_tokens ?? prev.coaching_input_tokens,
+        coaching_output_tokens: restoredMeta.output_tokens ?? prev.coaching_output_tokens,
+        coaching_total_tokens: restoredMeta.total_tokens ?? prev.coaching_total_tokens,
+        coaching_elapsed_ms: restoredMeta.elapsed_ms ?? prev.coaching_elapsed_ms,
+        coaching_estimated_cost_usd: restoredMeta.estimated_cost_usd ?? prev.coaching_estimated_cost_usd,
+        coaching_estimated_cost_krw: restoredMeta.estimated_cost_krw ?? prev.coaching_estimated_cost_krw,
+      } : prev));
+
+      setDetailTab('coaching');
+      setSelectedCoachingHistoryItem(null);
+      alert('선택한 히스토리를 현재 코칭 본문으로 복원했습니다.');
+    } catch (error) {
+      console.error('히스토리 코칭 복원 실패:', error);
+      alert('코칭 복원에 실패했습니다.');
+    } finally {
+      setIsHistoryRestoreLoading(false);
+    }
+  };
+
   const handleGenerateCoaching = async () => {
     if (!selectedTranscript) return;
 
@@ -998,6 +1073,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   useEffect(() => {
     setAudioCurrentTime(0);
     setAudioDuration(0);
+    setSelectedCoachingHistoryItem(null);
   }, [selectedTranscript?.id]);
 
   useEffect(() => {
@@ -2125,7 +2201,13 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                           ) : (
                             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                               {selectedCoachingHistory.map((item, idx) => (
-                                <div key={item.id} className="bg-white border border-gray-200 rounded p-3">
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => setSelectedCoachingHistoryItem(item)}
+                                  className="w-full text-left bg-white border border-gray-200 rounded p-3 hover:border-clinic-primary/40 hover:bg-clinic-primary/5 transition-colors"
+                                  aria-label={`코칭 히스토리 상세 보기 ${formatDate(item.created_at, 'yyyy-MM-dd HH:mm')}`}
+                                >
                                   <div className="flex items-center justify-between mb-1">
                                     <span className={`text-[11px] px-2 py-0.5 rounded-full ${idx === 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                                       {idx === 0 ? '최신본' : '이전본'}
@@ -2145,7 +2227,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                                     {item.prompt_version ? ` · prompt: ${item.prompt_version}` : ''}
                                   </p>
                                   <p className="text-sm text-gray-700 whitespace-pre-wrap line-clamp-4">{item.coaching_text}</p>
-                                </div>
+                                </button>
                               ))}
                             </div>
                           )}
@@ -2288,6 +2370,75 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
           )}
         </div>
       </div>
+
+      {/* 코칭 히스토리 상세 모달 */}
+      {selectedCoachingHistoryItem && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setSelectedCoachingHistoryItem(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="상담코칭 히스토리 상세"
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-gray-800">상담코칭 히스토리 상세</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  {formatDate(selectedCoachingHistoryItem.created_at, 'yyyy-MM-dd HH:mm')}
+                  {selectedCoachingHistoryItem.prompt_version ? ` · prompt: ${selectedCoachingHistoryItem.prompt_version}` : ''}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {formatUsageMetaLine({
+                    model: selectedCoachingHistoryItem.model,
+                    input_tokens: selectedCoachingHistoryItem.input_tokens,
+                    output_tokens: selectedCoachingHistoryItem.output_tokens,
+                    total_tokens: selectedCoachingHistoryItem.total_tokens,
+                    elapsed_ms: selectedCoachingHistoryItem.elapsed_ms,
+                    estimated_cost_usd: selectedCoachingHistoryItem.estimated_cost_usd,
+                    estimated_cost_krw: selectedCoachingHistoryItem.estimated_cost_krw,
+                  }) || '메타 없음'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedCoachingHistoryItem(null)}
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                aria-label="모달 닫기"
+              >
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto">
+              <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedCoachingHistoryItem.coaching_text}</p>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => selectedCoachingHistoryItem && handleCopyHistoryCoaching(selectedCoachingHistoryItem)}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100"
+              >
+                <i className="fas fa-copy mr-1"></i>
+                복사
+              </button>
+              <button
+                type="button"
+                onClick={() => selectedCoachingHistoryItem && handleRestoreHistoryCoaching(selectedCoachingHistoryItem)}
+                disabled={isHistoryRestoreLoading || !selectedTranscript}
+                className="px-3 py-2 text-sm bg-clinic-primary text-white rounded-lg hover:bg-clinic-primary/90 disabled:opacity-50"
+              >
+                <i className={`fas ${isHistoryRestoreLoading ? 'fa-spinner fa-spin' : 'fa-undo'} mr-1`}></i>
+                {isHistoryRestoreLoading ? '복원 중...' : '복원'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 삭제 확인 모달 */}
       {showDeleteConfirm && (
