@@ -132,11 +132,16 @@ function checkRule2(group: DayGroup): boolean {
 }
 
 function checkRule3(group: DayGroup): boolean {
-  return group.items.some(
-    (i) =>
-      i.isInsurance === 1 &&
-      (i.pxName.includes('경피경근온열') || i.pxName.includes('경피경근한랭'))
-  );
+  return group.items.some((i) => {
+    const name = (i.pxName || '').replace(/\s+/g, '');
+    // RULE3: 경피경근온열/한랭 관련 항목이 있으면 표시
+    // (InsuYes 값과 무관하게 탐지하여 누락 방지)
+    return (
+      name.includes('경피경근온열') ||
+      name.includes('경피경근한랭') ||
+      (name.includes('경피경근') && (name.includes('온열') || name.includes('한랭')))
+    );
+  });
 }
 
 function checkRule4(group: DayGroup): boolean {
