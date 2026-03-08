@@ -118,14 +118,8 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
               d.DxName,' ',''),'(',''),')',''),N'（',''),N'）',''),',',''),N'，',''),N'·',''),N'・',''),N'　','') AS norm_dx
         ) n
         WHERE d.DxName IS NOT NULL AND d.DxName <> ''
-          AND (
-            n.norm_kc = n.norm_dx
-            OR (n.norm_dx <> '' AND n.norm_kc LIKE '%' + n.norm_dx + '%')
-            OR (n.norm_kc <> '' AND n.norm_dx LIKE '%' + n.norm_kc + '%')
-          )
-        ORDER BY
-          CASE WHEN n.norm_kc = n.norm_dx THEN 0 ELSE 1 END,
-          kc.DxCode
+          AND n.norm_kc = n.norm_dx
+        ORDER BY kc.DxCode
       ) k
       WHERE d.Customer_PK = ${customerId}
       AND CONVERT(varchar, d.TxDate, 23) = '${normalizedDate}'
