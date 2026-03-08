@@ -2468,7 +2468,7 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                             </span>
                           </div>
                           {selectedReceipt.treatments.filter(t => t.is_covered).map((item, idx) => {
-                            const isCupping = /자락관법|유관법|부항요법/.test(item.name);
+                            const isCupping = /자락관법|유관법|부항요법|보험부항/.test(item.name);
                             return (
                               <div key={idx} className="insurance-item">
                                 <span className="item-name">
