@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import './call-center/OutboundCallCenter.css';
 import type { PortalUser } from '@shared/types';
 import { getCurrentDate } from '@shared/lib/postgres';
@@ -1923,6 +1923,29 @@ function ReceiptView({ user, onReservationDraftReady, readOnly = false, fixedDoc
   const completedCount = doctorScopedReceipts.filter(r => r.isCompleted).length;
   const incompleteCount = doctorScopedReceipts.filter(r => !r.isCompleted).length;
 
+  // 현장예약/사전예약 뱃지 표시값 (담당의 필터 반영)
+  const displayOnsiteStats = useMemo<OnsiteReservationStats | null>(() => {
+    if (!onsiteStats) return null;
+
+    // 담당의 필터가 없으면 기존 전체 통계 사용
+    if (!effectiveDoctorFilter) return onsiteStats;
+
+    // 담당의 환자 기준으로 재계산
+    // - total_chim_patients: 담당의 필터가 적용된 목록 수
+    // - reserved_count: 다음 예약(nextReservation) 존재 건수
+    const total = doctorScopedReceipts.length;
+    const reserved = doctorScopedReceipts.filter((r) => !!r.nextReservation).length;
+    const onsite = Math.max(total - reserved, 0);
+
+    return {
+      total_chim_patients: total,
+      reserved_count: reserved,
+      reservation_rate: total > 0 ? Math.round((reserved / total) * 100) : 0,
+      onsite_count: onsite,
+      onsite_rate: total > 0 ? Math.round((onsite / total) * 100) : 0,
+    };
+  }, [onsiteStats, effectiveDoctorFilter, doctorScopedReceipts]);
+
   // 날짜 이동 버튼
   const changeDate = (days: number) => {
     const current = new Date(selectedDate);
@@ -1987,13 +2010,13 @@ function ReceiptView({ user, onReservationDraftReady, readOnly = false, fixedDoc
           )}
 
           {/* 현장예약율 */}
-          {onsiteStats && (
+          {displayOnsiteStats && (
             <div style={{ display: 'flex', gap: 0, border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', fontSize: 13, fontWeight: 500, marginLeft: 4 }}>
               <span style={{ padding: '5px 12px', borderRight: '1px solid #d1d5db', background: '#eff6ff', color: '#2563eb' }}>
-                현장예약 <b>{onsiteStats.onsite_rate}%</b> <span style={{ fontSize: 11 }}>({onsiteStats.onsite_count}/{onsiteStats.total_chim_patients})</span>
+                현장예약 <b>{displayOnsiteStats.onsite_rate}%</b> <span style={{ fontSize: 11 }}>({displayOnsiteStats.onsite_count}/{displayOnsiteStats.total_chim_patients})</span>
               </span>
               <span style={{ padding: '5px 12px', background: '#f0fdf4', color: '#16a34a' }}>
-                사전예약 <b>{onsiteStats.reservation_rate}%</b>
+                사전예약 <b>{displayOnsiteStats.reservation_rate}%</b>
               </span>
             </div>
           )}
