@@ -141,6 +141,7 @@ export function getMemo2Warnings(
 ): string[] {
   if (!treatments || treatments.length === 0) return [];
   const text = memo2 || '';
+  const normalized = text.replace(/^[ \t]+/gm, '');
   const reasons: string[] = [];
 
   for (const rule of MEMO2_RULES) {
@@ -148,15 +149,22 @@ export function getMemo2Warnings(
       t.name.includes(rule.match) && (rule.covered ? t.is_covered : !t.is_covered),
     );
     const tokens = Array.isArray(rule.token) ? rule.token : [rule.token];
-    // 토큰 존재 + 토큰 뒤 실질적 내용까지 검증
-    if (hasTreatment && !tokens.some(t => hasContentAfterToken(text, t, rule.allowNextLine, rule.invalidContentPattern))) {
-      const normalized = text.replace(/^[ \t]+/gm, '');
-      const tokenExists = tokens.some(t => normalized.includes(t));
-      const displayToken = tokens[0];
-      if (tokenExists) {
-        reasons.push(`${displayToken} 내용 누락`);
-      } else {
-        reasons.push(`${displayToken} 누락`);
+    const displayToken = tokens[0];
+
+    if (hasTreatment) {
+      // 토큰 존재 + 토큰 뒤 실질적 내용까지 검증
+      if (!tokens.some(t => hasContentAfterToken(text, t, rule.allowNextLine, rule.invalidContentPattern))) {
+        const tokenExists = tokens.some(t => normalized.includes(t));
+        if (tokenExists) {
+          reasons.push(`${displayToken} 내용 누락`);
+        } else {
+          reasons.push(`${displayToken} 누락`);
+        }
+      }
+    } else {
+      // 치료 항목 없는데 토큰이 존재하면 불필요
+      if (tokens.some(t => normalized.includes(t))) {
+        reasons.push(`${displayToken} 불필요`);
       }
     }
   }
@@ -170,13 +178,19 @@ export function hasMemo2Warning(
 ): boolean {
   if (!treatments || treatments.length === 0) return false;
   const text = memo2 || '';
+  const normalized = text.replace(/^[ \t]+/gm, '');
   for (const rule of MEMO2_RULES) {
     const hasTreatment = treatments.some(t =>
       t.name.includes(rule.match) && (rule.covered ? t.is_covered : !t.is_covered),
     );
     const tokens = Array.isArray(rule.token) ? rule.token : [rule.token];
-    // 토큰 존재 + 토큰 뒤 실질적 내용까지 검증
-    if (hasTreatment && !tokens.some(t => hasContentAfterToken(text, t, rule.allowNextLine, rule.invalidContentPattern))) return true;
+    if (hasTreatment) {
+      // 토큰 존재 + 토큰 뒤 실질적 내용까지 검증
+      if (!tokens.some(t => hasContentAfterToken(text, t, rule.allowNextLine, rule.invalidContentPattern))) return true;
+    } else {
+      // 치료 항목 없는데 토큰이 존재하면 불필요
+      if (tokens.some(t => normalized.includes(t))) return true;
+    }
   }
   return false;
 }
