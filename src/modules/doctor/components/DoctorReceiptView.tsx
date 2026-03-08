@@ -389,15 +389,18 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
   // 진료상세내역 (오른쪽 패널 왼쪽 단)
   const [detailItems, setDetailItems] = useState<ReceiptDetailItem[]>([]);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
-  const coveredDiagnosisName = useMemo(() => {
-    const dxNames = Array.from(new Set(
-      detailItems
-        .filter((item) => (item.is_insurance === true) || ((item.tx_item || '').trim() === '보험치료'))
-        .map((item) => (item.dx_name || '').trim())
-        .filter(Boolean)
-    ));
-
-    return dxNames.length > 0 ? dxNames.join(' / ') : '-';
+  const coveredDiagnosisList = useMemo(() => {
+    const seen = new Set<string>();
+    const result: { name: string; code: string | null }[] = [];
+    detailItems
+      .filter((item) => (item.is_insurance === true) || ((item.tx_item || '').trim() === '보험치료'))
+      .forEach((item) => {
+        const name = (item.dx_name || '').trim();
+        if (!name || seen.has(name)) return;
+        seen.add(name);
+        result.push({ name, code: item.dx_code || null });
+      });
+    return result;
   }, [detailItems]);
 
   // 리사이즈 핸들 상태
@@ -2375,7 +2378,13 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                         <div className="insurance-items-grid">
                           <div className="insurance-item" style={{ gridColumn: '1 / -1' }}>
                             <span className="item-name">진단명</span>
-                            <span className="item-amount">{coveredDiagnosisName}</span>
+                            <span className="item-amount">
+                              {coveredDiagnosisList.length === 0 ? '-' : coveredDiagnosisList.map((dx, i) => (
+                                <span key={i} style={{ display: 'block' }}>
+                                  {dx.name}{dx.code ? ` (${dx.code})` : ''}
+                                </span>
+                              ))}
+                            </span>
                           </div>
                           {selectedReceipt.treatments.filter(t => t.is_covered).map((item, idx) => (
                             <div key={idx} className="insurance-item">

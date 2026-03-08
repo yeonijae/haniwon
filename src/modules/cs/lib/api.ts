@@ -53,6 +53,7 @@ export interface ReceiptDetailItem {
   tx_item: string;        // TxItem
   item_name: string;      // PxName
   dx_name: string | null; // DxName
+  dx_code: string | null; // kcd3dxmanage.DxCode
   amount: number;         // TxMoney
   days: number;           // TxCount (일수)
   daily_dose: number;     // DAYTU (일투)
@@ -93,20 +94,30 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
 
     const sql = `
       SELECT
-        Detail_PK as detail_id,
-        TxItem as tx_item,
-        PxName as item_name,
-        DxName as dx_name,
-        TxMoney as amount,
-        TxCount as days,
-        DAYTU as daily_dose,
-        InsuYes as is_insurance,
-        TxDoctor as doctor,
-        BoninPercent as bonin_percent
-      FROM Detail
-      WHERE Customer_PK = ${customerId}
-      AND CONVERT(varchar, TxDate, 23) = '${normalizedDate}'
-      ORDER BY Detail_PK
+        d.Detail_PK as detail_id,
+        d.TxItem as tx_item,
+        d.PxName as item_name,
+        d.DxName as dx_name,
+        k.dx_code as dx_code,
+        d.TxMoney as amount,
+        d.TxCount as days,
+        d.DAYTU as daily_dose,
+        d.InsuYes as is_insurance,
+        d.TxDoctor as doctor,
+        d.BoninPercent as bonin_percent
+      FROM Detail d
+      OUTER APPLY (
+        SELECT TOP 1
+          km.kcd3dxmdxcode as dx_code
+        FROM kcd3dxmanage km
+        WHERE km.kcd3dxmcustomerpk = d.Customer_PK
+          AND CONVERT(varchar, km.kcd3dxmtxdate, 23) = CONVERT(varchar, d.TxDate, 23)
+          AND km.kcd3dxmdxname = d.DxName
+        ORDER BY km.kcd3dxmorder, km.kcd3dxmpk
+      ) k
+      WHERE d.Customer_PK = ${customerId}
+      AND CONVERT(varchar, d.TxDate, 23) = '${normalizedDate}'
+      ORDER BY d.Detail_PK
     `;
 
     const response = await fetch(`${MSSQL_API_BASE_URL}/api/execute`, {
