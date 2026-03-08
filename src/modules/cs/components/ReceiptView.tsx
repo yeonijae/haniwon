@@ -135,6 +135,9 @@ const MSSQL_API_BASE = import.meta.env.VITE_MSSQL_API_URL || 'http://192.168.0.1
 interface ReceiptViewProps {
   user: PortalUser;
   onReservationDraftReady?: (draft: ReservationDraft) => void;
+  readOnly?: boolean;
+  fixedDoctorFilter?: string;
+  onPatientClick?: (patientId: string, chartNumber: string) => void;
 }
 
 // 현재 근무 중인 의사인지 확인
@@ -162,7 +165,7 @@ const isActiveDoctorOnDate = (doc: Doctor, dateStr: string): boolean => {
   return true;
 };
 
-function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
+function ReceiptView({ user, onReservationDraftReady, readOnly = false, fixedDoctorFilter, onPatientClick }: ReceiptViewProps) {
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return getCurrentDate();
   });
@@ -201,7 +204,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
   const [patientEtcMemo, setPatientEtcMemo] = useState<string>('');
   const [dashboardPatient, setDashboardPatient] = useState<LocalPatient | null>(null);
   const [dashboardDoctor, setDashboardDoctor] = useState('');
-  const [filterDoctor, setFilterDoctor] = useState<string | null>(null);
+  const [filterDoctor, setFilterDoctor] = useState<string | null>(fixedDoctorFilter ?? null);
 
   // 정렬
   type ReceiptSortKey = 'time' | 'patient' | 'doctor' | 'total' | 'self' | 'general';
@@ -780,9 +783,15 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
     }
   };
 
-  // 환자 클릭 시 대시보드 모달 열기
-  const handlePatientClick = async (receipt: ExpandedReceiptItem, e: React.MouseEvent) => {
-    e.stopPropagation();
+  // 환자 클릭: 외부 핸들러가 있으면 위임, 없으면 기본 대시보드 모달
+  const handlePatientClick = async (receipt: ExpandedReceiptItem, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+
+    if (onPatientClick) {
+      onPatientClick(String(receipt.patient_id), receipt.chart_no || '');
+      return;
+    }
+
     let localPatient = await getLocalPatientByMssqlId(receipt.patient_id);
     if (!localPatient) {
       localPatient = await syncPatientById(receipt.patient_id);
@@ -805,16 +814,25 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
       const allDocs = await fetchDoctors();
       const activeDocs = allDocs.filter(doc => isActiveDoctorOnDate(doc, selectedDate));
       setDoctors(activeDocs);
-      setFilterDoctor(prev => prev && !activeDocs.some(d => d.name === prev) ? null : prev);
+      if (fixedDoctorFilter === undefined) {
+        setFilterDoctor(prev => prev && !activeDocs.some(d => d.name === prev) ? null : prev);
+      }
     } catch (err) {
       console.error('의사 목록 로드 실패:', err);
     }
-  }, [selectedDate]);
+  }, [selectedDate, fixedDoctorFilter]);
 
   // 날짜 변경 시 의사 목록 리프레시
   useEffect(() => {
     loadDoctors();
   }, [loadDoctors]);
+
+  // 외부에서 담당의 필터 고정(원장실)
+  useEffect(() => {
+    if (fixedDoctorFilter !== undefined) {
+      setFilterDoctor(fixedDoctorFilter || null);
+    }
+  }, [fixedDoctorFilter]);
 
   // MSSQL 수납 내역 로드 (manage 모듈 API 사용)
   const loadReceipts = useCallback(async () => {
@@ -1095,6 +1113,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
 
   // 메모 태그 클릭 핸들러 (타입별 인라인 패널 열기)
   const handleMemoTagClick = (item: MemoSummaryItem, receipt: ExpandedReceiptItem) => {
+    if (readOnly) return;
     switch (item.type) {
       case 'yakchim-membership':
       case 'yakchim-package':
@@ -1186,6 +1205,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
 
   // 클릭 시 모달 열지 않는 항목 (미입력 뱃지는 표시)
   const isClickEnabled = (itemName: string, amount: number, detailId?: number) => {
+    if (readOnly) return false;
     // 이미 등록 완료된 항목은 클릭 비활성화
     if (detailId && hasMemoForDetail(detailId)) return false;
     // "포인트" 포함 → 통마 패키지 등록
@@ -1293,6 +1313,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
 
   // 메모 인라인 편집 시작
   const handleStartEditMemo = async (memo: ReceiptMemo) => {
+    if (readOnly) return;
     if (!memo.id) return;
 
     // "선결제" 포함 메모면 패키지 수정 모달 열기 (환자의 활성 한약 패키지에서 매칭)
@@ -1823,6 +1844,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
 
   // 기록 완료 토글
   const handleToggleCompleted = async (receipt: ExpandedReceiptItem) => {
+    if (readOnly) return;
     const newStatus = !receipt.isCompleted;
 
     // 완료로 전환 시: 미처리 비급여 항목 경고
@@ -1871,10 +1893,16 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
   };
 
   // 필터링된 수납 목록
-  const filteredReceipts = receipts.filter(receipt => {
+  const effectiveDoctorFilter = fixedDoctorFilter ?? filterDoctor;
+
+  const doctorScopedReceipts = receipts.filter((receipt) => {
+    if (effectiveDoctorFilter && receipt.treatments?.[0]?.doctor !== effectiveDoctorFilter) return false;
+    return true;
+  });
+
+  const filteredReceipts = doctorScopedReceipts.filter(receipt => {
     if (recordFilter === 'completed' && !receipt.isCompleted) return false;
     if (recordFilter === 'incomplete' && receipt.isCompleted) return false;
-    if (filterDoctor && receipt.treatments?.[0]?.doctor !== filterDoctor) return false;
     return true;
   }).sort((a, b) => {
     if (!receiptSortKey) return 0;
@@ -1891,9 +1919,9 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
     return receiptSortDir === 'asc' ? cmp : -cmp;
   });
 
-  // 필터 카운트
-  const completedCount = receipts.filter(r => r.isCompleted).length;
-  const incompleteCount = receipts.filter(r => !r.isCompleted).length;
+  // 필터 카운트 (담당의 필터 반영)
+  const completedCount = doctorScopedReceipts.filter(r => r.isCompleted).length;
+  const incompleteCount = doctorScopedReceipts.filter(r => !r.isCompleted).length;
 
   // 날짜 이동 버튼
   const changeDate = (days: number) => {
@@ -1936,7 +1964,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
           {/* 기록 상태 필터 */}
           <div className="occ-filter-group occ-filter-patient">
             <button className={`occ-filter-btn ${recordFilter === 'all' ? 'active' : ''}`} onClick={() => setRecordFilter('all')}>
-              전체 {receipts.length}
+              전체 {doctorScopedReceipts.length}
             </button>
             <button className={`occ-filter-btn ${recordFilter === 'incomplete' ? 'active' : ''}`} onClick={() => setRecordFilter('incomplete')}>
               미기록 {incompleteCount}
@@ -1947,14 +1975,16 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
           </div>
 
           {/* 담당의 필터 */}
-          <div className="occ-filter-group occ-filter-channel">
-            <button className={`occ-filter-btn ${filterDoctor === null ? 'active' : ''}`} onClick={() => setFilterDoctor(null)}>전체</button>
-            {doctors.map(doc => (
-              <button key={doc.id} className={`occ-filter-btn ${filterDoctor === doc.name ? 'active' : ''}`} onClick={() => setFilterDoctor(doc.name)}>
-                {doc.name}
-              </button>
-            ))}
-          </div>
+          {fixedDoctorFilter === undefined && (
+            <div className="occ-filter-group occ-filter-channel">
+              <button className={`occ-filter-btn ${filterDoctor === null ? 'active' : ''}`} onClick={() => setFilterDoctor(null)}>전체</button>
+              {doctors.map(doc => (
+                <button key={doc.id} className={`occ-filter-btn ${filterDoctor === doc.name ? 'active' : ''}`} onClick={() => setFilterDoctor(doc.name)}>
+                  {doc.name}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* 현장예약율 */}
           {onsiteStats && (
@@ -2038,7 +2068,12 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
                   <div className="col-num">{index + 1}</div>
                   <div className="col-time">{formatTime(receipt.receipt_time)}</div>
                   <div className="col-patient">
-                    <span className="patient-name">{receipt.patient_name}</span>
+                    <span
+                      className="patient-name clickable"
+                      onClick={(e) => handlePatientClick(receipt, e)}
+                    >
+                      {receipt.patient_name}
+                    </span>
                   </div>
                   <div className="col-doctor">{getDoctorShortName(receipt)}</div>
                   <div className="col-total">
@@ -2123,18 +2158,8 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
                 <div className="patient-info">
                   <span
                     className="patient-name clickable"
-                    onClick={async () => {
-                      let localPatient = await getLocalPatientByMssqlId(selectedReceipt.patient_id);
-                      if (!localPatient) {
-                        localPatient = await syncPatientById(selectedReceipt.patient_id);
-                      }
-                      if (localPatient) {
-                        setDashboardPatient(localPatient);
-                        setDashboardDoctor(selectedReceipt.treatments?.[0]?.doctor || '');
-                        setShowDashboardModal(true);
-                      }
-                    }}
-                    title="환자 통합 대시보드"
+                    onClick={() => handlePatientClick(selectedReceipt)}
+                    title={onPatientClick ? '환자 통합차트 열기' : '환자 통합 대시보드'}
                   >{selectedReceipt.patient_name}</span>
                   <span className="chart-no">({selectedReceipt.chart_no.replace(/^0+/, '')})</span>
                   <span className="side-panel-receipt-btn">
@@ -2148,13 +2173,15 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
                   <div className="status-badge reservation">
                     {renderReservationStatus(selectedReceipt)}
                   </div>
-                  <button
-                    className={`status-badge complete ${selectedReceipt.isCompleted ? 'completed' : ''}`}
-                    onClick={() => handleToggleCompleted(selectedReceipt)}
-                  >
-                    <i className={`fa-solid ${selectedReceipt.isCompleted ? 'fa-check-circle' : 'fa-circle'}`}></i>
-                    {selectedReceipt.isCompleted ? '완료' : '미완료'}
-                  </button>
+                  {!readOnly && (
+                    <button
+                      className={`status-badge complete ${selectedReceipt.isCompleted ? 'completed' : ''}`}
+                      onClick={() => handleToggleCompleted(selectedReceipt)}
+                    >
+                      <i className={`fa-solid ${selectedReceipt.isCompleted ? 'fa-check-circle' : 'fa-circle'}`}></i>
+                      {selectedReceipt.isCompleted ? '완료' : '미완료'}
+                    </button>
+                  )}
                 </div>
                 {/* 보유패키지 배지 */}
                 <div className="header-packages">
@@ -2178,7 +2205,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
                         {activeHerbals.length > 0 && (
                           <span
                             className="header-pkg-badge herbal"
-                            onClick={() => {
+                            onClick={readOnly ? undefined : () => {
                               setPkgManageModal({
                                 type: 'herbal',
                                 packages: activeHerbals.map(pkg => ({
@@ -2198,7 +2225,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
                         {activeNokryongs.length > 0 && (
                           <span
                             className="header-pkg-badge nokryong"
-                            onClick={() => {
+                            onClick={readOnly ? undefined : () => {
                               setPkgManageModal({
                                 type: 'nokryong',
                                 packages: activeNokryongs.map(pkg => ({
@@ -2218,7 +2245,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
                         {activeTreatments.length > 0 && (
                           <span
                             className="header-pkg-badge treatment"
-                            onClick={() => {
+                            onClick={readOnly ? undefined : () => {
                               setPkgManageModal({
                                 type: 'treatment',
                                 packages: activeTreatments.map(pkg => ({
@@ -2243,7 +2270,7 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
                           return (
                             <span
                               className="header-pkg-badge membership"
-                              onClick={() => {
+                              onClick={readOnly ? undefined : () => {
                                 setPkgManageModal({
                                   type: 'membership',
                                   packages: activeMemberships.map(m => {
@@ -2274,12 +2301,14 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
                   })()}
                 </div>
                 {/* 패키지 추가 버튼 */}
-                <div className="header-pkg-add-btns">
-                  <button className="pkg-add-btn herbal" onClick={() => setQuickAddType('herbal')} title="한약 패키지 추가">한약+</button>
-                  <button className="pkg-add-btn nokryong" onClick={() => setQuickAddType('nokryong')} title="녹용 패키지 추가">녹용+</button>
-                  <button className="pkg-add-btn treatment" onClick={() => setQuickAddType('treatment')} title="통마 추가">통마+</button>
-                  <button className="pkg-add-btn membership" onClick={() => setQuickAddType('membership')} title="멤버십 추가">멤버+</button>
-                </div>
+                {!readOnly && (
+                  <div className="header-pkg-add-btns">
+                    <button className="pkg-add-btn herbal" onClick={() => setQuickAddType('herbal')} title="한약 패키지 추가">한약+</button>
+                    <button className="pkg-add-btn nokryong" onClick={() => setQuickAddType('nokryong')} title="녹용 패키지 추가">녹용+</button>
+                    <button className="pkg-add-btn treatment" onClick={() => setQuickAddType('treatment')} title="통마 추가">통마+</button>
+                    <button className="pkg-add-btn membership" onClick={() => setQuickAddType('membership')} title="멤버십 추가">멤버+</button>
+                  </div>
+                )}
                 <button
                   className="side-panel-close"
                   onClick={() => {
@@ -2856,13 +2885,14 @@ function ReceiptView({ user, onReservationDraftReady }: ReceiptViewProps) {
               </button>
               <button
                 className="btn-save"
-                disabled={!pkgManageModal.packages.some(p =>
+                disabled={readOnly || !pkgManageModal.packages.some(p =>
                   p.deleted ||
                   p.newRemaining !== p.remaining ||
                   p.newStartDate !== p.startDate ||
                   p.newExpireDate !== p.expireDate
                 )}
                 onClick={async () => {
+                  if (readOnly) return;
                   try {
                     // 삭제할 패키지 처리
                     const deletedPackages = pkgManageModal.packages.filter(p => p.deleted);
