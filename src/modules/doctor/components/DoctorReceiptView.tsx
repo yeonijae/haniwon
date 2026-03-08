@@ -98,7 +98,6 @@ import PackageManageModal from '@modules/cs/components/PackageManageModal';
 import PackageQuickAddModal from '@modules/cs/components/PackageQuickAddModal';
 import { PackageTimeline } from '@modules/cs/components/PackageTimeline';
 import InlineReceiptHistory from '@modules/cs/components/InlineReceiptHistory';
-import PatientReceiptHistoryModal from '@modules/cs/components/PatientReceiptHistoryModal';
 import TodayReceiptDetail from '@modules/cs/components/insurance-dashboard/TodayReceiptDetail';
 // import InsuranceDashboard from './insurance-dashboard/InsuranceDashboard';
 import PatientDashboard from '@modules/cs/components/PatientDashboard';
@@ -199,8 +198,8 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
   } | null>(null);
 
 
-  // 수납이력 모달 상태
-  const [showReceiptHistoryModal, setShowReceiptHistoryModal] = useState(false);
+  // 당일 진료메모 (DetailComment)
+  const [detailComment, setDetailComment] = useState<{ comment1: string; comment2: string } | null>(null);
 
   // 환자 대시보드 모달 상태
   const [showDashboardModal, setShowDashboardModal] = useState(false);
@@ -457,6 +456,7 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
       setSelectedPatientHistory([]);
       setPreviousMemos([]);
       setDetailItems([]);
+      setDetailComment(null);
       setMemoInputMode(null);
       setActivePackages({ herbal: [], nokryong: [], treatment: [], membership: [] });
       return;
@@ -464,10 +464,25 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
 
     setSelectedReceipt(receipt);
     setPatientEtcMemo('');
+    setDetailComment(null);
     // 기타메모 로드
     fetch(`${MSSQL_API_BASE}/api/patients/${receipt.patient_id}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.etc_memo) setPatientEtcMemo(data.etc_memo); })
+      .catch(() => {});
+    // 당일 진료메모(DetailComment) 로드
+    const targetDate = receipt.receipt_date || selectedDate;
+    fetch(`${MSSQL_API_BASE}/api/patients/${receipt.patient_id}/detail-comments?limit=30`)
+      .then(r => r.ok ? r.json() : [])
+      .then((comments: any[]) => {
+        const match = comments.find((c: any) => {
+          const cDate = (c.date || '').split('T')[0];
+          return cDate === targetDate;
+        });
+        if (match) {
+          setDetailComment({ comment1: match.comment1 || '', comment2: match.comment2 || '' });
+        }
+      })
       .catch(() => {});
     setMemoInputMode(null); // 다른 환자 선택 시 메모 입력 패널 닫기
     setShowInlinePanel(null); // 다른 환자 선택 시 인라인 패널 닫기
@@ -2213,13 +2228,6 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                   </span>
                 </div>
                 <div className="header-status">
-                  <button
-                    className="status-badge receipt-history-btn"
-                    onClick={() => setShowReceiptHistoryModal(true)}
-                  >
-                    <i className="fa-solid fa-clock-rotate-left"></i>
-                    수납이력
-                  </button>
                   {!readOnly && (
                     <button
                       className={`status-badge complete ${selectedReceipt.isCompleted ? 'completed' : ''}`}
@@ -2375,6 +2383,19 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                     {patientEtcMemo && (
                       <div className="side-panel-etc-memo">
                         <pre className="etc-memo-content">{patientEtcMemo.replace(/[\r\n]+/g, '\n').replace(/(\n\s*){2,}/g, '\n').trim()}</pre>
+                      </div>
+                    )}
+                    {/* 당일 진료메모 (DetailComment) */}
+                    {detailComment && (detailComment.comment1 || detailComment.comment2) && (
+                      <div className="side-panel-detail-comment">
+                        <div className="detail-comment-row">
+                          <span className="detail-comment-label">진료메모1</span>
+                          <span className="detail-comment-value">{detailComment.comment1 || '-'}</span>
+                        </div>
+                        <div className="detail-comment-row">
+                          <span className="detail-comment-label">진료메모2</span>
+                          <span className="detail-comment-value">{detailComment.comment2 || '-'}</span>
+                        </div>
                       </div>
                     )}
                     {/* 급여 항목 (2단) */}
@@ -2601,17 +2622,6 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
       </div>
 
 
-
-      {/* 수납이력 모달 */}
-      {selectedReceipt && (
-        <PatientReceiptHistoryModal
-          isOpen={showReceiptHistoryModal}
-          onClose={() => setShowReceiptHistoryModal(false)}
-          patientId={selectedReceipt.patient_id}
-          patientName={selectedReceipt.patient_name}
-          chartNo={selectedReceipt.chart_no}
-        />
-      )}
 
       {/* 예약 모달 */}
       <ReservationStep1Modal
