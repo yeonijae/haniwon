@@ -1282,6 +1282,17 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const getAudioElementDuration = (el: HTMLAudioElement) => {
+    const byDuration = el.duration;
+    if (Number.isFinite(byDuration) && byDuration > 0) return byDuration;
+    const seekable = el.seekable;
+    if (seekable && seekable.length > 0) {
+      const end = seekable.end(seekable.length - 1);
+      if (Number.isFinite(end) && end > 0) return end;
+    }
+    return 0;
+  };
+
   // 진료일자 포맷: 년. 월. 일. (요일)
   const formatDateWithWeekday = (dateStr: string) => {
     const days = ['일', '월', '화', '수', '목', '금', '토'];
@@ -1610,14 +1621,17 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                     src={`${API_URL}/api/files/${selectedTranscript.audio_path}`}
                     className="w-full h-10"
                     onLoadedMetadata={(e) => {
-                      const dur = Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0;
+                      const dur = getAudioElementDuration(e.currentTarget);
                       setAudioDuration(dur > 0 ? dur : (selectedTranscript.duration_sec || 0));
                     }}
                     onTimeUpdate={(e) => {
-                      setAudioCurrentTime(e.currentTarget.currentTime || 0);
+                      const el = e.currentTarget;
+                      setAudioCurrentTime(el.currentTime || 0);
+                      const dur = getAudioElementDuration(el);
+                      if (dur > 0) setAudioDuration(dur);
                     }}
                     onDurationChange={(e) => {
-                      const dur = Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0;
+                      const dur = getAudioElementDuration(e.currentTarget);
                       if (dur > 0) setAudioDuration(dur);
                     }}
                   />
