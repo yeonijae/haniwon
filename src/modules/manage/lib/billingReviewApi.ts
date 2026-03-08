@@ -174,7 +174,7 @@ export async function fetchBillingReviewData(
       d.Customer_PK,
       CONVERT(varchar, d.TxDate, 23) AS tx_date,
       c.name AS patient_name,
-      c.ChartNo AS chart_no,
+      c.sn AS chart_no,
       ISNULL(d.TxDoctor, '') AS doctor,
       ISNULL(d.PxName, '') AS px_name,
       d.DxName AS dx_name,
