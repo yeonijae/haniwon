@@ -9,32 +9,23 @@ interface ManageLiteAppProps {
 
 const ManageHome: React.FC = () => {
   return (
-    <div className="min-h-screen bg-clinic-background p-6">
-      <div className="max-w-4xl mx-auto bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
-        <h1 className="text-2xl font-bold text-clinic-primary mb-2">운영 관리</h1>
-        <p className="text-clinic-text-secondary mb-6">기존 대시보드는 로딩하지 않도록 분리되었습니다.</p>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="min-h-screen bg-clinic-background">
+      <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
+        <h1 className="text-xl font-bold text-clinic-text-primary">운영관리</h1>
+        <div className="flex items-center gap-2">
           <Link
             to="/manage/billing-review"
-            className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 hover:border-clinic-primary hover:bg-blue-50 transition"
+            className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-clinic-text-primary hover:bg-gray-50 transition"
           >
-            <i className="fa-solid fa-file-invoice-dollar text-clinic-primary text-xl"></i>
-            <div>
-              <p className="font-semibold text-clinic-text-primary">청구 검토</p>
-              <p className="text-sm text-clinic-text-secondary">청구 오류/점검 항목 확인</p>
-            </div>
+            <i className="fa-solid fa-file-invoice-dollar text-clinic-primary"></i>
+            청구 검토
           </Link>
-
           <Link
             to="/manage/charting-review"
-            className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 hover:border-clinic-primary hover:bg-blue-50 transition"
+            className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-clinic-text-primary hover:bg-gray-50 transition"
           >
-            <i className="fa-solid fa-notes-medical text-clinic-primary text-xl"></i>
-            <div>
-              <p className="font-semibold text-clinic-text-primary">차팅 검토</p>
-              <p className="text-sm text-clinic-text-secondary">차팅 내용 검토(준비중)</p>
-            </div>
+            <i className="fa-solid fa-notes-medical text-clinic-primary"></i>
+            차팅 검토
           </Link>
         </div>
       </div>
