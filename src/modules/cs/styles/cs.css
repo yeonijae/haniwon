@@ -10780,11 +10780,26 @@
   margin-right: 4px;
 }
 
+.side-panel-two-column .insurance-item .item-name:has(.cupping-area-text) {
+  white-space: normal;
+  overflow: visible;
+}
+
 .side-panel-two-column .insurance-item .item-amount {
   color: #1f2937;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+}
+
+.side-panel-two-column .insurance-item .cupping-area-text {
+  display: block;
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 400;
+  white-space: normal;
+  line-height: 1.3;
+  margin-top: 1px;
 }
 
 .side-panel-two-column .insurance-total {

@@ -60,6 +60,7 @@ export interface ReceiptDetailItem {
   is_insurance: boolean;  // InsuYes
   doctor: string;         // TxDoctor
   bonin_percent: number;  // BoninPercent
+  detail_text: string | null; // DText (부항술 부위명/상세 등)
 }
 
 /**
@@ -103,7 +104,8 @@ export async function fetchReceiptDetails(customerId: number, txDate: string): P
         d.DAYTU as daily_dose,
         d.InsuYes as is_insurance,
         d.TxDoctor as doctor,
-        d.BoninPercent as bonin_percent
+        d.BoninPercent as bonin_percent,
+        d.DText as detail_text
       FROM Detail d
       WHERE d.Customer_PK = ${customerId}
       AND CONVERT(varchar, d.TxDate, 23) = '${normalizedDate}'

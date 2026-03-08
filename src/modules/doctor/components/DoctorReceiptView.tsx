@@ -412,6 +412,12 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
     return result;
   }, [detailItems]);
 
+  // 부항술 부위명/상세 (부항술혈명 행의 detail_text에서 추출)
+  const cuppingAreaText = useMemo(() => {
+    const areaRow = detailItems.find((item) => (item.item_name || '').includes('부항술혈명'));
+    return areaRow?.detail_text?.trim() || null;
+  }, [detailItems]);
+
   // 리사이즈 핸들 상태
   const [listPanelWidth, setListPanelWidth] = useState<number | null>(null);
   const [isResizing, setIsResizing] = useState(false);
@@ -2461,12 +2467,20 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                               ))}
                             </span>
                           </div>
-                          {selectedReceipt.treatments.filter(t => t.is_covered).map((item, idx) => (
-                            <div key={idx} className="insurance-item">
-                              <span className="item-name">{item.name}</span>
-                              <span className="item-amount">{(item.amount || 0).toLocaleString()}</span>
-                            </div>
-                          ))}
+                          {selectedReceipt.treatments.filter(t => t.is_covered).map((item, idx) => {
+                            const isCupping = /자락관법|유관법|부항요법/.test(item.name);
+                            return (
+                              <div key={idx} className="insurance-item">
+                                <span className="item-name">
+                                  {item.name}
+                                  {isCupping && cuppingAreaText && (
+                                    <span className="cupping-area-text">{cuppingAreaText}</span>
+                                  )}
+                                </span>
+                                <span className="item-amount">{(item.amount || 0).toLocaleString()}</span>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
