@@ -608,7 +608,9 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
 
     const loadDetails = async () => {
       try {
-        const details = await fetchReceiptDetails(receipt.patient_id, receipt.receipt_date);
+        // receipt_date가 없거나 형식이 불안정한 경우 selectedDate fallback
+        const detailDate = receipt.receipt_date || selectedDate;
+        const details = await fetchReceiptDetails(receipt.patient_id, detailDate);
         setDetailItems(details);
       } catch (err) {
         console.error('진료상세내역 로드 실패:', err);
