@@ -13774,20 +13774,19 @@
 }
 .side-panel-detail-comment .detail-comment-row {
   display: flex;
-  gap: 8px;
-  margin-bottom: 4px;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
   line-height: 1.4;
 }
 .side-panel-detail-comment .detail-comment-row:last-child {
   margin-bottom: 0;
 }
 .side-panel-detail-comment .detail-comment-label {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: #1e40af;
   white-space: nowrap;
-  min-width: 52px;
-  padding-top: 1px;
 }
 .side-panel-detail-comment .detail-comment-value {
   font-size: 13px;
