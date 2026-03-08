@@ -1990,7 +1990,7 @@ function ReceiptView({ user, onReservationDraftReady, readOnly = false, fixedDoc
               전체 {doctorScopedReceipts.length}
             </button>
             <button className={`occ-filter-btn ${recordFilter === 'incomplete' ? 'active' : ''}`} onClick={() => setRecordFilter('incomplete')}>
-              미기록 {incompleteCount}
+              미검토 {incompleteCount}
             </button>
             <button className={`occ-filter-btn ${recordFilter === 'completed' ? 'active' : ''}`} onClick={() => setRecordFilter('completed')}>
               완료 {completedCount}
