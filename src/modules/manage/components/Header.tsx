@@ -1,8 +1,8 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { User } from '../types';
 
-export type ModalType = 'reservation' | 'patientSearch' | 'stats' | 'settings' | 'payment' | 'dailyPayments' | 'consultationInfo' | 'paymentHistory' | 'billingReview' | 'chartingReview';
+export type ModalType = 'reservation' | 'patientSearch' | 'stats' | 'settings' | 'payment' | 'dailyPayments' | 'consultationInfo' | 'paymentHistory';
 
 interface HeaderProps {
   onOpenModal: (type: ModalType, title: string, wide?: boolean) => void;
@@ -19,10 +19,11 @@ interface HeaderProps {
 interface ButtonConfig {
   icon: string;
   label: string;
-  modalTitle: string;
-  modalType: ModalType;
+  modalTitle?: string;
+  modalType?: ModalType;
   wide?: boolean;
   link?: string;  // 외부 페이지 링크 (새 창)
+  route?: string; // 내부 페이지 라우팅 (현재 탭)
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -35,6 +36,7 @@ const Header: React.FC<HeaderProps> = ({
     canIncrease,
     canDecrease,
 }) => {
+  const navigate = useNavigate();
   const buttons: ButtonConfig[] = [
     {
       icon: 'fa-solid fa-magnifying-glass',
@@ -61,16 +63,12 @@ const Header: React.FC<HeaderProps> = ({
     {
       icon: 'fa-solid fa-file-invoice-dollar',
       label: '청구 검토',
-      modalTitle: '청구 검토',
-      modalType: 'billingReview',
-      wide: true,
+      route: '/manage/billing-review',
     },
     {
       icon: 'fa-solid fa-notes-medical',
       label: '차팅 검토',
-      modalTitle: '차팅 검토',
-      modalType: 'chartingReview',
-      wide: true,
+      route: '/manage/charting-review',
     },
     {
       icon: 'fa-solid fa-chart-line',
@@ -105,9 +103,11 @@ const Header: React.FC<HeaderProps> = ({
             <button
               key={btn.label}
               onClick={() => {
-                if (btn.link) {
+                if (btn.route) {
+                  navigate(btn.route);
+                } else if (btn.link) {
                   window.open(btn.link, '_blank');
-                } else {
+                } else if (btn.modalType && btn.modalTitle) {
                   onOpenModal(btn.modalType, btn.modalTitle, btn.wide);
                 }
               }}
