@@ -8,11 +8,23 @@
 
 const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
 
+interface AiUsageMeta {
+  model?: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  total_tokens?: number | null;
+  elapsed_ms?: number | null;
+  estimated_cost_usd?: number | null;
+  estimated_cost_krw?: number | null;
+  currency_rate?: number | null;
+}
+
 interface TranscriptionResult {
   success: boolean;
   transcript: string;
   duration: number;
   language: string;
+  usage?: AiUsageMeta;
   error?: string;
 }
 
@@ -22,6 +34,7 @@ interface SoapResult {
   objective: string;
   assessment: string;
   plan: string;
+  usage?: AiUsageMeta;
   error?: string;
 }
 
@@ -34,6 +47,7 @@ interface DiarizationResult {
   success: boolean;
   utterances: DiarizedUtterance[];
   formatted: string; // "[의사] ... \n[환자] ..." 형식
+  usage?: AiUsageMeta;
   error?: string;
 }
 
@@ -111,6 +125,7 @@ export async function transcribeAudio(
     transcript: data.transcript,
     duration: data.duration,
     language: data.language,
+    usage: data.usage,
   };
 }
 
@@ -152,6 +167,7 @@ export async function convertToSoap(
       objective: data.objective || '',
       assessment: data.assessment || '',
       plan: data.plan || '',
+      usage: data.usage,
     };
   } catch (error) {
     console.error('SOAP 변환 실패:', error);
@@ -198,6 +214,7 @@ export async function diarizeTranscript(
       success: true,
       utterances: data.utterances || [],
       formatted: data.formatted || transcript,
+      usage: data.usage,
     };
   } catch (error) {
     console.error('화자 분리 실패:', error);
@@ -342,6 +359,7 @@ export async function updateSoapStatus(
     assessment?: string;
     plan?: string;
     status: string;
+    usage?: AiUsageMeta;
   }
 ): Promise<boolean> {
   const escapeSql = (str: string | null | undefined): string => {
@@ -349,12 +367,20 @@ export async function updateSoapStatus(
     return "'" + String(str).replace(/'/g, "''") + "'";
   };
 
+  const toSqlNumber = (value: unknown): string => (typeof value === 'number' && Number.isFinite(value) ? String(value) : 'NULL');
   const sql = `
     UPDATE medical_transcripts SET
       soap_subjective = ${escapeSql(soap.subjective)},
       soap_objective = ${escapeSql(soap.objective)},
       soap_assessment = ${escapeSql(soap.assessment)},
       soap_plan = ${escapeSql(soap.plan)},
+      soap_model = ${escapeSql(soap.usage?.model ?? null)},
+      soap_input_tokens = ${toSqlNumber(soap.usage?.input_tokens)},
+      soap_output_tokens = ${toSqlNumber(soap.usage?.output_tokens)},
+      soap_total_tokens = ${toSqlNumber(soap.usage?.total_tokens)},
+      soap_elapsed_ms = ${toSqlNumber(soap.usage?.elapsed_ms)},
+      soap_estimated_cost_usd = ${toSqlNumber(soap.usage?.estimated_cost_usd)},
+      soap_estimated_cost_krw = ${toSqlNumber(soap.usage?.estimated_cost_krw)},
       soap_status = ${escapeSql(soap.status)},
       updated_at = NOW()
     WHERE id = ${transcriptId}
@@ -380,16 +406,25 @@ export async function updateSoapStatus(
  */
 export async function updateDiarizedTranscript(
   transcriptId: number,
-  diarizedTranscript: string
+  diarizedTranscript: string,
+  meta?: AiUsageMeta
 ): Promise<boolean> {
   const escapeSql = (str: string | null | undefined): string => {
     if (str === null || str === undefined || str === '') return 'NULL';
     return "'" + String(str).replace(/'/g, "''") + "'";
   };
 
+  const toSqlNumber = (value: unknown): string => (typeof value === 'number' && Number.isFinite(value) ? String(value) : 'NULL');
   const sql = `
     UPDATE medical_transcripts SET
       diarized_transcript = ${escapeSql(diarizedTranscript)},
+      diarize_model = ${escapeSql(meta?.model ?? null)},
+      diarize_input_tokens = ${toSqlNumber(meta?.input_tokens)},
+      diarize_output_tokens = ${toSqlNumber(meta?.output_tokens)},
+      diarize_total_tokens = ${toSqlNumber(meta?.total_tokens)},
+      diarize_elapsed_ms = ${toSqlNumber(meta?.elapsed_ms)},
+      diarize_estimated_cost_usd = ${toSqlNumber(meta?.estimated_cost_usd)},
+      diarize_estimated_cost_krw = ${toSqlNumber(meta?.estimated_cost_krw)},
       updated_at = NOW()
     WHERE id = ${transcriptId}
   `;
@@ -671,7 +706,7 @@ export async function runTranscriptPipeline(
       });
 
       if (diarResult.formatted) {
-        await updateDiarizedTranscript(transcriptId, diarResult.formatted);
+        await updateDiarizedTranscript(transcriptId, diarResult.formatted, diarResult.usage);
       }
     } catch (diarError) {
       const msg = diarError instanceof Error ? diarError.message : 'Unknown diarization error';
@@ -696,6 +731,7 @@ export async function runTranscriptPipeline(
         assessment: soapResult.assessment,
         plan: soapResult.plan,
         status: 'completed',
+        usage: soapResult.usage,
       });
     } catch (soapError) {
       const msg = soapError instanceof Error ? soapError.message : 'Unknown SOAP error';

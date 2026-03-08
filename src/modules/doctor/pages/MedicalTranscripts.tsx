@@ -25,6 +25,27 @@ interface MedicalTranscript {
   soap_assessment: string | null;
   soap_plan: string | null;
   soap_status: 'pending' | 'processing' | 'completed' | 'failed';
+  transcribe_model?: string | null;
+  transcribe_input_tokens?: number | null;
+  transcribe_output_tokens?: number | null;
+  transcribe_total_tokens?: number | null;
+  transcribe_elapsed_ms?: number | null;
+  transcribe_estimated_cost_usd?: number | null;
+  transcribe_estimated_cost_krw?: number | null;
+  diarize_model?: string | null;
+  diarize_input_tokens?: number | null;
+  diarize_output_tokens?: number | null;
+  diarize_total_tokens?: number | null;
+  diarize_elapsed_ms?: number | null;
+  diarize_estimated_cost_usd?: number | null;
+  diarize_estimated_cost_krw?: number | null;
+  soap_model?: string | null;
+  soap_input_tokens?: number | null;
+  soap_output_tokens?: number | null;
+  soap_total_tokens?: number | null;
+  soap_elapsed_ms?: number | null;
+  soap_estimated_cost_usd?: number | null;
+  soap_estimated_cost_krw?: number | null;
   processing_status: 'uploading' | 'transcribing' | 'processing' | 'completed' | 'failed' | null;
   processing_message: string | null;
   coaching_text?: string | null;
@@ -45,15 +66,17 @@ interface PatientInfo {
   patient_name: string;
 }
 
-interface CoachingMeta {
-  model?: string;
-  input_tokens?: number;
-  output_tokens?: number;
-  total_tokens?: number;
-  elapsed_ms?: number;
-  estimated_cost_usd?: number;
-  estimated_cost_krw?: number;
+interface UsageMeta {
+  model?: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  total_tokens?: number | null;
+  elapsed_ms?: number | null;
+  estimated_cost_usd?: number | null;
+  estimated_cost_krw?: number | null;
 }
+
+interface CoachingMeta extends UsageMeta {}
 
 type AsyncJobStatus = 'pending' | 'running' | 'completed' | 'failed';
 
@@ -647,10 +670,40 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
       );
 
       if (result.success && result.formatted) {
+        const usage = result.usage;
         // DB 업데이트
-        await updateDiarizedTranscript(selectedTranscript.id, result.formatted);
+        await updateDiarizedTranscript(selectedTranscript.id, result.formatted, usage);
+
+        setTranscripts((prev) => prev.map((t) => (t.id === selectedTranscript.id
+          ? {
+              ...t,
+              diarized_transcript: result.formatted,
+              diarize_model: usage?.model ?? null,
+              diarize_input_tokens: usage?.input_tokens ?? null,
+              diarize_output_tokens: usage?.output_tokens ?? null,
+              diarize_total_tokens: usage?.total_tokens ?? null,
+              diarize_elapsed_ms: usage?.elapsed_ms ?? null,
+              diarize_estimated_cost_usd: usage?.estimated_cost_usd ?? null,
+              diarize_estimated_cost_krw: usage?.estimated_cost_krw ?? null,
+            }
+          : t
+        )));
+        setSelectedTranscript((prev) => (prev && prev.id === selectedTranscript.id
+          ? {
+              ...prev,
+              diarized_transcript: result.formatted,
+              diarize_model: usage?.model ?? null,
+              diarize_input_tokens: usage?.input_tokens ?? null,
+              diarize_output_tokens: usage?.output_tokens ?? null,
+              diarize_total_tokens: usage?.total_tokens ?? null,
+              diarize_elapsed_ms: usage?.elapsed_ms ?? null,
+              diarize_estimated_cost_usd: usage?.estimated_cost_usd ?? null,
+              diarize_estimated_cost_krw: usage?.estimated_cost_krw ?? null,
+            }
+          : prev
+        ));
+
         alert('화자 분리가 완료되었습니다.');
-        fetchTranscripts();
       } else {
         throw new Error(result.error || 'Empty response');
       }
@@ -1036,6 +1089,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
           });
 
           if (status === 'completed') {
+            const usage = data?.usage || {};
             setTranscripts((prev) => prev.map((t) => (
               t.id === transcriptId
                 ? {
@@ -1044,6 +1098,13 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                     soap_objective: data.objective ?? t.soap_objective,
                     soap_assessment: data.assessment ?? t.soap_assessment,
                     soap_plan: data.plan ?? t.soap_plan,
+                    soap_model: usage.model ?? t.soap_model,
+                    soap_input_tokens: usage.input_tokens ?? t.soap_input_tokens,
+                    soap_output_tokens: usage.output_tokens ?? t.soap_output_tokens,
+                    soap_total_tokens: usage.total_tokens ?? t.soap_total_tokens,
+                    soap_elapsed_ms: usage.elapsed_ms ?? t.soap_elapsed_ms,
+                    soap_estimated_cost_usd: usage.estimated_cost_usd ?? t.soap_estimated_cost_usd,
+                    soap_estimated_cost_krw: usage.estimated_cost_krw ?? t.soap_estimated_cost_krw,
                     soap_status: 'completed',
                     processing_message: data.message || 'SOAP 생성 완료',
                   }
@@ -1057,6 +1118,13 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                     soap_objective: data.objective ?? prev.soap_objective,
                     soap_assessment: data.assessment ?? prev.soap_assessment,
                     soap_plan: data.plan ?? prev.soap_plan,
+                    soap_model: usage.model ?? prev.soap_model,
+                    soap_input_tokens: usage.input_tokens ?? prev.soap_input_tokens,
+                    soap_output_tokens: usage.output_tokens ?? prev.soap_output_tokens,
+                    soap_total_tokens: usage.total_tokens ?? prev.soap_total_tokens,
+                    soap_elapsed_ms: usage.elapsed_ms ?? prev.soap_elapsed_ms,
+                    soap_estimated_cost_usd: usage.estimated_cost_usd ?? prev.soap_estimated_cost_usd,
+                    soap_estimated_cost_krw: usage.estimated_cost_krw ?? prev.soap_estimated_cost_krw,
                     soap_status: 'completed',
                     processing_message: data.message || 'SOAP 생성 완료',
                   }
@@ -1348,6 +1416,28 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     }
   };
 
+  const formatUsageMetaLine = (meta?: UsageMeta) => {
+    if (!meta) return '';
+    const seconds = typeof meta.elapsed_ms === 'number' ? (meta.elapsed_ms / 1000).toFixed(1) : null;
+    return [
+      meta.model ? `모델: ${meta.model}` : null,
+      typeof meta.input_tokens === 'number' ? `입력: ${meta.input_tokens.toLocaleString()} tok` : null,
+      typeof meta.output_tokens === 'number' ? `출력: ${meta.output_tokens.toLocaleString()} tok` : null,
+      typeof meta.total_tokens === 'number' ? `합계: ${meta.total_tokens.toLocaleString()} tok` : null,
+      typeof meta.estimated_cost_krw === 'number' ? `예상비용: ${Math.round(meta.estimated_cost_krw).toLocaleString()}원` : null,
+      seconds ? `소요: ${seconds}s` : null,
+    ].filter(Boolean).join(' · ');
+  };
+
+  const hasUsageMeta = (meta?: UsageMeta) => Boolean(meta && (
+    meta.model ||
+    Number.isFinite(meta.input_tokens) ||
+    Number.isFinite(meta.output_tokens) ||
+    Number.isFinite(meta.total_tokens) ||
+    Number.isFinite(meta.elapsed_ms) ||
+    Number.isFinite(meta.estimated_cost_krw)
+  ));
+
   const selectedCoachingJob = selectedTranscript ? coachingJobs[selectedTranscript.id] : undefined;
   const selectedSoapJob = selectedTranscript ? soapJobs[selectedTranscript.id] : undefined;
   const isCoachingRunning = Boolean(selectedCoachingJob);
@@ -1362,14 +1452,34 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
         estimated_cost_krw: selectedTranscript.coaching_estimated_cost_krw ?? undefined,
       })
     : undefined;
-  const hasSelectedCoachingMeta = Boolean(selectedCoachingMeta && (
-    selectedCoachingMeta.model ||
-    Number.isFinite(selectedCoachingMeta.input_tokens) ||
-    Number.isFinite(selectedCoachingMeta.output_tokens) ||
-    Number.isFinite(selectedCoachingMeta.total_tokens) ||
-    Number.isFinite(selectedCoachingMeta.elapsed_ms) ||
-    Number.isFinite(selectedCoachingMeta.estimated_cost_krw)
-  ));
+  const hasSelectedCoachingMeta = hasUsageMeta(selectedCoachingMeta);
+  const selectedTranscribeMeta: UsageMeta | undefined = selectedTranscript ? {
+    model: selectedTranscript.transcribe_model,
+    input_tokens: selectedTranscript.transcribe_input_tokens,
+    output_tokens: selectedTranscript.transcribe_output_tokens,
+    total_tokens: selectedTranscript.transcribe_total_tokens,
+    elapsed_ms: selectedTranscript.transcribe_elapsed_ms,
+    estimated_cost_usd: selectedTranscript.transcribe_estimated_cost_usd,
+    estimated_cost_krw: selectedTranscript.transcribe_estimated_cost_krw,
+  } : undefined;
+  const selectedDiarizeMeta: UsageMeta | undefined = selectedTranscript ? {
+    model: selectedTranscript.diarize_model,
+    input_tokens: selectedTranscript.diarize_input_tokens,
+    output_tokens: selectedTranscript.diarize_output_tokens,
+    total_tokens: selectedTranscript.diarize_total_tokens,
+    elapsed_ms: selectedTranscript.diarize_elapsed_ms,
+    estimated_cost_usd: selectedTranscript.diarize_estimated_cost_usd,
+    estimated_cost_krw: selectedTranscript.diarize_estimated_cost_krw,
+  } : undefined;
+  const selectedSoapMeta: UsageMeta | undefined = selectedTranscript ? {
+    model: selectedTranscript.soap_model,
+    input_tokens: selectedTranscript.soap_input_tokens,
+    output_tokens: selectedTranscript.soap_output_tokens,
+    total_tokens: selectedTranscript.soap_total_tokens,
+    elapsed_ms: selectedTranscript.soap_elapsed_ms,
+    estimated_cost_usd: selectedTranscript.soap_estimated_cost_usd,
+    estimated_cost_krw: selectedTranscript.soap_estimated_cost_krw,
+  } : undefined;
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
@@ -1669,7 +1779,10 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                 {/* 녹취원본 탭 */}
                 {detailTab === 'raw' && (
                   <>
-                    <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-end">
+                    <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3">
+                      <div className="text-xs text-gray-500">
+                        {hasUsageMeta(selectedTranscribeMeta) ? formatUsageMetaLine(selectedTranscribeMeta) : '메타 없음'}
+                      </div>
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(selectedTranscript.transcript || '');
@@ -1709,7 +1822,8 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                 {detailTab === 'diarized' && (
                   <>
                     <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500">{hasUsageMeta(selectedDiarizeMeta) ? formatUsageMetaLine(selectedDiarizeMeta) : '메타 없음'}</span>
                         {!selectedTranscript.diarized_transcript && (
                           <button
                             onClick={handleDiarize}
@@ -1787,7 +1901,10 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                   <>
                     {selectedTranscript.soap_status === 'completed' ? (
                       <>
-                        <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-end">
+                        <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3">
+                          <div className="text-xs text-gray-500">
+                            {hasUsageMeta(selectedSoapMeta) ? formatUsageMetaLine(selectedSoapMeta) : '메타 없음'}
+                          </div>
                           <button
                             onClick={() => {
                               const soap = `S: ${selectedTranscript.soap_subjective || '-'}\n\nO: ${selectedTranscript.soap_objective || '-'}\n\nA: ${selectedTranscript.soap_assessment || '-'}\n\nP: ${selectedTranscript.soap_plan || '-'}`;
@@ -1916,18 +2033,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                     <div className="p-6">
                       {hasSelectedCoachingMeta && selectedCoachingMeta && (
                         <div className="mb-3 text-xs text-gray-500">
-                          {(() => {
-                            const meta = selectedCoachingMeta;
-                            const seconds = typeof meta.elapsed_ms === 'number' ? (meta.elapsed_ms / 1000).toFixed(1) : null;
-                            return [
-                              meta.model ? `모델: ${meta.model}` : null,
-                              typeof meta.input_tokens === 'number' ? `입력: ${meta.input_tokens.toLocaleString()} tok` : null,
-                              typeof meta.output_tokens === 'number' ? `출력: ${meta.output_tokens.toLocaleString()} tok` : null,
-                              typeof meta.total_tokens === 'number' ? `합계: ${meta.total_tokens.toLocaleString()} tok` : null,
-                              typeof meta.estimated_cost_krw === 'number' ? `예상비용: ${Math.round(meta.estimated_cost_krw).toLocaleString()}원` : null,
-                              seconds ? `소요: ${seconds}s` : null,
-                            ].filter(Boolean).join(' · ');
-                          })()}
+                          {formatUsageMetaLine(selectedCoachingMeta)}
                         </div>
                       )}
                       {!getTranscriptSourceText(selectedTranscript) ? (
