@@ -25,6 +25,8 @@ interface MedicalTranscript {
   soap_status: 'pending' | 'processing' | 'completed' | 'failed';
   processing_status: 'uploading' | 'transcribing' | 'processing' | 'completed' | 'failed' | null;
   processing_message: string | null;
+  coaching_text?: string | null;
+  chart_text?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -36,7 +38,288 @@ interface PatientInfo {
 
 type ViewMode = 'day' | '3weeks' | '3months' | 'all';
 type PipelineCategory = 'saving' | 'transcribing' | 'done' | 'failed';
-type DetailTab = 'raw' | 'diarized' | 'soap';
+type DetailTab = 'raw' | 'diarized' | 'soap' | 'coaching';
+
+const CONSULTATION_COACHING_PROMPT_V2 = `당신은 한의사 상담 코칭 전문가이며, 연이재한의원의 복부중심 진료 상담을 분석하고 코칭하는 역할을 맡는다.
+
+입력은 2가지다.
+1) 연이재 차트
+2) 화자분리된 상담 녹취
+
+목표는 이 상담이 환자가 한약 복용을 결심하도록 충분히 설득력 있게 이루어졌는지 평가하고, 부족한 부분을 실전 코칭 형태로 제안하는 것이다.
+
+당신은 단순 요약가가 아니라 상담 전환율을 높이는 코치처럼 분석해야 한다.
+
+====================
+[핵심 원칙]
+====================
+- [처방]이 있다고 무조건 상담 성공으로 판단하지 말 것
+- [티칭]이 비어 있어도 녹취를 근거로 실제 설명을 복원할 것
+- 차트의 좋은 단서를 상담에서 못 살렸다면 중요한 개선점으로 지적할 것
+- 과장된 칭찬이나 추상적 조언보다 실제 문장 코칭을 우선할 것
+- 분석 목적은 비난이 아니라 전환율 향상이다
+
+====================
+[차트 해석 규칙]
+====================
+연이재 차트는 다음 구조를 가질 수 있다.
+- 제목행
+- [주소증]
+- [문진]
+- [복진]
+- [설진]
+- [맥진]
+- [혈색]
+- [티칭]
+- [처방]
+
+1. 제목행
+다음을 추출한다.
+- 상담 주제
+- 한약 관련 태그
+- 환자명
+- 환자번호
+- 진료일
+- 진료자
+
+2. [주소증]
+다음을 정리한다.
+- 내원 목적
+- 핵심 증상
+- 동반 증상
+- 발병 계기
+- 기능 저하
+- 환자가 직접 표현한 고충
+
+그리고 의사가 이를 상담 중 다시 짚어주었는지 평가한다.
+
+3. [문진]
+문진은 기록이 아니라 설명 재료로 본다.
+다음을 평가한다.
+- 수면, 피로, 식사, 소화, 대소변, 한열, 땀, 월경, 생활패턴이 설명에 활용되었는가
+- 한약 필요성과 연결되었는가
+
+4. [복진]
+복진은 핵심 근거다.
+다음을 평가한다.
+- 복진 소견을 환자 언어로 번역했는가
+- 복부 상태와 증상을 연결했는가
+- 치료 방향까지 이어졌는가
+- 환자가 “아 그래서 그렇구나”라고 느낄 인사이트가 있었는가
+
+5. [설진][맥진][혈색]
+보조 근거로 본다.
+- 실제 상담에서 언급되었는가
+- 설명 논리 보강에 활용 가능한가
+
+6. [티칭]
+[티칭]이 비어 있어도 설명이 없었다고 단정하지 말 것.
+반드시 녹취를 근거로 아래 내용을 복원한다.
+- 현재 상태 설명
+- 왜 이런 증상이 생겼는지
+- 복부 상태와 증상 연결
+- 한약 복용 이유
+- 치료 기간과 기대 변화
+- 생활관리 조언
+
+7. [처방]
+다음을 구분해서 평가한다.
+- 실제 한약 처방 여부
+- 상담 흐름상 자연스러운 연결 여부
+- 환자가 납득 후 결정했는지 여부
+
+====================
+[녹취 분석 기준]
+====================
+반드시 아래를 분석한다.
+- 질문의 질
+- 공감 표현
+- 상태 재정리
+- 복진/문진 기반 설명
+- 한약 필요성 설명
+- 저항 대응
+- 클로징
+- 결심 신호
+- 의사/환자 발화 균형
+- 설명 후 확인 질문 여부
+
+====================
+[판정 기준]
+====================
+각 구조 평가 항목은 우수/보통/부족 중 하나로 판정한다.
+
+- 우수: 해당 요소가 명확히 존재하고, 환자 이해·납득·결정에 실제로 기여함
+- 보통: 요소는 있으나 약하거나 단편적이어서 설득 효과가 제한적임
+- 부족: 요소가 거의 없거나, 있어도 전환에 도움이 되지 못함
+
+====================
+[상담 구조 평가 항목]
+====================
+1. 환자 이해
+- 핵심 불편을 정확히 짚었는가
+- 기능 저하까지 연결했는가
+- 환자 말을 정리해 되돌려주었는가
+
+2. 공감 형성
+- 부담과 불편을 언어로 받아주었는가
+- 환자가 이해받는 느낌을 받을 수 있었는가
+- 불안을 완화했는가
+
+3. 진단 인사이트
+- 현재 상태를 환자가 납득하도록 설명했는가
+- 복진과 증상을 연결했는가
+- 왜 이런 문제가 생겼는지 설명했는가
+
+4. 치료 필요성 설명
+- 왜 치료가 필요한지 만들었는가
+- 왜 한약이 필요한지 설명했는가
+- 한약의 역할과 목표를 연결했는가
+
+5. 옵션 제시
+- 선택지가 구조화되었는가
+- 단순 권유가 아니라 선택의 틀을 주었는가
+- 한약 문턱을 낮췄는가
+
+6. 저항 대응
+- 비용, 기간, 복용 부담, 효과 우려를 다뤘는가
+- 숨은 망설임까지 줄였는가
+
+7. 클로징
+- 명확하게 권유했는가
+- 환자가 결정할 수 있는 문장을 제시했는가
+- 처방으로 이어지는 마지막 다리가 있었는가
+
+====================
+[상담 밸런스 판정]
+====================
+다음 중 하나 이상으로 판정한다.
+- 설명 과다형
+- 청취 과다형
+- 균형형
+- 정보는 많지만 전환이 약한 형
+- 공감은 좋으나 클로징이 약한 형
+
+====================
+[한약 전환 설득력 판정]
+====================
+다음 중 하나로 판정한다.
+- 매우 설득력 있음
+- 대체로 설득력 있음
+- 설명은 있었으나 결심 유도가 약함
+- 처방은 했지만 설득 구조는 약함
+- 한약 필요성 전달 실패
+
+판정 시 아래를 본다.
+- 왜 지금 한약이 필요한지 납득했는가
+- 한약의 역할이 구체적이었는가
+- 단순 보약이 아니라 치료의 일부로 설명되었는가
+- 복용 이유, 기간, 기대 변화가 연결되었는가
+- 환자가 이해 후 결심했는가
+
+====================
+[결심 신호 분류]
+====================
+녹취에서 아래를 찾는다.
+- 수용 신호: 네, 그렇게 할게요, 먹어볼게요
+- 정보 신호: 얼마나 먹어요, 어떻게 먹어요
+- 망설임 신호: 꼭 먹어야 하나요, 생각해볼게요
+- 저항 신호: 가격, 기간, 번거로움, 효과 의심
+- 숨은 저항 신호: 반응이 짧아짐, 질문이 없어짐, 주제 전환
+
+====================
+[점수]
+====================
+총점 100점
+- 환자 이해 15
+- 공감 형성 10
+- 진단 인사이트 20
+- 치료 필요성 설명 15
+- 옵션 제시 10
+- 저항 대응 10
+- 클로징 10
+- 말의 균형 5
+- 설명 명확성 5
+
+====================
+[출력 규칙]
+====================
+- 전체 출력은 간결하고 실전형으로 작성할 것
+- 각 섹션 최대 6줄
+- 예시 멘트 총합 최대 12개
+- 리라이트는 구간당 120~220자
+- 불필요한 반복 금지
+- 긴 서론 금지
+- 표보다 문장/불릿 중심
+- 추측은 최소화하고 근거 기반으로 쓸 것
+
+====================
+[출력 형식]
+====================
+아래 순서대로 출력한다.
+
+1. 상담 요약
+- 내원 목적
+- 핵심 증상
+- 의사의 핵심 해석
+- 실제 치료 제안
+- 최종 결과
+
+2. 차트-녹취 일치도 분석
+- 차트 내용 중 상담에 잘 반영된 부분
+- 차트에는 있으나 설명에 못 쓴 부분
+- [티칭] 복원 내용
+
+3. 상담 구조 평가
+- 환자 이해: 우수/보통/부족 + 근거
+- 공감 형성: 우수/보통/부족 + 근거
+- 진단 인사이트: 우수/보통/부족 + 근거
+- 치료 필요성 설명: 우수/보통/부족 + 근거
+- 옵션 제시: 우수/보통/부족 + 근거
+- 저항 대응: 우수/보통/부족 + 근거
+- 클로징: 우수/보통/부족 + 근거
+
+4. 상담 밸런스 분석
+- 의사:환자 발화 균형
+- 설명 과다/청취 과다 여부
+- 전환 관점 평가
+
+5. 한약 전환 설득력 평가
+- 위 5단계 중 하나로 판정
+- 핵심 근거 2~4개
+
+6. 결심 신호 분석
+- 수용/정보/망설임/저항/숨은 저항 신호 정리
+
+7. 상담 점수
+- 항목별 점수
+- 총점
+- 총평 2문장 이내
+
+8. 문제 유형 진단
+- 해당 유형 나열
+- 각 유형의 짧은 이유
+
+9. 개선 코칭
+각 개선점마다 아래 형식 사용
+- 개선 포인트
+- 왜 중요한가
+- 이렇게 바꾸면 좋다
+- 예시 멘트
+
+10. 추천 클로징 멘트
+- 실제 진료실 문장 3개 이상 5개 이하
+
+11. 핵심 리라이트
+- 진단 설명 리라이트
+- 한약 필요성 연결 리라이트
+- 클로징 리라이트
+
+[입력 데이터]
+[연이재 차트]
+{{chartText}}
+
+[화자분리된 상담 녹취]
+{{transcriptText}}`;
 
 interface MedicalTranscriptsProps {
   selectedDoctorName?: string;
@@ -62,6 +345,9 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [detailTab, setDetailTab] = useState<DetailTab>('raw');
+  const [isGeneratingCoaching, setIsGeneratingCoaching] = useState(false);
+  const [coachingError, setCoachingError] = useState<string | null>(null);
+  const [coachingTextMemory, setCoachingTextMemory] = useState<Record<number, string>>({});
 
   // 필터링된 녹취록
   const filteredTranscripts = useMemo(() => {
@@ -351,6 +637,105 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
       });
     } finally {
       setIsReprocessing(false);
+    }
+  };
+
+  const getTranscriptSourceText = (t: MedicalTranscript) => {
+    const diarized = t.diarized_transcript?.trim();
+    const raw = t.transcript?.trim();
+    return diarized || raw || '';
+  };
+
+  const getChartTextForCoaching = (t: MedicalTranscript) => {
+    const chartText = t.chart_text?.trim();
+    if (chartText) return chartText;
+
+    const soapBlocks = [
+      t.soap_subjective ? `[S]\n${t.soap_subjective}` : '',
+      t.soap_objective ? `[O]\n${t.soap_objective}` : '',
+      t.soap_assessment ? `[A]\n${t.soap_assessment}` : '',
+      t.soap_plan ? `[P]\n${t.soap_plan}` : '',
+    ].filter(Boolean);
+
+    return soapBlocks.join('\n\n');
+  };
+
+  const persistCoachingText = async (transcriptId: number, text: string) => {
+    const escaped = text.replace(/'/g, "''");
+    try {
+      const response = await fetch(`${API_URL}/api/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sql: `UPDATE medical_transcripts SET coaching_text = '${escaped}', updated_at = NOW() WHERE id = ${transcriptId}`,
+        }),
+      });
+      const data = await response.json();
+      if (data?.error) throw new Error(String(data.error));
+      return true;
+    } catch (error) {
+      // TODO: DB 스키마에 coaching_text 컬럼 추가 후 영속 저장 경로를 고정하세요.
+      console.warn('coaching_text 영속 저장 실패, 메모리 fallback 사용:', error);
+      return false;
+    }
+  };
+
+  const handleGenerateCoaching = async () => {
+    if (!selectedTranscript) return;
+
+    const transcriptText = getTranscriptSourceText(selectedTranscript);
+    if (!transcriptText) {
+      setCoachingError('코칭을 생성하려면 녹취 텍스트가 필요합니다. 먼저 녹취/화자분리를 완료해 주세요.');
+      return;
+    }
+
+    setIsGeneratingCoaching(true);
+    setCoachingError(null);
+
+    const chartText = getChartTextForCoaching(selectedTranscript);
+    const prompt = CONSULTATION_COACHING_PROMPT_V2
+      .replace('{{chartText}}', chartText || '(차트 텍스트 없음)')
+      .replace('{{transcriptText}}', transcriptText);
+
+    try {
+      const response = await fetch(`${API_URL}/api/gpt/chart-analysis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chart_notes: chartText,
+          transcript: transcriptText,
+          prompt,
+          prompt_version: 'v2',
+          response_mode: 'coaching_only',
+          model: 'gpt-5.4',
+        }),
+      });
+      const data = await response.json();
+
+      const generatedCoaching = (data?.coaching || data?.result || data?.text || '').toString().trim();
+      if (!generatedCoaching) {
+        throw new Error(data?.error || '코칭 결과가 비어 있습니다.');
+      }
+
+      const persisted = await persistCoachingText(selectedTranscript.id, generatedCoaching);
+      if (!persisted) {
+        setCoachingTextMemory((prev) => ({ ...prev, [selectedTranscript.id]: generatedCoaching }));
+      }
+
+      setTranscripts((prev) => prev.map((t) => (
+        t.id === selectedTranscript.id
+          ? { ...t, coaching_text: generatedCoaching }
+          : t
+      )));
+      setSelectedTranscript((prev) => (
+        prev ? { ...prev, coaching_text: generatedCoaching } : prev
+      ));
+      setDetailTab('coaching');
+    } catch (error: any) {
+      console.error('상담코칭 생성 실패:', error);
+      setCoachingError(error?.message || '상담코칭 생성 중 오류가 발생했습니다.');
+    } finally {
+      setIsGeneratingCoaching(false);
     }
   };
 
@@ -790,7 +1175,10 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                 return (
                   <div
                     key={t.id}
-                    onClick={() => setSelectedTranscript(t)}
+                    onClick={() => {
+                      setSelectedTranscript(t);
+                      setCoachingError(null);
+                    }}
                     className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
                       selectedTranscript?.id === t.id
                         ? 'bg-clinic-primary/5 border-l-4 border-clinic-primary'
@@ -931,6 +1319,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                   ['raw', '녹취원본'],
                   ['diarized', '화자분리'],
                   ['soap', 'SOAP'],
+                  ['coaching', '상담코칭'],
                 ] as [DetailTab, string][]).map(([key, label]) => (
                   <button
                     key={key}
@@ -1153,6 +1542,77 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                         </button>
                       </div>
                     )}
+                  </>
+                )}
+
+                {/* 상담코칭 탭 */}
+                {detailTab === 'coaching' && (
+                  <>
+                    <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                      <div className="text-xs text-gray-500">
+                        화자분리 텍스트가 있으면 우선 사용하고, 없으면 녹취원본을 사용합니다.
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {(selectedTranscript.coaching_text || coachingTextMemory[selectedTranscript.id]) && (
+                          <button
+                            onClick={() => {
+                              const text = selectedTranscript.coaching_text || coachingTextMemory[selectedTranscript.id] || '';
+                              navigator.clipboard.writeText(text);
+                              alert('상담코칭 내용이 클립보드에 복사되었습니다.');
+                            }}
+                            className="text-sm text-gray-500 hover:text-gray-700"
+                          >
+                            <i className="fas fa-copy mr-1"></i>
+                            복사
+                          </button>
+                        )}
+                        <button
+                          onClick={handleGenerateCoaching}
+                          disabled={isGeneratingCoaching || !getTranscriptSourceText(selectedTranscript)}
+                          className="px-3 py-1.5 text-sm bg-clinic-primary text-white rounded-lg hover:bg-clinic-primary/90 transition-colors disabled:opacity-50"
+                        >
+                          <i className={`fas ${isGeneratingCoaching ? 'fa-spinner fa-spin' : 'fa-lightbulb'} mr-1`}></i>
+                          {isGeneratingCoaching
+                            ? '코칭 생성 중...'
+                            : (selectedTranscript.coaching_text || coachingTextMemory[selectedTranscript.id])
+                              ? '다시 생성'
+                              : '코칭 생성'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-6">
+                      {!getTranscriptSourceText(selectedTranscript) ? (
+                        <div className="text-center py-8 text-amber-600 bg-amber-50 border border-amber-200 rounded-lg">
+                          <i className="fas fa-exclamation-triangle text-2xl mb-2 block"></i>
+                          <p className="font-medium">녹취 텍스트가 없어 코칭을 생성할 수 없습니다.</p>
+                          <p className="text-xs mt-1">녹취 또는 화자분리 텍스트가 준비된 뒤 다시 시도해 주세요.</p>
+                        </div>
+                      ) : coachingError ? (
+                        <div className="text-center py-8 text-red-700 bg-red-50 border border-red-200 rounded-lg">
+                          <i className="fas fa-exclamation-circle text-2xl mb-2 block"></i>
+                          <p className="font-medium mb-1">상담코칭 생성에 실패했습니다.</p>
+                          <p className="text-sm">{coachingError}</p>
+                        </div>
+                      ) : isGeneratingCoaching ? (
+                        <div className="text-center py-10 text-blue-700">
+                          <i className="fas fa-spinner fa-spin text-2xl mb-2 block"></i>
+                          <p>상담코칭을 생성하고 있습니다...</p>
+                        </div>
+                      ) : (selectedTranscript.coaching_text || coachingTextMemory[selectedTranscript.id]) ? (
+                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                          <pre className="text-sm text-purple-900 whitespace-pre-wrap leading-relaxed font-sans">
+                            {selectedTranscript.coaching_text || coachingTextMemory[selectedTranscript.id]}
+                          </pre>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-gray-500">
+                          <i className="fas fa-lightbulb text-3xl mb-2 block text-purple-400"></i>
+                          <p className="mb-1">아직 생성된 상담코칭이 없습니다.</p>
+                          <p className="text-xs">상단의 "코칭 생성" 버튼을 눌러 시작하세요.</p>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
               </div>
