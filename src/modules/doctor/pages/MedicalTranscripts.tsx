@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { format, subDays } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -415,6 +415,9 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   const [coachingError, setCoachingError] = useState<string | null>(null);
   const [coachingTextMemory, setCoachingTextMemory] = useState<Record<number, string>>({});
   const [coachingMetaMemory, setCoachingMetaMemory] = useState<Record<number, CoachingMeta>>({});
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
   const [coachingJobs, setCoachingJobs] = useState<Record<number, AsyncJobTracker>>({});
   const [soapJobs, setSoapJobs] = useState<Record<number, AsyncJobTracker>>({});
 
@@ -894,6 +897,11 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
   useEffect(() => {
     fetchTranscripts();
   }, [viewMode, baseDate, selectedDoctorName]);
+
+  useEffect(() => {
+    setAudioCurrentTime(0);
+    setAudioDuration(0);
+  }, [selectedTranscript?.id]);
 
   useEffect(() => {
     const hasProcessingTranscript = transcripts.some((t) =>
@@ -1597,10 +1605,26 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
               {selectedTranscript.audio_path && (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 px-6 py-3">
                   <audio
+                    ref={audioRef}
                     controls
                     src={`${API_URL}/api/files/${selectedTranscript.audio_path}`}
                     className="w-full h-10"
+                    onLoadedMetadata={(e) => {
+                      const dur = Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0;
+                      setAudioDuration(dur > 0 ? dur : (selectedTranscript.duration_sec || 0));
+                    }}
+                    onTimeUpdate={(e) => {
+                      setAudioCurrentTime(e.currentTarget.currentTime || 0);
+                    }}
+                    onDurationChange={(e) => {
+                      const dur = Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0;
+                      if (dur > 0) setAudioDuration(dur);
+                    }}
                   />
+                  <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
+                    <span>{formatDuration(Math.floor(audioCurrentTime))}</span>
+                    <span>{formatDuration(Math.floor(audioDuration || selectedTranscript.duration_sec || 0))}</span>
+                  </div>
                 </div>
               )}
 
