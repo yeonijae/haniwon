@@ -3249,6 +3249,9 @@
   bottom: 0;
   background: rgba(0, 0, 0, 0.3);
   z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 모달 본체 - 콘텐츠 영역 내 전체 */
@@ -14144,8 +14147,16 @@
 /* ============================================ */
 
 .patient-history-modal-v2 {
-  width: 900px;
-  max-width: 95vw;
+  position: relative;
+  top: auto;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  width: 720px;
+  max-width: 90vw;
+  max-height: 80vh;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 }
 
 /* 테이블 V2 */
