@@ -13767,20 +13767,21 @@
 
 /* 당일 진료메모 (DetailComment) */
 .side-panel-detail-comment {
-  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin-bottom: 6px;
-  background: #eff6ff;
-  border-left: 3px solid #3b82f6;
+  background: #ffffff;
 }
 .side-panel-detail-comment .detail-comment-row {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-bottom: 6px;
+  padding: 8px 12px;
+  background: #eff6ff;
+  border-left: 3px solid #3b82f6;
+  border-radius: 4px;
   line-height: 1.4;
-}
-.side-panel-detail-comment .detail-comment-row:last-child {
-  margin-bottom: 0;
 }
 .side-panel-detail-comment .detail-comment-label {
   font-size: 13px;
