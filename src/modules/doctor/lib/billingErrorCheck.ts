@@ -112,7 +112,7 @@ const MEMO2_RULES: { match: string; covered: boolean; token: string | string[]; 
   { match: '관절강침술', covered: true,  token: '관절)',   label: '관절강침술 → 관절)' },
   { match: '투자침술', covered: true,  token: '투자)',     label: '투자침술 → 투자)' },
   { match: '복강내침술', covered: true,  token: '복강)',   label: '복강내침술 → 복강)' },
-  { match: '경피적외선조사', covered: true, token: ['적외선)', '경피적외선)', '경피적외선요법'], label: '경피적외선조사 → 적외선)/경피적외선)/경피적외선요법' },
+  { match: '경피적외선조사', covered: true, token: ['적외선)', '경피적외선)', '경피적외선요법)'], label: '경피적외선조사 → 적외선)/경피적외선)/경피적외선요법' },
   { match: '유관법', covered: true,  token: '유관법)',   label: '유관법 → 유관법)' },
 ];
 
