@@ -9,6 +9,28 @@ interface ManageLiteAppProps {
 
 const ManageHome: React.FC = () => {
   return (
+    <div className="p-6 text-sm text-clinic-text-secondary">
+      운영관리 화면입니다. 상단 버튼으로 페이지를 선택해주세요.
+    </div>
+  );
+};
+
+const ChartingReviewPage: React.FC = () => {
+  return (
+    <div className="p-6">
+      <div className="max-w-5xl bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <i className="fa-solid fa-notes-medical text-2xl text-clinic-primary"></i>
+          <h2 className="text-2xl font-bold text-clinic-primary">차팅 검토</h2>
+        </div>
+        <p className="text-clinic-text-secondary">차팅 검토 페이지입니다. 상세 기능은 이어서 확장 가능합니다.</p>
+      </div>
+    </div>
+  );
+};
+
+const ManageLiteApp: React.FC<ManageLiteAppProps> = () => {
+  return (
     <div className="min-h-screen bg-clinic-background">
       <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
         <h1 className="text-xl font-bold text-clinic-text-primary">운영관리</h1>
@@ -29,35 +51,14 @@ const ManageHome: React.FC = () => {
           </Link>
         </div>
       </div>
-    </div>
-  );
-};
 
-const ChartingReviewPage: React.FC = () => {
-  return (
-    <div className="min-h-screen bg-clinic-background p-6">
-      <div className="max-w-5xl mx-auto bg-white rounded-xl border border-gray-200 p-8 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <i className="fa-solid fa-notes-medical text-2xl text-clinic-primary"></i>
-            <h2 className="text-2xl font-bold text-clinic-primary">차팅 검토</h2>
-          </div>
-          <Link to="/manage" className="text-sm text-clinic-primary hover:underline">운영관리 홈으로</Link>
-        </div>
-        <p className="text-clinic-text-secondary">차팅 검토 페이지입니다. 상세 기능은 이어서 확장 가능합니다.</p>
-      </div>
+      <Routes>
+        <Route path="/" element={<ManageHome />} />
+        <Route path="/billing-review" element={<BillingReviewPage />} />
+        <Route path="/charting-review" element={<ChartingReviewPage />} />
+        <Route path="*" element={<Navigate to="/manage" replace />} />
+      </Routes>
     </div>
-  );
-};
-
-const ManageLiteApp: React.FC<ManageLiteAppProps> = () => {
-  return (
-    <Routes>
-      <Route path="/" element={<ManageHome />} />
-      <Route path="/billing-review" element={<BillingReviewPage />} />
-      <Route path="/charting-review" element={<ChartingReviewPage />} />
-      <Route path="*" element={<Navigate to="/manage" replace />} />
-    </Routes>
   );
 };
 
