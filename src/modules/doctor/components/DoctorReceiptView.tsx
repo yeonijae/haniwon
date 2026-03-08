@@ -2486,20 +2486,12 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                               ))}
                             </span>
                           </div>
-                          {selectedReceipt.treatments.filter(t => t.is_covered).map((item, idx) => {
-                            const isCupping = /자락관법|유관법|부항요법|보험부항/.test(item.name);
-                            return (
+                          {selectedReceipt.treatments.filter(t => t.is_covered).map((item, idx) => (
                               <div key={idx} className="insurance-item">
-                                <span className="item-name">
-                                  {item.name}
-                                  {isCupping && cuppingAreaText && (
-                                    <span className="cupping-area-text">{cuppingAreaText}</span>
-                                  )}
-                                </span>
+                                <span className="item-name">{item.name}</span>
                                 <span className="item-amount">{(item.amount || 0).toLocaleString()}</span>
                               </div>
-                            );
-                          })}
+                          ))}
                         </div>
                       </div>
                     )}
@@ -2526,6 +2518,9 @@ function DoctorReceiptView({ user, onReservationDraftReady, readOnly = false, fi
                                   )}
                                   {!isClickEnabled(item.name, item.amount || 0, item.id) && hasMemoForDetail(item.id) && (
                                     <span className="memo-badge filled">✓</span>
+                                  )}
+                                  {item.name.includes('부항술혈명') && cuppingAreaText && (
+                                    <span className="cupping-area-text">{cuppingAreaText}</span>
                                   )}
                                 </td>
                                 <td className="col-amount">{(item.amount || 0).toLocaleString()}원</td>
