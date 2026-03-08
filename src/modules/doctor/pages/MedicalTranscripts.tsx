@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { format, subDays } from 'date-fns';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { diarizeTranscript, updateDiarizedTranscript } from '../../pad/services/transcriptionService';
 
 const API_URL = import.meta.env.VITE_POSTGRES_API_URL || 'http://192.168.0.173:5200';
@@ -1631,9 +1633,28 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
                         </div>
                       ) : (selectedTranscript.coaching_text || coachingTextMemory[selectedTranscript.id]) ? (
                         <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                          <pre className="text-sm text-purple-900 whitespace-pre-wrap leading-relaxed font-sans">
-                            {selectedTranscript.coaching_text || coachingTextMemory[selectedTranscript.id]}
-                          </pre>
+                          <div className="text-sm text-purple-900 leading-relaxed">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                h1: ({ children }) => <h1 className="text-xl font-bold mt-3 mb-2">{children}</h1>,
+                                h2: ({ children }) => <h2 className="text-lg font-semibold mt-3 mb-2">{children}</h2>,
+                                h3: ({ children }) => <h3 className="text-base font-semibold mt-2 mb-1">{children}</h3>,
+                                p: ({ children }) => <p className="mb-2 whitespace-pre-wrap">{children}</p>,
+                                ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-1">{children}</ul>,
+                                ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-1">{children}</ol>,
+                                li: ({ children }) => <li>{children}</li>,
+                                blockquote: ({ children }) => <blockquote className="border-l-4 border-purple-300 pl-3 italic my-2">{children}</blockquote>,
+                                code: ({ children }) => <code className="bg-purple-100 px-1 py-0.5 rounded">{children}</code>,
+                                hr: () => <hr className="my-3 border-purple-200" />,
+                                table: ({ children }) => <table className="w-full border-collapse my-2">{children}</table>,
+                                th: ({ children }) => <th className="border border-purple-200 px-2 py-1 text-left bg-purple-100">{children}</th>,
+                                td: ({ children }) => <td className="border border-purple-200 px-2 py-1 align-top">{children}</td>,
+                              }}
+                            >
+                              {selectedTranscript.coaching_text || coachingTextMemory[selectedTranscript.id] || ''}
+                            </ReactMarkdown>
+                          </div>
                         </div>
                       ) : (
                         <div className="text-center py-8 text-gray-500">
