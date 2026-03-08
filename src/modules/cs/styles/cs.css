@@ -10792,8 +10792,7 @@
   flex-shrink: 0;
 }
 
-.side-panel-two-column .insurance-item .cupping-area-text,
-.side-panel-two-column .receipt-detail-table .cupping-area-text {
+.side-panel-two-column .insurance-item .cupping-area-text {
   display: block;
   font-size: 11px;
   color: #6b7280;
@@ -10801,6 +10800,14 @@
   white-space: normal;
   line-height: 1.3;
   margin-top: 1px;
+}
+
+.side-panel-two-column .receipt-detail-table .cupping-area-text {
+  display: inline;
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 400;
+  margin-left: 6px;
 }
 
 .side-panel-two-column .insurance-total {
