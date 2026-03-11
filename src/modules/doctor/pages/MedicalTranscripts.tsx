@@ -509,20 +509,25 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
 
   // 파이프라인 카테고리 분류 (function 선언문으로 호이스팅 보장)
   function getPipelineCategory(t: MedicalTranscript): PipelineCategory {
-    // 실패: 어느 단계든 failed 이거나, 처리 완료인데 transcript가 없는 경우
-    if (t.processing_status === 'failed' || t.soap_status === 'failed' ||
-        (!t.transcript && t.processing_status === 'completed')) {
+    const hasTranscript = Boolean(t.transcript && t.transcript.trim());
+    const isFailed = t.processing_status === 'failed' || t.soap_status === 'failed';
+
+    if (isFailed || (!hasTranscript && t.processing_status === 'completed')) {
       return 'failed';
     }
+
     // 저장중: 업로드 단계
     if (t.processing_status === 'uploading') {
       return 'saving';
     }
-    // 완료: processing과 soap 모두 완료
-    if ((!t.processing_status || t.processing_status === 'completed') && t.soap_status === 'completed') {
+
+    // 완료 기준 정합성: 초진차트 "녹취 가져오기"와 동일하게 transcript 존재를 우선
+    // (SOAP/코칭은 후속 파이프라인이므로 완료 목록 가시성을 막지 않음)
+    if (hasTranscript && t.processing_status !== 'transcribing' && t.processing_status !== 'processing') {
       return 'done';
     }
-    // 변환중: 나머지 진행 중인 상태
+
+    // 변환중: 나머지 진행 상태
     return 'transcribing';
   }
 
@@ -538,7 +543,15 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
     setLoading(true);
     try {
       let sql = '';
-      const tsExpr = `COALESCE(recording_date, NULLIF(created_at,'')::timestamp)`;
+      const tsExpr = `COALESCE(
+        recording_date,
+        CASE
+          WHEN NULLIF(created_at::text, '') IS NULL THEN NULL
+          WHEN created_at::text ~ '^\\d{13}$' THEN to_timestamp((created_at::bigint) / 1000.0)
+          WHEN created_at::text ~ '^\\d{10}$' THEN to_timestamp(created_at::bigint)
+          ELSE created_at::timestamptz
+        END
+      )`;
       const localDateExpr = `date(${tsExpr})`;
       const conditions: string[] = [];
 
@@ -593,7 +606,42 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
         items = data.rows as MedicalTranscript[];
       }
 
-      setTranscripts(items);
+      const normalizeTimestampValue = (value: unknown): string | null => {
+        if (value === null || value === undefined || value === '') return null;
+        if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          const ms = value < 1e12 ? value * 1000 : value;
+          const d = new Date(ms);
+          return Number.isNaN(d.getTime()) ? null : d.toISOString();
+        }
+
+        const raw = String(value).trim();
+        if (!raw) return null;
+
+        if (/^\d{10,13}$/.test(raw)) {
+          const n = Number(raw);
+          if (Number.isFinite(n)) {
+            const ms = raw.length <= 10 ? n * 1000 : n;
+            const d = new Date(ms);
+            return Number.isNaN(d.getTime()) ? null : d.toISOString();
+          }
+        }
+
+        const parsed = new Date(raw);
+        if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+
+        // naive datetime 문자열은 기존 파서(parseClinicDateParts)에서 처리하도록 원문 유지
+        return raw;
+      };
+
+      const normalizedItems = items.map((item) => ({
+        ...item,
+        recording_date: normalizeTimestampValue(item.recording_date),
+        created_at: normalizeTimestampValue(item.created_at) || item.created_at,
+      }));
+
+      setTranscripts(normalizedItems);
 
       // 환자 정보 조회
       const patientIds = [...new Set(items.map((t) => t.patient_id))];

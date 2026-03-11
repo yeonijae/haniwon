@@ -55,6 +55,7 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, chartId, st
     transcript: string;
     audio_path: string | null;
     duration_sec: number;
+    recording_date: string | null;
     created_at: string;
   }>>([]);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
@@ -245,6 +246,37 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, chartId, st
     }
   };
 
+  const normalizeTimestampToDate = (value: unknown): Date | null => {
+    if (value === null || value === undefined || value === '') return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      const ms = value < 1e12 ? value * 1000 : value;
+      const d = new Date(ms);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    if (/^\d{10,13}$/.test(raw)) {
+      const numeric = Number(raw);
+      if (Number.isFinite(numeric)) {
+        const ms = raw.length <= 10 ? numeric * 1000 : numeric;
+        const d = new Date(ms);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+    }
+
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const formatTranscriptDate = (item: { recording_date?: string | null; created_at?: string | null }) => {
+    const parsed = normalizeTimestampToDate(item.recording_date || item.created_at || '');
+    return parsed ? parsed.toLocaleDateString('ko-KR') : '-';
+  };
+
   // 녹취 목록 로드
   const loadTranscripts = async () => {
     setTranscriptLoading(true);
@@ -254,11 +286,20 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, chartId, st
         transcript: string;
         audio_path: string | null;
         duration_sec: number;
+        recording_date: string | null;
         created_at: string;
-      }>(`SELECT id, transcript, audio_path, duration_sec, created_at
+      }>(`SELECT id, transcript, audio_path, duration_sec, recording_date, created_at
           FROM medical_transcripts
           WHERE patient_id = ${patientId}
-          ORDER BY created_at DESC
+          ORDER BY COALESCE(recording_date,
+                    CASE
+                      WHEN NULLIF(created_at::text, '') IS NULL THEN NULL
+                      WHEN created_at::text ~ '^\\d{13}$' THEN to_timestamp((created_at::bigint) / 1000.0)
+                      WHEN created_at::text ~ '^\\d{10}$' THEN to_timestamp(created_at::bigint)
+                      ELSE created_at::timestamptz
+                    END
+                  ) DESC NULLS LAST,
+                  id DESC
           LIMIT 20`);
       setTranscriptList(data || []);
       setShowTranscripts(true);
@@ -1171,7 +1212,7 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, chartId, st
                             {item.duration_sec ? `${Math.floor(item.duration_sec / 60)}분 ${item.duration_sec % 60}초` : '시간 미상'}
                           </span>
                           <span className="text-xs text-gray-400">
-                            {new Date(item.created_at).toLocaleDateString('ko-KR')}
+                            {formatTranscriptDate(item)}
                           </span>
                         </div>
                         <div className="text-xs text-gray-600 mt-1 line-clamp-2">
