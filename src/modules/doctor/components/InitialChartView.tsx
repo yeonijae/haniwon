@@ -288,7 +288,13 @@ const InitialChartView: React.FC<Props> = ({ patientId, patientName, chartId, st
         duration_sec: number;
         recording_date: string | null;
         created_at: string;
-      }>(`SELECT id, transcript, audio_path, duration_sec, recording_date, created_at
+      }>(`SELECT
+            id,
+            COALESCE(NULLIF(BTRIM(diarized_transcript), ''), transcript) AS transcript,
+            audio_path,
+            duration_sec,
+            recording_date,
+            created_at
           FROM medical_transcripts
           WHERE patient_id = ${patientId}
           ORDER BY COALESCE(recording_date,
