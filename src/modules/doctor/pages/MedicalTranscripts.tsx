@@ -556,8 +556,16 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
       const conditions: string[] = [];
 
       // 의사 필터
+      // - doctor_name 공백/대소문자 차이로 누락되지 않도록 trim + lower 비교
+      // - 과거 데이터의 doctor_name 누락(NULL/빈값)은 목록에서 배제하지 않아
+      //   "초진차트 녹취 가져오기"와의 가시성 정합성을 유지
       if (selectedDoctorName) {
-        conditions.push(`doctor_name = '${selectedDoctorName.replace(/'/g, "''")}'`);
+        const safeDoctorName = selectedDoctorName.trim().replace(/'/g, "''");
+        conditions.push(`(
+          doctor_name IS NULL
+          OR NULLIF(BTRIM(doctor_name), '') IS NULL
+          OR LOWER(BTRIM(doctor_name)) = LOWER('${safeDoctorName}')
+        )`);
       }
 
       if (viewMode === 'day') {
@@ -575,7 +583,7 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
       sql = `
         SELECT * FROM medical_transcripts
         ${whereClause}
-        ORDER BY ${tsExpr} DESC
+        ORDER BY ${tsExpr} DESC NULLS LAST, id DESC
       `;
 
       const response = await fetch(`${API_URL}/api/execute`, {
@@ -635,22 +643,31 @@ const MedicalTranscripts: React.FC<MedicalTranscriptsProps> = ({ selectedDoctorN
         return raw;
       };
 
-      const normalizedItems = items.map((item) => ({
-        ...item,
-        recording_date: normalizeTimestampValue(item.recording_date),
-        created_at: normalizeTimestampValue(item.created_at) || item.created_at,
-      }));
+      const normalizedItems = items.map((item) => {
+        const normalizedPatientId = Number(item.patient_id);
+        const normalizedDoctorName = typeof item.doctor_name === 'string' ? item.doctor_name.trim() : '';
+        const normalizedTranscript = typeof item.transcript === 'string' ? item.transcript : '';
+
+        return {
+          ...item,
+          patient_id: Number.isFinite(normalizedPatientId) ? normalizedPatientId : 0,
+          doctor_name: normalizedDoctorName,
+          transcript: normalizedTranscript,
+          recording_date: normalizeTimestampValue(item.recording_date),
+          created_at: normalizeTimestampValue(item.created_at) || item.created_at,
+        };
+      });
 
       setTranscripts(normalizedItems);
 
       // 환자 정보 조회
-      const patientIds = [...new Set(items.map((t) => t.patient_id))];
+      const patientIds = [...new Set(normalizedItems.map((t) => t.patient_id).filter((id) => Number.isFinite(id) && id > 0))];
       if (patientIds.length > 0) {
         await fetchPatientInfo(patientIds);
       }
 
       // chart_number 기반 fallback 이름 조회 (PG 공통키)
-      const chartNumbers = [...new Set(items.map((t) => t.chart_number).filter(Boolean) as string[])];
+      const chartNumbers = [...new Set(normalizedItems.map((t) => t.chart_number).filter(Boolean) as string[])];
       if (chartNumbers.length > 0) {
         await fetchPatientInfoByChartNumbers(chartNumbers);
       }
